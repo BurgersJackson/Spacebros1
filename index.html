@@ -404,6 +404,7 @@
         let overlayTimeout = null;
         let warpParticles = [];
         let starfield = [];
+        let nebulas = [];
         let shockwaves = [];
         let menuSelectionIndex = 0;
 
@@ -783,6 +784,7 @@
         
         function initStars() {
             starfield = [];
+            nebulas = [];
             const count = Math.floor((width * height) / 3000); 
             for(let i=0; i<count; i++) {
                 starfield.push({
@@ -791,6 +793,20 @@
                     size: Math.random() < 0.95 ? 1 : 2,
                     alpha: Math.random() * 0.4 + 0.05,
                     parallax: 0.05 + Math.random() * 0.1 
+                });
+            }
+            
+            // Generate Nebulas
+            const nebulaCount = 8;
+            for(let i=0; i<nebulaCount; i++) {
+                const hue = Math.random() > 0.5 ? 260 + Math.random() * 50 : 180 + Math.random() * 50;
+                nebulas.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    radius: 300 + Math.random() * 400,
+                    colorStart: `hsla(${hue}, 80%, 30%, 0.15)`,
+                    colorEnd: `hsla(${hue}, 80%, 10%, 0)`,
+                    parallax: 0.02 + Math.random() * 0.03
                 });
             }
         }
@@ -3407,6 +3423,38 @@
 
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, width, height);
+
+            // Draw Nebulas
+            for (let n of nebulas) {
+                let bx = (n.x - camX * n.parallax) % width;
+                let by = (n.y - camY * n.parallax) % height;
+                if (bx < 0) bx += width;
+                if (by < 0) by += height;
+
+                const drawNebula = (x, y) => {
+                    if (x + n.radius < 0 || x - n.radius > width || y + n.radius < 0 || y - n.radius > height) return;
+                    const g = ctx.createRadialGradient(x, y, 0, x, y, n.radius);
+                    g.addColorStop(0, n.colorStart);
+                    g.addColorStop(1, n.colorEnd);
+                    ctx.fillStyle = g;
+                    ctx.beginPath();
+                    ctx.arc(x, y, n.radius, 0, Math.PI*2);
+                    ctx.fill();
+                };
+
+                drawNebula(bx, by);
+                // Wrap X
+                if (bx < n.radius) drawNebula(bx + width, by);
+                else if (bx > width - n.radius) drawNebula(bx - width, by);
+                // Wrap Y
+                if (by < n.radius) drawNebula(bx, by + height);
+                else if (by > height - n.radius) drawNebula(bx, by - height);
+                // Corners
+                if (bx < n.radius && by < n.radius) drawNebula(bx + width, by + height);
+                if (bx > width - n.radius && by < n.radius) drawNebula(bx - width, by + height);
+                if (bx < n.radius && by > height - n.radius) drawNebula(bx + width, by - height);
+                if (bx > width - n.radius && by > height - n.radius) drawNebula(bx - width, by - height);
+            }
 
             for (let s of starfield) {
                 let x = (s.x - camX * s.parallax) % width;
