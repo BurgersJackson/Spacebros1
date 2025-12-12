@@ -271,6 +271,10 @@
             outline: none;
         }
 
+                .no-cursor {
+            cursor: none;
+        }
+
         button:hover, button:focus, button.selected {
             background: #0f0;
             color: #000;
@@ -1322,12 +1326,14 @@
                 if (this.invincibilityCycle.unlocked && this.invincibilityCycle.state === 'active') {
                     ctx.save();
                     // Keep the phase shield a constant, transparent yellow — no pulsing or glow
-                                                            ctx.lineWidth = 3;
-                    ctx.strokeStyle = 'rgba(255,220,0,1)';
+                    ctx.shadowBlur = 0;
+                    ctx.shadowColor = 'rgba(0,0,0,0)';
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = 'rgba(255,220,0,0.6)';
                     ctx.beginPath();
                     ctx.arc(0, 0, this.shieldRadius + 8, 0, Math.PI * 2);
                     ctx.stroke();
-                    ctx.fillStyle = 'rgba(255,220,0,0.5)';
+                    ctx.fillStyle = 'rgba(255,220,0,0.12)';
                     ctx.fill();
                     ctx.restore();
                 }
@@ -2425,6 +2431,250 @@
                 }
             }
         }
+//space station class
+        class SpaceStation extends Entity {
+            // Initialize the Space Station with massive health and shields
+            constructor() {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 6000; // Spawn far away from player
+                super(player.pos.x + Math.cos(angle) * dist, player.pos.y + Math.sin(angle) * dist);
+                
+                this.radius = 480; // Large collision radius
+                this.hp = 100;
+                this.maxHp = 100;
+                
+                // Two layers of shields
+                this.shieldRadius = 550;
+                this.innerShieldRadius = 510;
+                
+                // High segment count for "boss" feel
+                this.shieldSegments = new Array(60).fill(4);
+                this.innerShieldSegments = new Array(60).fill(4);
+                
+                this.shieldRotation = 0;
+                this.innerShieldRotation = 0;
+                
+                this.turretReload = 15;
+                this.defenderSpawnTimer = 0;
+            }
+            
+            update() {
+                // Rotate shields in opposite directions for visual effect
+                this.shieldRotation += 0.003;
+                this.innerShieldRotation -= 0.0045;
+                
+                // Check if player is within range to engage
+                if (player && !player.dead) {
+                    const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                    if (dist < 3500) { // Engagement range
+                        this.turretReload--;
+                        if (this.turretReload <= 0) {
+                            this.fireTurrets();
+                            this.turretReload = 15; // Rapid fire
+                        }
+                        this.manageDefenders();
+                    }
+                }
+            }
+            
+            manageDefenders() {
+                const myDefenders = enemies.filter(e => e.assignedBase === this && !e.dead);
+                if (myDefenders.length < 5) {
+                    if (this.defenderSpawnTimer <= 0) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const d = this.radius + 50;
+                        const sx = this.pos.x + Math.cos(angle) * d;
+                        const sy = this.pos.y + Math.sin(angle) * d;
+                        enemies.push(new Enemy('defender', {x: sx, y: sy}, this));
+                        spawnParticles(sx, sy, 15, '#0f0');
+                        this.defenderSpawnTimer = 60;
+                    } else {
+                        this.defenderSpawnTimer--;
+                    }
+                }
+            }
+
+            // Fires 4 turrets mounted on the shield ring
+            fireTurrets() {
+                const offsets = [0, Math.PI/2, Math.PI, 3*Math.PI/2];
+                for(let i=0; i<4; i++) {
+                    // Calculate turret position based on current rotation
+                    const angleOffset = offsets[i] + this.shieldRotation;
+                    const tx = this.pos.x + Math.cos(angleOffset) * (this.radius * 0.75);
+                    const ty = this.pos.y + Math.sin(angleOffset) * (this.radius * 0.75);
+                    
+                    // Aim at player
+                    const angle = Math.atan2(player.pos.y - ty, player.pos.x - tx);
+                    
+                    // Rapid fire bullets
+                    const b = new Bullet(tx, ty, angle, true, 2, 14, 4, '#ff0');
+                    b.life *= 1.2;
+                    bullets.push(b);
+                    spawnBarrelSmoke(tx, ty, angle);
+                }
+                playSound('rapid_shoot');
+            }
+            
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                
+                // --- 1. Rotating Outer Ring Structure ---
+                ctx.save();
+                ctx.rotate(this.shieldRotation * 0.5);
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 20;
+                ctx.beginPath();
+                const ringRad = this.radius - 30;
+                ctx.arc(0, 0, ringRad, 0, Math.PI*2);
+                ctx.stroke();
+                
+                // Mechanical Teeth/Docking Ports
+                ctx.fillStyle = '#222';
+                ctx.strokeStyle = '#555';
+                ctx.lineWidth = 2;
+                const teeth = 12;
+                for(let i=0; i<teeth; i++) {
+                    const a = (i / teeth) * Math.PI * 2;
+                    const tx = Math.cos(a) * ringRad;
+                    const ty = Math.sin(a) * ringRad;
+                    ctx.save();
+                    ctx.translate(tx, ty);
+                    ctx.rotate(a);
+                    ctx.beginPath();
+                    ctx.rect(-15, -25, 30, 50);
+                    ctx.fill();
+                    ctx.stroke();
+                    // Small light
+                    ctx.fillStyle = i % 2 === 0 ? '#f00' : '#ff0';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 4, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+                ctx.restore();
+
+                // --- 2. Main Hull Body ---
+                ctx.fillStyle = '#111';
+                ctx.strokeStyle = '#0ff';
+                ctx.lineWidth = 5;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#0ff';
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius * 0.75, 0, Math.PI*2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.shadowBlur = 0; 
+
+                // --- 3. Tech Patterning ---
+                ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius * 0.5, 0, Math.PI*2);
+                ctx.stroke();
+                
+                // Radial lines
+                for(let i=0; i<8; i++) {
+                    const a = i * (Math.PI / 4);
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(a) * this.radius * 0.25, Math.sin(a) * this.radius * 0.25);
+                    ctx.lineTo(Math.cos(a) * this.radius * 0.75, Math.sin(a) * this.radius * 0.75);
+                    ctx.stroke();
+                }
+
+                // --- 4. Central Reactor Core ---
+                const pulse = 1.0 + Math.sin(Date.now() * 0.005) * 0.15;
+                
+                // Core housing
+                ctx.fillStyle = '#000';
+                ctx.strokeStyle = '#f0f';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius * 0.25, 0, Math.PI*2);
+                ctx.fill();
+                ctx.stroke();
+                
+                // Glowing center
+                ctx.fillStyle = '#f0f';
+                ctx.shadowBlur = 30 * pulse;
+                ctx.shadowColor = '#f0f';
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius * 0.15 * pulse, 0, Math.PI*2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // --- 5. Turrets (High Tech) ---
+                const offsets = [0, Math.PI/2, Math.PI, 3*Math.PI/2];
+                for(let i=0; i<4; i++) {
+                    const angleOffset = offsets[i] + this.shieldRotation;
+                    // Mount on the main hull rim
+                    const tx = Math.cos(angleOffset) * (this.radius * 0.75);
+                    const ty = Math.sin(angleOffset) * (this.radius * 0.75);
+                    
+                    ctx.save();
+                    ctx.translate(tx, ty);
+                    let aim = angleOffset;
+                    if (player && !player.dead) {
+                         aim = Math.atan2(player.pos.y - (this.pos.y + ty), player.pos.x - (this.pos.x + tx));
+                    }
+                    ctx.rotate(aim);
+                    
+                    // Base
+                    ctx.fillStyle = '#333';
+                    ctx.strokeStyle = '#888';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 22, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    // Barrels (Twin Heavy)
+                    ctx.fillStyle = '#f44';
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = '#f00';
+                    ctx.fillRect(10, -12, 40, 8);
+                    ctx.fillRect(10, 4, 40, 8);
+                    ctx.shadowBlur = 0;
+                    
+                    // Center pivot
+                    ctx.fillStyle = '#aaa';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 10, 0, Math.PI*2);
+                    ctx.fill();
+                    
+                    ctx.restore();
+                }
+
+                // --- 6. Shields ---
+                const drawShieldRing = (segments, radius, rotation, color) => {
+                    ctx.save();
+                    ctx.rotate(rotation);
+                    ctx.lineWidth = 8;
+                    const count = segments.length;
+                    const arcLen = (Math.PI * 2) / count;
+                    for(let i=0; i<count; i++) {
+                        if (segments[i] > 0) {
+                            ctx.strokeStyle = color;
+                            // Pulse alpha for "energy" feel
+                            const energyPulse = 0.6 + Math.sin(Date.now() * 0.008 + i) * 0.3;
+                            ctx.globalAlpha = Math.min(1, (segments[i] / 2) * energyPulse); 
+                            ctx.shadowBlur = 15;
+                            ctx.shadowColor = color;
+                            ctx.beginPath();
+                            ctx.arc(0, 0, radius, i*arcLen + 0.02, (i+1)*arcLen - 0.02);
+                            ctx.stroke();
+                        }
+                    }
+                    ctx.restore();
+                };
+
+                drawShieldRing(this.shieldSegments, this.shieldRadius, this.shieldRotation, '#0ff');
+                drawShieldRing(this.innerShieldSegments, this.innerShieldRadius, this.innerShieldRotation, '#f0f');
+
+                ctx.restore();
+            }
+        }
 
         // --- Game State ---
         let player;
@@ -2441,6 +2691,8 @@
         let maxRoamers = 5;
         let boss = null;
         let bossActive = false;
+        let spaceStation = null;
+        let spaceStationSpawned = false;
         let bossArena = { x: 0, y: 0, radius: 2500, active: false, growing: false };
         
         // Dreadnought spawn manager
@@ -2488,6 +2740,7 @@
         function resolveEntityCollision() {
             const allEntities = [player, ...enemies, ...bases].filter(e => e && !e.dead);
             if (boss && !boss.dead) allEntities.push(boss);
+            if (spaceStation) allEntities.push(spaceStation);
             
             // Push physics
             for (let i = 0; i < allEntities.length; i++) {
@@ -2496,8 +2749,12 @@
                     const e2 = allEntities[j];
                     let r1 = e1.radius;
                     let r2 = e2.radius;
-                    if (e1 instanceof Base && e1.shieldSegments.some(s=>s>0)) r1 = e1.shieldRadius;
-                    if (e2 instanceof Base && e2.shieldSegments.some(s=>s>0)) r2 = e2.shieldRadius;
+                    
+                    const isStatic1 = (e1 instanceof Base) || (e1 instanceof SpaceStation);
+                    const isStatic2 = (e2 instanceof Base) || (e2 instanceof SpaceStation);
+
+                    if (isStatic1 && e1.shieldSegments.some(s=>s>0)) r1 = e1.shieldRadius;
+                    if (isStatic2 && e2.shieldSegments.some(s=>s>0)) r2 = e2.shieldRadius;
                     
                     const dx = e2.pos.x - e1.pos.x;
                     const dy = e2.pos.y - e1.pos.y;
@@ -2509,9 +2766,13 @@
                         const nx = dx / dist;
                         const ny = dy / dist;
                         const push = overlap * 0.5;
-                        if (e1 instanceof Base) { e2.pos.x += nx * overlap; e2.pos.y += ny * overlap; }
-                        else if (e2 instanceof Base) { e1.pos.x -= nx * overlap; e1.pos.y -= ny * overlap; }
-                        else { e1.pos.x -= nx * push; e1.pos.y -= ny * push; e2.pos.x += nx * push; e2.pos.y += ny * push; e2.pos.x += nx * push; e2.pos.y += ny * push; }
+                        
+                        if (isStatic1) { e2.pos.x += nx * overlap; e2.pos.y += ny * overlap; }
+                        else if (isStatic2) { e1.pos.x -= nx * overlap; e1.pos.y -= ny * overlap; }
+                        else { 
+                            e1.pos.x -= nx * push; e1.pos.y -= ny * push; 
+                            e2.pos.x += nx * push; e2.pos.y += ny * push; 
+                        }
 
                         if (e1 instanceof Base) e1.aggro = true;
                         if (e2 instanceof Base) e2.aggro = true;
@@ -2683,6 +2944,7 @@
             basesDestroyed = 0;
             basesDestroyedTotal = 0;
             boss = null;
+            spaceStation = null;
             bossActive = false;
             bossArena.active = false;
             
@@ -2690,6 +2952,8 @@
             for(let i=0; i<5; i++) enemies.push(new Enemy('roamer'));
             for(let i=0; i<3; i++) spawnNewBaseRelative(true);
             
+            spaceStation = null;
+            spaceStationSpawned = false;
             document.getElementById('bases-display').innerText = `0`;
             shakeMagnitude = 0;
             updateWarpUI();
@@ -3059,6 +3323,18 @@
                     showOverlayMessage("WARNING: DREADNOUGHT APPROACHING - ARENA LOCKED", '#f00', 4000);
                 }
             } catch(e) { console.warn('dread spawn check failed', e); }
+            
+            // Space Station Spawn (3 minutes)
+            if (!spaceStationSpawned && !spaceStation) {
+                let elapsed = now - gameStartTime - pausedAccumMs;
+                if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
+                if (elapsed >= 180000) { // 3 minutes
+                    spaceStation = new SpaceStation();
+                    spaceStationSpawned = true;
+                    showOverlayMessage("WARNING: SPACE STATION DETECTED", '#f00', 4000);
+                }
+            }
+
             const currentRoamers = enemies.filter(e => e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter').length;
             const targetRoamers = 5 + difficultyTier;
 
@@ -3179,6 +3455,11 @@
                 boss.update();
                 boss.draw(ctx);
             }
+            
+            if (spaceStation) {
+                spaceStation.update();
+                spaceStation.draw(ctx);
+            }
 
             bullets.forEach(b => { b.update(); b.draw(ctx); });
             particles.forEach(p => { p.update(); p.draw(ctx); });
@@ -3267,6 +3548,48 @@
                             }
                         }
                         
+                        if (!hit && spaceStation) {
+                             const dist = Math.hypot(b.pos.x - spaceStation.pos.x, b.pos.y - spaceStation.pos.y);
+                             if (!b.ignoreShields && dist < spaceStation.shieldRadius + 10 && dist > spaceStation.shieldRadius - 10) {
+                                  let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.shieldRotation;
+                                  while(angle < 0) angle += Math.PI*2;
+                                  const count = spaceStation.shieldSegments.length;
+                                  const idx = Math.floor((angle / (Math.PI*2)) * count) % count;
+                                  if (spaceStation.shieldSegments[idx] > 0) {
+                                      spaceStation.shieldSegments[idx]--;
+                                      hit = true;
+                                      playSound('shield_hit');
+                                      spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
+                                  }
+                             }
+                             if (!hit && !b.ignoreShields && dist < spaceStation.innerShieldRadius + 10 && dist > spaceStation.innerShieldRadius - 10) {
+                                  let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.innerShieldRotation;
+                                  while(angle < 0) angle += Math.PI*2;
+                                  const count = spaceStation.innerShieldSegments.length;
+                                  const idx = Math.floor((angle / (Math.PI*2)) * count) % count;
+                                  if (spaceStation.innerShieldSegments[idx] > 0) {
+                                      spaceStation.innerShieldSegments[idx]--;
+                                      hit = true;
+                                      playSound('shield_hit');
+                                      spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
+                                  }
+                             }
+                             if (!hit && dist < spaceStation.radius + b.radius) {
+                                  spaceStation.hp -= b.damage;
+                                  hit = true;
+                                  playSound('hit');
+                                  spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
+                                  if (spaceStation.hp <= 0) {
+                                      playSound('base_explode');
+                                      spawnParticles(spaceStation.pos.x, spaceStation.pos.y, 200, '#fff');
+                                      for(let k=0; k<50; k++) coins.push(new Coin(spaceStation.pos.x + (Math.random()-0.5)*200, spaceStation.pos.y + (Math.random()-0.5)*200, 10));
+                                      showOverlayMessage("SPACE STATION DESTROYED", '#0f0', 5000);
+                                      spaceStation = null;
+                                      score += 50000;
+                                  }
+                             }
+                        }
+
                         if (!hit && bossActive && boss && !boss.dead) {
                              const dist = Math.hypot(b.pos.x - boss.pos.x, b.pos.y - boss.pos.y);
                              if (!b.ignoreShields && dist < boss.shieldRadius + 5 && dist > boss.shieldRadius - 15) {
@@ -3408,7 +3731,82 @@
             }
             
             ctx.restore();
+            drawStationIndicator();
             drawMinimap();
+        }
+
+        function drawStationIndicator() {
+            if (!spaceStation || !player) return;
+
+            const screenW = canvas.width;
+            const screenH = canvas.height;
+            
+            // Check if on screen (approximate bounds)
+            const camX = player.pos.x - screenW / (2 * ZOOM_LEVEL);
+            const camY = player.pos.y - screenH / (2 * ZOOM_LEVEL);
+            const viewW = screenW / ZOOM_LEVEL;
+            const viewH = screenH / ZOOM_LEVEL;
+            
+            // If center of station is within view (plus a bit of margin), don't draw arrow
+            if (spaceStation.pos.x > camX && spaceStation.pos.x < camX + viewW &&
+                spaceStation.pos.y > camY && spaceStation.pos.y < camY + viewH) {
+                return; 
+            }
+
+            const dx = spaceStation.pos.x - player.pos.x;
+            const dy = spaceStation.pos.y - player.pos.y;
+            const angle = Math.atan2(dy, dx);
+            
+            const margin = 60; 
+            const cx = screenW / 2;
+            const cy = screenH / 2;
+            
+            const vx = Math.cos(angle);
+            const vy = Math.sin(angle);
+            
+            // Intersect ray from center with screen bounding box inset by margin
+            const bx = cx - margin;
+            const by = cy - margin;
+            
+            const tx = Math.abs(vx) > 0.001 ? bx / Math.abs(vx) : Infinity;
+            const ty = Math.abs(vy) > 0.001 ? by / Math.abs(vy) : Infinity;
+            const t = Math.min(tx, ty);
+            
+            const arrowX = cx + vx * t;
+            const arrowY = cy + vy * t;
+            
+            ctx.save();
+            ctx.translate(arrowX, arrowY);
+            ctx.rotate(angle);
+            
+            const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
+            ctx.scale(pulse, pulse);
+            
+            ctx.fillStyle = '#0ff';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            
+            ctx.beginPath();
+            ctx.moveTo(15, 0);
+            ctx.lineTo(-15, 12);
+            ctx.lineTo(-15, -12);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            
+            // Distance Text
+            ctx.rotate(-angle);
+            ctx.fillStyle = '#0ff';
+            ctx.font = 'bold 14px Courier New';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = '#000';
+            const dist = Math.hypot(dx, dy);
+            ctx.fillText((dist/1000).toFixed(1) + 'km', 0, 25);
+            ctx.shadowBlur = 0;
+            
+            ctx.restore();
         }
 
         function drawMinimap() {
@@ -3487,6 +3885,31 @@
                     }
                 }
             });
+            
+            if (spaceStation && player) {
+                const dx = spaceStation.pos.x - player.pos.x;
+                const dy = spaceStation.pos.y - player.pos.y;
+                const dist = Math.hypot(dx, dy);
+                const angle = Math.atan2(dy, dx);
+                
+                if (dist * scale > 95) {
+                    const px = Math.cos(angle) * 90;
+                    const py = Math.sin(angle) * 90;
+                    minimapCtx.fillStyle = '#fff';
+                    minimapCtx.beginPath();
+                    minimapCtx.moveTo(px + Math.cos(angle)*10, py + Math.sin(angle)*10);
+                    minimapCtx.lineTo(px + Math.cos(angle + 2.5)*8, py + Math.sin(angle + 2.5)*8);
+                    minimapCtx.lineTo(px + Math.cos(angle - 2.5)*8, py + Math.sin(angle - 2.5)*8);
+                    minimapCtx.fill();
+                } else {
+                    const mx = dx * scale;
+                    const my = dy * scale;
+                    minimapCtx.fillStyle = '#fff';
+                    minimapCtx.beginPath();
+                    minimapCtx.arc(mx, my, 6, 0, Math.PI*2);
+                    minimapCtx.fill();
+                }
+            }
             
             minimapCtx.restore();
         }
