@@ -393,7 +393,7 @@
                 { "id": "xp_magnet", "name": "XP Magnet", "tier1": "2x range", "tier2": "4x range", "tier3": "8x range", "notes": "Faster leveling." },
                 { "id": "area_nuke", "name": "Area Nuke", "tier1": "Auto-fire 500u blast (5 dmg)", "tier2": "600u range, 10 dmg", "tier3": "800u range, 15 dmg", "notes": "Auto-activates when ready." },
                 { "id": "invincibility", "name": "Phase Shield", "tier1": "3s Active / 20s CD", "tier2": "5s Active / 15s CD", "tier3": "7s Active / 10s CD + Regen", "notes": "Auto-cycling invulnerability." },
-                { "id": "slow_field", "name": "Slow Field", "tier1": "Slows foes 20%", "tier2": "40% r=10u", "tier3": "60% r=20u", "notes": "Control hordes." }
+                { "id": "slow_field", "name": "Stasis Field", "tier1": "Stops roamers 3s", "tier2": "Stops 5s, +25% Area", "tier3": "Stops 8s, +25% Area", "notes": "Freezes enemies." }
               ]
             }
           ]
@@ -994,7 +994,8 @@
                     shieldSpinMult: 1.0,
                     speedMult: 1.0,
                     // accelMult and rotMult removed
-                    slowField: 0
+                    slowField: 0, // Radius
+                    slowFieldDuration: 0
                 };
 
                 this.magnetRadius = 150;
@@ -1679,6 +1680,8 @@
                 
                 this.aiState = 'SEEK'; 
                 this.aiTimer = 0;
+                this.freezeTimer = 0;
+                this.freezeCooldown = 0;
             }
             
             getAimAngle() {
@@ -1716,11 +1719,20 @@
                 checkDespawn(this, 5000);
                 if (this.dead) return;
                 
-                // Slow Field Effect
-                if (player.stats.slowField > 0) {
+                // Stasis Field Logic (Freeze)
+                if (this.freezeTimer > 0) {
+                    this.freezeTimer--;
+                    this.vel.x = 0;
+                    this.vel.y = 0;
+                    // Skip AI movement when frozen
+                } else if (player.stats.slowField > 0) {
+                    if (this.freezeCooldown > 0) this.freezeCooldown--;
+                    
                     const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-                    if (dist < player.stats.slowField) {
-                        this.maxSpeed *= 0.6; // 40% slow
+                    if (dist < player.stats.slowField && this.freezeCooldown <= 0) {
+                        this.freezeTimer = player.stats.slowFieldDuration;
+                        this.freezeCooldown = this.freezeTimer + 120; // 2s immunity after freeze
+                        spawnParticles(this.pos.x, this.pos.y, 5, '#0ff');
                     }
                 }
                 
@@ -1732,6 +1744,9 @@
 
                 this.aiTimer--;
                 if (this.aiTimer <= 0) this.updateAIState();
+
+                // Only calculate movement if not frozen
+                if (this.freezeTimer <= 0) {
 
                 const desiredVel = new Vector(0, 0);
                 if (this.aiState === 'SEEK') {
@@ -1825,6 +1840,8 @@
                 
                 const speed = this.vel.mag();
                 if (speed > this.maxSpeed) this.vel.mult(this.maxSpeed / speed);
+                } // End freeze check
+
                 this.vel.mult(this.friction);
                 super.update();
                 checkWallCollision(this, 0.8); 
@@ -1833,7 +1850,7 @@
                 if (player && !player.dead) distToPlayer = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
                 const attackRange = (this.type === 'elite_roamer' || this.type === 'hunter') ? 800 : 600;
 
-                if (distToPlayer < attackRange && !player.dead) {
+                if (distToPlayer < attackRange && !player.dead && this.freezeTimer <= 0) {
                     this.shootTimer--;
                     if (this.shootTimer <= 0) {
                         const angle = this.getAimAngle();
@@ -1935,6 +1952,11 @@
                 ctx.save();
                 ctx.translate(this.pos.x, this.pos.y);
                 if (this.shieldSegments.length > 0) {
+                    if (this.freezeTimer > 0) {
+                        ctx.strokeStyle = '#0ff';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(-this.radius, -this.radius, this.radius*2, this.radius*2);
+                    }
                     ctx.save();
                     ctx.rotate(this.shieldRotation);
                     const segCount = this.shieldSegments.length;
@@ -1953,7 +1975,11 @@
 
                 ctx.save();
                 ctx.rotate(this.angle); 
-                
+                if (this.freezeTimer > 0) {
+                    ctx.fillStyle = '#0aa';
+                    ctx.strokeStyle = '#0ff';
+                }
+                else {
                 if (this.type === 'elite_roamer') {
                     ctx.fillStyle = '#303';
                     ctx.strokeStyle = '#f0f';
@@ -1966,6 +1992,7 @@
                 } else {
                     ctx.fillStyle = '#411';
                     ctx.strokeStyle = '#f55';
+                }
                 }
                 ctx.lineWidth = 2;
                 ctx.shadowBlur = 5;
@@ -3178,7 +3205,9 @@
                     player.invincibilityCycle.timer = 0;
                     break;
                 case 'slow_field':
-                    player.stats.slowField = 250 * tier; // Radius
+                    if (tier === 1) { player.stats.slowField = 250; player.stats.slowFieldDuration = 180; }
+                    if (tier === 2) { player.stats.slowField = 312; player.stats.slowFieldDuration = 300; }
+                    if (tier === 3) { player.stats.slowField = 390; player.stats.slowFieldDuration = 480; }
                     break;
             }
             
@@ -3988,7 +4017,8 @@
                 shieldRegenRate: 0,
                 shieldSpinMult: 1.0,
                 speedMult: 1.0,
-                slowField: 0
+                slowField: 0,
+                slowFieldDuration: 0
             };
             player.staticWeapons = [];
             player.nukeMaxCooldown = 600;
