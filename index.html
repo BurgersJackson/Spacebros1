@@ -1268,7 +1268,11 @@
 
                 if (this.invulnerable > 0) {
                     this.invulnerable--;
-                    this.visible = Math.floor(Date.now() / 100) % 2 === 0;
+                    if (this.invincibilityCycle.state === 'active') {
+                        this.visible = true;
+                    } else {
+                        this.visible = Math.floor(Date.now() / 100) % 2 === 0;
+                    }
                 } else {
                     this.visible = true;
                 }
@@ -1387,8 +1391,6 @@
                     ctx.beginPath();
                     ctx.arc(0, 0, this.shieldRadius + 8, 0, Math.PI * 2);
                     ctx.stroke();
-                    ctx.fillStyle = 'rgba(255,220,0,0.12)';
-                    ctx.fill();
                     ctx.restore();
                 }
                 
