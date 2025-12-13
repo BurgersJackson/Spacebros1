@@ -410,6 +410,7 @@
                 { "id": "turret_fire_rate", "name": "Turret Fire Rate", "tier1": "+15% RPS", "tier2": "+30% total", "tier3": "+50% total", "notes": "Stacks multiplicatively." },
                 { "id": "turret_range", "name": "Turret Range", "tier1": "+25% range", "tier2": "+50% total", "tier3": "+100% total", "notes": "Hits farther threats." },
                 { "id": "multi_shot", "name": "Multi-Shot", "tier1": "Fires 2 proj.", "tier2": "Fires 3 proj.", "tier3": "Fires 4 proj.", "notes": "Parallel fire." },
+                { "id": "shotgun", "name": "Flak Shotgun", "tier1": "Unlock: 5 Pellets", "tier2": "8 Pellets, +Range", "tier3": "12 Pellets", "notes": "Close-range burst." },
                 { "id": "static_weapons", "name": "Static Weapons", "tier1": "Unlock Forward Laser", "tier2": "Add Side Lasers", "tier3": "Add Rear Missiles", "notes": "Always-on turrets." },
                 { "id": "homing_missiles", "name": "Homing Missiles", "tier1": "2x Missiles / 2s", "tier2": "4x Missiles / 2s", "tier3": "6x Missiles / 2s", "notes": "Shield-piercing swarm." }
               ]
@@ -951,6 +952,12 @@
                     gain.gain.linearRampToValueAtTime(0, now + 0.3);
                     osc.start(now);
                     osc.stop(now + 0.3);
+                } else if (type === 'shotgun') {
+                    const { osc, gain } = createOsc('square', 120, 0.1, 0.2);
+                    osc.frequency.exponentialRampToValueAtTime(40, now + 0.15);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                    osc.start(now);
+                    osc.stop(now + 0.15);
                 }
             } catch(e) {}
         }
@@ -1522,6 +1529,24 @@
                     bullets.push(new Bullet(bx, by, this.turretAngle, false, damage, bulletSpeed, 4, null, 0));
                     spawnBarrelSmoke(bx, by, this.turretAngle);
                 }
+                
+                // Shotgun Logic
+                const shotgunTier = this.inventory['shotgun'] || 0;
+                if (shotgunTier > 0) {
+                    const count = shotgunTier === 1 ? 5 : (shotgunTier === 2 ? 8 : 12);
+                    const dmg = this.stats.damageMult * 0.5;
+                    const spread = 0.5; 
+                    
+                    for(let i=0; i<count; i++) {
+                        const a = this.turretAngle + (Math.random() - 0.5) * spread;
+                        const s = 12 + (Math.random() - 0.5) * 4;
+                        const b = new Bullet(this.pos.x, this.pos.y, a, false, dmg, s, 3, '#fa0');
+                        b.life = (20 + (shotgunTier * 5)) * this.stats.rangeMult;
+                        bullets.push(b);
+                    }
+                    playSound('shotgun');
+                    spawnBarrelSmoke(this.pos.x, this.pos.y, this.turretAngle);
+                }
 
                 // Static Weapons
                 this.staticWeapons.forEach(w => {
@@ -1945,11 +1970,11 @@
                 spawnParticles(this.pos.x, this.pos.y, 15, '#f00');
                 
                 // DROP COINS
-                let val = 1;
+                let val = 2;
                 let count = 3;
-                if (this.type === 'elite_roamer') { val=2; count=4; }
-                if (this.type === 'hunter') { val=3; count=5; }
-                if (this.type === 'defender') { val=2; count=3; }
+                if (this.type === 'elite_roamer') { val=3; count=4; }
+                if (this.type === 'hunter') { val=4; count=5; }
+                if (this.type === 'defender') { val=3; count=3; }
                 for(let i=0; i<count; i++) {
                     coins.push(new Coin(this.pos.x, this.pos.y, val));
                 }
@@ -2340,6 +2365,7 @@
                 this.hp = 10 + (difficultyTier - 1) * 5; 
                 this.shootTimer = 150;
                 this.angle = 0;
+                this.turretAngle = 0;
                 this.shieldRadius = 110;
                 this.aggro = false; 
                 
@@ -2421,10 +2447,17 @@
                     const dy = py - this.pos.y;
                     const dist = Math.hypot(dx, dy);
                     this.angle = Math.atan2(dy, dx);
+                    
+                    this.turretAngle = Math.atan2(dy, dx);
+                    
+                    if (!(this instanceof Boss)) {
+                        this.angle += 0.002;
+                    }
+
                     if (dist < 1500) {
                         this.shootTimer--;
                         if (this.shootTimer <= 0) {
-                            const shootAngle = this.angle;
+                            const shootAngle = this.turretAngle;
                             if (this.type === 'heavy') {
                                 for(let i=-1; i<=1; i++) {
                                     const a = shootAngle + i * 0.15;
@@ -2446,35 +2479,13 @@
                                 this.shootTimer = 20; 
                             } else {
                                 const damage = 2;
-                                if (difficultyTier >= 5) { 
-                                     for(let i=0; i<8; i++) {
-                                         const a = shootAngle + i * (Math.PI/4);
-                                         const bx = this.pos.x + Math.cos(a) * 75;
-                                         const by = this.pos.y + Math.sin(a) * 75;
-                                         bullets.push(new Bullet(bx, by, a, true, damage));
-                                         spawnBarrelSmoke(bx, by, a);
-                                     }
-                                } else if (difficultyTier >= 4) { 
-                                     for(let i=0; i<4; i++) {
-                                         const a = shootAngle + i * (Math.PI/2);
-                                         const bx = this.pos.x + Math.cos(a) * 75;
-                                         const by = this.pos.y + Math.sin(a) * 75;
-                                         bullets.push(new Bullet(bx, by, a, true, damage));
-                                         spawnBarrelSmoke(bx, by, a);
-                                     }
-                                } else if (difficultyTier >= 3) { 
-                                     const offset = 10;
-                                     const bx1 = this.pos.x + Math.cos(shootAngle)*75 + Math.cos(shootAngle+Math.PI/2)*offset;
-                                     const by1 = this.pos.y + Math.sin(shootAngle)*75 + Math.sin(shootAngle+Math.PI/2)*offset;
-                                     bullets.push(new Bullet(bx1, by1, shootAngle, true, damage));
-                                     const bx2 = this.pos.x + Math.cos(shootAngle)*75 + Math.cos(shootAngle-Math.PI/2)*offset;
-                                     const by2 = this.pos.y + Math.sin(shootAngle)*75 + Math.sin(shootAngle-Math.PI/2)*offset;
-                                     bullets.push(new Bullet(bx2, by2, shootAngle, true, damage));
-                                } else {
-                                    const bx = this.pos.x + Math.cos(shootAngle) * 75;
-                                    const by = this.pos.y + Math.sin(shootAngle) * 75;
-                                    bullets.push(new Bullet(bx, by, shootAngle, true, damage)); 
-                                    spawnBarrelSmoke(bx, by, shootAngle);
+                                // 3-sided star shooting pattern
+                                for(let i=0; i<3; i++) {
+                                    const a = this.angle + i * (Math.PI * 2 / 3);
+                                    const bx = this.pos.x + Math.cos(a) * 70;
+                                    const by = this.pos.y + Math.sin(a) * 70;
+                                    bullets.push(new Bullet(bx, by, a, true, damage));
+                                    spawnBarrelSmoke(bx, by, a);
                                 }
                                 playSound('shoot');
                                 this.shootTimer = difficultyTier >= 2 ? 40 : 60; 
@@ -2578,131 +2589,101 @@
                     ctx.restore();
                 } 
                 else if (this.type === 'heavy') {
-                    // Heavy "Dreadnought" style
+                    // Heavy "Fortress" style
                     ctx.save();
                     ctx.rotate(this.angle);
-                    ctx.fillStyle = '#210'; ctx.strokeStyle = '#fa0';
-                    ctx.shadowBlur = 10; ctx.shadowColor = '#f80';
+                    ctx.fillStyle = '#332'; ctx.strokeStyle = '#b80';
+                    ctx.shadowBlur = 10; ctx.shadowColor = '#520';
                     
-                    // Main Hull
+                    // Blocky Hull
                     ctx.beginPath();
-                    ctx.moveTo(60, 0);
-                    ctx.lineTo(20, 45);
-                    ctx.lineTo(-50, 40);
-                    ctx.lineTo(-70, 20);
-                    ctx.lineTo(-70, -20);
-                    ctx.lineTo(-50, -40);
-                    ctx.lineTo(20, -45);
-                    ctx.closePath();
+                    ctx.rect(-50, -50, 100, 100);
+                    ctx.fill(); ctx.stroke();
+                    
+                    // Industrial details
+                    ctx.fillStyle = '#221';
+                    ctx.fillRect(-40, -40, 30, 30);
+                    ctx.fillRect(10, 10, 30, 30);
+                    ctx.fillRect(-40, 10, 30, 30);
+                    ctx.fillRect(10, -40, 30, 30);
+                    
+                    ctx.restore();
+
+                    // Heavy Turrets
+                    ctx.save();
+                    ctx.rotate(this.turretAngle);
+                    ctx.fillStyle = '#443'; ctx.strokeStyle = '#fa0';
+                    
+                    // Main dual cannon
+                    ctx.beginPath();
+                    ctx.rect(-25, -20, 50, 40);
                     ctx.fill(); ctx.stroke();
 
-                    // Plating details
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.moveTo(20, 45); ctx.lineTo(20, -45);
-                    ctx.moveTo(-20, 25); ctx.lineTo(10, 28);
-                    ctx.moveTo(-20, -25); ctx.lineTo(10, -28);
-                    ctx.stroke();
-
-                    // Main cannon
-                    ctx.fillStyle = '#111';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.rect(60, -8, 25, 16);
-                    ctx.fill(); ctx.stroke();
-
-                    // Side turrets
-                    ctx.beginPath();
-                    ctx.rect(0, -40, 20, 8);
-                    ctx.rect(0, 32, 20, 8);
-                    ctx.fill(); ctx.stroke();
-
-                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#110';
+                    ctx.fillRect(25, -12, 35, 8);
+                    ctx.fillRect(25, 4, 35, 8);
+                    
                     ctx.restore();
                 } 
                 else if (this.type === 'rapid') {
-                    // Rapid "Interceptor" style
+                    // Rapid "Relay" style
                     ctx.save();
                     ctx.rotate(this.angle);
-                    ctx.fillStyle = '#012'; ctx.strokeStyle = '#0cf';
+                    ctx.fillStyle = '#234'; ctx.strokeStyle = '#0ff';
                     ctx.shadowBlur = 10; ctx.shadowColor = '#0cf';
 
-                    // Wings
+                    // Tech shape
                     ctx.beginPath();
-                    ctx.moveTo(60, 0);
-                    ctx.lineTo(-10, 60);
-                    ctx.lineTo(-30, 50);
-                    ctx.lineTo(-20, 0);
-                    ctx.lineTo(-30, -50);
-                    ctx.lineTo(-10, -60);
+                    for(let i=0; i<3; i++) {
+                        const a = i * Math.PI*2/3;
+                        ctx.lineTo(Math.cos(a)*60, Math.sin(a)*60);
+                        ctx.lineTo(Math.cos(a+0.5)*20, Math.sin(a+0.5)*20);
+                    }
                     ctx.closePath();
                     ctx.fill(); ctx.stroke();
 
-                    // Cockpit
-                    ctx.fillStyle = '#000';
-                    ctx.beginPath();
-                    ctx.moveTo(50, 0);
-                    ctx.lineTo(20, 15);
-                    ctx.lineTo(20, -15);
-                    ctx.closePath();
-                    ctx.fill(); ctx.stroke();
-
-                    // Central glowing core
+                    ctx.restore();
+                    
+                    // Rapid Turret
+                    ctx.save();
+                    ctx.rotate(this.turretAngle);
+                    ctx.fillStyle = '#345'; ctx.strokeStyle = '#0ff';
                     ctx.beginPath();
                     ctx.arc(0, 0, 15, 0, Math.PI*2);
-                    ctx.fillStyle = '#000';
                     ctx.fill(); ctx.stroke();
-                    ctx.fillStyle = '#0cf';
-                    ctx.shadowBlur = 20;
-                    ctx.beginPath();
-                    ctx.arc(0, 0, 8, 0, Math.PI*2);
-                    ctx.fill();
-
-                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#088';
+                    ctx.fillRect(10, -4, 25, 8);
                     ctx.restore();
                 } 
                 else {
-                    // Standard "Cruiser" style
+                    // Standard "Star" style
                     ctx.save();
                     ctx.rotate(this.angle);
-                    ctx.fillStyle = '#101'; ctx.strokeStyle = '#f0f';
+                    ctx.fillStyle = '#202'; ctx.strokeStyle = '#f0f';
                     ctx.shadowBlur = 10; ctx.shadowColor = '#f0f';
+                    ctx.lineWidth = 3;
 
-                    // Main hull
                     ctx.beginPath();
-                    ctx.moveTo(70, 0); // Nose
-                    ctx.lineTo(10, 25);
-                    ctx.lineTo(-40, 35); // Wing tip
-                    ctx.lineTo(-60, 15); // Engine area
-                    ctx.lineTo(-60, -15);
-                    ctx.lineTo(-40, -35);
-                    ctx.lineTo(10, -25);
+                    for (let i = 0; i < 3; i++) {
+                        const a = i * Math.PI * 2 / 3;
+                        const x = Math.cos(a) * 70;
+                        const y = Math.sin(a) * 70;
+                        if (i === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                        
+                        // Inner point
+                        const a2 = a + Math.PI / 3;
+                        ctx.lineTo(Math.cos(a2) * 20, Math.sin(a2) * 20);
+                    }
                     ctx.closePath();
                     ctx.fill(); ctx.stroke();
-
-                    // Bridge/tower
-                    ctx.fillStyle = '#202';
-                    ctx.beginPath();
-                    ctx.rect(-10, -15, 30, 30);
-                    ctx.fill(); ctx.stroke();
                     
-                    // Cannon
-                    ctx.fillStyle = '#000';
+                    // Center detail
+                    ctx.fillStyle = '#f0f';
                     ctx.beginPath();
-                    ctx.rect(70, -5, 20, 10);
-                    ctx.fill(); ctx.stroke();
-
-                    // Engine glow
-                    const pulse = 0.8 + Math.sin(Date.now() * 0.005) * 0.2;
-                    ctx.fillStyle = `rgba(255, 100, 255, ${pulse})`;
-                    ctx.beginPath();
-                    ctx.moveTo(-60, 10);
-                    ctx.lineTo(-75, 5);
-                    ctx.lineTo(-75, -5);
-                    ctx.lineTo(-60, -10);
+                    ctx.arc(0, 0, 15, 0, Math.PI*2);
                     ctx.fill();
 
-                    ctx.shadowBlur = 0;
                     ctx.restore();
                 }
 
@@ -2755,6 +2736,7 @@
                 for(let i=0; i<13; i++) {
                     coins.push(new Coin(this.pos.x + (Math.random()-0.5)*100, this.pos.y + (Math.random()-0.5)*100, 10));
                 }
+                
                 powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
                 bossActive = false;
                 bossArena.active = false;
@@ -3569,9 +3551,9 @@
                 case 'area_nuke':
                     player.nukeUnlocked = true;
                     player.nukeMaxCooldown = 600; // 10s
-                    if (tier === 1) { player.nukeDamage = 5; player.nukeRange = 500; }
-                    if (tier === 2) { player.nukeDamage = 10; player.nukeRange = 600; }
-                    if (tier === 3) { player.nukeDamage = 15; player.nukeRange = 800; }
+                    if (tier === 1) { player.nukeDamage = 5; player.nukeRange = 600; }
+                    if (tier === 2) { player.nukeDamage = 10; player.nukeRange = 700; }
+                    if (tier === 3) { player.nukeDamage = 15; player.nukeRange = 900; }
                     break;
                 case 'invincibility':
                     player.invincibilityCycle.unlocked = true;
@@ -4057,6 +4039,7 @@
                                       playSound('base_explode');
                                       spawnParticles(spaceStation.pos.x, spaceStation.pos.y, 200, '#fff');
                                       for(let k=0; k<50; k++) coins.push(new Coin(spaceStation.pos.x + (Math.random()-0.5)*200, spaceStation.pos.y + (Math.random()-0.5)*200, 10));
+                                      
                                       showOverlayMessage("SPACE STATION DESTROYED", '#0f0', 5000);
                                       spaceStation = null;
                                       score += 50000;
@@ -4545,5 +4528,7 @@
 
     </script>
 <script type="module" src="/index.tsx"></script>
+</body>
+</html> type="module" src="/index.tsx"></script>
 </body>
 </html>
