@@ -377,8 +377,7 @@
                 { "id": "hull_strength", "name": "Hull Strength", "tier1": "+25 Max HP, Heal 25", "tier2": "+25 Max HP, Heal 25", "tier3": "+25 Max HP, Heal 25", "notes": "Increases survival." },
                 { "id": "segment_count", "name": "Segment Count", "tier1": "+2 segments (total 10)", "tier2": "+4 total (14)", "tier3": "+8 total (18)", "notes": "Larger shield bubble." },
                 { "id": "segment_hp", "name": "Segment HP", "tier1": "+50% HP/seg.", "tier2": "+100% total", "tier3": "+200% total", "notes": "Tankier defense." },
-                { "id": "shield_regen", "name": "Shield Regen", "tier1": "Regen 1 seg./5s", "tier2": "1 seg./3s", "tier3": "1 seg./1s", "notes": "Sustain in long fights." },
-                { "id": "shield_spin_speed", "name": "Shield Spin Speed", "tier1": "+20% orbit speed", "tier2": "+50%", "tier3": "+100% + deflect", "notes": "Blocks more." }
+                { "id": "shield_regen", "name": "Shield Regen", "tier1": "Regen 1 seg./5s", "tier2": "1 seg./3s", "tier3": "1 seg./1s", "notes": "Sustain in long fights." }
               ]
             },
             {
@@ -1030,7 +1029,6 @@
                     multiShot: 1,
                     homing: 0, // 0=none, 1=weak, 2=strong
                     shieldRegenRate: 10, // seconds per segment (1 segment every 10s)
-                    shieldSpinMult: 1.0,
                     speedMult: 1.0,
                     // accelMult and rotMult removed
                     slowField: 0, // Radius
@@ -1131,7 +1129,7 @@
 
             update() {
                 if (this.dead) return;
-                this.shieldRotation += 0.02 * this.stats.shieldSpinMult;
+                this.shieldRotation += 0.02;
 
                 const aimMag = Math.sqrt(gpState.aim.x*gpState.aim.x + gpState.aim.y*gpState.aim.y);
                 if (aimMag > 0.2) {
@@ -3225,11 +3223,6 @@
                     if (tier === 2) player.stats.shieldRegenRate = 3;
                     if (tier === 3) player.stats.shieldRegenRate = 1;
                     break;
-                case 'shield_spin_speed':
-                    if (tier === 1) player.stats.shieldSpinMult = 1.2;
-                    if (tier === 2) player.stats.shieldSpinMult = 1.5;
-                    if (tier === 3) player.stats.shieldSpinMult = 2.0;
-                    break;
                 case 'hull_strength':
                     player.maxHp += 25;
                     player.hp = Math.min(player.maxHp, player.hp + 25);
@@ -3571,13 +3564,13 @@
                 
                 ctx.lineWidth = 10;
                 ctx.shadowBlur = 20;
-                ctx.shadowColor = bossArena.growing ? '#0ff' : '#f00';
+                // ctx.shadowColor = bossArena.growing ? '#0ff' : '#f00';
                 ctx.beginPath();
                 ctx.arc(0, 0, bossArena.radius, 0, Math.PI*2);
                 ctx.stroke();
                 ctx.globalAlpha = 0.1;
-                ctx.fillStyle = bossArena.growing ? '#055' : '#500';
-                ctx.fill();
+                // ctx.fillStyle = bossArena.growing ? '#055' : '#500';
+                // ctx.fill();
                 ctx.restore();
             }
 
@@ -4075,7 +4068,6 @@
                 multiShot: 1,
                 homing: 0, 
                 shieldRegenRate: 0,
-                shieldSpinMult: 1.0,
                 speedMult: 1.0,
                 slowField: 0,
                 slowFieldDuration: 0
