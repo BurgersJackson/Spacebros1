@@ -408,6 +408,44 @@
         let shockwaves = [];
         let menuSelectionIndex = 0;
 
+        // --- Optimization Classes ---
+        class SpatialHash {
+            constructor(cellSize) {
+                this.cellSize = cellSize;
+                this.grid = new Map();
+            }
+            key(x, y) {
+                return Math.floor(x / this.cellSize) + "," + Math.floor(y / this.cellSize);
+            }
+            clear() {
+                this.grid.clear();
+            }
+            insert(entity) {
+                const k = this.key(entity.pos.x, entity.pos.y);
+                if (!this.grid.has(k)) this.grid.set(k, []);
+                this.grid.get(k).push(entity);
+            }
+            query(x, y) {
+                const cx = Math.floor(x / this.cellSize);
+                const cy = Math.floor(y / this.cellSize);
+                let results = [];
+                for (let i = -1; i <= 1; i++) {
+                    for (let j = -1; j <= 1; j++) {
+                        const k = (cx + i) + "," + (cy + j);
+                        const cell = this.grid.get(k);
+                        if (cell) {
+                            for (let l = 0; l < cell.length; l++) {
+                                results.push(cell[l]);
+                            }
+                        }
+                    }
+                }
+                return results;
+            }
+        }
+        
+        const asteroidGrid = new SpatialHash(300); // Cell size approx max asteroid size + buffer
+
         // --- Base Classes ---
         class Vector {
             constructor(x, y) { this.x = x; this.y = y; }
@@ -862,6 +900,7 @@
             }
             
             break() {
+                if (this.dead) return;
                 this.dead = true;
                 // previously dropped a coin here; asteroid drops disabled
                 
@@ -2753,6 +2792,16 @@
         let pauseStartTime = null;
         let pausedAccumMs = 0; // total paused time to subtract
 
+        function compactArray(arr) {
+            let alive = 0;
+            for (let i = 0; i < arr.length; i++) {
+                if (!arr[i].dead) {
+                    arr[alive++] = arr[i];
+                }
+            }
+            arr.length = alive;
+        }
+
         function spawnParticles(x, y, count = 10, color = '#fff') {
             for(let i=0; i<count; i++) particles.push(new Particle(x, y, null, null, color));
         }
@@ -2827,7 +2876,8 @@
             const damageable = [player, ...enemies];
             for (let entity of damageable) {
                 if (entity.dead) continue;
-                for (let ast of environmentAsteroids) {
+                const nearbyAsteroids = asteroidGrid.query(entity.pos.x, entity.pos.y);
+                for (let ast of nearbyAsteroids) {
                     if (ast.dead) continue;
                     const dx = entity.pos.x - ast.pos.x;
                     const dy = entity.pos.y - ast.pos.y;
@@ -2933,8 +2983,14 @@
         }
         
         function checkBulletWallCollision(bullet) {
-             for(let ast of environmentAsteroids) {
-                 if (Math.hypot(bullet.pos.x - ast.pos.x, bullet.pos.y - ast.pos.y) < ast.radius + bullet.radius) {
+             const nearby = asteroidGrid.query(bullet.pos.x, bullet.pos.y);
+             for(let ast of nearby) {
+                 if (ast.dead) continue;
+                 const dx = bullet.pos.x - ast.pos.x;
+                 const dy = bullet.pos.y - ast.pos.y;
+                 const distSq = dx*dx + dy*dy;
+                 const rad = ast.radius + bullet.radius;
+                 if (distSq < rad * rad) {
                      return {hit: true, obj: ast};
                  }
              }
@@ -3404,6 +3460,10 @@
             
             while (environmentAsteroids.length < 100) spawnOneAsteroidRelative();
             
+            // Build Spatial Grid for this frame
+            asteroidGrid.clear();
+            for (let i = 0; i < environmentAsteroids.length; i++) asteroidGrid.insert(environmentAsteroids[i]);
+
             if (bases.length < 3) {
                 if (baseRespawnTimers.length === 0) spawnNewBaseRelative();
             }
@@ -3547,11 +3607,11 @@
             shockwaves.forEach(s => { s.update(); s.draw(ctx); });
             shockwaves = shockwaves.filter(s => !s.dead);
 
-            bullets = bullets.filter(b => !b.dead);
-            enemies = enemies.filter(e => !e.dead);
-            bases = bases.filter(b => !b.dead);
-            environmentAsteroids = environmentAsteroids.filter(a => !a.dead);
-            particles = particles.filter(p => !p.dead);
+            compactArray(bullets);
+            compactArray(enemies);
+            compactArray(bases);
+            compactArray(environmentAsteroids);
+            compactArray(particles);
             coins = coins.filter(c => !c.magnetized || Math.hypot(player.pos.x - c.pos.x, player.pos.y - c.pos.y) > 1); // Cleanup caught coins logic if not handled in loop
 
             resolveEntityCollision();
