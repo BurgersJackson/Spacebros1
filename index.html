@@ -378,7 +378,6 @@
                 { "id": "segment_count", "name": "Segment Count", "tier1": "+2 segments (total 10)", "tier2": "+4 total (14)", "tier3": "+8 total (18)", "notes": "Larger shield bubble." },
                 { "id": "segment_hp", "name": "Segment HP", "tier1": "+50% HP/seg.", "tier2": "+100% total", "tier3": "+200% total", "notes": "Tankier defense." },
                 { "id": "shield_regen", "name": "Shield Regen", "tier1": "Regen 1 seg./5s", "tier2": "1 seg./3s", "tier3": "1 seg./1s", "notes": "Sustain in long fights." },
-                { "id": "shield_spin_speed", "name": "Shield Spin Speed", "tier1": "+20% orbit speed", "tier2": "+50%", "tier3": "+100% + deflect", "notes": "Blocks more." }
               ]
             },
             {
@@ -393,7 +392,8 @@
                 { "id": "xp_magnet", "name": "XP Magnet", "tier1": "2x range", "tier2": "4x range", "tier3": "8x range", "notes": "Faster leveling." },
                 { "id": "area_nuke", "name": "Area Nuke", "tier1": "Auto-fire 500u blast (5 dmg)", "tier2": "600u range, 10 dmg", "tier3": "800u range, 15 dmg", "notes": "Auto-activates when ready." },
                 { "id": "invincibility", "name": "Phase Shield", "tier1": "3s Active / 20s CD", "tier2": "5s Active / 15s CD", "tier3": "7s Active / 10s CD + Regen", "notes": "Auto-cycling invulnerability." },
-                { "id": "slow_field", "name": "Stasis Field", "tier1": "Stops roamers 3s", "tier2": "Stops 5s, +25% Area", "tier3": "Stops 8s, +25% Area", "notes": "Freezes enemies." }
+                { "id": "slow_field", "name": "Stasis Field", "tier1": "Stops roamers 3s", "tier2": "Stops 5s, +25% Area", "tier3": "Stops 8s, +25% Area", "notes": "Freezes enemies." },
+                { "id": "willow_wisp", "name": "Willow Wisp", "tier1": "1 Wisp (5 dmg/s)", "tier2": "2 Wisps", "tier3": "3 Wisps", "notes": "Auto-targeting orbitals." }
               ]
             }
           ]
@@ -915,7 +915,13 @@
              let attempts = 0;
              while(attempts < 50) {
                  attempts++;
-                 const angle = Math.random() * Math.PI * 2;
+                 let angle;
+                 if (!initial && player.vel.mag() > 0.5 && Math.random() < 0.8) {
+                     const moveAngle = Math.atan2(player.vel.y, player.vel.x);
+                     angle = moveAngle + (Math.random() - 0.5) * Math.PI;
+                 } else {
+                     angle = Math.random() * Math.PI * 2;
+                 }
                  const minDist = initial ? 500 : 2000;
                  const maxDist = initial ? 3000 : 4000;
                  const dist = minDist + Math.random() * (maxDist - minDist);
@@ -1047,6 +1053,10 @@
                     timer: 0,
                     stats: { duration: 0, cooldown: 0, regen: false }
                 };
+                
+                this.willowWisps = 0;
+                this.willowWispTimer = 0;
+                this.willowWispOrbit = 0;
             }
 
             respawn() {
@@ -1187,6 +1197,44 @@
                     }
                 }
                 
+                // Willow Wisp Logic
+                if (this.willowWisps > 0) {
+                    this.willowWispOrbit += 0.05;
+                    this.willowWispTimer--;
+                    if (this.willowWispTimer <= 0) {
+                        let target = null;
+                        let minDist = 600;
+                        const targets = [...enemies, ...bases];
+                        if (boss && bossActive && !boss.dead) targets.push(boss);
+                        if (spaceStation) targets.push(spaceStation);
+                        
+                        for(let e of targets) {
+                            if (e.dead) continue;
+                            const d = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
+                            if (d < minDist) {
+                                minDist = d;
+                                target = e;
+                            }
+                        }
+                        
+                        if (target) {
+                            for(let i=0; i<this.willowWisps; i++) {
+                                const angleOffset = (i / this.willowWisps) * Math.PI * 2;
+                                const orbitA = this.willowWispOrbit + angleOffset;
+                                const wx = this.pos.x + Math.cos(orbitA) * 60;
+                                const wy = this.pos.y + Math.sin(orbitA) * 60;
+                                
+                                const aim = Math.atan2(target.pos.y - wy, target.pos.x - wx);
+                                bullets.push(new Bullet(wx, wy, aim, false, 5, 15, 6, '#afa'));
+                                spawnParticles(wx, wy, 3, '#afa');
+                            }
+                            // Soft shoot sound
+                            if (Math.random() < 0.3) playSound('shoot');
+                            this.willowWispTimer = 60;
+                        }
+                    }
+                }
+
                 // Homing Missiles (Separate System)
                 if (this.stats.homing > 0) {
                     this.missileTimer--;
@@ -1264,7 +1312,7 @@
                     const angleOffset = (i - (count-1)/2) * 0.3; 
                     const angle = this.turretAngle + angleOffset + (Math.random()-0.5)*0.2;
                     // Homing strength 2 (strong), damage 1
-                    const b = new Bullet(this.pos.x, this.pos.y, angle, false, 1, 12, 3, '#f80', 2);
+                    const b = new Bullet(this.pos.x, this.pos.y, angle, false, 3, 12, 3, '#f80', 2);
                     b.ignoreShields = true;
                     b.isMissile = true;
                     bullets.push(b);
@@ -1342,16 +1390,14 @@
                 // Draw Phase Shield Visual
                 if (this.invincibilityCycle.unlocked && this.invincibilityCycle.state === 'active') {
                     ctx.save();
-                    // Keep the phase shield a constant, transparent yellow — no pulsing or glow
-                    ctx.shadowBlur = 0;
-                    ctx.shadowColor = 'rgba(0,0,0,0)';
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = '#ff0';
                     ctx.lineWidth = 3;
-                    ctx.strokeStyle = 'rgba(255,220,0,0.6)';
+                    ctx.strokeStyle = '#ff0';
                     ctx.beginPath();
-                    ctx.arc(0, 0, this.shieldRadius + 8, 0, Math.PI * 2);
+                    ctx.arc(0, 0, this.radius + 15, 0, Math.PI * 2);
+                    ctx.arc(0, 0, this.shieldRadius + 10, 0, Math.PI * 2);
                     ctx.stroke();
-                    ctx.fillStyle = 'rgba(255,220,0,0.12)';
-                    ctx.fill();
                     ctx.restore();
                 }
                 
@@ -1384,10 +1430,28 @@
                     ctx.stroke();
                 }
 
+                // Draw Willow Wisps
+                if (this.willowWisps > 0) {
+                    for(let i=0; i<this.willowWisps; i++) {
+                        const angleOffset = (i / this.willowWisps) * Math.PI * 2;
+                        const orbitA = this.willowWispOrbit + angleOffset;
+                        const wx = Math.cos(orbitA) * 60;
+                        const wy = Math.sin(orbitA) * 60;
+                        
+                        ctx.fillStyle = '#afa';
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = '#afa';
+                        ctx.beginPath();
+                        ctx.arc(wx, wy, 5, 0, Math.PI*2);
+                        ctx.fill();
+                    }
+                }
+
                 ctx.save();
                 ctx.rotate(this.angle);
                 
                 ctx.shadowBlur = 5;
+                ctx.shadowColor = (this.invincibilityCycle.unlocked && this.invincibilityCycle.state === 'active') ? '#ff0' : '#0ff';
                 ctx.shadowColor = '#0ff';
                 
                 const s = 1.4; 
@@ -1402,6 +1466,13 @@
                 ctx.lineTo(-20*s, -20*s);
                 ctx.lineTo(-10*s, -10*s);
                 ctx.closePath();
+                if (this.invincibilityCycle.unlocked && this.invincibilityCycle.state === 'active') {
+                    ctx.fillStyle = '#aa0'; 
+                    ctx.strokeStyle = '#ff0';
+                } else {
+                    ctx.fillStyle = '#122'; 
+                    ctx.strokeStyle = '#0ff';
+                }
                 ctx.fillStyle = '#122'; 
                 ctx.strokeStyle = '#0ff';
                 ctx.lineWidth = 2;
@@ -3169,11 +3240,6 @@
                     if (tier === 2) player.stats.shieldRegenRate = 3;
                     if (tier === 3) player.stats.shieldRegenRate = 1;
                     break;
-                case 'shield_spin_speed':
-                    if (tier === 1) player.stats.shieldSpinMult = 1.2;
-                    if (tier === 2) player.stats.shieldSpinMult = 1.5;
-                    if (tier === 3) player.stats.shieldSpinMult = 2.0;
-                    break;
                 case 'hull_strength':
                     player.maxHp += 25;
                     player.hp = Math.min(player.maxHp, player.hp + 25);
@@ -3208,6 +3274,9 @@
                     if (tier === 1) { player.stats.slowField = 250; player.stats.slowFieldDuration = 180; }
                     if (tier === 2) { player.stats.slowField = 312; player.stats.slowFieldDuration = 300; }
                     if (tier === 3) { player.stats.slowField = 390; player.stats.slowFieldDuration = 480; }
+                    break;
+                case 'willow_wisp':
+                    player.willowWisps = tier;
                     break;
             }
             
@@ -3508,10 +3577,15 @@
                 const pulse = 0.5 + Math.sin(now * 0.005) * 0.2;
                 if (bossArena.growing) ctx.strokeStyle = `rgba(0, 255, 255, ${pulse})`; 
                 else ctx.strokeStyle = `rgba(255, 0, 0, ${pulse})`; 
+                // Changed to Purple/Magenta scheme
+                if (bossArena.growing) ctx.strokeStyle = `rgba(200, 80, 255, ${pulse})`; 
+                else ctx.strokeStyle = `rgba(255, 0, 255, ${pulse})`; 
                 
                 ctx.lineWidth = 10;
+                ctx.lineWidth = 8;
                 ctx.shadowBlur = 20;
                 ctx.shadowColor = bossArena.growing ? '#0ff' : '#f00';
+                ctx.shadowColor = '#f0f';
                 ctx.beginPath();
                 ctx.arc(0, 0, bossArena.radius, 0, Math.PI*2);
                 ctx.stroke();
@@ -4020,6 +4094,7 @@
                 slowField: 0,
                 slowFieldDuration: 0
             };
+            player.willowWisps = 0;
             player.staticWeapons = [];
             player.nukeMaxCooldown = 600;
             player.magnetRadius = 150;
