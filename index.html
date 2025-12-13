@@ -1794,6 +1794,63 @@
             }
         }
 
+        class ShootingStar extends Entity {
+            constructor() {
+                super(0, 0);
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 2500; // Start far out
+                this.pos.x = player.pos.x + Math.cos(angle) * dist;
+                this.pos.y = player.pos.y + Math.sin(angle) * dist;
+                
+                // Aim somewhat near the player
+                const targetX = player.pos.x + (Math.random() - 0.5) * 1000;
+                const targetY = player.pos.y + (Math.random() - 0.5) * 1000;
+                const travelAngle = Math.atan2(targetY - this.pos.y, targetX - this.pos.x);
+                
+                this.vel.x = Math.cos(travelAngle) * 30; // Fast
+                this.vel.y = Math.sin(travelAngle) * 30;
+                
+                this.radius = 40;
+                this.damage = 10;
+                this.life = 300; // 5 seconds at 60fps
+            }
+            
+            update() {
+                this.pos.add(this.vel);
+                this.life--;
+                if (this.life <= 0) this.dead = true;
+                
+                // Trail
+                for(let i=0; i<5; i++) {
+                    particles.push(new Particle(
+                        this.pos.x + (Math.random()-0.5)*20, 
+                        this.pos.y + (Math.random()-0.5)*20, 
+                        -this.vel.x * 0.2 + (Math.random()-0.5)*2, 
+                        -this.vel.y * 0.2 + (Math.random()-0.5)*2, 
+                        '#ffaa00'
+                    ));
+                }
+            }
+            
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                
+                // Glowing head
+                const grad = ctx.createRadialGradient(0, 0, 10, 0, 0, 40);
+                grad.addColorStop(0, '#fff');
+                grad.addColorStop(0.4, '#ffaa00');
+                grad.addColorStop(1, 'rgba(255, 100, 0, 0)');
+                
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(0, 0, 40, 0, Math.PI*2);
+                ctx.fill();
+                
+                ctx.restore();
+            }
+        }
+
         class Bullet extends Entity {
             constructor(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0) {
                 super(x, y);
@@ -3060,6 +3117,8 @@
         let particles = [];
         let coins = []; // New currency entity
         let powerups = [];
+        let shootingStars = [];
+        let nextShootingStarTime = 0;
         let score = 0;
         let difficultyTier = 1;
         let basesDestroyed = 0;
@@ -3113,6 +3172,11 @@
                 const vy = Math.sin(angle + spread) * speed;
                 particles.push(new SmokeParticle(x, y, vx, vy));
             }
+        }
+        
+        function scheduleNextShootingStar() {
+            // 3-5 minutes = 180000 to 300000 ms
+            nextShootingStarTime = Date.now() + 180000 + Math.random() * 120000;
         }
 
         function findSpawnPointRelative(random = false) {
@@ -3250,6 +3314,39 @@
                     }
                 }
             }
+            
+            // Shooting Star Collisions
+            for (let s of shootingStars) {
+                if (s.dead) continue;
+                
+                // Vs Player
+                if (player && !player.dead && !player.invulnerable) {
+                    const dist = Math.hypot(s.pos.x - player.pos.x, s.pos.y - player.pos.y);
+                    if (dist < s.radius + player.radius) {
+                        player.hp -= s.damage;
+                        updateHealthUI();
+                        playSound('explode');
+                        spawnParticles(player.pos.x, player.pos.y, 20, '#f00');
+                        showOverlayMessage("HIT BY SHOOTING STAR!", '#f00', 2000);
+                        s.dead = true;
+                        if (player.hp <= 0) killPlayer();
+                        continue;
+                    }
+                }
+                
+                // Vs Asteroids
+                const nearby = asteroidGrid.query(s.pos.x, s.pos.y);
+                for (let ast of nearby) {
+                    if (ast.dead) continue;
+                    const dist = Math.hypot(s.pos.x - ast.pos.x, s.pos.y - ast.pos.y);
+                    if (dist < s.radius + ast.radius) {
+                        ast.break();
+                        spawnParticles(ast.pos.x, ast.pos.y, 10, '#fa0');
+                        playSound('hit');
+                        // Star keeps going (pierces)
+                    }
+                }
+            }
         }
 
         function checkWallCollision(entity, elasticity = 0) {
@@ -3344,6 +3441,8 @@
             particles = [];
             coins = [];
             powerups = [];
+            shootingStars = [];
+            scheduleNextShootingStar();
             warpParticles = []; 
             shockwaves = [];
             roamerRespawnQueue = [];
@@ -3740,6 +3839,12 @@
                     playSound('station_spawn');
                 }
             }
+            
+            if (Date.now() > nextShootingStarTime) {
+                shootingStars.push(new ShootingStar());
+                scheduleNextShootingStar();
+                showOverlayMessage("WARNING: COSMIC EVENT DETECTED", '#fa0', 3000);
+            }
 
             const currentRoamers = enemies.filter(e => e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter').length;
             const targetRoamers = 5 + difficultyTier;
@@ -3866,6 +3971,7 @@
 
             coins.forEach(c => { c.update(); c.draw(ctx); });
             powerups.forEach(p => { p.update(); p.draw(ctx); });
+            shootingStars.forEach(s => { s.update(); s.draw(ctx); });
             environmentAsteroids.forEach(a => { a.update(); a.draw(ctx); });
             
             if (bossArena.active) {
@@ -3932,6 +4038,7 @@
             compactArray(particles);
             compactArray(coins);
             compactArray(powerups);
+            compactArray(shootingStars);
 
             resolveEntityCollision();
             
