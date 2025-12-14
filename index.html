@@ -436,6 +436,7 @@
         <p>MOUSE: Aim • WASD/L-STICK: Thrust<br>Collect Coins to Upgrade Ship!</p>
         <button id="start-btn">INITIATE LAUNCH</button>
         <button id="load-btn">LOAD SAVE</button>
+        <button id="new-profile-btn">NEW PROFILE</button>
         <div id="meta-shop" class="meta-shop">
             <div>Meta Nuggets: <span id="meta-bank">0</span></div>
             <div class="meta-grid">
@@ -720,8 +721,8 @@
             }
             
             draw(ctx) {
-            ctx.save();
-            ctx.translate(this.pos.x, this.pos.y);
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
                 const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.2;
                 ctx.scale(scale, scale);
                 ctx.rotate(Math.PI/4);
@@ -802,6 +803,7 @@
         let audioCtx;
         let musicEnabled = true;
         let musicNodes = [];
+        let musicMode = 'normal'; // 'normal' or 'cruiser'
 
         function initAudio() {
             try {
@@ -812,56 +814,75 @@
             }
         }
 
-        function startMusic() {
-            if (!musicEnabled || !audioCtx || musicNodes.length > 0) return;
+        function startMusic(mode = null) {
+            if (!musicEnabled || !audioCtx) return;
+            if (mode) musicMode = mode;
+            if (!musicMode) musicMode = 'normal';
+            // Restart if mode changed
+            if (musicNodes.length > 0) {
+                stopMusic();
+            }
             const t = audioCtx.currentTime;
 
-            // Dark Sci-Fi Drone
             const osc1 = audioCtx.createOscillator();
-            osc1.type = 'sawtooth';
-            osc1.frequency.setValueAtTime(55, t); 
-
             const filter1 = audioCtx.createBiquadFilter();
-            filter1.type = 'lowpass';
-            filter1.frequency.setValueAtTime(300, t);
-            
             const lfo1 = audioCtx.createOscillator();
-            lfo1.type = 'sine';
-            lfo1.frequency.value = 0.2; 
             const lfoGain1 = audioCtx.createGain();
-            lfoGain1.gain.value = 200; 
+            const gain1 = audioCtx.createGain();
+
+            const osc2 = audioCtx.createOscillator();
+            const gain2 = audioCtx.createGain();
+            const lfo2 = audioCtx.createOscillator();
+            const lfoGain2 = audioCtx.createGain();
+
+            if (musicMode === 'cruiser') {
+                // Tense/ominous: slower, darker, with tremolo
+                osc1.type = 'sawtooth';
+                osc1.frequency.setValueAtTime(42, t);
+                filter1.type = 'lowpass';
+                filter1.frequency.setValueAtTime(220, t);
+                lfo1.type = 'triangle';
+                lfo1.frequency.value = 0.12;
+                lfoGain1.gain.value = 140;
+                gain1.gain.setValueAtTime(0.12, t);
+
+                osc2.type = 'square';
+                osc2.frequency.setValueAtTime(21, t);
+                gain2.gain.setValueAtTime(0.06, t);
+                lfo2.type = 'sine';
+                lfo2.frequency.value = 0.35;
+                lfoGain2.gain.value = 0.05;
+            } else {
+                // Default dark sci-fi drone
+                osc1.type = 'sawtooth';
+                osc1.frequency.setValueAtTime(55, t); 
+                filter1.type = 'lowpass';
+                filter1.frequency.setValueAtTime(300, t);
+                lfo1.type = 'sine';
+                lfo1.frequency.value = 0.2; 
+                lfoGain1.gain.value = 200; 
+                gain1.gain.setValueAtTime(0.1, t);
+
+                osc2.type = 'triangle';
+                osc2.frequency.setValueAtTime(112, t); 
+                gain2.gain.setValueAtTime(0.05, t);
+                lfo2.type = 'sine';
+                lfo2.frequency.value = 0.15;
+                lfoGain2.gain.value = 0.02;
+            }
             
             lfo1.connect(lfoGain1);
             lfoGain1.connect(filter1.frequency);
-
-            const gain1 = audioCtx.createGain();
-            gain1.gain.setValueAtTime(0.1, t);
-
             osc1.connect(filter1);
             filter1.connect(gain1);
             gain1.connect(audioCtx.destination);
 
-            const osc2 = audioCtx.createOscillator();
-            osc2.type = 'triangle';
-            osc2.frequency.setValueAtTime(112, t); 
-            
-            const gain2 = audioCtx.createGain();
-            gain2.gain.setValueAtTime(0.05, t);
-            
-            const lfo2 = audioCtx.createOscillator();
-            lfo2.type = 'sine';
-            lfo2.frequency.value = 0.15;
-            const lfoGain2 = audioCtx.createGain();
-            lfoGain2.gain.value = 0.02;
-            
             lfo2.connect(lfoGain2);
             lfoGain2.connect(gain2.gain);
+            osc2.connect(gain2);
+            gain2.connect(audioCtx.destination);
 
-            osc1.start(); 
-            lfo1.start();
-            osc2.start(); 
-            lfo2.start();
-            
+            osc1.start(); lfo1.start(); osc2.start(); lfo2.start();
             musicNodes = [osc1, filter1, lfo1, lfoGain1, gain1, osc2, gain2, lfo2, lfoGain2];
         }
 
@@ -871,6 +892,7 @@
                 try { n.disconnect(); } catch(e){}
             });
             musicNodes = [];
+            musicMode = musicMode || 'normal';
         }
 
         function toggleMusic() {
@@ -1184,7 +1206,7 @@
             for(let i=0; i<3; i++) spawnNewBaseRelative(true);
             gunboatRespawnAt = Date.now() + 5000;
             gunboatLevel2Unlocked = true; // level 2 gunboats allowed after warp
-            // Restart dreadnought timer for the new sector
+            // Restart cruiser timer for the new sector
             dreadManager.timerActive = true;
             dreadManager.timerAt = Date.now() + dreadManager.minDelayMs;
             
@@ -2325,7 +2347,7 @@
             }
 
             update() {
-                checkDespawn(this, 5000);
+                if (!this.despawnImmune) checkDespawn(this, 5000);
                 if (this.dead) return;
                 
                 // Stasis Field Logic (Freeze)
@@ -2346,7 +2368,7 @@
                 }
                 
                 if (this.shieldSegments.length > 0) this.shieldRotation += 0.05;
-                if (this.isGunboat && this.shieldSegments.length > 0) {
+                if (this.isGunboat && this.shieldSegments.length > 0 && !this.disableShieldRegen) {
                     this.gunboatShieldRecharge--;
                     if (this.gunboatShieldRecharge <= 0) {
                         const idx = this.shieldSegments.findIndex(s => s < 2);
@@ -2507,25 +2529,32 @@
                 if (player && !player.dead) distToPlayer = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
                 const attackRange = (this.type === 'elite_roamer' || this.type === 'hunter') ? 800 : 600;
 
-                const gunboatRange = this.isGunboat ? 900 : attackRange;
+                 const gunboatRange = this.isGunboat ? (this.gunboatRange || 900) : attackRange;
                 if (distToPlayer < gunboatRange && !player.dead && this.freezeTimer <= 0) {
                     this.shootTimer--;
                     if (this.shootTimer <= 0) {
                         const angle = this.getAimAngle();
-                        if (this.isGunboat) {
-                             const bx = this.pos.x + Math.cos(angle)*28;
-                             const by = this.pos.y + Math.sin(angle)*28;
-                             bullets.push(new Bullet(bx, by, angle, true, this.gunboatLevel === 1 ? 2 : 3, 22, 4, '#0ff'));
-                             if (this.gunboatLevel === 2) {
+                         if (this.isGunboat) {
+                              const muzzle = this.gunboatMuzzleDist || 28;
+                              const bx = this.pos.x + Math.cos(angle)*muzzle;
+                              const by = this.pos.y + Math.sin(angle)*muzzle;
+                             const dmg = this.isCruiser ? (this.cruiserBaseDamage || 1) : (this.gunboatLevel === 1 ? 2 : 3);
+                             const bulletSpeed = this.isCruiser ? 18 : 22;
+                             bullets.push(new Bullet(bx, by, angle, true, dmg, bulletSpeed, 4, '#0ff'));
+                             if (this.isCruiser) {
+                                 // Cruiser twin barrels
+                                 const a2 = angle + 0.08;
+                                 bullets.push(new Bullet(bx, by, a2, true, dmg, bulletSpeed, 4, '#0ff'));
+                             } else if (this.gunboatLevel === 2) {
                                  const a2 = angle + 0.08;
                                  bullets.push(new Bullet(bx, by, a2, true, 3, 22, 4, '#0ff'));
                              }
-                             spawnBarrelSmoke(bx, by, angle);
-                             this.shootTimer = this.gunboatLevel === 1 ? 21 : 16;
-                        } else if (this.type === 'elite_roamer' || this.type === 'hunter') {
-                             const bx = this.pos.x + Math.cos(angle)*25;
-                             const by = this.pos.y + Math.sin(angle)*25;
-                             bullets.push(new Bullet(bx, by, angle, true, 1, 11, 5, '#f0f'));
+                              spawnBarrelSmoke(bx, by, angle);
+                              this.shootTimer = this.isCruiser ? this.cruiserFireDelay || 24 : (this.gunboatLevel === 1 ? 21 : 16);
+                         } else if (this.type === 'elite_roamer' || this.type === 'hunter') {
+                              const bx = this.pos.x + Math.cos(angle)*25;
+                              const by = this.pos.y + Math.sin(angle)*25;
+                              bullets.push(new Bullet(bx, by, angle, true, 1, 11, 5, '#f0f'));
                              if (this.modifier === 'split') {
                                  const a2 = angle + (Math.random() - 0.5) * 0.2;
                                  bullets.push(new Bullet(bx, by, a2, true, 1, 11, 5, '#f0f'));
@@ -2649,6 +2678,24 @@
                     }
                     ctx.restore();
                 }
+                if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+                    ctx.save();
+                    const innerRot = typeof this.innerShieldRotation === 'number' ? this.innerShieldRotation : -this.shieldRotation;
+                    ctx.rotate(innerRot);
+                    const innerCount = this.innerShieldSegments.length;
+                    const innerAngle = (Math.PI * 2) / innerCount;
+                    const innerRadius = this.innerShieldRadius || Math.max(10, this.shieldRadius - 20);
+                    ctx.lineWidth = 2;
+                    for (let i=0; i<innerCount; i++) {
+                        if (this.innerShieldSegments[i] > 0) {
+                            ctx.strokeStyle = this.isGunboat ? (this.gunboatLevel === 1 ? '#f88' : '#ff0') : '#8ff';
+                            ctx.beginPath();
+                            ctx.arc(0, 0, innerRadius, i * innerAngle + 0.05, (i+1) * innerAngle - 0.15);
+                            ctx.stroke();
+                        }
+                    }
+                    ctx.restore();
+                }
 
                 ctx.save();
                 ctx.rotate(this.angle); 
@@ -2659,7 +2706,7 @@
                 else {
                 if (this.isGunboat) {
                     // Player-like hull silhouette, recolored
-                    const s = 1.4;
+                    const s = this.gunboatScale || 1.4;
                     ctx.fillStyle = this.gunboatLevel === 1 ? '#211' : '#321';
                     ctx.strokeStyle = this.gunboatLevel === 1 ? '#f55' : '#fb0';
                     ctx.lineWidth = 2;
@@ -2693,7 +2740,7 @@
                 ctx.beginPath();
                 if (this.isGunboat) {
                     // reuse player silhouette
-                    const s = 1.4;
+                    const s = this.gunboatScale || 1.4;
                     ctx.moveTo(25*s, 0); 
                     ctx.lineTo(-10*s, 10*s);
                     ctx.lineTo(-20*s, 20*s); 
@@ -2853,9 +2900,9 @@
                     const dy = player.pos.y - this.pos.y;
                     const dist = Math.hypot(dx, dy);
 
-                    // Keep distance from dreadnought
+                    // Keep distance from active cruiser boss
                     let dreadAvoidX = 0, dreadAvoidY = 0;
-                    if (bossActive && boss && boss.variant === 'dreadnought' && !boss.dead) {
+                    if (bossActive && boss && boss.isCruiser && !boss.dead) {
                         const bdx = boss.pos.x - this.pos.x;
                         const bdy = boss.pos.y - this.pos.y;
                         const bdist = Math.hypot(bdx, bdy);
@@ -2887,7 +2934,6 @@
                     this.vel.y += dreadAvoidY;
                     const speed = this.vel.mag();
                     let maxSpeed = this.type === 'heavy' ? 1.5 : (this.type === 'rapid' ? 3.0 : 2.5);
-                    if (this instanceof Boss && this.chargePhase > 0) maxSpeed = 3.5;
                     if (speed > maxSpeed) this.vel.mult(maxSpeed/speed);
                 } else {
                     this.vel.mult(0.99);
@@ -2906,12 +2952,8 @@
                     const dy = py - this.pos.y;
                     const dist = Math.hypot(dx, dy);
                     this.angle = Math.atan2(dy, dx);
-                    
                     this.turretAngle = Math.atan2(dy, dx);
-                    
-                    if (!(this instanceof Boss)) {
-                        this.angle += 0.002;
-                    }
+                    this.angle += 0.002;
 
                     if (dist < 1500) {
                         this.shootTimer--;
@@ -2953,6 +2995,7 @@
                     }
                 }
             }
+            
             draw(ctx) {
                 if(this.dead) return;
                 ctx.save();
@@ -2962,7 +3005,6 @@
                 let shieldColor = '#0ff';
                 if (this.type === 'heavy') shieldColor = '#fa0';
                 if (this.type === 'rapid') shieldColor = '#08f';
-                if (this instanceof Boss) shieldColor = '#f00';
 
                 ctx.save();
                 ctx.rotate(this.shieldRotation);
@@ -3011,64 +3053,7 @@
                 }
 
                 ctx.lineWidth = 3;
-                if (this instanceof Boss) {
-                    ctx.save();
-                    ctx.rotate(this.angle);
-                    if (this.variant === 'dreadnought') {
-                        ctx.fillStyle = '#100'; ctx.strokeStyle = '#f00';
-                        ctx.beginPath();
-                        ctx.moveTo(120, 0);
-                        ctx.lineTo(-100, 70);
-                        ctx.lineTo(-80, 0);
-                        ctx.lineTo(-100, -70);
-                        ctx.closePath();
-                        ctx.fill(); ctx.stroke();
-                        ctx.beginPath();
-                        ctx.rect(-90, -20, 40, 40);
-                        ctx.fillStyle = '#300';
-                        ctx.fill(); ctx.stroke();
-                    } else if (this.variant === 'swarm') {
-                        ctx.fillStyle = '#210'; ctx.strokeStyle = '#f80';
-                        ctx.beginPath();
-                        ctx.rect(-100, -50, 200, 100);
-                        ctx.fill(); ctx.stroke();
-                        ctx.beginPath();
-                        ctx.moveTo(-80, 0); ctx.lineTo(80, 0);
-                        ctx.strokeStyle = '#ff0'; ctx.setLineDash([10, 10]);
-                        ctx.stroke(); ctx.setLineDash([]);
-                    } else {
-                        ctx.fillStyle = '#111'; ctx.strokeStyle = '#f0f';
-                        ctx.beginPath(); ctx.arc(0,0, 100, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-                        ctx.beginPath(); ctx.arc(0,0, 100, 0, Math.PI*2); 
-                        ctx.moveTo(-100, 0); ctx.lineTo(100, 0);
-                        ctx.stroke();
-                        ctx.beginPath(); ctx.arc(40, -40, 25, 0, Math.PI*2);
-                        ctx.fillStyle = '#202'; ctx.fill(); ctx.stroke();
-                    }
-                    ctx.restore();
-
-                // Dreadnought turret graphic
-                if (this.variant === 'dreadnought') {
-                    ctx.save();
-                    ctx.rotate(this.turretAngle || this.angle);
-                    ctx.fillStyle = '#200';
-                    ctx.strokeStyle = '#f00';
-                    ctx.lineWidth = 3;
-                    // turret base
-                    ctx.beginPath();
-                        ctx.arc(0, 0, 25, 0, Math.PI*2);
-                        ctx.fill();
-                        ctx.stroke();
-                        // barrel
-                        ctx.beginPath();
-                        ctx.rect(0, -6, 60, 12);
-                        ctx.fillStyle = '#400';
-                        ctx.fill();
-                        ctx.stroke();
-                        ctx.restore();
-                    }
-                } 
-                else if (this.type === 'heavy') {
+                if (this.type === 'heavy') {
                     // 70s sci-fi monolith style
                     ctx.save();
                     ctx.rotate(this.angle);
@@ -3287,179 +3272,112 @@
             }
         }
 
-        class Boss extends Base {
-            constructor(variant) {
-                super(0, 0, 'standard');
+        class Cruiser extends Enemy {
+            constructor(encounterIndex = 1) {
+                super('gunboat', null, null, { gunboatLevel: 2 });
+                const boost = Math.max(0, encounterIndex - 1);
+                const hpScale = 1 + boost * 0.35;
+                const shieldStrength = 2 + boost;
+                this.type = 'cruiser';
+                this.isCruiser = true;
+                this.isGunboat = true;
+                this.gunboatLevel = 2;
+                this.radius = 90; // 3x the gunboat hull size
+                this.hp = Math.round(50 * hpScale);
+                this.maxHp = this.hp;
+                this.shieldRadius = 135;
+                this.innerShieldRadius = 110;
+                this.shieldSegments = new Array(8).fill(shieldStrength);
+                this.innerShieldSegments = new Array(12).fill(shieldStrength);
+                this.innerShieldRotation = 0;
+                this.gunboatShieldRecharge = 180;
+                this.gunboatScale = 1.4 * 3;
+                this.gunboatMuzzleDist = 28 * 3;
+                this.baseGunboatRange = 900 + boost * 150;
+                this.gunboatRange = this.baseGunboatRange;
+                this.cruiserBaseDamage = 1 + boost; // scales with encounters
+                this.cruiserFireDelay = Math.round(16 / 0.65); // base 35% slower vs gunboat
+                this.circleStrafePreferred = true;
+                this.despawnImmune = true;
+                this.disableShieldRegen = true;
+                this.turretAngle = 0;
+                this.shootTimer = this.cruiserFireDelay;
+                this.encounterIndex = encounterIndex;
+                this.cruiserMode = 'strafe';
+                this.modeTimer = 240;
+                this.strafeDuration = 240;
+                this.chargeDuration = 140;
+
                 const angle = Math.random() * Math.PI * 2;
                 const dist = 3000;
                 this.pos.x = player.pos.x + Math.cos(angle) * dist;
                 this.pos.y = player.pos.y + Math.sin(angle) * dist;
-                
-                this.variant = variant;
-                this.radius = 120;
-                this.hp = (25 + (difficultyTier * 25)) * 0.5 * 1.25;
-                this.shootTimer = 60;
-                this.shieldRadius = 180;
-                this.innerShieldRadius = 150;
-                this.aggro = true; 
-                
-                const shieldStrength = Math.max(1, Math.floor(((2 + Math.floor(difficultyTier * 0.6)) * 0.5) * 1.25));
-                this.maxShieldHp = shieldStrength;
-                this.shieldSegments = new Array(24).fill(shieldStrength);
-                this.innerShieldSegments = new Array(16).fill(shieldStrength);
-                this.vel.x = 0;
-                this.vel.y = 0;
-                
-                // Gimmick timers
-                this.gimmickTimer = 600;
-                this.chargeDir = 0;
-                this.chargePhase = 0;
-                this.beamSweepDir = 0;
-                this.turretAngle = 0;
             }
-            
+
+            updateAIState() {
+                // Override base random AI; cruiser uses custom mode switching.
+            }
+
             kill() {
+                if (this.dead) return;
                 this.dead = true;
                 playSound('base_explode');
                 spawnParticles(this.pos.x, this.pos.y, 100, '#f00');
-                // Massive coin drop
                 for(let i=0; i<13; i++) {
                     coins.push(new Coin(this.pos.x + (Math.random()-0.5)*100, this.pos.y + (Math.random()-0.5)*100, 10));
                 }
                 for(let i=0; i<5; i++) {
                     nuggets.push(new SpaceNugget(this.pos.x + (Math.random()-0.5)*120, this.pos.y + (Math.random()-0.5)*120, 1));
                 }
-                
                 powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
                 bossActive = false;
                 bossArena.active = false;
-                showOverlayMessage("TARGET DESTROYED - ARENA UNLOCKED", '#0f0', 3000);
-                // If this was a dreadnought, start the spawn timer for the next dreadnought
-                // Reset timer for ANY boss death to prevent back-to-back spawns
+                bossArena.growing = false;
+                showOverlayMessage("CRUISER DESTROYED - ARENA UNLOCKED", '#0f0', 3000);
+                if (musicEnabled && gameActive && !gamePaused) {
+                    stopMusic();
+                    startMusic('normal');
+                }
                 try {
-                    if (this.variant === 'dreadnought' || dreadManager.firstSpawnDone || dreadManager.timerActive) {
-                        const delay = dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
-                        dreadManager.timerAt = Date.now() + delay;
-                        dreadManager.timerActive = true;
-                    }
-                } catch (e) { console.warn('failed to start dread timer', e); }
-
+                    const delay = dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
+                    dreadManager.timerAt = Date.now() + delay;
+                    dreadManager.timerActive = true;
+                    dreadManager.firstSpawnDone = true;
+                } catch (e) { console.warn('failed to start cruiser timer', e); }
                 boss = null;
             }
 
             update() {
-                if (player && !player.dead) {
-                    const dx = player.pos.x - this.pos.x;
-                    const dy = player.pos.y - this.pos.y;
-                    const dist = Math.hypot(dx, dy);
-                    const angleToPlayer = Math.atan2(dy, dx);
-                    this.turretAngle = angleToPlayer;
-
-                    if (this.variant === 'dreadnought') {
-                        // Always use circle-strafe broadside like a battleship
-                        const orbitAngle = angleToPlayer + Math.PI / 2; // clockwise
-                        const desiredAngle = angleToPlayer + Math.PI / 2;
-                        let diff = desiredAngle - this.angle;
-                        while(diff > Math.PI) diff -= Math.PI*2;
-                        while(diff < -Math.PI) diff += Math.PI*2;
-                        this.angle += Math.sign(diff) * Math.min(Math.abs(diff), 0.01);
-                        this.vel.x += Math.cos(orbitAngle) * 0.025;
-                        this.vel.y += Math.sin(orbitAngle) * 0.025;
-                        if (dist > 900) { this.vel.x += dx * 0.001; this.vel.y += dy * 0.001; }
-                        if (dist < 700) { this.vel.x -= dx * 0.001; this.vel.y -= dy * 0.001; }
-                        const speed = this.vel.mag();
-                        if (speed > 2.8) this.vel.mult(2.8/speed);
+                // Mode switching: alternate between strafing and charging
+                this.modeTimer--;
+                if (this.modeTimer <= 0) {
+                    if (this.cruiserMode === 'strafe') {
+                        this.cruiserMode = 'charge';
+                        this.modeTimer = this.chargeDuration;
+                        // prep a shot burst on charge start
+                        this.shootTimer = Math.min(this.shootTimer, 6);
                     } else {
-                        // Default boss glide/orbit
-                        const orbitAngle = angleToPlayer + Math.PI / 2; // clockwise orbit
-                        const desiredAngle = angleToPlayer + Math.PI / 2;
-                        let diff = desiredAngle - this.angle;
-                        while(diff > Math.PI) diff -= Math.PI*2;
-                        while(diff < -Math.PI) diff += Math.PI*2;
-                        this.angle += Math.sign(diff) * Math.min(Math.abs(diff), 0.01); // slower turn to feel heavy
-                        this.vel.x += Math.cos(orbitAngle) * 0.02;
-                        this.vel.y += Math.sin(orbitAngle) * 0.02;
-                        if (dist > 900) { this.vel.x += Math.cos(angleToPlayer) * 0.008; this.vel.y += Math.sin(angleToPlayer) * 0.008; }
-                        if (dist < 700) { this.vel.x -= Math.cos(angleToPlayer) * 0.008; this.vel.y -= Math.sin(angleToPlayer) * 0.008; }
-                        const speed = this.vel.mag();
-                        if (speed > 2.5) this.vel.mult(2.5/speed);
-                    }
-                } else {
-                    this.turretAngle = this.angle;
-                }
-                
-                // Variant gimmicks with telegraph effects (before movement)
-                this.gimmickTimer--;
-                if (this.variant === 'dreadnought') {
-                    // Movement handled above; gimmick below
-                    if (this.gimmickTimer <= 0) {
-                        this.chargeDir = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
-                        this.chargePhase = 90; // boosted thrust duration
-                        showOverlayMessage("DREADNOUGHT CHARGE!", '#f00', 1000);
-                        this.gimmickTimer = 600;
-                    }
-                    if (this.chargePhase > 0) {
-                        this.chargePhase--;
-                        this.vel.x += Math.cos(this.chargeDir) * 0.2;
-                        this.vel.y += Math.sin(this.chargeDir) * 0.2;
-                    }
-                } else if (this.variant === 'swarm') {
-                    if (this.gimmickTimer <= 0) {
-                        showOverlayMessage("SWARM DEPLOYMENT!", '#fa0', 1000);
-                        for(let i=0; i<5; i++) {
-                            const a = Math.random() * Math.PI * 2;
-                            const bx = this.pos.x + Math.cos(a) * 140;
-                            const by = this.pos.y + Math.sin(a) * 140;
-                            enemies.push(new Enemy('roamer', {x:bx, y:by}));
-                        }
-                        this.gimmickTimer = 480;
-                    }
-                } else {
-                    if (this.gimmickTimer <= 0) {
-                        this.beamSweepDir = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
-                        showOverlayMessage("DOOMSDAY BEAM!", '#f0f', 1000);
-                        for(let i=-3; i<=3; i++) {
-                            const a = this.beamSweepDir + i * 0.1;
-                            bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 4, 14, 6, '#f0f'));
-                        }
-                        this.gimmickTimer = 520;
+                        this.cruiserMode = 'strafe';
+                        this.modeTimer = this.strafeDuration;
                     }
                 }
 
+                if (this.cruiserMode === 'charge') {
+                    this.circleStrafePreferred = false;
+                    this.aiState = 'SEEK';
+                    this.thrustPower = 0.35;
+                    this.maxSpeed = 7.2;
+                    this.gunboatRange = this.baseGunboatRange + 250;
+                } else {
+                    this.circleStrafePreferred = true;
+                    this.aiState = 'CIRCLE';
+                    this.thrustPower = 0.2;
+                    this.maxSpeed = 4.6;
+                    this.gunboatRange = this.baseGunboatRange;
+                }
+
+                this.innerShieldRotation -= 0.02;
                 super.update();
-
-                if (player && !player.dead && this.shootTimer <= 0) {
-                    const aimAngle = this.turretAngle || this.angle;
-                    if (this.variant === 'dreadnought') {
-                        // Battleship-style turret volley toward player (3 shells)
-                        const bx = this.pos.x + Math.cos(aimAngle) * 130;
-                        const by = this.pos.y + Math.sin(aimAngle) * 130;
-                        for(let i=-1; i<=1; i++) {
-                            const a = aimAngle + i * 0.05;
-                            bullets.push(new Bullet(bx, by, a, true, 5, 13, 0.5, '#f00'));
-                        }
-                        spawnBarrelSmoke(bx, by, aimAngle);
-                        playSound('heavy_shoot');
-                        this.shootTimer = 32;
-                    } else if (this.variant === 'swarm') {
-                        for(let i=0; i<3; i++) {
-                             const a = aimAngle + (Math.random()-0.5);
-                             const bx = this.pos.x + Math.cos(a) * 100;
-                             const by = this.pos.y + Math.sin(a) * 100;
-                             enemies.push(new Enemy('roamer', {x:bx, y:by}));
-                        }
-                        this.shootTimer = 180; 
-                    } else {
-                        for(let i=0; i<16; i++) {
-                    const a = this.shieldRotation + (i * Math.PI*2/16);
-                    const bx = this.pos.x + Math.cos(a) * 120;
-                    const by = this.pos.y + Math.sin(a) * 120;
-                    bullets.push(new Bullet(bx, by, a, true, 2, 8, 5, '#0ff'));
-                }
-                playSound('rapid_shoot');
-                        this.shootTimer = 30;
-                    }
-                }
             }
         }
 //space station class
@@ -3759,13 +3677,14 @@
         let pendingTransitionClear = false;
         let gunboatRespawnAt = null;
         let gunboatLevel2Unlocked = false;
+        let cruiserEncounterCount = 0;
         let initialSpawnDelayAt = null;
         let initialSpawnDone = false;
         let metaProfile = { bank: 0, purchases: { startDamage: false, passiveHp: false, rerollTokens: 0, hullPlating: false, shieldCore: false, staticBlueprint: false, missilePrimer: false, magnetBooster: false, warpPrecharge: false, nukeCapacitor: false, speedTuning: false, bankMultiplier: false, shopDiscount: false, extraLife: false, droneFabricator: false } };
         let rerollTokens = 0;
         let metaExtraLifeAvailable = false;
         
-        // Dreadnought spawn manager
+        // Cruiser spawn manager
         let dreadManager = {
             upgradesChosen: 0,
             firstSpawnDone: false,
@@ -3835,6 +3754,25 @@
             } catch (e) {
                 console.warn('failed to load meta profile', e);
             }
+        }
+        function resetMetaProfile() {
+            metaProfile = { bank: 0, purchases: {
+                startDamage: false,
+                passiveHp: false,
+                rerollTokens: 0,
+                hullPlating: false,
+                shieldCore: false,
+                staticBlueprint: false,
+                missilePrimer: false,
+                magnetBooster: false,
+                warpPrecharge: false,
+                nukeCapacitor: false,
+                speedTuning: false,
+                bankMultiplier: false,
+                shopDiscount: false,
+                extraLife: false,
+                droneFabricator: false
+            }};
         }
         function saveMetaProfile() {
             try {
@@ -4032,7 +3970,7 @@
                         const overlap = minDist - dist;
                         const nx = dx / dist;
                         const ny = dy / dist;
-                        if (entity instanceof Base || (entity instanceof Enemy && entity.isGunboat) || (entity instanceof Boss)) {
+                        if (entity instanceof Base || (entity instanceof Enemy && entity.isGunboat) || (entity instanceof Cruiser)) {
                             ast.break();
                             spawnParticles(ast.pos.x, ast.pos.y, 10, '#aa8');
                             continue;
@@ -4281,56 +4219,17 @@
             if (el) el.innerText = spaceNuggets;
         }
 
-        // --- Save / Load ---
-        const SAVE_PREFIX = 'neon_space_save_v1_';
-        const SAVE_LAST_KEY = 'neon_space_save_last';
+        // --- Profile Save / Load (player stats only) ---
+        const SAVE_PREFIX = 'neon_space_profile_v1_';
+        const SAVE_LAST_KEY = 'neon_space_profile_last';
+        let pendingProfile = null;
 
-        function buildSaveData() {
-            const now = Date.now();
-            const elapsed = gameStartTime ? (now - gameStartTime - (pausedAccumMs || 0)) : 0;
-            const baseIndexMap = new Map();
-            bases.forEach((b, i) => { baseIndexMap.set(b, i); });
-            const baseData = bases.filter(b => !b.dead).map(b => ({
-                type: b.type,
-                pos: { x: b.pos.x, y: b.pos.y },
-                hp: b.hp,
-                shieldSegments: b.shieldSegments ? [...b.shieldSegments] : [],
-                innerShieldSegments: b.innerShieldSegments ? [...b.innerShieldSegments] : [],
-                aggro: b.aggro,
-                shootTimer: b.shootTimer
-            }));
-            const enemyData = enemies.filter(e => !e.dead).map(e => ({
-                type: e.type,
-                pos: { x: e.pos.x, y: e.pos.y },
-                hp: e.hp,
-                shieldSegments: e.shieldSegments ? [...e.shieldSegments] : [],
-                shieldRadius: e.shieldRadius,
-                gunboatLevel: e.gunboatLevel,
-                aiState: e.aiState,
-                aiTimer: e.aiTimer,
-                circleStrafePreferred: !!e.circleStrafePreferred,
-                assignedBaseIndex: e.assignedBase ? baseIndexMap.get(e.assignedBase) : null
-            }));
+        function buildProfileData() {
+            if (!player) return null;
             return {
                 version: 1,
-                timestamp: now,
-                elapsedMs: elapsed,
-                score,
-                difficultyTier,
-                basesDestroyed,
-                basesDestroyedTotal,
-                spaceNuggets,
-                sectorIndex,
-                pendingStations,
-                nextSpaceStationRemaining: nextSpaceStationTime ? Math.max(0, nextSpaceStationTime - now) : null,
-                gunboatLevel2Unlocked,
-                dreadTimer: dreadManager.timerActive && dreadManager.timerAt ? Math.max(0, dreadManager.timerAt - now) : null,
-                dreadFirstDone: dreadManager.firstSpawnDone,
-                player: player ? {
-                    pos: { x: player.pos.x, y: player.pos.y },
-                    vel: { x: player.vel.x, y: player.vel.y },
-                    angle: player.angle,
-                    turretAngle: player.turretAngle,
+                timestamp: Date.now(),
+                player: {
                     hp: player.hp,
                     maxHp: player.maxHp,
                     shieldSegments: [...player.shieldSegments],
@@ -4346,11 +4245,41 @@
                     nukeMaxCooldown: player.nukeMaxCooldown,
                     staticWeapons: [...player.staticWeapons],
                     shieldRotation: player.shieldRotation,
-                    invincibilityCycle: { ...player.invincibilityCycle }
-                } : null,
-                bases: baseData,
-                enemies: enemyData
+                    invincibilityCycle: { ...player.invincibilityCycle },
+                    nukeDamage: player.nukeDamage,
+                    nukeRange: player.nukeRange
+                }
             };
+        }
+
+        function applyProfile(profile) {
+            if (!profile || !profile.player || !player) {
+                pendingProfile = profile || null;
+                return;
+            }
+            const src = profile.player;
+            player.maxHp = src.maxHp || player.maxHp;
+            player.hp = Math.min(src.hp || player.hp, player.maxHp);
+            if (src.shieldSegments) player.shieldSegments = [...src.shieldSegments];
+            player.maxShieldSegments = src.maxShieldSegments || player.shieldSegments.length;
+            player.stats = { ...player.stats, ...(src.stats || {}) };
+            player.inventory = { ...(src.inventory || {}) };
+            player.level = src.level || player.level;
+            player.xp = src.xp || 0;
+            player.nextLevelXp = src.nextLevelXp || player.nextLevelXp;
+            if (typeof src.magnetRadius === 'number') player.magnetRadius = src.magnetRadius;
+            player.nukeUnlocked = !!src.nukeUnlocked;
+            if (typeof src.nukeCooldown === 'number') player.nukeCooldown = src.nukeCooldown;
+            if (typeof src.nukeMaxCooldown === 'number') player.nukeMaxCooldown = src.nukeMaxCooldown;
+            if (typeof src.nukeDamage === 'number') player.nukeDamage = src.nukeDamage;
+            if (typeof src.nukeRange === 'number') player.nukeRange = src.nukeRange;
+            player.staticWeapons = src.staticWeapons ? [...src.staticWeapons] : player.staticWeapons;
+            player.shieldRotation = src.shieldRotation || player.shieldRotation;
+            player.invincibilityCycle = { ...player.invincibilityCycle, ...(src.invincibilityCycle || {}) };
+            updateHealthUI();
+            updateWarpUI();
+            updateXpUI();
+            pendingProfile = null;
         }
 
         function listSaveSlots() {
@@ -4369,7 +4298,7 @@
             const defaultSlot = localStorage.getItem(SAVE_LAST_KEY) || (slots[0] || 'slot1');
             let msg = promptText;
             if (!msg) {
-                msg = existingOnly ? `Load slot name (${slots.join(', ') || 'none'}):` : `Save slot name (existing: ${slots.join(', ') || 'none'}):`;
+                msg = existingOnly ? `Load profile (${slots.join(', ') || 'none'}):` : `Save profile (existing: ${slots.join(', ') || 'none'}):`;
             }
             const name = prompt(msg, defaultSlot);
             if (!name) return null;
@@ -4379,140 +4308,42 @@
 
         function saveToSlot(slot, silent = false) {
             try {
-                const data = buildSaveData();
+                const data = buildProfileData();
+                if (!data) throw new Error('no player');
                 localStorage.setItem(SAVE_PREFIX + slot, JSON.stringify(data));
                 localStorage.setItem(SAVE_LAST_KEY, slot);
-                if (!silent) showOverlayMessage(`GAME SAVED (${slot})`, '#0f0', 1500);
+                if (!silent) showOverlayMessage(`PROFILE SAVED (${slot})`, '#0f0', 1500);
             } catch (e) {
                 console.warn('save failed', e);
                 if (!silent) showOverlayMessage("SAVE FAILED", '#f00', 1500);
             }
         }
 
+        function wipeProfiles() {
+            // Remove all stored profiles and meta progression
+            const toDelete = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && k.startsWith(SAVE_PREFIX)) toDelete.push(k);
+            }
+            toDelete.forEach(k => localStorage.removeItem(k));
+            localStorage.removeItem(SAVE_LAST_KEY);
+            localStorage.removeItem('meta_profile_v1');
+            resetMetaProfile();
+            pendingProfile = null;
+            rerollTokens = 0;
+            updateMetaUI();
+            showOverlayMessage("PROFILE RESET - STARTING FRESH", '#0f0', 2000);
+        }
+
         function saveGame() {
             if (!player || !gameActive) {
-                showOverlayMessage("NO ACTIVE GAME TO SAVE", '#f00', 1500);
+                showOverlayMessage("NO ACTIVE PROFILE TO SAVE", '#f00', 1500);
                 return;
             }
             const slot = promptForSlot(false);
             if (!slot) return;
             saveToSlot(slot);
-        }
-
-        function restoreGameState(state) {
-            if (!state || !state.player) {
-                showOverlayMessage("INVALID SAVE DATA", '#f00', 1500);
-                return;
-            }
-            setupGameWorld();
-            initialSpawnDone = true;
-            initialSpawnDelayAt = null;
-            roamerRespawnQueue = [];
-            baseRespawnTimers = [];
-            enemies = [];
-            bases = [];
-            bullets = [];
-            powerups = [];
-            coins = [];
-            nuggets = [];
-            bossActive = false;
-            boss = null;
-            spaceStation = null;
-            pendingTransitionClear = false;
-            sectorTransitionActive = false;
-            warpCountdownAt = null;
-            intensityBreakActive = false;
-
-            const now = Date.now();
-            gameStartTime = now - (state.elapsedMs || 0);
-            pausedAccumMs = 0;
-            pauseStartTime = null;
-
-            score = state.score || 0;
-            difficultyTier = state.difficultyTier || 1;
-            basesDestroyed = state.basesDestroyed || 0;
-            basesDestroyedTotal = state.basesDestroyedTotal || 0;
-            spaceNuggets = state.spaceNuggets || 0;
-            sectorIndex = state.sectorIndex || sectorIndex;
-            pendingStations = state.pendingStations != null ? state.pendingStations : pendingStations;
-            nextSpaceStationTime = state.nextSpaceStationRemaining ? now + state.nextSpaceStationRemaining : null;
-            gunboatLevel2Unlocked = !!state.gunboatLevel2Unlocked;
-            dreadManager.firstSpawnDone = !!state.dreadFirstDone;
-            if (state.dreadTimer) {
-                dreadManager.timerActive = true;
-                dreadManager.timerAt = now + state.dreadTimer;
-            } else {
-                dreadManager.timerActive = false;
-                dreadManager.timerAt = null;
-            }
-
-            if (state.player) {
-                player.pos.x = state.player.pos.x; player.pos.y = state.player.pos.y;
-                player.vel.x = state.player.vel.x; player.vel.y = state.player.vel.y;
-                player.angle = state.player.angle;
-                player.turretAngle = state.player.turretAngle;
-                player.hp = state.player.hp;
-                player.maxHp = state.player.maxHp;
-                player.shieldSegments = [...state.player.shieldSegments];
-                player.maxShieldSegments = state.player.maxShieldSegments || player.shieldSegments.length;
-                player.stats = { ...player.stats, ...state.player.stats };
-                player.inventory = { ...state.player.inventory };
-                player.level = state.player.level;
-                player.xp = state.player.xp;
-                player.nextLevelXp = state.player.nextLevelXp;
-                player.magnetRadius = state.player.magnetRadius;
-                player.nukeUnlocked = state.player.nukeUnlocked;
-                player.nukeCooldown = state.player.nukeCooldown;
-                player.nukeMaxCooldown = state.player.nukeMaxCooldown;
-                player.staticWeapons = state.player.staticWeapons || [];
-                player.shieldRotation = state.player.shieldRotation || 0;
-                player.invincibilityCycle = { ...player.invincibilityCycle, ...state.player.invincibilityCycle };
-                player.lastShieldRegenTime = now;
-                updateHealthUI();
-                updateWarpUI();
-                updateXpUI();
-            }
-
-            // Restore bases
-            if (state.bases && Array.isArray(state.bases)) {
-                state.bases.forEach(b => {
-                    const base = new Base(b.pos.x, b.pos.y, b.type || 'standard');
-                    base.hp = b.hp;
-                    if (b.shieldSegments) base.shieldSegments = [...b.shieldSegments];
-                    if (b.innerShieldSegments) base.innerShieldSegments = [...b.innerShieldSegments];
-                    base.aggro = b.aggro;
-                    base.shootTimer = b.shootTimer;
-                    bases.push(base);
-                });
-            }
-
-            // Restore enemies
-            if (state.enemies && Array.isArray(state.enemies)) {
-                state.enemies.forEach(e => {
-                    const assigned = (typeof e.assignedBaseIndex === 'number') ? bases[e.assignedBaseIndex] : null;
-                    const enemy = new Enemy(e.type, e.pos, assigned, { gunboatLevel: e.gunboatLevel });
-                    enemy.hp = e.hp;
-                    if (e.shieldSegments) enemy.shieldSegments = [...e.shieldSegments];
-                    if (e.shieldRadius) enemy.shieldRadius = e.shieldRadius;
-                    enemy.aiState = e.aiState || enemy.aiState;
-                    enemy.aiTimer = e.aiTimer || enemy.aiTimer;
-                    enemy.circleStrafePreferred = !!e.circleStrafePreferred;
-                    enemies.push(enemy);
-                });
-            }
-
-            document.getElementById('score').innerText = score;
-            document.getElementById('bases-display').innerText = `${basesDestroyedTotal}`;
-            updateNuggetUI();
-
-            gameActive = true;
-            gamePaused = false;
-            gameEnded = false;
-            document.getElementById('start-screen').style.display = 'none';
-            document.getElementById('pause-menu').style.display = 'none';
-            const endScreen = document.getElementById('end-screen');
-            if (endScreen) endScreen.style.display = 'none';
-            if (musicEnabled) startMusic();
         }
 
         function loadGameFromStorage() {
@@ -4521,13 +4352,14 @@
             try {
                 const raw = localStorage.getItem(SAVE_PREFIX + slot);
                 if (!raw) {
-                    showOverlayMessage("NO SAVE FOUND FOR SLOT", '#f00', 1500);
+                    showOverlayMessage("NO PROFILE FOUND", '#f00', 1500);
                     return;
                 }
                 const data = JSON.parse(raw);
-                restoreGameState(data);
+                pendingProfile = data;
+                if (player) applyProfile(data);
                 localStorage.setItem(SAVE_LAST_KEY, slot);
-                showOverlayMessage(`SAVE LOADED (${slot})`, '#0f0', 1500);
+                showOverlayMessage(`PROFILE LOADED (${slot})`, '#0f0', 1500);
             } catch (e) {
                 console.warn('load failed', e);
                 showOverlayMessage("LOAD FAILED", '#f00', 1500);
@@ -4535,7 +4367,7 @@
         }
 
         function saveEndOfRun() {
-            const slot = promptForSlot(false, "Save slot to store this run (new or overwrite):");
+            const slot = promptForSlot(false, "Save profile (new or overwrite):");
             if (!slot) return;
             saveToSlot(slot);
         }
@@ -4731,15 +4563,15 @@
         function applyUpgrade(id, tier) {
             player.inventory[id] = tier;
 
-            // Track upgrades for dreadnought first-spawn logic
+            // Track upgrades for cruiser first-spawn logic
             try {
                 dreadManager.upgradesChosen = (dreadManager.upgradesChosen || 0) + 1;
-                // On the 3rd chosen upgrade, schedule the first dreadnought to spawn after 10s
+                // On the 3rd chosen upgrade, schedule the first cruiser to spawn after 10s
                 if (!dreadManager.firstSpawnDone && dreadManager.upgradesChosen >= 3 && !bossActive && !dreadManager.timerActive) {
                     dreadManager.timerAt = Date.now() + 10000; // 10 seconds
                     dreadManager.timerActive = true;
-                    // Inform player a dreadnought is incoming
-                    showOverlayMessage("WARNING: DREADNOUGHT INCOMING IN 10s", '#f00', 3000);
+                    // Inform player a cruiser is incoming
+                    showOverlayMessage("WARNING: CRUISER INCOMING IN 10s", '#f00', 3000);
                 }
             } catch(e) { console.warn('dreadManager upgrade increment failed', e); }
             
@@ -5025,10 +4857,11 @@
                     completeSectorWarp();
                 }
             }
-            // Dreadnought timed spawn: if timer active and no boss present, spawn a dreadnought
+            // Cruiser timed spawn: if timer active and no boss present, spawn a cruiser
             try {
                 if (!sectorTransitionActive && dreadManager.timerActive && !bossActive && dreadManager.timerAt && now >= dreadManager.timerAt) {
-                    boss = new Boss('dreadnought');
+                    cruiserEncounterCount++;
+                    boss = new Cruiser(cruiserEncounterCount);
                     bossActive = true;
                     bossArena.x = (player.pos.x + boss.pos.x) / 2;
                     bossArena.y = (player.pos.y + boss.pos.y) / 2;
@@ -5037,10 +4870,11 @@
                     bossArena.growing = false;
                     dreadManager.timerActive = false;
                     dreadManager.firstSpawnDone = true;
-                    showOverlayMessage("WARNING: DREADNOUGHT APPROACHING - ARENA LOCKED", '#f00', 4000);
+                    showOverlayMessage("WARNING: CRUISER APPROACHING - ARENA LOCKED", '#f00', 4000);
                     playSound('boss_spawn');
+                    if (musicEnabled) { stopMusic(); startMusic('cruiser'); }
                 }
-            } catch(e) { console.warn('dread spawn check failed', e); }
+            } catch(e) { console.warn('cruiser spawn check failed', e); }
             
             // Space Station Spawn (timer-driven)
             if (!sectorTransitionActive && !spaceStation && pendingStations > 0 && nextSpaceStationTime && now >= nextSpaceStationTime) {
@@ -5527,7 +5361,7 @@
                                             const delay = 5000 + Math.random() * 5000;
                                             baseRespawnTimers.push(Date.now() + delay);
 
-                                            // Boss spawns are now handled strictly via the dreadnought timer after a boss is destroyed
+                                            // Boss spawns are now handled strictly via the cruiser timer after a boss is destroyed
                                         }
                                         break;
                                     }
@@ -5737,10 +5571,22 @@
         }
 
         function startGame() {
-                        player = new Spaceship(); 
+                        // Always reset audio state to normal before a new run
+            musicMode = 'normal';
+            stopMusic();
+            player = new Spaceship(); 
             score = 0;
             difficultyTier = 1;
             basesDestroyedTotal = 0;
+            bossActive = false;
+            boss = null;
+            bossArena.active = false;
+            bossArena.growing = false;
+            cruiserEncounterCount = 0;
+            dreadManager.upgradesChosen = 0;
+            dreadManager.firstSpawnDone = false;
+            dreadManager.timerActive = true;
+            dreadManager.timerAt = Date.now() + dreadManager.minDelayMs;
             rerollTokens = metaProfile.purchases.rerollTokens || 0;
             metaExtraLifeAvailable = !!metaProfile.purchases.extraLife;
             
@@ -5815,6 +5661,9 @@
             }
             if (metaProfile.purchases.droneFabricator) {
                 spawnDrone('shooter');
+            }
+            if (pendingProfile) {
+                applyProfile(pendingProfile);
             }
             updateHealthUI();
             
@@ -5933,6 +5782,12 @@
         if (loadBtn) loadBtn.addEventListener('click', () => {
             initAudio();
             loadGameFromStorage();
+        });
+        const newProfileBtn = document.getElementById('new-profile-btn');
+        if (newProfileBtn) newProfileBtn.addEventListener('click', () => {
+            if (confirm("Reset profile? This clears all nugs/stats and saved profiles.")) {
+                wipeProfiles();
+            }
         });
         const buyStart = document.getElementById('buy-start-dmg');
         if (buyStart) buyStart.addEventListener('click', () => {
