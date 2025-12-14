@@ -2488,10 +2488,11 @@
                 if (!player || player.dead) { this.aiState = 'IDLE'; this.aiTimer = 60; return; }
                 const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
 
+                // All roamers (elite/hunter included) should be actively seeking, not waiting
                 if (this.circleStrafePreferred) {
                     this.aiState = 'CIRCLE';
                     this.aiTimer = 45;
-                } else if (this.type === 'roamer') {
+                } else if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter') {
                     // Check for bunching/crowding
                     let neighbors = 0;
                     for(let e of enemies) {
@@ -2513,9 +2514,6 @@
                         if (roll < 0.6) { this.aiState = 'ORBIT'; this.aiTimer = 120 + Math.random()*60; }
                         else { this.aiState = 'ATTACK_RUN'; this.aiTimer = 60; }
                     }
-                } else if (this.type === 'hunter') {
-                    // handled above
-                    this.aiState = 'CIRCLE'; this.aiTimer = 45;
                 } else if (this.type === 'defender') {
                     if (this.assignedBase && !this.assignedBase.dead) {
                         const distBase = Math.hypot(player.pos.x - this.assignedBase.pos.x, player.pos.y - this.assignedBase.pos.y);
@@ -2526,9 +2524,6 @@
                         this.aiState = 'SEEK'; 
                         this.aiTimer = 60;
                     }
-                } else if (this.type === 'elite_roamer') {
-                    // handled above
-                    this.aiState = 'CIRCLE'; this.aiTimer = 45;
                 }
             }
 
@@ -2788,15 +2783,43 @@
                     const dx = player.pos.x - this.pos.x;
                     const dy = player.pos.y - this.pos.y;
                     const dist = Math.hypot(dx, dy);
+
+                    // Keep distance from dreadnought
+                    let dreadAvoidX = 0, dreadAvoidY = 0;
+                    if (bossActive && boss && boss.variant === 'dreadnought' && !boss.dead) {
+                        const bdx = boss.pos.x - this.pos.x;
+                        const bdy = boss.pos.y - this.pos.y;
+                        const bdist = Math.hypot(bdx, bdy);
+                        if (bdist < 200) {
+                            dreadAvoidX = -(bdx / (bdist || 1)) * 0.2;
+                            dreadAvoidY = -(bdy / (bdist || 1)) * 0.2;
+                        }
+                    }
+
+                    // Avoid bunching with other bases
+                    for (let b of bases) {
+                        if (b === this || b.dead) continue;
+                        const bx = b.pos.x - this.pos.x;
+                        const by = b.pos.y - this.pos.y;
+                        const bdist = Math.hypot(bx, by);
+                        if (bdist > 0 && bdist < 400) {
+                            const repulse = (400 - bdist) * 0.0005;
+                            this.vel.x -= (bx / bdist) * repulse;
+                            this.vel.y -= (by / bdist) * repulse;
+                        }
+                    }
+
                     if (dist > 250) { 
                         const angle = Math.atan2(dy, dx);
                         this.vel.x += Math.cos(angle) * 0.05; 
                         this.vel.y += Math.sin(angle) * 0.05;
-                        const speed = this.vel.mag();
-                        let maxSpeed = this.type === 'heavy' ? 1.5 : (this.type === 'rapid' ? 3.0 : 2.5);
-                        if (this instanceof Boss && this.chargePhase > 0) maxSpeed = 3.5;
-                        if (speed > maxSpeed) this.vel.mult(maxSpeed/speed);
                     }
+                    this.vel.x += dreadAvoidX;
+                    this.vel.y += dreadAvoidY;
+                    const speed = this.vel.mag();
+                    let maxSpeed = this.type === 'heavy' ? 1.5 : (this.type === 'rapid' ? 3.0 : 2.5);
+                    if (this instanceof Boss && this.chargePhase > 0) maxSpeed = 3.5;
+                    if (speed > maxSpeed) this.vel.mult(maxSpeed/speed);
                 } else {
                     this.vel.mult(0.99);
                 }
@@ -3739,8 +3762,8 @@
                     updateHealthUI();
                     spawnParticles(this.pos.x, this.pos.y, 8, '#0f0');
                 } else if (this.type === 'shield') {
-                    // Time-gated to 1 segment per ~4 seconds
-                    if (now - this.lastShieldTick >= 4000) {
+                    // Time-gated to 1 segment per ~3 seconds
+                    if (now - this.lastShieldTick >= 3000) {
                         const idx = player.shieldSegments.findIndex(s => s < 2);
                         if (idx !== -1) {
                             player.shieldSegments[idx] = 2;
