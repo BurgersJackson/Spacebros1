@@ -472,6 +472,12 @@
                 { "id": "invincibility", "name": "Phase Shield", "tier1": "3s Active / 20s CD", "tier2": "5s Active / 15s CD", "tier3": "7s Active / 10s CD + Regen", "notes": "Auto-cycling invulnerability." },
                 { "id": "slow_field", "name": "Stasis Field", "tier1": "Stops roamers 3s", "tier2": "Stops 5s, +25% Area", "tier3": "Stops 8s, +25% Area", "notes": "Freezes enemies." }
               ]
+            },
+            {
+              "name": "Drones",
+              "upgrades": [
+                { "id": "companion_drones", "name": "Companion Drones", "tier1": "Unlock Shield Drone", "tier2": "Add Heal Drone", "tier3": "Add Combat Drone", "notes": "Orbiting support bots." }
+              ]
             }
           ]
         };
@@ -664,8 +670,8 @@
             }
             
             draw(ctx) {
-                ctx.save();
-                ctx.translate(this.pos.x, this.pos.y);
+            ctx.save();
+            ctx.translate(this.pos.x, this.pos.y);
                 const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.2;
                 ctx.scale(scale, scale);
                 ctx.rotate(Math.PI/4);
@@ -1135,6 +1141,14 @@
             nextSpaceStationTime = Date.now() + 1000;
             scheduleNextShootingStar();
             showOverlayMessage("NEW SECTOR ENTERED", '#0ff', 3000);
+            // Spawn exploration caches in the new sector
+            for(let i=0; i<8; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 1200 + Math.random() * 2000;
+                const cx = player.pos.x + Math.cos(angle) * dist;
+                const cy = player.pos.y + Math.sin(angle) * dist;
+                caches.push(new ExplorationCache(cx, cy));
+            }
         }
         
         function endGame(elapsedMs) {
@@ -1362,7 +1376,7 @@
                     rangeMult: 1.0,
                     multiShot: 1,
                     homing: 0, // 0=none, 1=weak, 2=strong
-                    shieldRegenRate: 10, // seconds per segment (1 segment every 10s)
+                    shieldRegenRate: 8, // seconds per segment
                     speedMult: 1.0,
                     // accelMult and rotMult removed
                     slowField: 0, // Radius
@@ -1378,12 +1392,12 @@
                 
                 this.invulnerable = 180;
                 this.visible = true;
-                this.maxHp = 25;  // starting health hp
+                this.maxHp = 50;  // starting health hp
                 this.hp = this.maxHp;
                 
                 this.lastAsteroidHitTime = 0;
                 this.lastArenaDamageTime = 0;
-                this.lastShieldRegenTime = 0;
+                this.lastShieldRegenTime = Date.now();
 
                 this.shieldRadius = 45; 
                 this.maxShieldSegments = 8;
@@ -1435,6 +1449,7 @@
                 this.hp = this.maxHp;
                 this.lastAsteroidHitTime = 0;
                 this.lastArenaDamageTime = 0;
+                this.lastShieldRegenTime = Date.now();
                 this.shieldSegments = new Array(this.maxShieldSegments).fill(2); 
                 this.warpCooldown = 0;
                 this.nukeCooldown = 0;
@@ -1685,7 +1700,7 @@
                     for(let i=0; i<count; i++) {
                         const a = this.turretAngle + (Math.random() - 0.5) * spread;
                         const s = 12 + (Math.random() - 0.5) * 4;
-                        const b = new Bullet(this.pos.x, this.pos.y, a, false, dmg, s, 3, '#f00', 0, 'square');
+                        const b = new Bullet(this.pos.x, this.pos.y, a, false, dmg, s, 3, '#ff0', 0, 'square');
                         b.life = (20 + (shotgunTier * 5)) * this.stats.rangeMult;
                         bullets.push(b);
                     }
@@ -2104,7 +2119,7 @@
         }
 
         class Enemy extends Entity {
-            constructor(type = 'roamer', startPos = null, assignedBase = null) {
+            constructor(type = 'roamer', startPos = null, assignedBase = null, opts = {}) {
                 super(0, 0);
                 this.type = type;
                 this.assignedBase = assignedBase;
@@ -2128,7 +2143,7 @@
                 this.thrustPower = 0.12 * speedMult; 
                 this.maxSpeed = 4.0 * speedMult; 
                 this.thrustPower = 0.18 * speedMult; 
-                this.maxSpeed = 6.0 * speedMult; 
+                this.maxSpeed = 6.8 * speedMult; 
                 this.rotationSpeed = 0.05;
                 this.friction = 0.97;
                 
@@ -2139,13 +2154,15 @@
                     this.shieldSegments = new Array(6).fill(1);
                     this.shieldRadius = 35;
                     this.radius = 25;
-                    this.maxSpeed *= 0.8; 
+                    this.maxSpeed *= 1.05; 
                 } else if (this.type === 'hunter') {
                     this.hp = 12 + (difficultyTier * 3);
                     this.radius = 22;
-                    this.maxSpeed = 5.5 + (difficultyTier * 0.2);
-                    this.thrustPower = 0.25;
-                    this.shootTimer = 45;
+                    this.maxSpeed = 6.5 + (difficultyTier * 0.25);
+                    this.thrustPower = 0.3;
+                    this.shieldSegments = new Array(4).fill(1);
+                    this.shieldRadius = 30;
+                    this.shootTimer = 40;
                 } else {
                     this.hp = 5 + (difficultyTier - 1) * 2; 
                 }
@@ -2176,15 +2193,17 @@
                 this.isGunboat = (type === 'gunboat');
                 this.gunboatLevel = 1;
                 if (this.isGunboat) {
-                    this.gunboatLevel = (difficultyTier >= 4 || (player && player.level >= 6)) ? 2 : 1;
+                    const overrideLevel = opts.gunboatLevel;
+                    this.gunboatLevel = overrideLevel ? overrideLevel : ((difficultyTier >= 4 || (player && player.level >= 6)) ? 2 : 1);
                     this.radius = 30; // match player size
                     this.hp = this.gunboatLevel === 1 ? 10 : 16;
                     this.maxSpeed = 4.0;
                     this.thrustPower = 0.22;
                     this.shootTimer = this.gunboatLevel === 1 ? 32 : 26;
-                    this.shieldSegments = new Array(10).fill(2);
-                    this.shieldRadius = 45;
-                }
+                this.shieldSegments = new Array(10).fill(2);
+                this.shieldRadius = 45;
+                this.gunboatShieldRecharge = 180; // frames between shield regen (~3s at 60fps)
+            }
             }
             
             getAimAngle() {
@@ -2202,7 +2221,8 @@
             
             kill() {
                 this.dead = true;
-                playSound('explode');
+                if (this.isGunboat) playSound('base_explode');
+                else playSound('explode');
                 spawnParticles(this.pos.x, this.pos.y, 15, '#f00');
                 
                 // DROP COINS
@@ -2260,6 +2280,14 @@
                 }
                 
                 if (this.shieldSegments.length > 0) this.shieldRotation += 0.05;
+                if (this.isGunboat && this.shieldSegments.length > 0) {
+                    this.gunboatShieldRecharge--;
+                    if (this.gunboatShieldRecharge <= 0) {
+                        const idx = this.shieldSegments.findIndex(s => s < 2);
+                        if (idx !== -1) this.shieldSegments[idx] = 2;
+                        this.gunboatShieldRecharge = 180;
+                    }
+                }
 
                 if (this.hp <= 2 && this.type !== 'roamer') {
                      if (Math.random() < 0.1) spawnSmoke(this.pos.x, this.pos.y, 1);
@@ -2272,7 +2300,7 @@
                 if (this.freezeTimer <= 0) {
 
                 const desiredVel = new Vector(0, 0);
-                if (this.isGunboat && this.aiState === 'CIRCLE') {
+                if ((this.isGunboat || this.type === 'elite_roamer' || this.type === 'hunter') && this.aiState === 'CIRCLE') {
                     if (player && !player.dead) {
                         const dx = player.pos.x - this.pos.x;
                         const dy = player.pos.y - this.pos.y;
@@ -2387,8 +2415,8 @@
                 }
                 
                 let currentMaxSpeed = this.maxSpeed;
-                if (this.isGunboat && this.aiState === 'CIRCLE') {
-                    currentMaxSpeed *= 1.1;
+                if ((this.isGunboat || this.type === 'elite_roamer' || this.type === 'hunter') && this.aiState === 'CIRCLE') {
+                    currentMaxSpeed *= 1.15;
                 } else if (this.aiState === 'FLANK') {
                     currentMaxSpeed *= 1.6; // Speed boost when flanking
                     if (Math.random() < 0.3) spawnParticles(this.pos.x, this.pos.y, 1, '#fa0'); // Engine flare
@@ -2414,10 +2442,10 @@
                         if (this.isGunboat) {
                              const bx = this.pos.x + Math.cos(angle)*28;
                              const by = this.pos.y + Math.sin(angle)*28;
-                             bullets.push(new Bullet(bx, by, angle, true, this.gunboatLevel === 1 ? 2 : 3, 14, 5, '#0ff'));
+                             bullets.push(new Bullet(bx, by, angle, true, this.gunboatLevel === 1 ? 2 : 3, 15, 4, '#0ff'));
                              if (this.gunboatLevel === 2) {
                                  const a2 = angle + 0.08;
-                                 bullets.push(new Bullet(bx, by, a2, true, 3, 14, 5, '#0ff'));
+                                 bullets.push(new Bullet(bx, by, a2, true, 3, 15, 4, '#0ff'));
                              }
                              spawnBarrelSmoke(bx, by, angle);
                              this.shootTimer = this.gunboatLevel === 1 ? 32 : 24;
@@ -2456,9 +2484,9 @@
                 if (!player || player.dead) { this.aiState = 'IDLE'; this.aiTimer = 60; return; }
                 const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
 
-                if (this.isGunboat) {
+                if (this.isGunboat || this.type === 'elite_roamer' || this.type === 'hunter') {
                     this.aiState = 'CIRCLE';
-                    this.aiTimer = 30;
+                    this.aiTimer = 45;
                 } else if (this.type === 'roamer') {
                     // Check for bunching/crowding
                     let neighbors = 0;
@@ -2482,9 +2510,8 @@
                         else { this.aiState = 'ATTACK_RUN'; this.aiTimer = 60; }
                     }
                 } else if (this.type === 'hunter') {
-                    // Aggressive
-                    if (dist > 1000) { this.aiState = 'SEEK'; this.aiTimer = 60; }
-                    else { this.aiState = 'ATTACK_RUN'; this.aiTimer = 120; }
+                    // handled above
+                    this.aiState = 'CIRCLE'; this.aiTimer = 45;
                 } else if (this.type === 'defender') {
                     if (this.assignedBase && !this.assignedBase.dead) {
                         const distBase = Math.hypot(player.pos.x - this.assignedBase.pos.x, player.pos.y - this.assignedBase.pos.y);
@@ -2496,12 +2523,8 @@
                         this.aiTimer = 60;
                     }
                 } else if (this.type === 'elite_roamer') {
-                    if (dist < 400) { this.aiState = 'EVADE'; this.aiTimer = 45; }
-                    else if (dist > 900) { this.aiState = 'SEEK'; this.aiTimer = 45; }
-                    else {
-                        this.aiState = Math.random() < 0.5 ? 'ORBIT' : 'ATTACK_RUN';
-                        this.aiTimer = 90;
-                    }
+                    // handled above
+                    this.aiState = 'CIRCLE'; this.aiTimer = 45;
                 }
             }
 
@@ -2658,7 +2681,7 @@
                 ctx.strokeStyle = '#f55';
                 
                 if (this.isGunboat) {
-                     ctx.beginPath(); ctx.rect(0, -5, 28, 10); ctx.fillStyle = this.gunboatLevel === 1 ? '#f44' : '#fa0'; ctx.fill(); ctx.stroke();
+                     ctx.beginPath(); ctx.rect(0, -5, 28, 10); ctx.fillStyle = '#0ff'; ctx.fill(); ctx.stroke();
                 } else if (this.type === 'elite_roamer' || this.type === 'hunter') {
                      ctx.beginPath(); ctx.rect(0, -4, 25, 8); ctx.fill(); ctx.stroke();
                 } else {
@@ -2927,6 +2950,27 @@
                         ctx.fillStyle = '#202'; ctx.fill(); ctx.stroke();
                     }
                     ctx.restore();
+
+                // Dreadnought turret graphic
+                if (this.variant === 'dreadnought') {
+                    ctx.save();
+                    ctx.rotate(this.turretAngle || this.angle);
+                    ctx.fillStyle = '#200';
+                    ctx.strokeStyle = '#f00';
+                    ctx.lineWidth = 3;
+                    // turret base
+                    ctx.beginPath();
+                        ctx.arc(0, 0, 25, 0, Math.PI*2);
+                        ctx.fill();
+                        ctx.stroke();
+                        // barrel
+                        ctx.beginPath();
+                        ctx.rect(0, -6, 60, 12);
+                        ctx.fillStyle = '#400';
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.restore();
+                    }
                 } 
                 else if (this.type === 'heavy') {
                     // 70s sci-fi monolith style
@@ -3094,6 +3138,58 @@
                 ctx.restore();
             }
         }
+        
+        class ExplorationCache extends Entity {
+            constructor(x, y) {
+                super(x, y);
+                this.radius = 12;
+                this.vel.x = (Math.random() - 0.5) * 0.3;
+                this.vel.y = (Math.random() - 0.5) * 0.3;
+                this.magnetized = false;
+                this.flash = 0;
+                this.value = 2 + Math.floor(Math.random() * 3); // 2-4 nuggets
+            }
+            update() {
+                if (!player || player.dead) return;
+                const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (dist < player.magnetRadius) this.magnetized = true;
+                if (this.magnetized) {
+                    const a = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+                    const speed = 8 + (800/Math.max(10, dist));
+                    this.vel.x = Math.cos(a) * speed;
+                    this.vel.y = Math.sin(a) * speed;
+                } else {
+                    this.vel.mult(0.99);
+                }
+                this.pos.add(this.vel);
+                this.flash++;
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.15;
+                ctx.scale(scale, scale);
+                ctx.rotate(this.flash * 0.05);
+                
+                const grad = ctx.createLinearGradient(-12, -12, 12, 12);
+                grad.addColorStop(0, '#ff0');
+                grad.addColorStop(0.5, '#ffa500');
+                grad.addColorStop(1, '#0ff');
+                
+                ctx.fillStyle = grad;
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(0, -12);
+                ctx.lineTo(10, 0);
+                ctx.lineTo(0, 12);
+                ctx.lineTo(-10, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
 
         class Boss extends Base {
             constructor(variant) {
@@ -3123,6 +3219,7 @@
                 this.chargeDir = 0;
                 this.chargePhase = 0;
                 this.beamSweepDir = 0;
+                this.turretAngle = 0;
             }
             
             kill() {
@@ -3159,23 +3256,41 @@
                     const dx = player.pos.x - this.pos.x;
                     const dy = player.pos.y - this.pos.y;
                     const dist = Math.hypot(dx, dy);
-                    if (dist > 300) {
-                        const angle = Math.atan2(dy, dx);
-                        this.vel.x += Math.cos(angle) * 0.03;
-                        this.vel.y += Math.sin(angle) * 0.03;
-                        const speed = this.vel.mag();
-                        if (speed > 2.0) this.vel.mult(2.0/speed);
-                    }
-                    const desiredAngle = Math.atan2(dy, dx);
+                    this.turretAngle = Math.atan2(dy, dx);
+                    // broadside orbit: always try to keep a tangent angle
+                    const angleToPlayer = Math.atan2(dy, dx);
+                    const orbitAngle = angleToPlayer + Math.PI / 2; // clockwise orbit
+                    const desiredAngle = angleToPlayer + Math.PI / 2;
                     let diff = desiredAngle - this.angle;
                     while(diff > Math.PI) diff -= Math.PI*2;
                     while(diff < -Math.PI) diff += Math.PI*2;
-                    this.angle += Math.sign(diff) * 0.005;
+                    this.angle += Math.sign(diff) * Math.min(Math.abs(diff), 0.01); // slower turn to feel heavy
+                    this.vel.x += Math.cos(orbitAngle) * 0.02;
+                    this.vel.y += Math.sin(orbitAngle) * 0.02;
+                    if (dist > 900) { this.vel.x += Math.cos(angleToPlayer) * 0.008; this.vel.y += Math.sin(angleToPlayer) * 0.008; }
+                    if (dist < 700) { this.vel.x -= Math.cos(angleToPlayer) * 0.008; this.vel.y -= Math.sin(angleToPlayer) * 0.008; }
+                    const speed = this.vel.mag();
+                    if (speed > 2.5) this.vel.mult(2.5/speed);
+                } else {
+                    this.turretAngle = this.angle;
                 }
                 
                 // Variant gimmicks with telegraph effects (before movement)
                 this.gimmickTimer--;
                 if (this.variant === 'dreadnought') {
+                    // Circle-strafe tactic similar to gunboats
+                    if (player && !player.dead) {
+                        const dx = player.pos.x - this.pos.x;
+                        const dy = player.pos.y - this.pos.y;
+                        const dist = Math.hypot(dx, dy);
+                        const angleToPlayer = Math.atan2(dy, dx);
+                        const targetAngle = angleToPlayer + Math.PI / 2; // orbit clockwise
+                        this.vel.x += Math.cos(targetAngle) * 0.02;
+                        this.vel.y += Math.sin(targetAngle) * 0.02;
+                        if (dist > 800) { this.vel.x += dx * 0.0005; this.vel.y += dy * 0.0005; }
+                        if (dist < 500) { this.vel.x -= dx * 0.0005; this.vel.y -= dy * 0.0005; }
+                        this.turretAngle = Math.atan2(dy, dx);
+                    }
                     if (this.gimmickTimer <= 0) {
                         this.chargeDir = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
                         this.chargePhase = 90; // boosted thrust duration
@@ -3213,17 +3328,18 @@
                 super.update();
 
                 if (player && !player.dead && this.shootTimer <= 0) {
-                    const aimAngle = this.angle;
+                    const aimAngle = this.turretAngle || this.angle;
                     if (this.variant === 'dreadnought') {
-                        for(let i=-1; i<=1; i+=2) {
-                             const a = aimAngle + i * 0.2;
-                             const bx = this.pos.x + Math.cos(a) * 130;
-                             const by = this.pos.y + Math.sin(a) * 130;
-                             bullets.push(new Bullet(bx, by, a, true, 5, 12, 12, '#f00'));
-                             spawnBarrelSmoke(bx, by, a);
+                        // Battleship-style turret volley toward player (3 shells)
+                        const bx = this.pos.x + Math.cos(aimAngle) * 130;
+                        const by = this.pos.y + Math.sin(aimAngle) * 130;
+                        for(let i=-1; i<=1; i++) {
+                            const a = aimAngle + i * 0.05;
+                            bullets.push(new Bullet(bx, by, a, true, 5, 13, 0.5, '#f00'));
                         }
+                        spawnBarrelSmoke(bx, by, aimAngle);
                         playSound('heavy_shoot');
-                        this.shootTimer = 40;
+                        this.shootTimer = 32;
                     } else if (this.variant === 'swarm') {
                         for(let i=0; i<3; i++) {
                              const a = aimAngle + (Math.random()-0.5);
@@ -3234,12 +3350,12 @@
                         this.shootTimer = 180; 
                     } else {
                         for(let i=0; i<16; i++) {
-                             const a = this.shieldRotation + (i * Math.PI*2/16);
-                             const bx = this.pos.x + Math.cos(a) * 120;
-                             const by = this.pos.y + Math.sin(a) * 120;
-                             bullets.push(new Bullet(bx, by, a, true, 2, 8, 5, '#f0f'));
-                        }
-                        playSound('rapid_shoot');
+                    const a = this.shieldRotation + (i * Math.PI*2/16);
+                    const bx = this.pos.x + Math.cos(a) * 120;
+                    const by = this.pos.y + Math.sin(a) * 120;
+                    bullets.push(new Bullet(bx, by, a, true, 2, 8, 5, '#0ff'));
+                }
+                playSound('rapid_shoot');
                         this.shootTimer = 30;
                     }
                 }
@@ -3253,13 +3369,17 @@
                 const dist = 6000; // Spawn far away from player
                 super(player.pos.x + Math.cos(angle) * dist, player.pos.y + Math.sin(angle) * dist);
                 
-                this.radius = 520; // Larger collision radius
+                const names = ["OMEGA", "NOVA", "TITAN", "ORION", "PHOENIX", "AURORA", "ASTRA", "ZEUS", "HELIOS", "HYPERION"];
+                const suffix = Math.floor(Math.random() * 999);
+                this.displayName = names[Math.floor(Math.random() * names.length)] + "-" + suffix;
+                
+                this.radius = Math.floor(520 * 0.65); // reduce size ~35%
                 this.hp = 180;
                 this.maxHp = 180;
                 
                 // Two layers of shields
-                this.shieldRadius = 570;
-                this.innerShieldRadius = 520;
+                this.shieldRadius = Math.floor(570 * 0.65);
+                this.innerShieldRadius = Math.floor(520 * 0.65);
                 
                 // High segment count for "boss" feel
                 this.shieldSegments = new Array(72).fill(5);
@@ -3486,6 +3606,17 @@
                 drawShieldRing(this.shieldSegments, this.shieldRadius, this.shieldRotation, '#0ff');
                 drawShieldRing(this.innerShieldSegments, this.innerShieldRadius, this.innerShieldRotation, '#f0f');
 
+                // Nameplate
+                if (this.displayName) {
+                    ctx.fillStyle = '#0ff';
+                    ctx.font = 'bold 18px Courier New';
+                    ctx.textAlign = 'center';
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = '#000';
+                    ctx.fillText(this.displayName, 0, -this.radius - 20);
+                    ctx.shadowBlur = 0;
+                }
+
                 ctx.restore();
             }
         }
@@ -3501,6 +3632,8 @@
         let spaceNuggets = 0;
         let powerups = [];
         let shootingStars = [];
+        let drones = [];
+        let caches = [];
         let nextShootingStarTime = 0;
         let nextIntensityBreakAt = 0;
         let intensityBreakActive = false;
@@ -3525,6 +3658,8 @@
         let pendingTransitionClear = false;
         let gunboatRespawnAt = null;
         let gunboatLevel2Unlocked = false;
+        let initialSpawnDelayAt = null;
+        let initialSpawnDone = false;
         
         // Dreadnought spawn manager
         let dreadManager = {
@@ -3532,8 +3667,8 @@
             firstSpawnDone: false,
             timerActive: false,
             timerAt: null,
-            minDelayMs: 90000, // 90s
-            maxDelayMs: 240000 // 240s
+            minDelayMs: 120000, // 120s
+            maxDelayMs: 210000 // 210s
         };
 
         // Game timer
@@ -3569,6 +3704,71 @@
             }
         }
         
+        // Companion Drones
+        class Drone extends Entity {
+            constructor(type) {
+                super(0, 0);
+                this.type = type; // 'heal' | 'shield' | 'shooter'
+                this.orbitAngle = Math.random() * Math.PI * 2;
+                this.orbitRadius = 80 + Math.random() * 20;
+                this.dead = false;
+                this.timer = 0;
+            }
+            update() {
+                if (!player || player.dead) return;
+                this.orbitAngle += 0.02;
+                const baseX = player.pos.x + Math.cos(this.orbitAngle) * this.orbitRadius;
+                const baseY = player.pos.y + Math.sin(this.orbitAngle) * this.orbitRadius;
+                this.pos.x = baseX;
+                this.pos.y = baseY;
+                this.timer++;
+                
+                if (this.type === 'heal' && this.timer % 480 === 0) {
+                    player.hp = Math.min(player.maxHp, player.hp + 3);
+                    updateHealthUI();
+                    spawnParticles(this.pos.x, this.pos.y, 8, '#0f0');
+                } else if (this.type === 'shield' && this.timer % 300 === 0) {
+                    const idx = player.shieldSegments.findIndex(s => s < 2);
+                    if (idx !== -1) player.shieldSegments[idx] = 2;
+                    spawnParticles(this.pos.x, this.pos.y, 6, '#0ff');
+                } else if (this.type === 'shooter' && this.timer % 50 === 0) {
+                    const target = enemies.find(e => !e.dead);
+                    if (target) {
+                        const a = Math.atan2(target.pos.y - this.pos.y, target.pos.x - this.pos.x);
+                        bullets.push(new Bullet(this.pos.x, this.pos.y, a, false, 1.5, 14, 4, '#ff0'));
+                        spawnBarrelSmoke(this.pos.x, this.pos.y, a);
+                    }
+                }
+            }
+            draw(ctx) {
+                if (!player || player.dead) return;
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                ctx.rotate(this.orbitAngle);
+                ctx.lineWidth = 2;
+                if (this.type === 'heal') {
+                    ctx.fillStyle = '#0f0'; ctx.strokeStyle = '#0b0';
+                } else if (this.type === 'shield') {
+                    ctx.fillStyle = '#0ff'; ctx.strokeStyle = '#08f';
+                } else {
+                    ctx.fillStyle = '#ff0'; ctx.strokeStyle = '#aa0';
+                }
+                ctx.beginPath();
+                ctx.moveTo(8, 0);
+                ctx.lineTo(-6, 6);
+                ctx.lineTo(-4, 0);
+                ctx.lineTo(-6, -6);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+        
+        function spawnDrone(type) {
+            drones.push(new Drone(type));
+        }
+        
         function scheduleNextShootingStar() {
             if (sectorIndex >= 2) {
                 nextShootingStarTime = Date.now() + 60000; // every ~1 minute
@@ -3578,10 +3778,10 @@
             }
         }
 
-        function findSpawnPointRelative(random = false) {
+        function findSpawnPointRelative(random = false, min = 1500, max = 2500) {
              if (!player) return {x:0, y:0};
              const angle = Math.random() * Math.PI * 2;
-             const dist = 1500 + Math.random() * 1000;
+             const dist = min + Math.random() * (max - min);
              const x = player.pos.x + Math.cos(angle) * dist;
              const y = player.pos.y + Math.sin(angle) * dist;
              return {x, y};
@@ -3632,6 +3832,7 @@
             
             // Collision & Damage
             const damageable = [player, ...enemies, ...bases];
+            if (boss && bossActive && !boss.dead) damageable.push(boss);
             for (let entity of damageable) {
                 if (entity.dead) continue;
                 const nearbyAsteroids = asteroidGrid.query(entity.pos.x, entity.pos.y);
@@ -3647,7 +3848,7 @@
                         const overlap = minDist - dist;
                         const nx = dx / dist;
                         const ny = dy / dist;
-                        if (entity instanceof Base || (entity instanceof Enemy && entity.isGunboat)) {
+                        if (entity instanceof Base || (entity instanceof Enemy && entity.isGunboat) || (entity instanceof Boss)) {
                             ast.break();
                             spawnParticles(ast.pos.x, ast.pos.y, 10, '#aa8');
                             continue;
@@ -3768,6 +3969,18 @@
                         updateHealthUI();
                         showOverlayMessage("HEALTH RESTORED", '#0f0', 1000);
                         p.dead = true;
+                    }
+                }
+                
+                for (let c of caches) {
+                    if (c.dead) continue;
+                    const dist = Math.hypot(player.pos.x - c.pos.x, player.pos.y - c.pos.y);
+                    if (dist < player.radius + c.radius) {
+                        playSound('coin');
+                        spaceNuggets += c.value;
+                        updateNuggetUI();
+                        showOverlayMessage(`CACHE +${c.value} NUGS`, '#ff0', 800);
+                        c.dead = true;
                     }
                 }
             }
@@ -3916,6 +4129,8 @@
             spaceNuggets = 0;
             powerups = [];
             shootingStars = [];
+            drones = [];
+            caches = [];
             scheduleNextShootingStar();
             nextIntensityBreakAt = Date.now() + 120000; // first break at 2 minutes
             intensityBreakActive = false;
@@ -3934,12 +4149,12 @@
             sectorTransitionActive = false;
             warpCountdownAt = null;
             nextSpaceStationTime = Date.now() + 180000; // first station after 3 minutes
+            gunboatRespawnAt = null;
             gunboatLevel2Unlocked = false;
+            initialSpawnDone = false;
+            initialSpawnDelayAt = Date.now() + 5000;
             
-            maxRoamers = 5; 
-            for(let i=0; i<5; i++) enemies.push(new Enemy('roamer'));
-            for(let i=0; i<3; i++) spawnNewBaseRelative(true);
-            
+            maxRoamers = 3; 
             document.getElementById('bases-display').innerText = `0`;
             shakeMagnitude = 0;
             updateWarpUI();
@@ -3975,12 +4190,11 @@
             
             const b = new Base(bx, by, type);
             bases.push(b);
-            for(let i=0; i<2; i++) {
-                const da = Math.random() * Math.PI * 2;
-                const defX = b.pos.x + Math.cos(da) * 150;
-                const defY = b.pos.y + Math.sin(da) * 150;
-                enemies.push(new Enemy('defender', {x: defX, y: defY}, b));
-            }
+            // One guard per base
+            const da = Math.random() * Math.PI * 2;
+            const defX = b.pos.x + Math.cos(da) * 150;
+            const defY = b.pos.y + Math.sin(da) * 150;
+            enemies.push(new Enemy('defender', {x: defX, y: defY}, b));
         }
         
         // --- Upgrade Logic ---
@@ -4071,9 +4285,9 @@
             // Logic Map
             switch(id) {
                 case 'turret_damage':
-                    if (tier === 1) player.stats.damageMult += 0.2;
-                    if (tier === 2) player.stats.damageMult = 1.4; // +40% total
-                    if (tier === 3) player.stats.damageMult = 1.7; // +70% total
+                    if (tier === 1) player.stats.damageMult = 1.5; // +50%
+                    if (tier === 2) player.stats.damageMult = 2.0; // +100%
+                    if (tier === 3) player.stats.damageMult = 3.0; // +200%
                     break;
                 case 'turret_fire_rate':
                     if (tier === 1) player.stats.fireRateMult = 1.15;
@@ -4115,7 +4329,7 @@
                     break;
                 case 'hull_strength':
                     player.maxHp += 25;
-                    player.hp = Math.min(player.maxHp, player.hp + 25);
+                    player.hp = player.maxHp; // full heal on upgrade
                     updateHealthUI();
                     break;
                 case 'speed':
@@ -4148,6 +4362,15 @@
                     if (tier === 2) { player.stats.slowField = 312; player.stats.slowFieldDuration = 300; }
                     if (tier === 3) { player.stats.slowField = 390; player.stats.slowFieldDuration = 480; }
                     break;
+                case 'companion_drones': {
+                    const ensureDrone = (t) => {
+                        if (!drones.find(d => d.type === t)) spawnDrone(t);
+                    };
+                    if (tier >= 1) ensureDrone('shield');
+                    if (tier >= 2) ensureDrone('heal');
+                    if (tier >= 3) ensureDrone('shooter');
+                    break;
+                }
             }
             
             showOverlayMessage(`${id.replace('_', ' ').toUpperCase()} UPGRADED!`, '#ff0', 1500);
@@ -4292,6 +4515,18 @@
             pendingTransitionClear = false;
             gunboatRespawnAt = null;
         }
+            // Delay the first wave to give the player breathing room
+            if (!initialSpawnDone && initialSpawnDelayAt && now >= initialSpawnDelayAt) {
+                initialSpawnDone = true;
+                initialSpawnDelayAt = null;
+                showOverlayMessage("ENEMIES DETECTED", '#f00', 2000);
+                maxRoamers = 3;
+                for (let i = 0; i < 3; i++) {
+                    const start = findSpawnPointRelative(true, 1200);
+                    enemies.push(new Enemy('roamer', start));
+                }
+                for (let i = 0; i < 3; i++) spawnNewBaseRelative(true);
+            }
             // Update HUD timer (exclude paused time)
             try {
                 const tEl = document.getElementById('game-timer');
@@ -4344,20 +4579,20 @@
             }
             
             // Gunboat respawn (one at a time)
-            if (!sectorTransitionActive && gameActive && !gamePaused) {
+            if (!sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
                 const gunboatAlive = enemies.some(e => e.isGunboat);
                 const level2Alive = enemies.some(e => e.isGunboat && e.gunboatLevel === 2);
                 const level1Alive = enemies.some(e => e.isGunboat && e.gunboatLevel === 1);
                 if (gunboatRespawnAt && now >= gunboatRespawnAt) {
                     // Spawn rules: before warp, only level 1, one at a time. After warp, allow one level 1 and one level 2 simultaneously.
                     if (!gunboatLevel2Unlocked) {
-                        if (!level1Alive) enemies.push(new Enemy('gunboat'));
+                        if (!level1Alive) enemies.push(new Enemy('gunboat', null, null, { gunboatLevel: 1 }));
                         gunboatRespawnAt = null;
                     } else {
                         if (!level1Alive) {
-                            enemies.push(new Enemy('gunboat')); // level decided in constructor
+                            enemies.push(new Enemy('gunboat', null, null, { gunboatLevel: 1 })); // level decided in constructor
                         } else if (!level2Alive) {
-                            enemies.push(new Enemy('gunboat'));
+                            enemies.push(new Enemy('gunboat', null, null, { gunboatLevel: 2 }));
                         }
                         gunboatRespawnAt = null;
                     }
@@ -4373,7 +4608,13 @@
             }
             
             if (Date.now() > nextShootingStarTime) {
-                shootingStars.push(new ShootingStar());
+                // Fire a volley of 3 comets from different directions, 1s apart
+                for (let i = 0; i < 3; i++) {
+                    const delay = i * 1000;
+                    setTimeout(() => {
+                        shootingStars.push(new ShootingStar());
+                    }, delay);
+                }
                 scheduleNextShootingStar();
                 showOverlayMessage("WARNING: COSMIC EVENT DETECTED", '#fa0', 3000);
             }
@@ -4393,16 +4634,16 @@
                 }
             }
 
-            if (!sectorTransitionActive) {
+            if (!sectorTransitionActive && initialSpawnDone) {
                 // Time-based pacing for roamer count and strength
                 let elapsed = now - gameStartTime - pausedAccumMs;
                 if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
                 if (elapsed < 0) elapsed = 0;
                 const elapsedMinutes = elapsed / 60000;
 
-                const baseRoamers = 4;
+                const baseRoamers = 6;
                 const maxRoamers = 15;
-                const rampMinutes = 25; // slower ramp
+                const rampMinutes = 28; // slower ramp
                 const rampT = Math.min(1, elapsedMinutes / rampMinutes);
                 const difficultyBonus = Math.max(0, (difficultyTier + player.level * 0.1) - 1) * 0.3;
                 const targetRoamers = Math.floor(baseRoamers + (maxRoamers - baseRoamers) * rampT + difficultyBonus);
@@ -4414,10 +4655,11 @@
 
                 const eliteUnlocked = elapsedMinutes >= 5 || difficultyTier >= 3 || player.level >= 4;
                 const hunterUnlocked = elapsedMinutes >= 11 || difficultyTier >= 5 || player.level >= 7;
-                const eliteChance = eliteUnlocked ? Math.min(0.3, 0.05 + (elapsedMinutes / 25) * 0.25) : 0;
-                const hunterChance = hunterUnlocked ? Math.min(0.2, 0.05 + (elapsedMinutes / 35) * 0.2) : 0;
-                const eliteSoftCap = 6;
-                const hunterSoftCap = 4;
+                // Keep elites/hunters rare and capped
+                const eliteChance = eliteUnlocked ? Math.min(0.25, 0.08 + (elapsedMinutes / 25) * 0.2) : 0;
+                const hunterChance = hunterUnlocked ? Math.min(0.15, 0.05 + (elapsedMinutes / 35) * 0.12) : 0;
+                const eliteSoftCap = 3;
+                const hunterSoftCap = 3;
 
                 for(let i = roamerRespawnQueue.length - 1; i >= 0; i--) {
                     roamerRespawnQueue[i]--;
@@ -4445,7 +4687,7 @@
             asteroidGrid.clear();
             for (let i = 0; i < environmentAsteroids.length; i++) asteroidGrid.insert(environmentAsteroids[i]);
 
-            if (!sectorTransitionActive) {
+            if (!sectorTransitionActive && initialSpawnDone) {
                 if (bases.length < 3) {
                     if (baseRespawnTimers.length === 0) spawnNewBaseRelative();
                 }
@@ -4458,27 +4700,7 @@
                 }
             }
             
-            if (bossArena.active) {
-                const shrinkSpeed = 0.25; 
-                const minRadius = 250;
-                const maxRadius = 2500;
-
-                if (bossArena.growing) {
-                    bossArena.radius += shrinkSpeed;
-                    if (bossArena.radius >= maxRadius) {
-                        bossArena.radius = maxRadius;
-                        bossArena.growing = false; 
-                        showOverlayMessage("WARNING: ARENA STABILIZED - RE-ENGAGING COMPRESSION", '#f00', 3000);
-                    }
-                } else {
-                    bossArena.radius -= shrinkSpeed;
-                    if (bossArena.radius <= minRadius) {
-                        bossArena.radius = minRadius;
-                        bossArena.growing = true; 
-                        showOverlayMessage("FIELD INSTABILITY DETECTED - ARENA EXPANDING", '#0f0', 3000);
-                    }
-                }
-            }
+            // Arena ring is now static; no shrinking/growing
 
             let camX = player.pos.x - width / (2 * ZOOM_LEVEL);
             let camY = player.pos.y - height / (2 * ZOOM_LEVEL);
@@ -4546,6 +4768,7 @@
             nuggets.forEach(n => { n.update(); n.draw(ctx); });
             powerups.forEach(p => { p.update(); p.draw(ctx); });
             shootingStars.forEach(s => { s.update(); s.draw(ctx); });
+            caches.forEach(c => { c.update(); c.draw(ctx); });
             environmentAsteroids.forEach(a => { a.update(); a.draw(ctx); });
             
             if (bossArena.active) {
@@ -4570,6 +4793,7 @@
             player.update();
             player.drawLaser(ctx);
             player.draw(ctx);
+            drones.forEach(d => { d.update(); d.draw(ctx); });
 
             bases.forEach(b => { b.update(); b.draw(ctx); });
             enemies.forEach(e => { e.update(); e.draw(ctx); });
@@ -4598,6 +4822,7 @@
 
             bullets.forEach(b => { b.update(); b.draw(ctx); });
             particles.forEach(p => { p.update(); p.draw(ctx); });
+            drones.forEach(d => { d.update(); d.draw(ctx); });
 
             warpParticles.forEach(p => { p.update(); p.draw(ctx); });
             warpParticles = warpParticles.filter(p => !p.dead);
@@ -4614,6 +4839,8 @@
             compactArray(nuggets);
             compactArray(powerups);
             compactArray(shootingStars);
+            compactArray(drones);
+            compactArray(caches);
 
             resolveEntityCollision();
             
@@ -5060,7 +5287,7 @@
                 rangeMult: 1.0,
                 multiShot: 1,
                 homing: 0, 
-                shieldRegenRate: 0,
+                shieldRegenRate: 8, // seconds per segment baseline
                 speedMult: 1.0,
                 slowField: 0,
                 slowFieldDuration: 0
