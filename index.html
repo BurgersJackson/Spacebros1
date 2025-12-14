@@ -410,6 +410,7 @@
         <h1>NEON SPACE</h1>
         <p>MOUSE: Aim • WASD/L-STICK: Thrust<br>E / BUTTON 2: Nuke<br>Collect Coins to Upgrade Ship!</p>
         <button id="start-btn">INITIATE LAUNCH</button>
+        <button id="load-btn">LOAD SAVE</button>
     </div>
 
     <div id="end-screen" class="menu-screen">
@@ -421,6 +422,9 @@
     <div id="pause-menu" class="menu-screen">
         <h1>PAUSED</h1>
         <button id="resume-btn">RESUME</button>
+        <button id="save-btn">SAVE GAME</button>
+        <button id="pause-load-btn">LOAD GAME</button>
+        <button id="restart-btn-pause">RESTART</button>
         <button id="music-btn">MUSIC: ON</button>
         <button id="quit-btn">ABORT</button>
     </div>
@@ -2321,8 +2325,15 @@
                     }
                 } else if (this.aiState === 'SEEK') {
                     if (player && !player.dead) {
-                        desiredVel.x = player.pos.x - this.pos.x;
-                        desiredVel.y = player.pos.y - this.pos.y;
+                        const dx = player.pos.x - this.pos.x;
+                        const dy = player.pos.y - this.pos.y;
+                        const dist = Math.hypot(dx, dy);
+                        desiredVel.x = dx;
+                        desiredVel.y = dy;
+                        if ((this.type === 'elite_roamer' || this.type === 'hunter') && dist < 150) {
+                            desiredVel.x = 0;
+                            desiredVel.y = 0;
+                        }
                     }
                 } else if (this.aiState === 'ORBIT') {
                     if (player && !player.dead) {
@@ -2456,10 +2467,10 @@
                         } else if (this.type === 'elite_roamer' || this.type === 'hunter') {
                              const bx = this.pos.x + Math.cos(angle)*25;
                              const by = this.pos.y + Math.sin(angle)*25;
-                             bullets.push(new Bullet(bx, by, angle, true, 2, 11, 5, '#f0f'));
+                             bullets.push(new Bullet(bx, by, angle, true, 1, 11, 5, '#f0f'));
                              if (this.modifier === 'split') {
                                  const a2 = angle + (Math.random() - 0.5) * 0.2;
-                                 bullets.push(new Bullet(bx, by, a2, true, 2, 11, 5, '#f0f'));
+                                 bullets.push(new Bullet(bx, by, a2, true, 1, 11, 5, '#f0f'));
                              }
                              spawnBarrelSmoke(bx, by, angle);
                              this.shootTimer = this.type === 'hunter' ? 45 : 90;
@@ -4134,6 +4145,252 @@
             const el = document.getElementById('nugget-count');
             if (el) el.innerText = spaceNuggets;
         }
+
+        // --- Save / Load ---
+        const SAVE_PREFIX = 'neon_space_save_v1_';
+        const SAVE_LAST_KEY = 'neon_space_save_last';
+
+        function buildSaveData() {
+            const now = Date.now();
+            const elapsed = gameStartTime ? (now - gameStartTime - (pausedAccumMs || 0)) : 0;
+            const baseIndexMap = new Map();
+            bases.forEach((b, i) => { baseIndexMap.set(b, i); });
+            const baseData = bases.filter(b => !b.dead).map(b => ({
+                type: b.type,
+                pos: { x: b.pos.x, y: b.pos.y },
+                hp: b.hp,
+                shieldSegments: b.shieldSegments ? [...b.shieldSegments] : [],
+                innerShieldSegments: b.innerShieldSegments ? [...b.innerShieldSegments] : [],
+                aggro: b.aggro,
+                shootTimer: b.shootTimer
+            }));
+            const enemyData = enemies.filter(e => !e.dead).map(e => ({
+                type: e.type,
+                pos: { x: e.pos.x, y: e.pos.y },
+                hp: e.hp,
+                shieldSegments: e.shieldSegments ? [...e.shieldSegments] : [],
+                shieldRadius: e.shieldRadius,
+                gunboatLevel: e.gunboatLevel,
+                aiState: e.aiState,
+                aiTimer: e.aiTimer,
+                circleStrafePreferred: !!e.circleStrafePreferred,
+                assignedBaseIndex: e.assignedBase ? baseIndexMap.get(e.assignedBase) : null
+            }));
+            return {
+                version: 1,
+                timestamp: now,
+                elapsedMs: elapsed,
+                score,
+                difficultyTier,
+                basesDestroyed,
+                basesDestroyedTotal,
+                spaceNuggets,
+                sectorIndex,
+                pendingStations,
+                nextSpaceStationRemaining: nextSpaceStationTime ? Math.max(0, nextSpaceStationTime - now) : null,
+                gunboatLevel2Unlocked,
+                dreadTimer: dreadManager.timerActive && dreadManager.timerAt ? Math.max(0, dreadManager.timerAt - now) : null,
+                dreadFirstDone: dreadManager.firstSpawnDone,
+                player: player ? {
+                    pos: { x: player.pos.x, y: player.pos.y },
+                    vel: { x: player.vel.x, y: player.vel.y },
+                    angle: player.angle,
+                    turretAngle: player.turretAngle,
+                    hp: player.hp,
+                    maxHp: player.maxHp,
+                    shieldSegments: [...player.shieldSegments],
+                    maxShieldSegments: player.maxShieldSegments,
+                    stats: { ...player.stats },
+                    inventory: { ...player.inventory },
+                    level: player.level,
+                    xp: player.xp,
+                    nextLevelXp: player.nextLevelXp,
+                    magnetRadius: player.magnetRadius,
+                    nukeUnlocked: player.nukeUnlocked,
+                    nukeCooldown: player.nukeCooldown,
+                    nukeMaxCooldown: player.nukeMaxCooldown,
+                    staticWeapons: [...player.staticWeapons],
+                    shieldRotation: player.shieldRotation,
+                    invincibilityCycle: { ...player.invincibilityCycle }
+                } : null,
+                bases: baseData,
+                enemies: enemyData
+            };
+        }
+
+        function listSaveSlots() {
+            const slots = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && k.startsWith(SAVE_PREFIX)) {
+                    slots.push(k.replace(SAVE_PREFIX, ''));
+                }
+            }
+            return slots;
+        }
+
+        function promptForSlot(existingOnly = false) {
+            const slots = listSaveSlots();
+            const defaultSlot = localStorage.getItem(SAVE_LAST_KEY) || (slots[0] || 'slot1');
+            let msg = existingOnly ? `Load slot name (${slots.join(', ') || 'none'}):` : `Save slot name (existing: ${slots.join(', ') || 'none'}):`;
+            const name = prompt(msg, defaultSlot);
+            if (!name) return null;
+            localStorage.setItem(SAVE_LAST_KEY, name);
+            return name;
+        }
+
+        function saveGame() {
+            if (!player || !gameActive) {
+                showOverlayMessage("NO ACTIVE GAME TO SAVE", '#f00', 1500);
+                return;
+            }
+            const slot = promptForSlot(false);
+            if (!slot) return;
+            try {
+                const data = buildSaveData();
+                localStorage.setItem(SAVE_PREFIX + slot, JSON.stringify(data));
+                localStorage.setItem(SAVE_LAST_KEY, slot);
+                showOverlayMessage(`GAME SAVED (${slot})`, '#0f0', 1500);
+            } catch (e) {
+                console.warn('save failed', e);
+                showOverlayMessage("SAVE FAILED", '#f00', 1500);
+            }
+        }
+
+        function restoreGameState(state) {
+            if (!state || !state.player) {
+                showOverlayMessage("INVALID SAVE DATA", '#f00', 1500);
+                return;
+            }
+            setupGameWorld();
+            initialSpawnDone = true;
+            initialSpawnDelayAt = null;
+            roamerRespawnQueue = [];
+            baseRespawnTimers = [];
+            enemies = [];
+            bases = [];
+            bullets = [];
+            powerups = [];
+            coins = [];
+            nuggets = [];
+            bossActive = false;
+            boss = null;
+            spaceStation = null;
+            pendingTransitionClear = false;
+            sectorTransitionActive = false;
+            warpCountdownAt = null;
+            intensityBreakActive = false;
+
+            const now = Date.now();
+            gameStartTime = now - (state.elapsedMs || 0);
+            pausedAccumMs = 0;
+            pauseStartTime = null;
+
+            score = state.score || 0;
+            difficultyTier = state.difficultyTier || 1;
+            basesDestroyed = state.basesDestroyed || 0;
+            basesDestroyedTotal = state.basesDestroyedTotal || 0;
+            spaceNuggets = state.spaceNuggets || 0;
+            sectorIndex = state.sectorIndex || sectorIndex;
+            pendingStations = state.pendingStations != null ? state.pendingStations : pendingStations;
+            nextSpaceStationTime = state.nextSpaceStationRemaining ? now + state.nextSpaceStationRemaining : null;
+            gunboatLevel2Unlocked = !!state.gunboatLevel2Unlocked;
+            dreadManager.firstSpawnDone = !!state.dreadFirstDone;
+            if (state.dreadTimer) {
+                dreadManager.timerActive = true;
+                dreadManager.timerAt = now + state.dreadTimer;
+            } else {
+                dreadManager.timerActive = false;
+                dreadManager.timerAt = null;
+            }
+
+            if (state.player) {
+                player.pos.x = state.player.pos.x; player.pos.y = state.player.pos.y;
+                player.vel.x = state.player.vel.x; player.vel.y = state.player.vel.y;
+                player.angle = state.player.angle;
+                player.turretAngle = state.player.turretAngle;
+                player.hp = state.player.hp;
+                player.maxHp = state.player.maxHp;
+                player.shieldSegments = [...state.player.shieldSegments];
+                player.maxShieldSegments = state.player.maxShieldSegments || player.shieldSegments.length;
+                player.stats = { ...player.stats, ...state.player.stats };
+                player.inventory = { ...state.player.inventory };
+                player.level = state.player.level;
+                player.xp = state.player.xp;
+                player.nextLevelXp = state.player.nextLevelXp;
+                player.magnetRadius = state.player.magnetRadius;
+                player.nukeUnlocked = state.player.nukeUnlocked;
+                player.nukeCooldown = state.player.nukeCooldown;
+                player.nukeMaxCooldown = state.player.nukeMaxCooldown;
+                player.staticWeapons = state.player.staticWeapons || [];
+                player.shieldRotation = state.player.shieldRotation || 0;
+                player.invincibilityCycle = { ...player.invincibilityCycle, ...state.player.invincibilityCycle };
+                player.lastShieldRegenTime = now;
+                updateHealthUI();
+                updateWarpUI();
+                updateXpUI();
+            }
+
+            // Restore bases
+            if (state.bases && Array.isArray(state.bases)) {
+                state.bases.forEach(b => {
+                    const base = new Base(b.pos.x, b.pos.y, b.type || 'standard');
+                    base.hp = b.hp;
+                    if (b.shieldSegments) base.shieldSegments = [...b.shieldSegments];
+                    if (b.innerShieldSegments) base.innerShieldSegments = [...b.innerShieldSegments];
+                    base.aggro = b.aggro;
+                    base.shootTimer = b.shootTimer;
+                    bases.push(base);
+                });
+            }
+
+            // Restore enemies
+            if (state.enemies && Array.isArray(state.enemies)) {
+                state.enemies.forEach(e => {
+                    const assigned = (typeof e.assignedBaseIndex === 'number') ? bases[e.assignedBaseIndex] : null;
+                    const enemy = new Enemy(e.type, e.pos, assigned, { gunboatLevel: e.gunboatLevel });
+                    enemy.hp = e.hp;
+                    if (e.shieldSegments) enemy.shieldSegments = [...e.shieldSegments];
+                    if (e.shieldRadius) enemy.shieldRadius = e.shieldRadius;
+                    enemy.aiState = e.aiState || enemy.aiState;
+                    enemy.aiTimer = e.aiTimer || enemy.aiTimer;
+                    enemy.circleStrafePreferred = !!e.circleStrafePreferred;
+                    enemies.push(enemy);
+                });
+            }
+
+            document.getElementById('score').innerText = score;
+            document.getElementById('bases-display').innerText = `${basesDestroyedTotal}`;
+            updateNuggetUI();
+
+            gameActive = true;
+            gamePaused = false;
+            gameEnded = false;
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('pause-menu').style.display = 'none';
+            const endScreen = document.getElementById('end-screen');
+            if (endScreen) endScreen.style.display = 'none';
+            if (musicEnabled) startMusic();
+        }
+
+        function loadGameFromStorage() {
+            const slot = promptForSlot(true);
+            if (!slot) return;
+            try {
+                const raw = localStorage.getItem(SAVE_PREFIX + slot);
+                if (!raw) {
+                    showOverlayMessage("NO SAVE FOUND FOR SLOT", '#f00', 1500);
+                    return;
+                }
+                const data = JSON.parse(raw);
+                restoreGameState(data);
+                localStorage.setItem(SAVE_LAST_KEY, slot);
+                showOverlayMessage(`SAVE LOADED (${slot})`, '#0f0', 1500);
+            } catch (e) {
+                console.warn('load failed', e);
+                showOverlayMessage("LOAD FAILED", '#f00', 1500);
+            }
+        }
         
         function formatTime(ms) {
             const totalSec = Math.floor(ms / 1000);
@@ -5447,11 +5704,28 @@
             initAudio();
             startGame();
         });
+        const loadBtn = document.getElementById('load-btn');
+        if (loadBtn) loadBtn.addEventListener('click', () => {
+            initAudio();
+            loadGameFromStorage();
+        });
         document.getElementById('restart-btn').addEventListener('click', () => {
             initAudio();
             startGame();
         });
         document.getElementById('resume-btn').addEventListener('click', togglePause);
+        const saveBtn = document.getElementById('save-btn');
+        if (saveBtn) saveBtn.addEventListener('click', () => {
+            saveGame();
+        });
+        const pauseLoadBtn = document.getElementById('pause-load-btn');
+        if (pauseLoadBtn) pauseLoadBtn.addEventListener('click', () => {
+            loadGameFromStorage();
+        });
+        const pauseRestartBtn = document.getElementById('restart-btn-pause');
+        if (pauseRestartBtn) pauseRestartBtn.addEventListener('click', () => {
+            startGame();
+        });
         document.getElementById('quit-btn').addEventListener('click', quitGame);
         document.getElementById('music-btn').addEventListener('click', toggleMusic);
 
