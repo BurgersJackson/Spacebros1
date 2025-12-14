@@ -476,7 +476,7 @@
             {
               "name": "Drones",
               "upgrades": [
-                { "id": "companion_drones", "name": "Companion Drones", "tier1": "Unlock Shield Drone", "tier2": "Add Heal Drone", "tier3": "Add Combat Drone", "notes": "Orbiting support bots." }
+                { "id": "companion_drones", "name": "Companion Drones", "tier1": "Unlock Shooter Drone", "tier2": "Add Shield Drone", "tier3": "Add Heal Drone", "notes": "Orbiting support bots." }
               ]
             }
           ]
@@ -1392,7 +1392,7 @@
                 
                 this.invulnerable = 180;
                 this.visible = true;
-                this.maxHp = 50;  // starting health hp
+                this.maxHp = 25;  // starting health hp
                 this.hp = this.maxHp;
                 
                 this.lastAsteroidHitTime = 0;
@@ -1704,7 +1704,7 @@
                         b.life = (20 + (shotgunTier * 5)) * this.stats.rangeMult;
                         bullets.push(b);
                     }
-                    playSound('shotgun');
+                    // Shotgun uses a soft visual only (no sound)
                     spawnBarrelSmoke(this.pos.x, this.pos.y, this.turretAngle);
                     this.shotgunTimer = Math.max(4, this.shotgunDelay);
                 }
@@ -2169,7 +2169,6 @@
                 
                 this.shootTimer = 120;
                 if (this.type === 'elite_roamer' || this.type === 'hunter') this.shootTimer = 90;
-                if (this.isGunboat) this.shootTimer = 40;
 
                 // Named elite modifiers
                 if (this.type === 'elite_roamer' || this.type === 'hunter') {
@@ -2204,6 +2203,11 @@
                 this.shieldRadius = 45;
                 this.gunboatShieldRecharge = 180; // frames between shield regen (~3s at 60fps)
             }
+                // Circle-strafe preference flags (set after gunboat init so all gunboats orbit)
+                this.circleStrafePreferred = false;
+                if (this.isGunboat) this.circleStrafePreferred = true;
+                else if (this.type === 'roamer') this.circleStrafePreferred = Math.random() < 0.3;
+                else if (this.type === 'elite_roamer' || this.type === 'hunter') this.circleStrafePreferred = Math.random() < 0.5;
             }
             
             getAimAngle() {
@@ -2300,7 +2304,7 @@
                 if (this.freezeTimer <= 0) {
 
                 const desiredVel = new Vector(0, 0);
-                if ((this.isGunboat || this.type === 'elite_roamer' || this.type === 'hunter') && this.aiState === 'CIRCLE') {
+                if (this.circleStrafePreferred && this.aiState === 'CIRCLE') {
                     if (player && !player.dead) {
                         const dx = player.pos.x - this.pos.x;
                         const dy = player.pos.y - this.pos.y;
@@ -2415,7 +2419,7 @@
                 }
                 
                 let currentMaxSpeed = this.maxSpeed;
-                if ((this.isGunboat || this.type === 'elite_roamer' || this.type === 'hunter') && this.aiState === 'CIRCLE') {
+                if (this.circleStrafePreferred && this.aiState === 'CIRCLE') {
                     currentMaxSpeed *= 1.15;
                 } else if (this.aiState === 'FLANK') {
                     currentMaxSpeed *= 1.6; // Speed boost when flanking
@@ -2484,7 +2488,7 @@
                 if (!player || player.dead) { this.aiState = 'IDLE'; this.aiTimer = 60; return; }
                 const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
 
-                if (this.isGunboat || this.type === 'elite_roamer' || this.type === 'hunter') {
+                if (this.circleStrafePreferred) {
                     this.aiState = 'CIRCLE';
                     this.aiTimer = 45;
                 } else if (this.type === 'roamer') {
@@ -3256,21 +3260,38 @@
                     const dx = player.pos.x - this.pos.x;
                     const dy = player.pos.y - this.pos.y;
                     const dist = Math.hypot(dx, dy);
-                    this.turretAngle = Math.atan2(dy, dx);
-                    // broadside orbit: always try to keep a tangent angle
                     const angleToPlayer = Math.atan2(dy, dx);
-                    const orbitAngle = angleToPlayer + Math.PI / 2; // clockwise orbit
-                    const desiredAngle = angleToPlayer + Math.PI / 2;
-                    let diff = desiredAngle - this.angle;
-                    while(diff > Math.PI) diff -= Math.PI*2;
-                    while(diff < -Math.PI) diff += Math.PI*2;
-                    this.angle += Math.sign(diff) * Math.min(Math.abs(diff), 0.01); // slower turn to feel heavy
-                    this.vel.x += Math.cos(orbitAngle) * 0.02;
-                    this.vel.y += Math.sin(orbitAngle) * 0.02;
-                    if (dist > 900) { this.vel.x += Math.cos(angleToPlayer) * 0.008; this.vel.y += Math.sin(angleToPlayer) * 0.008; }
-                    if (dist < 700) { this.vel.x -= Math.cos(angleToPlayer) * 0.008; this.vel.y -= Math.sin(angleToPlayer) * 0.008; }
-                    const speed = this.vel.mag();
-                    if (speed > 2.5) this.vel.mult(2.5/speed);
+                    this.turretAngle = angleToPlayer;
+
+                    if (this.variant === 'dreadnought') {
+                        // Always use circle-strafe broadside like a battleship
+                        const orbitAngle = angleToPlayer + Math.PI / 2; // clockwise
+                        const desiredAngle = angleToPlayer + Math.PI / 2;
+                        let diff = desiredAngle - this.angle;
+                        while(diff > Math.PI) diff -= Math.PI*2;
+                        while(diff < -Math.PI) diff += Math.PI*2;
+                        this.angle += Math.sign(diff) * Math.min(Math.abs(diff), 0.01);
+                        this.vel.x += Math.cos(orbitAngle) * 0.025;
+                        this.vel.y += Math.sin(orbitAngle) * 0.025;
+                        if (dist > 900) { this.vel.x += dx * 0.001; this.vel.y += dy * 0.001; }
+                        if (dist < 700) { this.vel.x -= dx * 0.001; this.vel.y -= dy * 0.001; }
+                        const speed = this.vel.mag();
+                        if (speed > 2.8) this.vel.mult(2.8/speed);
+                    } else {
+                        // Default boss glide/orbit
+                        const orbitAngle = angleToPlayer + Math.PI / 2; // clockwise orbit
+                        const desiredAngle = angleToPlayer + Math.PI / 2;
+                        let diff = desiredAngle - this.angle;
+                        while(diff > Math.PI) diff -= Math.PI*2;
+                        while(diff < -Math.PI) diff += Math.PI*2;
+                        this.angle += Math.sign(diff) * Math.min(Math.abs(diff), 0.01); // slower turn to feel heavy
+                        this.vel.x += Math.cos(orbitAngle) * 0.02;
+                        this.vel.y += Math.sin(orbitAngle) * 0.02;
+                        if (dist > 900) { this.vel.x += Math.cos(angleToPlayer) * 0.008; this.vel.y += Math.sin(angleToPlayer) * 0.008; }
+                        if (dist < 700) { this.vel.x -= Math.cos(angleToPlayer) * 0.008; this.vel.y -= Math.sin(angleToPlayer) * 0.008; }
+                        const speed = this.vel.mag();
+                        if (speed > 2.5) this.vel.mult(2.5/speed);
+                    }
                 } else {
                     this.turretAngle = this.angle;
                 }
@@ -3278,19 +3299,7 @@
                 // Variant gimmicks with telegraph effects (before movement)
                 this.gimmickTimer--;
                 if (this.variant === 'dreadnought') {
-                    // Circle-strafe tactic similar to gunboats
-                    if (player && !player.dead) {
-                        const dx = player.pos.x - this.pos.x;
-                        const dy = player.pos.y - this.pos.y;
-                        const dist = Math.hypot(dx, dy);
-                        const angleToPlayer = Math.atan2(dy, dx);
-                        const targetAngle = angleToPlayer + Math.PI / 2; // orbit clockwise
-                        this.vel.x += Math.cos(targetAngle) * 0.02;
-                        this.vel.y += Math.sin(targetAngle) * 0.02;
-                        if (dist > 800) { this.vel.x += dx * 0.0005; this.vel.y += dy * 0.0005; }
-                        if (dist < 500) { this.vel.x -= dx * 0.0005; this.vel.y -= dy * 0.0005; }
-                        this.turretAngle = Math.atan2(dy, dx);
-                    }
+                    // Movement handled above; gimmick below
                     if (this.gimmickTimer <= 0) {
                         this.chargeDir = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
                         this.chargePhase = 90; // boosted thrust duration
@@ -3713,9 +3722,11 @@
                 this.orbitRadius = 80 + Math.random() * 20;
                 this.dead = false;
                 this.timer = 0;
+                this.lastShieldTick = Date.now();
             }
             update() {
                 if (!player || player.dead) return;
+                const now = Date.now();
                 this.orbitAngle += 0.02;
                 const baseX = player.pos.x + Math.cos(this.orbitAngle) * this.orbitRadius;
                 const baseY = player.pos.y + Math.sin(this.orbitAngle) * this.orbitRadius;
@@ -3727,17 +3738,21 @@
                     player.hp = Math.min(player.maxHp, player.hp + 3);
                     updateHealthUI();
                     spawnParticles(this.pos.x, this.pos.y, 8, '#0f0');
-                } else if (this.type === 'shield' && this.timer % 300 === 0) {
-                    const idx = player.shieldSegments.findIndex(s => s < 2);
-                    if (idx !== -1) player.shieldSegments[idx] = 2;
-                    spawnParticles(this.pos.x, this.pos.y, 6, '#0ff');
-                } else if (this.type === 'shooter' && this.timer % 50 === 0) {
-                    const target = enemies.find(e => !e.dead);
-                    if (target) {
-                        const a = Math.atan2(target.pos.y - this.pos.y, target.pos.x - this.pos.x);
-                        bullets.push(new Bullet(this.pos.x, this.pos.y, a, false, 1.5, 14, 4, '#ff0'));
-                        spawnBarrelSmoke(this.pos.x, this.pos.y, a);
+                } else if (this.type === 'shield') {
+                    // Time-gated to 1 segment per ~4 seconds
+                    if (now - this.lastShieldTick >= 4000) {
+                        const idx = player.shieldSegments.findIndex(s => s < 2);
+                        if (idx !== -1) {
+                            player.shieldSegments[idx] = 2;
+                            spawnParticles(this.pos.x, this.pos.y, 6, '#0ff');
+                        }
+                        this.lastShieldTick = now;
                     }
+                } else if (this.type === 'shooter' && this.timer % 50 === 0) {
+                    // Shooter drone now fires where the player's turret aims
+                    const aimAngle = player ? player.turretAngle : 0;
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, aimAngle, false, 1.5, 14, 4, '#ff0'));
+                    spawnBarrelSmoke(this.pos.x, this.pos.y, aimAngle);
                 }
             }
             draw(ctx) {
@@ -4366,9 +4381,9 @@
                     const ensureDrone = (t) => {
                         if (!drones.find(d => d.type === t)) spawnDrone(t);
                     };
-                    if (tier >= 1) ensureDrone('shield');
-                    if (tier >= 2) ensureDrone('heal');
-                    if (tier >= 3) ensureDrone('shooter');
+                    if (tier >= 1) ensureDrone('shooter');
+                    if (tier >= 2) ensureDrone('shield');
+                    if (tier >= 3) ensureDrone('heal');
                     break;
                 }
             }
