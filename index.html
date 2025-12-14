@@ -1184,6 +1184,9 @@
             for(let i=0; i<3; i++) spawnNewBaseRelative(true);
             gunboatRespawnAt = Date.now() + 5000;
             gunboatLevel2Unlocked = true; // level 2 gunboats allowed after warp
+            // Restart dreadnought timer for the new sector
+            dreadManager.timerActive = true;
+            dreadManager.timerAt = Date.now() + dreadManager.minDelayMs;
             
             // Stations for new sector
             pendingStations = 2;
@@ -2226,8 +2229,8 @@
                     this.hp = 5 + (difficultyTier - 1) * 2; 
                 }
                 
-                this.shootTimer = 120;
-                if (this.type === 'elite_roamer' || this.type === 'hunter') this.shootTimer = 90;
+                this.shootTimer = 80; // faster baseline fire
+                if (this.type === 'elite_roamer' || this.type === 'hunter') this.shootTimer = 60;
 
                 // Named elite modifiers
                 if (this.type === 'elite_roamer' || this.type === 'hunter') {
@@ -2257,7 +2260,7 @@
                     this.hp = this.gunboatLevel === 1 ? 10 : 16;
                     this.maxSpeed = 4.0;
                     this.thrustPower = 0.22;
-                    this.shootTimer = this.gunboatLevel === 1 ? 32 : 26;
+                    this.shootTimer = this.gunboatLevel === 1 ? 21 : 17; // 50% faster
                 this.shieldSegments = new Array(10).fill(2);
                 this.shieldRadius = 45;
                 this.gunboatShieldRecharge = 180; // frames between shield regen (~3s at 60fps)
@@ -2385,7 +2388,7 @@
                         const dist = Math.hypot(dx, dy);
                         desiredVel.x = dx;
                         desiredVel.y = dy;
-                        if ((this.type === 'elite_roamer' || this.type === 'hunter') && dist < 150) {
+                        if ((this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter' || this.type === 'defender') && dist < 150) {
                             desiredVel.x = 0;
                             desiredVel.y = 0;
                         }
@@ -2512,13 +2515,13 @@
                         if (this.isGunboat) {
                              const bx = this.pos.x + Math.cos(angle)*28;
                              const by = this.pos.y + Math.sin(angle)*28;
-                             bullets.push(new Bullet(bx, by, angle, true, this.gunboatLevel === 1 ? 2 : 3, 15, 4, '#0ff'));
+                             bullets.push(new Bullet(bx, by, angle, true, this.gunboatLevel === 1 ? 2 : 3, 22, 4, '#0ff'));
                              if (this.gunboatLevel === 2) {
                                  const a2 = angle + 0.08;
-                                 bullets.push(new Bullet(bx, by, a2, true, 3, 15, 4, '#0ff'));
+                                 bullets.push(new Bullet(bx, by, a2, true, 3, 22, 4, '#0ff'));
                              }
                              spawnBarrelSmoke(bx, by, angle);
-                             this.shootTimer = this.gunboatLevel === 1 ? 32 : 24;
+                             this.shootTimer = this.gunboatLevel === 1 ? 21 : 16;
                         } else if (this.type === 'elite_roamer' || this.type === 'hunter') {
                              const bx = this.pos.x + Math.cos(angle)*25;
                              const by = this.pos.y + Math.sin(angle)*25;
@@ -2528,7 +2531,7 @@
                                  bullets.push(new Bullet(bx, by, a2, true, 1, 11, 5, '#f0f'));
                              }
                              spawnBarrelSmoke(bx, by, angle);
-                             this.shootTimer = this.type === 'hunter' ? 45 : 90;
+                             this.shootTimer = this.type === 'hunter' ? 30 : 60;
                         } else if (difficultyTier >= 5 && this.type === 'roamer') { 
                              for (let i = -1; i <= 1; i++) {
                                  const a = angle + i * 0.2;
@@ -2537,13 +2540,13 @@
                                  bullets.push(new Bullet(bx, by, a, true, 1));
                                  spawnBarrelSmoke(bx, by, a);
                              }
-                             this.shootTimer = 120;
+                             this.shootTimer = 80;
                         } else {
                              const bx = this.pos.x + Math.cos(angle) * 20;
                              const by = this.pos.y + Math.sin(angle) * 20;
                              bullets.push(new Bullet(bx, by, angle, true, 1));
                              spawnBarrelSmoke(bx, by, angle);
-                             this.shootTimer = 120;
+                             this.shootTimer = 80;
                         }
                         playSound('shoot');
                     }
