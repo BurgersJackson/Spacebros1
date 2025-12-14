@@ -302,6 +302,31 @@
             color: #000;
             box-shadow: 0 0 15px #0f0;
         }
+        .meta-shop {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 10px;
+            width: 100%;
+        }
+        .meta-item button {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .meta-item span {
+            display: block;
+            margin-top: 4px;
+            font-size: 12px;
+            color: #9f9;
+        }
         
         .objective-text {
             color: #f0f;
@@ -408,9 +433,30 @@
 
     <div id="start-screen" class="menu-screen">
         <h1>NEON SPACE</h1>
-        <p>MOUSE: Aim • WASD/L-STICK: Thrust<br>E / BUTTON 2: Nuke<br>Collect Coins to Upgrade Ship!</p>
+        <p>MOUSE: Aim • WASD/L-STICK: Thrust<br>Collect Coins to Upgrade Ship!</p>
         <button id="start-btn">INITIATE LAUNCH</button>
         <button id="load-btn">LOAD SAVE</button>
+        <div id="meta-shop" class="meta-shop">
+            <div>Meta Nuggets: <span id="meta-bank">0</span></div>
+            <div class="meta-grid">
+                <div class="meta-item"><button id="buy-start-dmg">START DAMAGE BOOST</button><span id="meta-start-dmg"></span></div>
+                <div class="meta-item"><button id="buy-passive-hp">PASSIVE +HP</button><span id="meta-passive-hp"></span></div>
+                <div class="meta-item"><button id="buy-reroll">REROLL TOKEN</button><span>Tokens: <span id="meta-reroll-count">0</span></span></div>
+                <div class="meta-item"><button id="buy-reroll-pack">+5 REROLL TOKENS</button></div>
+                <div class="meta-item"><button id="buy-hull">HULL PLATING</button><span id="meta-hull"></span></div>
+                <div class="meta-item"><button id="buy-shield-core">SHIELD CORE</button><span id="meta-shield-core"></span></div>
+                <div class="meta-item"><button id="buy-static">STATIC BLUEPRINT</button><span id="meta-static"></span></div>
+                <div class="meta-item"><button id="buy-missile">MISSILE PRIMER</button><span id="meta-missile"></span></div>
+                <div class="meta-item"><button id="buy-magnet">MAGNET BOOSTER</button><span id="meta-magnet"></span></div>
+                <div class="meta-item"><button id="buy-warp">WARP PRE-CHARGE</button><span id="meta-warp"></span></div>
+                <div class="meta-item"><button id="buy-nuke">NUKE CAPACITOR</button><span id="meta-nuke"></span></div>
+                <div class="meta-item"><button id="buy-speed">SPEED TUNING</button><span id="meta-speed"></span></div>
+                <div class="meta-item"><button id="buy-bank-mult">BANK MULTIPLIER</button><span id="meta-bank-mult"></span></div>
+                <div class="meta-item"><button id="buy-discount">SHOP DISCOUNT</button><span id="meta-discount"></span></div>
+                <div class="meta-item"><button id="buy-extra-life">EXTRA LIFE</button><span id="meta-extra-life"></span></div>
+                <div class="meta-item"><button id="buy-drone">DRONE FABRICATOR</button><span id="meta-drone"></span></div>
+            </div>
+        </div>
     </div>
 
     <div id="end-screen" class="menu-screen">
@@ -1145,14 +1191,7 @@
             nextSpaceStationTime = Date.now() + 1000;
             scheduleNextShootingStar();
             showOverlayMessage("NEW SECTOR ENTERED", '#0ff', 3000);
-            // Spawn exploration caches in the new sector
-            for(let i=0; i<8; i++) {
-                const angle = Math.random() * Math.PI * 2;
-                const dist = 1200 + Math.random() * 2000;
-                const cx = player.pos.x + Math.cos(angle) * dist;
-                const cy = player.pos.y + Math.sin(angle) * dist;
-                caches.push(new ExplorationCache(cx, cy));
-            }
+            spawnExplorationCaches();
         }
         
         function endGame(elapsedMs) {
@@ -1161,6 +1200,10 @@
             gameActive = false;
             gamePaused = false;
             stopMusic();
+            try {
+                depositMetaNuggets();
+            } catch(e) { console.warn('meta deposit failed', e); }
+            try { saveEndOfRun(); } catch(e) { console.warn('save end of run failed', e); }
             const endEl = document.getElementById('end-screen');
             if (endEl) endEl.style.display = 'block';
             const startEl = document.getElementById('start-screen');
@@ -1296,6 +1339,18 @@
             asteroidRespawnTimers = [];
             for(let i=0; i<60; i++) {
                 spawnOneAsteroidRelative(true);
+            }
+            spawnExplorationCaches();
+        }
+
+        function spawnExplorationCaches() {
+            if (!player) return;
+            for(let i=0; i<8; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 1200 + Math.random() * 2000;
+                const cx = player.pos.x + Math.cos(angle) * dist;
+                const cy = player.pos.y + Math.sin(angle) * dist;
+                caches.push(new ExplorationCache(cx, cy));
             }
         }
 
@@ -3703,6 +3758,9 @@
         let gunboatLevel2Unlocked = false;
         let initialSpawnDelayAt = null;
         let initialSpawnDone = false;
+        let metaProfile = { bank: 0, purchases: { startDamage: false, passiveHp: false, rerollTokens: 0, hullPlating: false, shieldCore: false, staticBlueprint: false, missilePrimer: false, magnetBooster: false, warpPrecharge: false, nukeCapacitor: false, speedTuning: false, bankMultiplier: false, shopDiscount: false, extraLife: false, droneFabricator: false } };
+        let rerollTokens = 0;
+        let metaExtraLifeAvailable = false;
         
         // Dreadnought spawn manager
         let dreadManager = {
@@ -3745,6 +3803,80 @@
                 const vy = Math.sin(angle + spread) * speed;
                 particles.push(new SmokeParticle(x, y, vx, vy));
             }
+        }
+        
+        // --- Meta Progression ---
+        function loadMetaProfile() {
+            try {
+                const raw = localStorage.getItem('meta_profile_v1');
+                if (raw) metaProfile = JSON.parse(raw);
+                if (!metaProfile.purchases) metaProfile.purchases = {};
+                metaProfile.purchases = Object.assign({
+                    startDamage: false,
+                    passiveHp: false,
+                    rerollTokens: 0,
+                    hullPlating: false,
+                    shieldCore: false,
+                    staticBlueprint: false,
+                    missilePrimer: false,
+                    magnetBooster: false,
+                    warpPrecharge: false,
+                    nukeCapacitor: false,
+                    speedTuning: false,
+                    bankMultiplier: false,
+                    shopDiscount: false,
+                    extraLife: false,
+                    droneFabricator: false
+                }, metaProfile.purchases);
+                if (typeof metaProfile.bank !== 'number') metaProfile.bank = 0;
+            } catch (e) {
+                console.warn('failed to load meta profile', e);
+            }
+        }
+        function saveMetaProfile() {
+            try {
+                localStorage.setItem('meta_profile_v1', JSON.stringify(metaProfile));
+                updateMetaUI();
+            } catch(e) { console.warn('failed to save meta profile', e); }
+        }
+        function depositMetaNuggets() {
+            const bonus = metaProfile.purchases.bankMultiplier ? 1.1 : 1.0;
+            metaProfile.bank += Math.round(spaceNuggets * bonus);
+            saveMetaProfile();
+        }
+        function updateMetaUI() {
+            const bankEl = document.getElementById('meta-bank');
+            if (bankEl) bankEl.innerText = metaProfile.bank;
+            const startEl = document.getElementById('meta-start-dmg');
+            if (startEl) startEl.innerText = metaProfile.purchases.startDamage ? 'OWNED' : 'BUY (10 NUGS)';
+            const passiveEl = document.getElementById('meta-passive-hp');
+            if (passiveEl) passiveEl.innerText = metaProfile.purchases.passiveHp ? 'OWNED' : 'BUY (15 NUGS)';
+            const rerollEl = document.getElementById('meta-reroll-count');
+            if (rerollEl) rerollEl.innerText = metaProfile.purchases.rerollTokens || 0;
+            const hullEl = document.getElementById('meta-hull');
+            if (hullEl) hullEl.innerText = metaProfile.purchases.hullPlating ? 'OWNED' : 'BUY (30 NUGS)';
+            const shieldEl = document.getElementById('meta-shield-core');
+            if (shieldEl) shieldEl.innerText = metaProfile.purchases.shieldCore ? 'OWNED' : 'BUY (30 NUGS)';
+            const staticEl = document.getElementById('meta-static');
+            if (staticEl) staticEl.innerText = metaProfile.purchases.staticBlueprint ? 'OWNED' : 'BUY (40 NUGS)';
+            const missileEl = document.getElementById('meta-missile');
+            if (missileEl) missileEl.innerText = metaProfile.purchases.missilePrimer ? 'OWNED' : 'BUY (40 NUGS)';
+            const magnetEl = document.getElementById('meta-magnet');
+            if (magnetEl) magnetEl.innerText = metaProfile.purchases.magnetBooster ? 'OWNED' : 'BUY (25 NUGS)';
+            const warpEl = document.getElementById('meta-warp');
+            if (warpEl) warpEl.innerText = metaProfile.purchases.warpPrecharge ? 'OWNED' : 'BUY (30 NUGS)';
+            const nukeEl = document.getElementById('meta-nuke');
+            if (nukeEl) nukeEl.innerText = metaProfile.purchases.nukeCapacitor ? 'OWNED' : 'BUY (35 NUGS)';
+            const speedEl = document.getElementById('meta-speed');
+            if (speedEl) speedEl.innerText = metaProfile.purchases.speedTuning ? 'OWNED' : 'BUY (25 NUGS)';
+            const bankMultEl = document.getElementById('meta-bank-mult');
+            if (bankMultEl) bankMultEl.innerText = metaProfile.purchases.bankMultiplier ? 'OWNED' : 'BUY (50 NUGS)';
+            const discountEl = document.getElementById('meta-discount');
+            if (discountEl) discountEl.innerText = metaProfile.purchases.shopDiscount ? 'OWNED' : 'BUY (50 NUGS)';
+            const extraLifeEl = document.getElementById('meta-extra-life');
+            if (extraLifeEl) extraLifeEl.innerText = metaProfile.purchases.extraLife ? 'OWNED' : 'BUY (60 NUGS)';
+            const droneEl = document.getElementById('meta-drone');
+            if (droneEl) droneEl.innerText = metaProfile.purchases.droneFabricator ? 'OWNED' : 'BUY (40 NUGS)';
         }
         
         // Companion Drones
@@ -4229,14 +4361,29 @@
             return slots;
         }
 
-        function promptForSlot(existingOnly = false) {
+        function promptForSlot(existingOnly = false, promptText = null) {
             const slots = listSaveSlots();
             const defaultSlot = localStorage.getItem(SAVE_LAST_KEY) || (slots[0] || 'slot1');
-            let msg = existingOnly ? `Load slot name (${slots.join(', ') || 'none'}):` : `Save slot name (existing: ${slots.join(', ') || 'none'}):`;
+            let msg = promptText;
+            if (!msg) {
+                msg = existingOnly ? `Load slot name (${slots.join(', ') || 'none'}):` : `Save slot name (existing: ${slots.join(', ') || 'none'}):`;
+            }
             const name = prompt(msg, defaultSlot);
             if (!name) return null;
             localStorage.setItem(SAVE_LAST_KEY, name);
             return name;
+        }
+
+        function saveToSlot(slot, silent = false) {
+            try {
+                const data = buildSaveData();
+                localStorage.setItem(SAVE_PREFIX + slot, JSON.stringify(data));
+                localStorage.setItem(SAVE_LAST_KEY, slot);
+                if (!silent) showOverlayMessage(`GAME SAVED (${slot})`, '#0f0', 1500);
+            } catch (e) {
+                console.warn('save failed', e);
+                if (!silent) showOverlayMessage("SAVE FAILED", '#f00', 1500);
+            }
         }
 
         function saveGame() {
@@ -4246,15 +4393,7 @@
             }
             const slot = promptForSlot(false);
             if (!slot) return;
-            try {
-                const data = buildSaveData();
-                localStorage.setItem(SAVE_PREFIX + slot, JSON.stringify(data));
-                localStorage.setItem(SAVE_LAST_KEY, slot);
-                showOverlayMessage(`GAME SAVED (${slot})`, '#0f0', 1500);
-            } catch (e) {
-                console.warn('save failed', e);
-                showOverlayMessage("SAVE FAILED", '#f00', 1500);
-            }
+            saveToSlot(slot);
         }
 
         function restoreGameState(state) {
@@ -4391,6 +4530,12 @@
                 showOverlayMessage("LOAD FAILED", '#f00', 1500);
             }
         }
+
+        function saveEndOfRun() {
+            const slot = promptForSlot(false, "Save slot to store this run (new or overwrite):");
+            if (!slot) return;
+            saveToSlot(slot);
+        }
         
         function formatTime(ms) {
             const totalSec = Math.floor(ms / 1000);
@@ -4497,6 +4642,9 @@
         function showLevelUpMenu() {
             const container = document.getElementById('upgrade-container');
             container.innerHTML = '';
+            const parent = container.parentElement;
+            const existingReroll = document.getElementById('reroll-btn');
+            if (existingReroll) existingReroll.remove();
             
             // 1. Filter Valid Upgrades
             const validUpgrades = [];
@@ -4516,6 +4664,21 @@
                 const idx = Math.floor(Math.random() * validUpgrades.length);
                 choices.push(validUpgrades[idx]);
                 validUpgrades.splice(idx, 1);
+            }
+
+            // Optional reroll button if tokens available
+            if (rerollTokens > 0) {
+                const btn = document.createElement('button');
+                btn.id = 'reroll-btn';
+                btn.textContent = `REROLL OPTIONS (TOKENS: ${rerollTokens})`;
+                btn.style.marginTop = '10px';
+                btn.onclick = () => {
+                    rerollTokens--;
+                    metaProfile.purchases.rerollTokens = rerollTokens;
+                    saveMetaProfile();
+                    showLevelUpMenu(); // regenerate
+                };
+                parent.insertBefore(btn, container);
             }
             
             // 3. Create DOM
@@ -4769,11 +4932,23 @@
         
         function killPlayer() {
             player.dead = true;
+            if (metaExtraLifeAvailable) {
+                metaExtraLifeAvailable = false;
+                player.dead = false;
+                player.hp = Math.max(1, Math.floor(player.maxHp * 0.5));
+                player.invulnerable = 180;
+                spawnParticles(player.pos.x, player.pos.y, 20, '#0f0');
+                showOverlayMessage("SECOND CHANCE!", '#0f0', 1500);
+                updateHealthUI();
+                return;
+            }
             playSound('explode');
             spawnParticles(player.pos.x, player.pos.y, 30, '#0ff');
             setTimeout(() => {
                 gameActive = false;
                 stopMusic();
+                try { depositMetaNuggets(); } catch(e) { console.warn('meta deposit failed', e); }
+                try { saveEndOfRun(); } catch(e) { console.warn('save end of run failed', e); }
                 document.getElementById('start-screen').style.display = 'block';
                 document.querySelector('#start-screen h1').innerText = "SYSTEM FAILURE";
                 document.getElementById('start-btn').innerText = "REBOOT SYSTEM";
@@ -5563,6 +5738,8 @@
             score = 0;
             difficultyTier = 1;
             basesDestroyedTotal = 0;
+            rerollTokens = metaProfile.purchases.rerollTokens || 0;
+            metaExtraLifeAvailable = !!metaProfile.purchases.extraLife;
             
             // Reset player stats/inventory
             player.fireDelay = 24;
@@ -5592,6 +5769,51 @@
             player.magnetRadius = 150;
             player.nukeUnlocked = false;
             gameEnded = false;
+
+            // Apply meta bonuses
+            if (metaProfile.purchases.startDamage) {
+                player.stats.damageMult *= 1.2; // starter damage bump
+            }
+            if (metaProfile.purchases.passiveHp) {
+                player.maxHp += 10;
+                player.hp = player.maxHp;
+                updateHealthUI();
+            }
+            if (metaProfile.purchases.hullPlating) {
+                player.maxHp += 15;
+                player.hp = player.maxHp;
+            }
+            if (metaProfile.purchases.shieldCore) {
+                player.shieldSegments.push(2, 2);
+                player.maxShieldSegments = player.shieldSegments.length;
+            }
+            if (metaProfile.purchases.staticBlueprint) {
+                player.staticWeapons.push({type: 'forward'});
+            }
+            if (metaProfile.purchases.missilePrimer) {
+                player.stats.homing = Math.max(player.stats.homing, 1);
+                player.missileTimer = 0;
+            }
+            if (metaProfile.purchases.magnetBooster) {
+                player.magnetRadius = Math.max(player.magnetRadius, 300);
+            }
+            if (metaProfile.purchases.warpPrecharge) {
+                player.canWarp = true;
+                player.warpCooldown = Math.floor(player.maxWarpCooldown / 2);
+            }
+            if (metaProfile.purchases.nukeCapacitor) {
+                player.nukeUnlocked = true;
+                player.nukeCooldown = 0;
+                player.nukeDamage = 5;
+                player.nukeRange = 500;
+            }
+            if (metaProfile.purchases.speedTuning) {
+                player.stats.speedMult *= 1.1;
+            }
+            if (metaProfile.purchases.droneFabricator) {
+                spawnDrone('shooter');
+            }
+            updateHealthUI();
             
             document.getElementById('score').innerText = score;
             document.getElementById('start-screen').style.display = 'none';
@@ -5709,6 +5931,198 @@
             initAudio();
             loadGameFromStorage();
         });
+        const buyStart = document.getElementById('buy-start-dmg');
+        if (buyStart) buyStart.addEventListener('click', () => {
+            const cost = Math.ceil(10 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.startDamage) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.startDamage = true;
+                saveMetaProfile();
+                showOverlayMessage("START DAMAGE UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 10 NUGS OR ALREADY OWNED", '#f00', 1500);
+            }
+        });
+        const buyPassive = document.getElementById('buy-passive-hp');
+        if (buyPassive) buyPassive.addEventListener('click', () => {
+            const cost = Math.ceil(15 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.passiveHp) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.passiveHp = true;
+                saveMetaProfile();
+                showOverlayMessage("PASSIVE HP UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 15 NUGS OR ALREADY OWNED", '#f00', 1500);
+            }
+        });
+        const buyReroll = document.getElementById('buy-reroll');
+        if (buyReroll) buyReroll.addEventListener('click', () => {
+            const cost = Math.ceil(5 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.rerollTokens = (metaProfile.purchases.rerollTokens || 0) + 1;
+                saveMetaProfile();
+                showOverlayMessage("REROLL TOKEN +1", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 5 NUGS", '#f00', 1500);
+            }
+        });
+        const buyRerollPack = document.getElementById('buy-reroll-pack');
+        if (buyRerollPack) buyRerollPack.addEventListener('click', () => {
+            const cost = Math.ceil(25 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.rerollTokens = (metaProfile.purchases.rerollTokens || 0) + 5;
+                saveMetaProfile();
+                showOverlayMessage("REROLL TOKENS +5", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 25 NUGS", '#f00', 1500);
+            }
+        });
+        const buyHull = document.getElementById('buy-hull');
+        if (buyHull) buyHull.addEventListener('click', () => {
+            const cost = Math.ceil(30 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.hullPlating) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.hullPlating = true;
+                saveMetaProfile();
+                showOverlayMessage("HULL PLATING UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 30 NUGS OR OWNED", '#f00', 1500);
+            }
+        });
+        const buyShield = document.getElementById('buy-shield-core');
+        if (buyShield) buyShield.addEventListener('click', () => {
+            const cost = Math.ceil(30 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.shieldCore) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.shieldCore = true;
+                saveMetaProfile();
+                showOverlayMessage("SHIELD CORE UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 30 NUGS OR OWNED", '#f00', 1500);
+            }
+        });
+        const buyStatic = document.getElementById('buy-static');
+        if (buyStatic) buyStatic.addEventListener('click', () => {
+            const cost = Math.ceil(40 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.staticBlueprint) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.staticBlueprint = true;
+                saveMetaProfile();
+                showOverlayMessage("STATIC BLUEPRINT UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 40 NUGS OR OWNED", '#f00', 1500);
+            }
+        });
+        const buyMissile = document.getElementById('buy-missile');
+        if (buyMissile) buyMissile.addEventListener('click', () => {
+            const cost = Math.ceil(40 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.missilePrimer) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.missilePrimer = true;
+                saveMetaProfile();
+                showOverlayMessage("MISSILE PRIMER UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 40 NUGS OR OWNED", '#f00', 1500);
+            }
+        });
+        const buyMagnet = document.getElementById('buy-magnet');
+        if (buyMagnet) buyMagnet.addEventListener('click', () => {
+            const cost = Math.ceil(25 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.magnetBooster) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.magnetBooster = true;
+                saveMetaProfile();
+                showOverlayMessage("MAGNET BOOSTER UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 25 NUGS OR OWNED", '#f00', 1500);
+            }
+        });
+        const buyWarp = document.getElementById('buy-warp');
+        if (buyWarp) buyWarp.addEventListener('click', () => {
+            const cost = Math.ceil(30 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.warpPrecharge) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.warpPrecharge = true;
+                saveMetaProfile();
+                showOverlayMessage("WARP PRE-CHARGE UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 30 NUGS OR OWNED", '#f00', 1500);
+            }
+        });
+        const buyNuke = document.getElementById('buy-nuke');
+        if (buyNuke) buyNuke.addEventListener('click', () => {
+            const cost = Math.ceil(35 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.nukeCapacitor) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.nukeCapacitor = true;
+                saveMetaProfile();
+                showOverlayMessage("NUKE CAPACITOR UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 35 NUGS OR OWNED", '#f00', 1500);
+            }
+        });
+        const buySpeed = document.getElementById('buy-speed');
+        if (buySpeed) buySpeed.addEventListener('click', () => {
+            const cost = Math.ceil(25 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.speedTuning) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.speedTuning = true;
+                saveMetaProfile();
+                showOverlayMessage("SPEED TUNING UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 25 NUGS OR OWNED", '#f00', 1500);
+            }
+        });
+        const buyBankMult = document.getElementById('buy-bank-mult');
+        if (buyBankMult) buyBankMult.addEventListener('click', () => {
+            const cost = Math.ceil(50 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.bankMultiplier) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.bankMultiplier = true;
+                saveMetaProfile();
+                showOverlayMessage("BANK MULTIPLIER UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 50 NUGS OR OWNED", '#f00', 1500);
+            }
+        });
+        const buyDiscount = document.getElementById('buy-discount');
+        if (buyDiscount) buyDiscount.addEventListener('click', () => {
+            const cost = Math.ceil(50 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.shopDiscount) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.shopDiscount = true;
+                saveMetaProfile();
+                showOverlayMessage("SHOP DISCOUNT UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 50 NUGS OR OWNED", '#f00', 1500);
+            }
+        });
+        const buyExtraLife = document.getElementById('buy-extra-life');
+        if (buyExtraLife) buyExtraLife.addEventListener('click', () => {
+            const cost = Math.ceil(60 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.extraLife) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.extraLife = true;
+                saveMetaProfile();
+                showOverlayMessage("EXTRA LIFE UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 60 NUGS OR OWNED", '#f00', 1500);
+            }
+        });
+        const buyDrone = document.getElementById('buy-drone');
+        if (buyDrone) buyDrone.addEventListener('click', () => {
+            const cost = Math.ceil(40 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.droneFabricator) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.droneFabricator = true;
+                saveMetaProfile();
+                showOverlayMessage("DRONE FABRICATOR UNLOCKED", '#0f0', 1500);
+            } else {
+                showOverlayMessage("NEED 40 NUGS OR OWNED", '#f00', 1500);
+            }
+        });
         document.getElementById('restart-btn').addEventListener('click', () => {
             initAudio();
             startGame();
@@ -5730,6 +6144,8 @@
         document.getElementById('music-btn').addEventListener('click', toggleMusic);
 
         document.getElementById('start-btn').focus();
+        loadMetaProfile();
+        updateMetaUI();
         mainLoop();
 
     </script>
