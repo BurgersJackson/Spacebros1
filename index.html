@@ -1089,18 +1089,13 @@
             nextSpaceStationTime = null;
             gamePaused = false;
             gameActive = true;
-            enemies = [];
-            bases = [];
-            bossActive = false;
-            boss = null;
-            bossArena.active = false;
-            roamerRespawnQueue = [];
-            baseRespawnTimers = [];
-            bullets = [];
+            pendingTransitionClear = true; // clear arrays safely next frame
             dreadManager.timerActive = false;
         }
         
         function completeSectorWarp() {
+            gameActive = true;
+            gamePaused = false;
             sectorTransitionActive = false;
             warpCountdownAt = null;
             sectorIndex++;
@@ -1131,6 +1126,8 @@
             generateMap();
             initStars(); // update nebula palette
             for(let i=0; i<3; i++) spawnNewBaseRelative(true);
+            gunboatRespawnAt = Date.now() + 5000;
+            gunboatLevel2Unlocked = true; // level 2 gunboats allowed after warp
             
             // Stations for new sector
             pendingStations = 2;
@@ -1381,7 +1378,7 @@
                 
                 this.invulnerable = 180;
                 this.visible = true;
-                this.maxHp = 25;
+                this.maxHp = 25;  // starting health hp
                 this.hp = this.maxHp;
                 
                 this.lastAsteroidHitTime = 0;
@@ -1656,7 +1653,7 @@
             }
 
             shoot() {
-                const damage = 2 * this.stats.damageMult;
+                const damage = 2 * this.stats.damageMult; //turret damage
                 const bulletSpeed = 15;
                 const shots = this.stats.multiShot; 
                 
@@ -2114,6 +2111,8 @@
                 this.shieldSegments = [];
                 this.shieldRadius = 0;
                 this.shieldRotation = 0;
+                this.modifier = null;
+                this.nameTag = null;
 
                 if (startPos) {
                     this.pos.x = startPos.x;
@@ -2153,6 +2152,18 @@
                 
                 this.shootTimer = 120;
                 if (this.type === 'elite_roamer' || this.type === 'hunter') this.shootTimer = 90;
+                if (this.isGunboat) this.shootTimer = 40;
+
+                // Named elite modifiers
+                if (this.type === 'elite_roamer' || this.type === 'hunter') {
+                    const mods = ['explosive', 'split', 'stealth'];
+                    if (Math.random() < 0.12) {
+                        this.modifier = mods[Math.floor(Math.random() * mods.length)];
+                        const names = ['NOVA', 'SHADE', 'VIPER', 'TITAN', 'EMBER', 'PHANTOM', 'ION'];
+                        this.nameTag = names[Math.floor(Math.random() * names.length)];
+                        this.hp += 2; // slight buff for named elites
+                    }
+                }
                 
                 this.turnSpeed = (Math.PI * 2) / (8 * 60); 
                 this.smoothDir = new Vector(Math.random(), Math.random());
@@ -2162,6 +2173,18 @@
                 this.freezeTimer = 0;
                 this.freezeCooldown = 0;
                 this.flankSide = 1;
+                this.isGunboat = (type === 'gunboat');
+                this.gunboatLevel = 1;
+                if (this.isGunboat) {
+                    this.gunboatLevel = (difficultyTier >= 4 || (player && player.level >= 6)) ? 2 : 1;
+                    this.radius = 30; // match player size
+                    this.hp = this.gunboatLevel === 1 ? 10 : 16;
+                    this.maxSpeed = 4.0;
+                    this.thrustPower = 0.22;
+                    this.shootTimer = this.gunboatLevel === 1 ? 32 : 26;
+                    this.shieldSegments = new Array(10).fill(2);
+                    this.shieldRadius = 45;
+                }
             }
             
             getAimAngle() {
@@ -2188,11 +2211,31 @@
                 if (this.type === 'elite_roamer') { val=3; count=4; }
                 if (this.type === 'hunter') { val=4; count=5; }
                 if (this.type === 'defender') { val=3; count=3; }
+                if (this.nameTag) { val += 1; count += 2; }
+                if (this.isGunboat) {
+                    // Gunboat drops: 1 gold coin (value 10) + 5 regular (value 2)
+                    coins.push(new Coin(this.pos.x, this.pos.y, 10));
+                    for(let i=0; i<5; i++) coins.push(new Coin(this.pos.x, this.pos.y, 2));
+                }
                 for(let i=0; i<count; i++) {
                     coins.push(new Coin(this.pos.x, this.pos.y, val));
                 }
+                if (this.nameTag) {
+                    nuggets.push(new SpaceNugget(this.pos.x, this.pos.y, 1));
+                }
 
                 if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter') roamerRespawnQueue.push(Math.floor(Math.random() * 300));
+                if (this.isGunboat) {
+                    gunboatRespawnAt = Date.now() + 20000;
+                }
+
+                if (this.modifier === 'explosive') {
+                    for(let i=0; i<8; i++) {
+                        const a = (Math.PI*2/8) * i;
+                        bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 2, 10, 4, '#f80'));
+                    }
+                    spawnParticles(this.pos.x, this.pos.y, 20, '#f80');
+                }
             }
 
             update() {
@@ -2229,7 +2272,22 @@
                 if (this.freezeTimer <= 0) {
 
                 const desiredVel = new Vector(0, 0);
-                if (this.aiState === 'SEEK') {
+                if (this.isGunboat && this.aiState === 'CIRCLE') {
+                    if (player && !player.dead) {
+                        const dx = player.pos.x - this.pos.x;
+                        const dy = player.pos.y - this.pos.y;
+                        const dist = Math.hypot(dx, dy);
+                        const angleToPlayer = Math.atan2(dy, dx);
+                        const orbitDir = 1; // clockwise
+                        const targetAngle = angleToPlayer + orbitDir * Math.PI / 2;
+                        desiredVel.x = Math.cos(targetAngle);
+                        desiredVel.y = Math.sin(targetAngle);
+                        // keep preferred distance
+                        const preferred = 700;
+                        if (dist > preferred + 150) { desiredVel.x += dx*0.001; desiredVel.y += dy*0.001; }
+                        if (dist < preferred - 150) { desiredVel.x -= dx*0.001; desiredVel.y -= dy*0.001; }
+                    }
+                } else if (this.aiState === 'SEEK') {
                     if (player && !player.dead) {
                         desiredVel.x = player.pos.x - this.pos.x;
                         desiredVel.y = player.pos.y - this.pos.y;
@@ -2329,7 +2387,9 @@
                 }
                 
                 let currentMaxSpeed = this.maxSpeed;
-                if (this.aiState === 'FLANK') {
+                if (this.isGunboat && this.aiState === 'CIRCLE') {
+                    currentMaxSpeed *= 1.1;
+                } else if (this.aiState === 'FLANK') {
                     currentMaxSpeed *= 1.6; // Speed boost when flanking
                     if (Math.random() < 0.3) spawnParticles(this.pos.x, this.pos.y, 1, '#fa0'); // Engine flare
                 }
@@ -2346,14 +2406,29 @@
                 if (player && !player.dead) distToPlayer = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
                 const attackRange = (this.type === 'elite_roamer' || this.type === 'hunter') ? 800 : 600;
 
-                if (distToPlayer < attackRange && !player.dead && this.freezeTimer <= 0) {
+                const gunboatRange = this.isGunboat ? 900 : attackRange;
+                if (distToPlayer < gunboatRange && !player.dead && this.freezeTimer <= 0) {
                     this.shootTimer--;
                     if (this.shootTimer <= 0) {
                         const angle = this.getAimAngle();
-                        if (this.type === 'elite_roamer' || this.type === 'hunter') {
+                        if (this.isGunboat) {
+                             const bx = this.pos.x + Math.cos(angle)*28;
+                             const by = this.pos.y + Math.sin(angle)*28;
+                             bullets.push(new Bullet(bx, by, angle, true, this.gunboatLevel === 1 ? 2 : 3, 14, 5, '#0ff'));
+                             if (this.gunboatLevel === 2) {
+                                 const a2 = angle + 0.08;
+                                 bullets.push(new Bullet(bx, by, a2, true, 3, 14, 5, '#0ff'));
+                             }
+                             spawnBarrelSmoke(bx, by, angle);
+                             this.shootTimer = this.gunboatLevel === 1 ? 32 : 24;
+                        } else if (this.type === 'elite_roamer' || this.type === 'hunter') {
                              const bx = this.pos.x + Math.cos(angle)*25;
                              const by = this.pos.y + Math.sin(angle)*25;
                              bullets.push(new Bullet(bx, by, angle, true, 2, 11, 5, '#f0f'));
+                             if (this.modifier === 'split') {
+                                 const a2 = angle + (Math.random() - 0.5) * 0.2;
+                                 bullets.push(new Bullet(bx, by, a2, true, 2, 11, 5, '#f0f'));
+                             }
                              spawnBarrelSmoke(bx, by, angle);
                              this.shootTimer = this.type === 'hunter' ? 45 : 90;
                         } else if (difficultyTier >= 5 && this.type === 'roamer') { 
@@ -2381,7 +2456,10 @@
                 if (!player || player.dead) { this.aiState = 'IDLE'; this.aiTimer = 60; return; }
                 const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
 
-                if (this.type === 'roamer') {
+                if (this.isGunboat) {
+                    this.aiState = 'CIRCLE';
+                    this.aiTimer = 30;
+                } else if (this.type === 'roamer') {
                     // Check for bunching/crowding
                     let neighbors = 0;
                     for(let e of enemies) {
@@ -2455,6 +2533,10 @@
                 if (this.dead) return;
                 ctx.save();
                 ctx.translate(this.pos.x, this.pos.y);
+                if (this.modifier === 'stealth') {
+                    const alpha = 0.4 + Math.abs(Math.sin(Date.now() * 0.003)) * 0.4;
+                    ctx.globalAlpha = alpha;
+                }
                 if (this.shieldSegments.length > 0) {
                     if (this.freezeTimer > 0) {
                         ctx.strokeStyle = '#0ff';
@@ -2468,7 +2550,7 @@
                     ctx.lineWidth = 2;
                     for(let i=0; i<segCount; i++) {
                         if (this.shieldSegments[i] > 0) {
-                            ctx.strokeStyle = '#f0f';
+                            ctx.strokeStyle = this.isGunboat ? (this.gunboatLevel === 1 ? '#f55' : '#fa0') : '#f0f';
                             ctx.beginPath();
                             ctx.arc(0, 0, this.shieldRadius, i * segAngle, (i+1) * segAngle - 0.2);
                             ctx.stroke();
@@ -2484,7 +2566,22 @@
                     ctx.strokeStyle = '#0ff';
                 }
                 else {
-                if (this.type === 'elite_roamer') {
+                if (this.isGunboat) {
+                    // Player-like hull silhouette, recolored
+                    const s = 1.4;
+                    ctx.fillStyle = this.gunboatLevel === 1 ? '#211' : '#321';
+                    ctx.strokeStyle = this.gunboatLevel === 1 ? '#f55' : '#fb0';
+                    ctx.lineWidth = 2;
+                    ctx.moveTo(25*s, 0); 
+                    ctx.lineTo(-10*s, 10*s);
+                    ctx.lineTo(-20*s, 20*s); 
+                    ctx.lineTo(-20*s, 5*s); 
+                    ctx.lineTo(-25*s, 5*s); 
+                    ctx.lineTo(-25*s, -5*s);
+                    ctx.lineTo(-20*s, -5*s);
+                    ctx.lineTo(-20*s, -20*s);
+                    ctx.lineTo(-10*s, -10*s);
+                } else if (this.type === 'elite_roamer') {
                     ctx.fillStyle = '#303';
                     ctx.strokeStyle = '#f0f';
                 } else if (this.type === 'hunter') {
@@ -2503,7 +2600,19 @@
                 ctx.shadowColor = '#f00';
                 
                 ctx.beginPath();
-                if (this.type === 'elite_roamer') {
+                if (this.isGunboat) {
+                    // reuse player silhouette
+                    const s = 1.4;
+                    ctx.moveTo(25*s, 0); 
+                    ctx.lineTo(-10*s, 10*s);
+                    ctx.lineTo(-20*s, 20*s); 
+                    ctx.lineTo(-20*s, 5*s); 
+                    ctx.lineTo(-25*s, 5*s); 
+                    ctx.lineTo(-25*s, -5*s);
+                    ctx.lineTo(-20*s, -5*s);
+                    ctx.lineTo(-20*s, -20*s);
+                    ctx.lineTo(-10*s, -10*s);
+                } else if (this.type === 'elite_roamer') {
                     ctx.moveTo(25, 0);
                     ctx.lineTo(-15, 18);
                     ctx.lineTo(-5, 0);
@@ -2548,7 +2657,9 @@
                 ctx.fillStyle = '#000';
                 ctx.strokeStyle = '#f55';
                 
-                if (this.type === 'elite_roamer' || this.type === 'hunter') {
+                if (this.isGunboat) {
+                     ctx.beginPath(); ctx.rect(0, -5, 28, 10); ctx.fillStyle = this.gunboatLevel === 1 ? '#f44' : '#fa0'; ctx.fill(); ctx.stroke();
+                } else if (this.type === 'elite_roamer' || this.type === 'hunter') {
                      ctx.beginPath(); ctx.rect(0, -4, 25, 8); ctx.fill(); ctx.stroke();
                 } else {
                      ctx.beginPath();
@@ -2564,6 +2675,21 @@
                 ctx.strokeStyle = '#f00';
                 ctx.stroke();
                 ctx.restore(); 
+                
+                if (this.nameTag) {
+                    ctx.save();
+                    ctx.translate(0, -this.radius - 15);
+                    ctx.fillStyle = '#ff0';
+                    ctx.font = 'bold 14px Courier New';
+                    ctx.textAlign = 'center';
+                    ctx.shadowBlur = 6;
+                    ctx.shadowColor = '#f00';
+                    ctx.fillText(this.nameTag, 0, 0);
+                    ctx.shadowBlur = 0;
+                    ctx.restore();
+                }
+
+                ctx.globalAlpha = 1;
                 ctx.restore(); 
             }
         }
@@ -2640,7 +2766,8 @@
                         this.vel.x += Math.cos(angle) * 0.05; 
                         this.vel.y += Math.sin(angle) * 0.05;
                         const speed = this.vel.mag();
-                        const maxSpeed = this.type === 'heavy' ? 1.5 : (this.type === 'rapid' ? 3.0 : 2.5);
+                        let maxSpeed = this.type === 'heavy' ? 1.5 : (this.type === 'rapid' ? 3.0 : 2.5);
+                        if (this instanceof Boss && this.chargePhase > 0) maxSpeed = 3.5;
                         if (speed > maxSpeed) this.vel.mult(maxSpeed/speed);
                     }
                 } else {
@@ -2802,100 +2929,92 @@
                     ctx.restore();
                 } 
                 else if (this.type === 'heavy') {
-                    // Heavy "Fortress" style
+                    // 70s sci-fi monolith style
                     ctx.save();
                     ctx.rotate(this.angle);
-                    ctx.fillStyle = '#332'; ctx.strokeStyle = '#b80';
-                    ctx.shadowBlur = 10; ctx.shadowColor = '#520';
-                    
-                    // Blocky Hull
+                    ctx.fillStyle = '#221122';
+                    ctx.strokeStyle = '#ff8800';
+                    ctx.shadowBlur = 15; ctx.shadowColor = '#ff8800';
+
                     ctx.beginPath();
-                    ctx.rect(-50, -50, 100, 100);
+                    ctx.rect(-60, -40, 120, 80);
                     ctx.fill(); ctx.stroke();
-                    
-                    // Industrial details
-                    ctx.fillStyle = '#221';
-                    ctx.fillRect(-40, -40, 30, 30);
-                    ctx.fillRect(10, 10, 30, 30);
-                    ctx.fillRect(-40, 10, 30, 30);
-                    ctx.fillRect(10, -40, 30, 30);
-                    
+
+                    // glowing fins
+                    ctx.strokeStyle = '#ffaa55';
+                    ctx.lineWidth = 3;
+                    for(let i=-1; i<=1; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(-60, i*20);
+                        ctx.lineTo(60, i*20);
+                        ctx.stroke();
+                    }
                     ctx.restore();
 
-                    // Heavy Turrets
+                    // Cannon pod
                     ctx.save();
                     ctx.rotate(this.turretAngle);
-                    ctx.fillStyle = '#443'; ctx.strokeStyle = '#fa0';
-                    
-                    // Main dual cannon
+                    ctx.fillStyle = '#331122'; ctx.strokeStyle = '#ffcc66';
                     ctx.beginPath();
-                    ctx.rect(-25, -20, 50, 40);
+                    ctx.rect(-20, -15, 40, 30);
                     ctx.fill(); ctx.stroke();
-
-                    ctx.fillStyle = '#110';
-                    ctx.fillRect(25, -12, 35, 8);
-                    ctx.fillRect(25, 4, 35, 8);
-                    
+                    ctx.fillStyle = '#ffcc66';
+                    ctx.fillRect(20, -6, 35, 12);
                     ctx.restore();
                 } 
                 else if (this.type === 'rapid') {
-                    // Rapid "Relay" style
+                    // 70s neon satellite
                     ctx.save();
                     ctx.rotate(this.angle);
-                    ctx.fillStyle = '#234'; ctx.strokeStyle = '#0ff';
-                    ctx.shadowBlur = 10; ctx.shadowColor = '#0cf';
+                    ctx.fillStyle = '#112244'; ctx.strokeStyle = '#66ffff';
+                    ctx.shadowBlur = 12; ctx.shadowColor = '#66ffff';
 
-                    // Tech shape
                     ctx.beginPath();
-                    for(let i=0; i<3; i++) {
-                        const a = i * Math.PI*2/3;
-                        ctx.lineTo(Math.cos(a)*60, Math.sin(a)*60);
-                        ctx.lineTo(Math.cos(a+0.5)*20, Math.sin(a+0.5)*20);
+                    for(let i=0; i<5; i++) {
+                        const a = i * Math.PI * 2 / 5;
+                        ctx.lineTo(Math.cos(a)*65, Math.sin(a)*65);
+                        ctx.lineTo(Math.cos(a+0.25)*20, Math.sin(a+0.25)*20);
                     }
                     ctx.closePath();
                     ctx.fill(); ctx.stroke();
-
                     ctx.restore();
                     
                     // Rapid Turret
                     ctx.save();
                     ctx.rotate(this.turretAngle);
-                    ctx.fillStyle = '#345'; ctx.strokeStyle = '#0ff';
+                    ctx.fillStyle = '#113355'; ctx.strokeStyle = '#66ffff';
                     ctx.beginPath();
-                    ctx.arc(0, 0, 15, 0, Math.PI*2);
+                    ctx.arc(0, 0, 16, 0, Math.PI*2);
                     ctx.fill(); ctx.stroke();
-                    ctx.fillStyle = '#088';
-                    ctx.fillRect(10, -4, 25, 8);
+                    ctx.fillStyle = '#00ccff';
+                    ctx.fillRect(12, -4, 26, 8);
                     ctx.restore();
                 } 
                 else {
-                    // Standard "Star" style
+                    // Standard retro ringed station
                     ctx.save();
                     ctx.rotate(this.angle);
-                    ctx.fillStyle = '#202'; ctx.strokeStyle = '#f0f';
-                    ctx.shadowBlur = 10; ctx.shadowColor = '#f0f';
+                    ctx.fillStyle = '#1a0f2d'; ctx.strokeStyle = '#ff77ff';
+                    ctx.shadowBlur = 12; ctx.shadowColor = '#ff77ff';
                     ctx.lineWidth = 3;
 
                     ctx.beginPath();
-                    for (let i = 0; i < 3; i++) {
-                        const a = i * Math.PI * 2 / 3;
-                        const x = Math.cos(a) * 70;
-                        const y = Math.sin(a) * 70;
-                        if (i === 0) ctx.moveTo(x, y);
-                        else ctx.lineTo(x, y);
-                        
-                        // Inner point
-                        const a2 = a + Math.PI / 3;
-                        ctx.lineTo(Math.cos(a2) * 20, Math.sin(a2) * 20);
-                    }
-                    ctx.closePath();
+                    ctx.arc(0, 0, 75, 0, Math.PI*2);
                     ctx.fill(); ctx.stroke();
-                    
-                    // Center detail
-                    ctx.fillStyle = '#f0f';
                     ctx.beginPath();
-                    ctx.arc(0, 0, 15, 0, Math.PI*2);
-                    ctx.fill();
+                    ctx.arc(0, 0, 40, 0, Math.PI*2);
+                    ctx.strokeStyle = '#ffaaee';
+                    ctx.stroke();
+
+                    // fins
+                    for(let i=0; i<4; i++) {
+                        const a = i * Math.PI/2;
+                        ctx.beginPath();
+                        ctx.moveTo(Math.cos(a)*40, Math.sin(a)*40);
+                        ctx.lineTo(Math.cos(a)*90, Math.sin(a)*90);
+                        ctx.strokeStyle = '#ffcc88';
+                        ctx.stroke();
+                    }
 
                     ctx.restore();
                 }
@@ -2998,6 +3117,12 @@
                 this.innerShieldSegments = new Array(16).fill(shieldStrength);
                 this.vel.x = 0;
                 this.vel.y = 0;
+                
+                // Gimmick timers
+                this.gimmickTimer = 600;
+                this.chargeDir = 0;
+                this.chargePhase = 0;
+                this.beamSweepDir = 0;
             }
             
             kill() {
@@ -3048,7 +3173,45 @@
                     this.angle += Math.sign(diff) * 0.005;
                 }
                 
+                // Variant gimmicks with telegraph effects (before movement)
+                this.gimmickTimer--;
+                if (this.variant === 'dreadnought') {
+                    if (this.gimmickTimer <= 0) {
+                        this.chargeDir = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+                        this.chargePhase = 90; // boosted thrust duration
+                        showOverlayMessage("DREADNOUGHT CHARGE!", '#f00', 1000);
+                        this.gimmickTimer = 600;
+                    }
+                    if (this.chargePhase > 0) {
+                        this.chargePhase--;
+                        this.vel.x += Math.cos(this.chargeDir) * 0.2;
+                        this.vel.y += Math.sin(this.chargeDir) * 0.2;
+                    }
+                } else if (this.variant === 'swarm') {
+                    if (this.gimmickTimer <= 0) {
+                        showOverlayMessage("SWARM DEPLOYMENT!", '#fa0', 1000);
+                        for(let i=0; i<5; i++) {
+                            const a = Math.random() * Math.PI * 2;
+                            const bx = this.pos.x + Math.cos(a) * 140;
+                            const by = this.pos.y + Math.sin(a) * 140;
+                            enemies.push(new Enemy('roamer', {x:bx, y:by}));
+                        }
+                        this.gimmickTimer = 480;
+                    }
+                } else {
+                    if (this.gimmickTimer <= 0) {
+                        this.beamSweepDir = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+                        showOverlayMessage("DOOMSDAY BEAM!", '#f0f', 1000);
+                        for(let i=-3; i<=3; i++) {
+                            const a = this.beamSweepDir + i * 0.1;
+                            bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 4, 14, 6, '#f0f'));
+                        }
+                        this.gimmickTimer = 520;
+                    }
+                }
+
                 super.update();
+
                 if (player && !player.dead && this.shootTimer <= 0) {
                     const aimAngle = this.angle;
                     if (this.variant === 'dreadnought') {
@@ -3105,7 +3268,7 @@
                 this.shieldRotation = 0;
                 this.innerShieldRotation = 0;
                 
-                this.turretReload = 12;
+                this.turretReload = 19; // 25% slower
                 this.defenderSpawnTimer = 0;
             }
             
@@ -3121,7 +3284,7 @@
                         this.turretReload--;
                         if (this.turretReload <= 0) {
                             this.fireTurrets();
-                            this.turretReload = 15; // Rapid fire
+                            this.turretReload = 19; // 25% slower
                         }
                         this.manageDefenders();
                     }
@@ -3339,6 +3502,9 @@
         let powerups = [];
         let shootingStars = [];
         let nextShootingStarTime = 0;
+        let nextIntensityBreakAt = 0;
+        let intensityBreakActive = false;
+        const INTENSITY_BREAK_DURATION = 12000; // 12s
         let score = 0;
         let difficultyTier = 1;
         let basesDestroyed = 0;
@@ -3356,6 +3522,9 @@
         let bossArena = { x: 0, y: 0, radius: 2500, active: false, growing: false };
         const GAME_DURATION_MS = 30 * 60 * 1000; // 30 minutes
         let minimapFrame = 0;
+        let pendingTransitionClear = false;
+        let gunboatRespawnAt = null;
+        let gunboatLevel2Unlocked = false;
         
         // Dreadnought spawn manager
         let dreadManager = {
@@ -3462,7 +3631,7 @@
             }
             
             // Collision & Damage
-            const damageable = [player, ...enemies];
+            const damageable = [player, ...enemies, ...bases];
             for (let entity of damageable) {
                 if (entity.dead) continue;
                 const nearbyAsteroids = asteroidGrid.query(entity.pos.x, entity.pos.y);
@@ -3478,6 +3647,11 @@
                         const overlap = minDist - dist;
                         const nx = dx / dist;
                         const ny = dy / dist;
+                        if (entity instanceof Base || (entity instanceof Enemy && entity.isGunboat)) {
+                            ast.break();
+                            spawnParticles(ast.pos.x, ast.pos.y, 10, '#aa8');
+                            continue;
+                        }
                         entity.pos.x += nx * overlap;
                         entity.pos.y += ny * overlap;
                         entity.vel.x += nx * 1;
@@ -3743,6 +3917,8 @@
             powerups = [];
             shootingStars = [];
             scheduleNextShootingStar();
+            nextIntensityBreakAt = Date.now() + 120000; // first break at 2 minutes
+            intensityBreakActive = false;
             warpParticles = []; 
             shockwaves = [];
             roamerRespawnQueue = [];
@@ -3758,6 +3934,7 @@
             sectorTransitionActive = false;
             warpCountdownAt = null;
             nextSpaceStationTime = Date.now() + 180000; // first station after 3 minutes
+            gunboatLevel2Unlocked = false;
             
             maxRoamers = 5; 
             for(let i=0; i<5; i++) enemies.push(new Enemy('roamer'));
@@ -4101,6 +4278,20 @@
             if (!player) return;
             
             const now = Date.now();
+            
+            // Safe clears after a station destruction to avoid mid-loop mutation
+            if (pendingTransitionClear) {
+                enemies = [];
+                bases = [];
+                bullets = [];
+                bossActive = false;
+                boss = null;
+            bossArena.active = false;
+            roamerRespawnQueue = [];
+            baseRespawnTimers = [];
+            pendingTransitionClear = false;
+            gunboatRespawnAt = null;
+        }
             // Update HUD timer (exclude paused time)
             try {
                 const tEl = document.getElementById('game-timer');
@@ -4152,29 +4343,92 @@
                 nextSpaceStationTime = null;
             }
             
+            // Gunboat respawn (one at a time)
+            if (!sectorTransitionActive && gameActive && !gamePaused) {
+                const gunboatAlive = enemies.some(e => e.isGunboat);
+                const level2Alive = enemies.some(e => e.isGunboat && e.gunboatLevel === 2);
+                const level1Alive = enemies.some(e => e.isGunboat && e.gunboatLevel === 1);
+                if (gunboatRespawnAt && now >= gunboatRespawnAt) {
+                    // Spawn rules: before warp, only level 1, one at a time. After warp, allow one level 1 and one level 2 simultaneously.
+                    if (!gunboatLevel2Unlocked) {
+                        if (!level1Alive) enemies.push(new Enemy('gunboat'));
+                        gunboatRespawnAt = null;
+                    } else {
+                        if (!level1Alive) {
+                            enemies.push(new Enemy('gunboat')); // level decided in constructor
+                        } else if (!level2Alive) {
+                            enemies.push(new Enemy('gunboat'));
+                        }
+                        gunboatRespawnAt = null;
+                    }
+                }
+                if (!gunboatRespawnAt) {
+                    // Only set a timer if we need more according to rules
+                    if (!gunboatLevel2Unlocked) {
+                        if (!level1Alive) gunboatRespawnAt = now + 20000;
+                    } else {
+                        if (!level1Alive || !level2Alive) gunboatRespawnAt = now + 20000;
+                    }
+                }
+            }
+            
             if (Date.now() > nextShootingStarTime) {
                 shootingStars.push(new ShootingStar());
                 scheduleNextShootingStar();
                 showOverlayMessage("WARNING: COSMIC EVENT DETECTED", '#fa0', 3000);
             }
+            
+            // Intensity breaks to let players collect/reposition
+            if (!sectorTransitionActive && !gamePaused && gameActive) {
+                if (!intensityBreakActive && now >= nextIntensityBreakAt) {
+                    intensityBreakActive = true;
+                    nextIntensityBreakAt = now + INTENSITY_BREAK_DURATION + 90000; // after break, schedule next in ~90s
+                    showOverlayMessage("CALM ZONE: INTENSITY DROP", '#0f0', 2000);
+                }
+                if (intensityBreakActive && now >= nextIntensityBreakAt - (INTENSITY_BREAK_DURATION)) {
+                    // during break, stop new roamer spawns
+                }
+                if (intensityBreakActive && now >= nextIntensityBreakAt) {
+                    intensityBreakActive = false;
+                }
+            }
 
             if (!sectorTransitionActive) {
-                const currentRoamers = enemies.filter(e => e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter').length;
-                const targetRoamers = 5 + difficultyTier;
+                // Time-based pacing for roamer count and strength
+                let elapsed = now - gameStartTime - pausedAccumMs;
+                if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
+                if (elapsed < 0) elapsed = 0;
+                const elapsedMinutes = elapsed / 60000;
 
-                if (currentRoamers + roamerRespawnQueue.length < targetRoamers) {
+                const baseRoamers = 4;
+                const maxRoamers = 15;
+                const rampMinutes = 25; // slower ramp
+                const rampT = Math.min(1, elapsedMinutes / rampMinutes);
+                const difficultyBonus = Math.max(0, (difficultyTier + player.level * 0.1) - 1) * 0.3;
+                const targetRoamers = Math.floor(baseRoamers + (maxRoamers - baseRoamers) * rampT + difficultyBonus);
+
+                const currentRoamers = enemies.filter(e => e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter').length;
+                if (!intensityBreakActive && currentRoamers + roamerRespawnQueue.length < targetRoamers) {
                     roamerRespawnQueue.push(100); 
                 }
+
+                const eliteUnlocked = elapsedMinutes >= 5 || difficultyTier >= 3 || player.level >= 4;
+                const hunterUnlocked = elapsedMinutes >= 11 || difficultyTier >= 5 || player.level >= 7;
+                const eliteChance = eliteUnlocked ? Math.min(0.3, 0.05 + (elapsedMinutes / 25) * 0.25) : 0;
+                const hunterChance = hunterUnlocked ? Math.min(0.2, 0.05 + (elapsedMinutes / 35) * 0.2) : 0;
+                const eliteSoftCap = 6;
+                const hunterSoftCap = 4;
 
                 for(let i = roamerRespawnQueue.length - 1; i >= 0; i--) {
                     roamerRespawnQueue[i]--;
                     if (roamerRespawnQueue[i] <= 0) {
                         roamerRespawnQueue.splice(i, 1);
                         let type = 'roamer';
-                        // At higher tiers, 20% of roamers upgrade to elites, and 20% of those elites upgrade to hunters
-                        if (difficultyTier >= 3 && Math.random() < 0.2) {
+                        const currentElite = enemies.filter(e => e.type === 'elite_roamer').length;
+                        const currentHunter = enemies.filter(e => e.type === 'hunter').length;
+                        if (eliteUnlocked && currentElite < eliteSoftCap && Math.random() < eliteChance) {
                             type = 'elite_roamer';
-                            if (difficultyTier >= 5 && Math.random() < 0.2) {
+                            if (hunterUnlocked && currentHunter < hunterSoftCap && Math.random() < hunterChance) {
                                 type = 'hunter';
                             }
                         }
