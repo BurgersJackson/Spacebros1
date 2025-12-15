@@ -376,7 +376,7 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+<!-- Single-file build: keep everything in this HTML (no external assets). -->
 </head>
 <body>
     <div id="root"></div>
@@ -416,6 +416,7 @@
                 <div>LVL: <span id="level-display">1</span></div>
                 <div id="game-timer" class="hud-timer">00:00</div>
                 <div class="objective-text">KILLS: <span id="bases-display">0</span></div>
+                <div class="objective-text" id="contract-display" style="color:#0f0; text-shadow:0 0 6px #0f0;">CONTRACT: NONE</div>
             </div>
         </div>
         
@@ -506,7 +507,8 @@
                 { "id": "hull_strength", "name": "Hull Strength", "tier1": "+25 Max HP, Heal 25", "tier2": "+25 Max HP, Heal 25", "tier3": "+25 Max HP, Heal 25", "notes": "Increases survival." },
                 { "id": "segment_count", "name": "Segment Count", "tier1": "+2 segments (total 10)", "tier2": "+4 total (14)", "tier3": "+8 total (18)", "notes": "Larger shield bubble." },
                 { "id": "segment_hp", "name": "Segment HP", "tier1": "+50% HP/seg.", "tier2": "+100% total", "tier3": "+200% total", "notes": "Tankier defense." },
-                { "id": "shield_regen", "name": "Shield Regen", "tier1": "Regen 1 seg./5s", "tier2": "1 seg./3s", "tier3": "1 seg./1s", "notes": "Sustain in long fights." }
+                { "id": "shield_regen", "name": "Shield Regen", "tier1": "Regen 1 seg./5s", "tier2": "1 seg./3s", "tier3": "1 seg./1s", "notes": "Sustain in long fights." },
+                { "id": "hp_regen", "name": "Hull Regen", "tier1": "Regen 1 HP / 5s", "tier2": "Regen 2 HP / 5s", "tier3": "Regen 3 HP / 5s", "notes": "Slow passive healing." }
               ]
             },
             {
@@ -739,6 +741,57 @@
                 ctx.fill();
                 ctx.stroke();
                 
+                ctx.restore();
+            }
+        }
+        
+        class FloatingText extends Entity {
+            constructor(x, y, text, color = '#ff0', life = 45, opts = {}) {
+                super(x, y);
+                this.text = text;
+                this.color = color;
+                this.life = life;
+                this.maxLife = life;
+                this.vel.y = -0.7;
+                this.vel.x = (Math.random() - 0.5) * 0.25;
+                this.key = opts.key || null;
+                this.amount = (typeof opts.amount === 'number') ? opts.amount : null;
+                this.prefix = opts.prefix || '';
+                this.suffix = opts.suffix || '';
+                this.lastBumpAt = Date.now();
+            }
+            bump(deltaAmount, x, y) {
+                if (typeof deltaAmount === 'number') {
+                    if (typeof this.amount !== 'number') this.amount = 0;
+                    this.amount += deltaAmount;
+                    this.text = `${this.prefix}${this.amount}${this.suffix}`;
+                }
+                if (typeof x === 'number') this.pos.x = x;
+                if (typeof y === 'number') this.pos.y = y;
+                this.life = this.maxLife;
+                this.lastBumpAt = Date.now();
+            }
+            update() {
+                this.pos.add(this.vel);
+                this.vel.mult(0.98);
+                this.life--;
+                if (this.life <= 0) this.dead = true;
+            }
+            draw(ctx) {
+                if (this.dead) return;
+                const t = Math.max(0, this.life / this.maxLife);
+                const alpha = Math.min(1, t * t); // fade quickly
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = this.color;
+                // Camera is zoomed out; keep pickup text readable.
+                ctx.font = 'bold 60px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = '#000';
+                ctx.fillText(this.text, 0, 0);
                 ctx.restore();
             }
         }
@@ -1006,11 +1059,11 @@
                     osc2.start(now);
                     osc1.stop(now + 3);
                     osc2.stop(now + 3);
-                } else if (type === 'station_spawn') {
-                    // Longer ominous sound for station
-                    const osc1 = audioCtx.createOscillator();
-                    const osc2 = audioCtx.createOscillator();
-                    const gain = audioCtx.createGain();
+                 } else if (type === 'station_spawn') {
+                     // Longer ominous sound for station
+                     const osc1 = audioCtx.createOscillator();
+                     const osc2 = audioCtx.createOscillator();
+                     const gain = audioCtx.createGain();
                     
                     osc1.type = 'sawtooth';
                     osc1.frequency.setValueAtTime(55, now);
@@ -1028,14 +1081,40 @@
                     gain.gain.linearRampToValueAtTime(0.4, now + 1);
                     gain.gain.linearRampToValueAtTime(0, now + 6);
                     
-                    osc1.start(now);
-                    osc2.start(now);
-                    osc1.stop(now + 6);
-                    osc2.stop(now + 6);
-                } else if (type === 'levelup') {
-                    const { osc, gain } = createOsc('square', 440, 0.6, 0.2);
-                    osc.frequency.setValueAtTime(440, now);
-                    osc.frequency.setValueAtTime(554, now + 0.1); 
+                     osc1.start(now);
+                     osc2.start(now);
+                     osc1.stop(now + 6);
+                     osc2.stop(now + 6);
+                 } else if (type === 'contract') {
+                     // Short two-chirp notification
+                     const osc1 = audioCtx.createOscillator();
+                     const gain1 = audioCtx.createGain();
+                     osc1.type = 'triangle';
+                     osc1.frequency.setValueAtTime(660, now);
+                     osc1.frequency.exponentialRampToValueAtTime(990, now + 0.12);
+                     gain1.gain.setValueAtTime(0.16, now);
+                     gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                     osc1.connect(gain1);
+                     gain1.connect(audioCtx.destination);
+                     osc1.start(now);
+                     osc1.stop(now + 0.25);
+ 
+                     const osc2 = audioCtx.createOscillator();
+                     const gain2 = audioCtx.createGain();
+                     osc2.type = 'triangle';
+                     gain2.gain.setValueAtTime(0, now);
+                     gain2.gain.setValueAtTime(0.14, now + 0.18);
+                     gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+                     osc2.frequency.setValueAtTime(880, now + 0.18);
+                     osc2.frequency.exponentialRampToValueAtTime(1320, now + 0.32);
+                     osc2.connect(gain2);
+                     gain2.connect(audioCtx.destination);
+                     osc2.start(now + 0.18);
+                     osc2.stop(now + 0.36);
+                 } else if (type === 'levelup') {
+                     const { osc, gain } = createOsc('square', 440, 0.6, 0.2);
+                     osc.frequency.setValueAtTime(440, now);
+                     osc.frequency.setValueAtTime(554, now + 0.1); 
                     osc.frequency.setValueAtTime(659, now + 0.2); 
                     osc.frequency.setValueAtTime(880, now + 0.3); 
                     gain.gain.linearRampToValueAtTime(0, now + 0.6);
@@ -1091,7 +1170,9 @@
         let gameActive = false;
         let gamePaused = false;
         
-        const ZOOM_LEVEL = 0.6; 
+        // Base zoom for the game (set to the previous Cruiser-fight zoom).
+        const ZOOM_LEVEL = 0.4; 
+        let currentZoom = ZOOM_LEVEL;
         
         // Map Entities
         let environmentAsteroids = [];
@@ -1208,7 +1289,7 @@
             gunboatLevel2Unlocked = true; // level 2 gunboats allowed after warp
             // Restart cruiser timer for the new sector
             dreadManager.timerActive = true;
-            dreadManager.timerAt = Date.now() + dreadManager.minDelayMs;
+            dreadManager.timerAt = Date.now() + dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
             
             // Stations for new sector
             pendingStations = 2;
@@ -1273,15 +1354,30 @@
             }
         }
 
-        function showOverlayMessage(text, color = '#0ff', duration = 2000) {
+        let overlayToken = 0;
+        let overlayPriority = 0;
+        let overlayLockUntil = 0;
+
+        function showOverlayMessage(text, color = '#0ff', duration = 2000, priority = 0) {
             const el = document.getElementById('overlay-message');
+            const now = Date.now();
+            if (now < overlayLockUntil && priority < overlayPriority) return;
+
+            overlayPriority = priority;
+            overlayLockUntil = now + duration;
+            overlayToken++;
+            const token = overlayToken;
+
             el.innerText = text;
             el.style.color = color;
             el.style.textShadow = `0 0 10px ${color}`;
             el.style.display = 'block';
             if (overlayTimeout) clearTimeout(overlayTimeout);
             overlayTimeout = setTimeout(() => {
+                if (overlayToken !== token) return;
                 el.style.display = 'none';
+                overlayPriority = 0;
+                overlayLockUntil = 0;
             }, duration);
         }
 
@@ -1306,14 +1402,18 @@
                 }
             }
             
-            update() {
-                this.pos.add(this.vel);
-                this.angle += this.rotSpeed;
-                checkDespawn(this, 5000);
-            }
+             update() {
+                 this.pos.add(this.vel);
+                 this.angle += this.rotSpeed;
+                 // Contract / maze walls should persist until the contract cleans them up.
+                 if (!(this.unbreakable && this.contractId)) {
+                     checkDespawn(this, 5000);
+                 }
+             }
             
             break() {
                 if (this.dead) return;
+                if (this.unbreakable) return;
                 this.dead = true;
                 // previously dropped a coin here; asteroid drops disabled
                 
@@ -1334,18 +1434,25 @@
                 ctx.translate(this.pos.x, this.pos.y);
                 ctx.rotate(this.angle);
                 
-                if (sectorIndex >= 2) {
-                    ctx.strokeStyle = '#ccc';
-                    ctx.shadowColor = '#bbb';
+                if (this.unbreakable) {
+                    // Indestructible "walls" (used by anomaly maze rings)
+                    ctx.strokeStyle = '#00aaff';
+                    ctx.shadowColor = '#0077ff';
+                    ctx.lineWidth = 4;
+                    ctx.shadowBlur = 14;
                 } else {
-                    if (this.sizeLevel === 3) ctx.strokeStyle = '#005500';
-                    else if (this.sizeLevel === 2) ctx.strokeStyle = '#006600';
-                    else ctx.strokeStyle = '#008800';
-                    ctx.shadowColor = '#003300';
+                    if (sectorIndex >= 2) {
+                        ctx.strokeStyle = '#ccc';
+                        ctx.shadowColor = '#bbb';
+                    } else {
+                        if (this.sizeLevel === 3) ctx.strokeStyle = '#005500';
+                        else if (this.sizeLevel === 2) ctx.strokeStyle = '#006600';
+                        else ctx.strokeStyle = '#008800';
+                        ctx.shadowColor = '#003300';
+                    }
+                    ctx.lineWidth = 3;
+                    ctx.shadowBlur = 10;
                 }
-
-                ctx.lineWidth = 3;
-                ctx.shadowBlur = 10;
                 
                 ctx.beginPath();
                 ctx.moveTo(this.vertices[0].x, this.vertices[0].y);
@@ -1461,6 +1568,8 @@
                     multiShot: 1,
                     homing: 0, // 0=none, 1=weak, 2=strong
                     shieldRegenRate: 8, // seconds per segment
+                    hpRegenAmount: 0, // HP per tick
+                    hpRegenRate: 5, // seconds per tick
                     speedMult: 1.0,
                     // accelMult and rotMult removed
                     slowField: 0, // Radius
@@ -1482,6 +1591,7 @@
                 this.lastAsteroidHitTime = 0;
                 this.lastArenaDamageTime = 0;
                 this.lastShieldRegenTime = Date.now();
+                this.lastHpRegenTime = Date.now();
 
                 this.shieldRadius = 45; 
                 this.maxShieldSegments = 8;
@@ -1633,6 +1743,19 @@
                     }
                 }
                 
+                // Hull HP Regen
+                if (this.stats.hpRegenAmount > 0 && this.stats.hpRegenRate > 0) {
+                    const now = Date.now();
+                    if (now - this.lastHpRegenTime > this.stats.hpRegenRate * 1000) {
+                        if (this.hp < this.maxHp) {
+                            this.hp = Math.min(this.maxHp, this.hp + this.stats.hpRegenAmount);
+                            updateHealthUI();
+                            spawnParticles(this.pos.x, this.pos.y, 4, '#0f0');
+                        }
+                        this.lastHpRegenTime = now;
+                    }
+                }
+                
                 // Auto-Cycling Invincibility Phase Shield
                 if (this.invincibilityCycle.unlocked) {
                     this.invincibilityCycle.timer--;
@@ -1717,11 +1840,11 @@
                 }
             }
             
-            fireNuke() {
-                shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.nukeDamage, this.nukeRange));
-                this.nukeCooldown = this.nukeMaxCooldown;
-            //    showOverlayMessage("NUKE DEPLOYED", '#ff0', 1000);
-            }
+             fireNuke() {
+                 shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.nukeDamage, this.nukeRange, { damageAsteroids: true }));
+                 this.nukeCooldown = this.nukeMaxCooldown;
+             //    showOverlayMessage("NUKE DEPLOYED", '#ff0', 1000);
+             }
 
             warp() {
                 spawnParticles(this.pos.x, this.pos.y, 30, '#0ff');
@@ -1999,42 +2122,163 @@
             }
         }
 
-        class Shockwave extends Entity {
-            constructor(x, y, damage, maxRadius = 500) {
-                super(x, y);
-                this.damage = damage;
-                this.currentRadius = 10;
-                this.maxRadius = maxRadius;
-                this.speed = 25;
-                this.hitList = [];
-            }
-            update() {
-                this.currentRadius += this.speed;
-                if (this.currentRadius >= this.maxRadius) this.dead = true;
+         class Shockwave extends Entity {
+             constructor(x, y, damage, maxRadius = 500, opts = {}) {
+                 super(x, y);
+                 this.damage = damage;
+                 this.currentRadius = 10;
+                 this.maxRadius = maxRadius;
+                 this.speed = 25;
+                 this.hitList = [];
+                 this.damagePlayer = !!opts.damagePlayer;
+                 this.damageBases = !!opts.damageBases;
+                 this.damageAsteroids = !!opts.damageAsteroids;
+                 this.ignoreEntity = opts.ignoreEntity || null;
+                 this.color = opts.color || '#ff0';
+             }
+             update() {
+                 this.currentRadius += this.speed;
+                 if (this.currentRadius >= this.maxRadius) this.dead = true;
                 
                 const targets = [...enemies];
+                if (this.damageBases) targets.push(...bases);
                 if (boss && bossActive && !boss.dead) targets.push(boss);
+                if (this.damagePlayer && player && !player.dead) targets.push(player);
 
                 for(let e of targets) {
+                    if (this.ignoreEntity && e === this.ignoreEntity) continue;
                     if (e.dead || this.hitList.includes(e)) continue;
                     const dist = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
                     if (dist < this.currentRadius + e.radius) {
-                        e.hp -= this.damage;
-                        this.hitList.push(e);
-                        playSound('hit');
-                        spawnParticles(e.pos.x, e.pos.y, 5, '#ff0');
-                        if (e.hp <= 0) e.kill();
-                    }
+                        if (e === player) {
+                            // Player uses shields + i-frames
+                            if (player.invulnerable > 0) {
+                                this.hitList.push(e);
+                                continue;
+                            }
+                            let remaining = Math.max(0, Math.ceil(this.damage));
+                            for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
+                                const absorb = Math.min(remaining, player.shieldSegments[i]);
+                                player.shieldSegments[i] -= absorb;
+                                remaining -= absorb;
+                            }
+                            if (remaining > 0) {
+                                player.hp -= remaining;
+                                player.invulnerable = 30;
+                                playSound('explode');
+                                spawnParticles(player.pos.x, player.pos.y, 12, '#f00');
+                                updateHealthUI();
+                                if (player.hp <= 0) killPlayer();
+                            } else {
+                                playSound('shield_hit');
+                                spawnParticles(player.pos.x, player.pos.y, 10, '#0ff');
+                            }
+                            this.hitList.push(e);
+                        } else {
+                            e.hp -= this.damage;
+                            this.hitList.push(e);
+                            playSound('hit');
+                            spawnParticles(e.pos.x, e.pos.y, 5, '#ff0');
+                            if (e.hp <= 0) e.kill();
+                         }
+                     }
+                 }
+                 
+                 if (this.damageAsteroids) {
+                     for (let ast of environmentAsteroids) {
+                         if (!ast || ast.dead) continue;
+                         if (ast.unbreakable) continue;
+                         if (this.hitList.includes(ast)) continue;
+                         const dist = Math.hypot(ast.pos.x - this.pos.x, ast.pos.y - this.pos.y);
+                         if (dist < this.currentRadius + ast.radius) {
+                             ast.break();
+                             this.hitList.push(ast);
+                             spawnParticles(ast.pos.x, ast.pos.y, 10, '#aa8');
+                             playSound('hit');
+                         }
+                     }
+                 }
+             }
+             draw(ctx) {
+                 ctx.save();
+                 ctx.translate(this.pos.x, this.pos.y);
+                ctx.beginPath();
+                ctx.arc(0, 0, this.currentRadius, 0, Math.PI * 2);
+                const alpha = Math.max(0, 1 - (this.currentRadius / this.maxRadius));
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 8;
+                ctx.globalAlpha = alpha;
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+        
+        class CruiserMineBomb extends Entity {
+            constructor(owner, angle, maxTravel, damage, blastRadius) {
+                super(owner.pos.x, owner.pos.y);
+                this.owner = owner;
+                this.angle = angle;
+                this.speed = 6.5;
+                this.vel.x = Math.cos(angle) * this.speed;
+                this.vel.y = Math.sin(angle) * this.speed;
+                this.radius = 14;
+                this.damage = damage;
+                this.blastRadius = blastRadius;
+                this.maxTravel = maxTravel;
+                this.startX = this.pos.x;
+                this.startY = this.pos.y;
+                this.t = 0;
+                
+                // Spawn around the cruiser, not on the center
+                const off = (owner.radius * 0.75) + 18;
+                this.pos.x += Math.cos(angle) * off;
+                this.pos.y += Math.sin(angle) * off;
+                this.startX = this.pos.x;
+                this.startY = this.pos.y;
+            }
+            update() {
+                this.t++;
+                this.pos.add(this.vel);
+                
+                if (this.t % 2 === 0) {
+                    particles.push(new Particle(
+                        this.pos.x + (Math.random()-0.5)*6,
+                        this.pos.y + (Math.random()-0.5)*6,
+                        -this.vel.x * 0.05 + (Math.random()-0.5)*0.6,
+                        -this.vel.y * 0.05 + (Math.random()-0.5)*0.6,
+                        '#fa0'
+                    ));
                 }
+                
+                const travelled = Math.hypot(this.pos.x - this.startX, this.pos.y - this.startY);
+                if (travelled >= this.maxTravel) this.explode();
+            }
+            explode() {
+                if (this.dead) return;
+                this.dead = true;
+                playSound('explode');
+                spawnParticles(this.pos.x, this.pos.y, 40, '#fa0');
+                shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.damage, this.blastRadius, {
+                    damagePlayer: true,
+                    damageBases: true,
+                    ignoreEntity: this.owner,
+                    color: '#fa0'
+                }));
             }
             draw(ctx) {
                 ctx.save();
                 ctx.translate(this.pos.x, this.pos.y);
+                ctx.rotate(this.t * 0.1);
+                ctx.shadowBlur = 18;
+                ctx.shadowColor = '#fa0';
+                ctx.fillStyle = '#fa0';
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.arc(0, 0, this.currentRadius, 0, Math.PI * 2);
-                ctx.strokeStyle = `rgba(255, 255, 0, ${1 - (this.currentRadius / this.maxRadius)})`;
-                ctx.lineWidth = 8;
+                ctx.arc(0, 0, this.radius, 0, Math.PI*2);
+                ctx.fill();
                 ctx.stroke();
+                ctx.shadowBlur = 0;
                 ctx.restore();
             }
         }
@@ -2052,8 +2296,8 @@
                 const targetY = player.pos.y + (Math.random() - 0.5) * 1000;
                 const travelAngle = Math.atan2(targetY - this.pos.y, targetX - this.pos.x);
                 
-                this.vel.x = Math.cos(travelAngle) * 30; // Fast
-                this.vel.y = Math.sin(travelAngle) * 30;
+                this.vel.x = Math.cos(travelAngle) * 15; // 50% slower
+                this.vel.y = Math.sin(travelAngle) * 15;
                 
                 this.radius = 40;
                 this.damage = 10;
@@ -2285,8 +2529,11 @@
                     this.shootTimer = this.gunboatLevel === 1 ? 21 : 17; // 50% faster
                 this.shieldSegments = new Array(10).fill(2);
                 this.shieldRadius = 45;
-                this.gunboatShieldRecharge = 180; // frames between shield regen (~3s at 60fps)
-            }
+                    this.gunboatShieldRecharge = 180; // frames between shield regen (~3s at 60fps)
+                }
+                
+                // Default bounce; bosses can override
+                this.wallElasticity = 0.8;
                 // Circle-strafe preference flags (set after gunboat init so all gunboats orbit)
                 this.circleStrafePreferred = false;
                 if (this.isGunboat) this.circleStrafePreferred = true;
@@ -2523,14 +2770,14 @@
 
                 this.vel.mult(this.friction);
                 super.update();
-                checkWallCollision(this, 0.8); 
+                checkWallCollision(this, (typeof this.wallElasticity === 'number') ? this.wallElasticity : 0.8); 
                 
                 let distToPlayer = Infinity;
                 if (player && !player.dead) distToPlayer = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
                 const attackRange = (this.type === 'elite_roamer' || this.type === 'hunter') ? 800 : 600;
 
                  const gunboatRange = this.isGunboat ? (this.gunboatRange || 900) : attackRange;
-                if (distToPlayer < gunboatRange && !player.dead && this.freezeTimer <= 0) {
+                if (!this.disableAutoFire && distToPlayer < gunboatRange && !player.dead && this.freezeTimer <= 0) {
                     this.shootTimer--;
                     if (this.shootTimer <= 0) {
                         const angle = this.getAimAngle();
@@ -2670,7 +2917,7 @@
                     ctx.lineWidth = 2;
                     for(let i=0; i<segCount; i++) {
                         if (this.shieldSegments[i] > 0) {
-                            ctx.strokeStyle = this.isGunboat ? (this.gunboatLevel === 1 ? '#f55' : '#fa0') : '#f0f';
+                            ctx.strokeStyle = this.isCruiser ? '#8ff' : (this.isGunboat ? (this.gunboatLevel === 1 ? '#f55' : '#fa0') : '#f0f');
                             ctx.beginPath();
                             ctx.arc(0, 0, this.shieldRadius, i * segAngle, (i+1) * segAngle - 0.2);
                             ctx.stroke();
@@ -2688,7 +2935,7 @@
                     ctx.lineWidth = 2;
                     for (let i=0; i<innerCount; i++) {
                         if (this.innerShieldSegments[i] > 0) {
-                            ctx.strokeStyle = this.isGunboat ? (this.gunboatLevel === 1 ? '#f88' : '#ff0') : '#8ff';
+                            ctx.strokeStyle = this.isCruiser ? '#8ff' : (this.isGunboat ? (this.gunboatLevel === 1 ? '#f88' : '#ff0') : '#8ff');
                             ctx.beginPath();
                             ctx.arc(0, 0, innerRadius, i * innerAngle + 0.05, (i+1) * innerAngle - 0.15);
                             ctx.stroke();
@@ -2705,20 +2952,19 @@
                 }
                 else {
                 if (this.isGunboat) {
-                    // Player-like hull silhouette, recolored
+                    // Gunboat / Boss hull styling
                     const s = this.gunboatScale || 1.4;
-                    ctx.fillStyle = this.gunboatLevel === 1 ? '#211' : '#321';
-                    ctx.strokeStyle = this.gunboatLevel === 1 ? '#f55' : '#fb0';
+                    if (this.isCruiser) {
+                        ctx.fillStyle = '#2b2f33';
+                        ctx.strokeStyle = '#c7ced6';
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = '#8899aa';
+                    } else {
+                        ctx.fillStyle = this.gunboatLevel === 1 ? '#211' : '#321';
+                        ctx.strokeStyle = this.gunboatLevel === 1 ? '#f55' : '#fb0';
+                    }
                     ctx.lineWidth = 2;
-                    ctx.moveTo(25*s, 0); 
-                    ctx.lineTo(-10*s, 10*s);
-                    ctx.lineTo(-20*s, 20*s); 
-                    ctx.lineTo(-20*s, 5*s); 
-                    ctx.lineTo(-25*s, 5*s); 
-                    ctx.lineTo(-25*s, -5*s);
-                    ctx.lineTo(-20*s, -5*s);
-                    ctx.lineTo(-20*s, -20*s);
-                    ctx.lineTo(-10*s, -10*s);
+                    // path is built below
                 } else if (this.type === 'elite_roamer') {
                     ctx.fillStyle = '#303';
                     ctx.strokeStyle = '#f0f';
@@ -2734,22 +2980,38 @@
                 }
                 }
                 ctx.lineWidth = 2;
-                ctx.shadowBlur = 5;
-                ctx.shadowColor = '#f00';
+                ctx.shadowBlur = this.isCruiser ? 10 : 5;
+                ctx.shadowColor = this.isCruiser ? '#8899aa' : '#f00';
                 
                 ctx.beginPath();
                 if (this.isGunboat) {
-                    // reuse player silhouette
                     const s = this.gunboatScale || 1.4;
-                    ctx.moveTo(25*s, 0); 
-                    ctx.lineTo(-10*s, 10*s);
-                    ctx.lineTo(-20*s, 20*s); 
-                    ctx.lineTo(-20*s, 5*s); 
-                    ctx.lineTo(-25*s, 5*s); 
-                    ctx.lineTo(-25*s, -5*s);
-                    ctx.lineTo(-20*s, -5*s);
-                    ctx.lineTo(-20*s, -20*s);
-                    ctx.lineTo(-10*s, -10*s);
+                    if (this.isCruiser) {
+                        // Battlestar-inspired: long armored hull + twin flight pods
+                        const L = 28 * s;
+                        const H = 7.5 * s;
+                        const nose = 6 * s;
+                        const tail = 7 * s;
+                        
+                        // Main hull
+                        ctx.moveTo(L, 0);
+                        ctx.lineTo(L - nose, H);
+                        ctx.lineTo(-L + tail, H);
+                        ctx.lineTo(-L, 0);
+                        ctx.lineTo(-L + tail, -H);
+                        ctx.lineTo(L - nose, -H);
+                    } else {
+                        // reuse player silhouette
+                        ctx.moveTo(25*s, 0); 
+                        ctx.lineTo(-10*s, 10*s);
+                        ctx.lineTo(-20*s, 20*s); 
+                        ctx.lineTo(-20*s, 5*s); 
+                        ctx.lineTo(-25*s, 5*s); 
+                        ctx.lineTo(-25*s, -5*s);
+                        ctx.lineTo(-20*s, -5*s);
+                        ctx.lineTo(-20*s, -20*s);
+                        ctx.lineTo(-10*s, -10*s);
+                    }
                 } else if (this.type === 'elite_roamer') {
                     ctx.moveTo(25, 0);
                     ctx.lineTo(-15, 18);
@@ -2769,6 +3031,53 @@
                 ctx.closePath();
                 ctx.fill();
                 ctx.stroke();
+
+                // Cruiser detailing (pods/lines/engines) after base hull fill
+                if (this.isCruiser) {
+                    const s = this.gunboatScale || 1.4;
+                    const L = 28 * s;
+                    const H = 7.5 * s;
+                    const nose = 6 * s;
+                    const tail = 7 * s;
+                    const podL = 10 * s;
+                    const podH = 3.2 * s;
+                    const podX = 16.5 * s;
+                    const podY = 10.0 * s;
+                    
+                    // Flight pods
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#1b1f23';
+                    ctx.strokeStyle = '#c7ced6';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.rect(podX, podY - podH, podL, podH * 2);
+                    ctx.rect(podX, -podY - podH, podL, podH * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    // Deck lines
+                    ctx.globalAlpha = 0.35;
+                    ctx.strokeStyle = '#8aa0b3';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(-L + tail + 8*s, 0);
+                    ctx.lineTo(L - nose - 10*s, 0);
+                    ctx.moveTo(-L + tail + 8*s, H * 0.55);
+                    ctx.lineTo(L - nose - 14*s, H * 0.55);
+                    ctx.moveTo(-L + tail + 8*s, -H * 0.55);
+                    ctx.lineTo(L - nose - 14*s, -H * 0.55);
+                    ctx.stroke();
+                    ctx.globalAlpha = 1;
+                    
+                    // Engine glow
+                    ctx.fillStyle = '#0ff';
+                    ctx.shadowBlur = 12;
+                    ctx.shadowColor = '#0ff';
+                    ctx.beginPath();
+                    ctx.arc(-L + 5*s, 0, 2.8*s, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
                 
                 ctx.shadowBlur = 0;
                 if (this.hp < (this.type === 'elite_roamer' ? 5 : 5) && this.type !== 'roamer') {
@@ -2796,7 +3105,20 @@
                 ctx.strokeStyle = '#f55';
                 
                 if (this.isGunboat) {
-                     ctx.beginPath(); ctx.rect(0, -5, 28, 10); ctx.fillStyle = '#0ff'; ctx.fill(); ctx.stroke();
+                     if (this.isCruiser) {
+                         ctx.beginPath();
+                         ctx.fillStyle = '#111';
+                         ctx.strokeStyle = '#c7ced6';
+                         ctx.rect(0, -6, 36, 12);
+                         ctx.fill();
+                         ctx.stroke();
+                         ctx.beginPath();
+                         ctx.fillStyle = '#0ff';
+                         ctx.rect(10, -2, 18, 4);
+                         ctx.fill();
+                     } else {
+                         ctx.beginPath(); ctx.rect(0, -5, 28, 10); ctx.fillStyle = '#0ff'; ctx.fill(); ctx.stroke();
+                     }
                 } else if (this.type === 'elite_roamer' || this.type === 'hunter') {
                      ctx.beginPath(); ctx.rect(0, -4, 25, 8); ctx.fill(); ctx.stroke();
                 } else {
@@ -3221,8 +3543,9 @@
         }
         
         class ExplorationCache extends Entity {
-            constructor(x, y) {
+            constructor(x, y, contractId = null) {
                 super(x, y);
+                this.contractId = contractId;
                 this.radius = 12;
                 this.vel.x = (Math.random() - 0.5) * 0.3;
                 this.vel.y = (Math.random() - 0.5) * 0.3;
@@ -3278,22 +3601,28 @@
                 const boost = Math.max(0, encounterIndex - 1);
                 const hpScale = 1 + boost * 0.35;
                 const shieldStrength = 2 + boost;
+                const baseCruiserHp = 70 * 0.75; // first cruiser is 25% lower HP; later cruisers scale from this baseline
                 this.type = 'cruiser';
                 this.isCruiser = true;
                 this.isGunboat = true;
                 this.gunboatLevel = 2;
-                this.radius = 90; // 3x the gunboat hull size
-                this.hp = Math.round(25 * hpScale);
+                
+                // Visual scale: make it read as a capital ship (Battlestar-ish)
+                this.cruiserHullScale = 6.2;
+                this.gunboatScale = this.cruiserHullScale;
+                this.radius = Math.round(22 * this.cruiserHullScale);
+                // Longer, pattern-driven fights
+                this.hp = Math.round(baseCruiserHp * hpScale);
                 this.maxHp = this.hp;
-                this.shieldRadius = 135;
-                this.innerShieldRadius = 110;
-                this.shieldSegments = new Array(8).fill(shieldStrength);
-                this.innerShieldSegments = new Array(12).fill(shieldStrength);
+                this.shieldRadius = Math.round(34 * this.cruiserHullScale);
+                this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+                this.shieldSegments = new Array(12).fill(shieldStrength);
+                this.innerShieldSegments = new Array(18).fill(shieldStrength);
                 this.innerShieldRotation = 0;
                 this.gunboatShieldRecharge = 180;
-                this.gunboatScale = 1.4 * 3;
-                this.gunboatMuzzleDist = 28 * 3;
-                this.baseGunboatRange = 900 + boost * 150;
+                this.gunboatMuzzleDist = Math.round(6 * this.cruiserHullScale);
+                this.cruiserWeaponRangeMult = 1.25;
+                this.baseGunboatRange = (900 + boost * 150) * this.cruiserWeaponRangeMult;
                 this.gunboatRange = this.baseGunboatRange;
                 this.cruiserBaseDamage = 1 + boost; // scales with encounters
                 this.cruiserFireDelay = Math.round(16 / 0.65); // base 35% slower vs gunboat
@@ -3303,10 +3632,55 @@
                 this.turretAngle = 0;
                 this.shootTimer = this.cruiserFireDelay;
                 this.encounterIndex = encounterIndex;
-                this.cruiserMode = 'strafe';
-                this.modeTimer = 240;
-                this.strafeDuration = 240;
-                this.chargeDuration = 140;
+                
+                // Disable the default Enemy.update shooting; cruiser uses scripted patterns.
+                this.disableAutoFire = true;
+                
+                // Arcade-style boss kit
+                this.shieldStrength = shieldStrength;
+                this.vulnerableTimer = 0;
+                this.phaseName = 'INTRO';
+                this.phaseTimer = 90;
+                this.phaseIndex = 0;
+                this.phaseTick = 0;
+                // Reinforcements scale: first cruiser is 50% weaker/less; later scale up from that baseline
+                this.helperScale = 0.5 * hpScale;
+                this.helperHpMult = this.helperScale;
+                this.helperMax = Math.max(2, Math.round(6 * this.helperScale));
+                this.helperCall70 = Math.max(1, Math.round(2 * this.helperScale));
+                this.helperCall40 = Math.max(1, Math.round(3 * this.helperScale));
+                this.helperBurst = Math.max(1, Math.round(2 * this.helperScale));
+                this.helperCooldownBase = Math.round(420 / Math.max(0.25, this.helperScale));
+                this.helperCooldown = Math.round(180 / Math.max(0.25, this.helperScale));
+                this.helperStrengthTier = (encounterIndex <= 1) ? 0 : (encounterIndex === 2 ? 1 : 2);
+                this.called70 = false;
+                this.called40 = false;
+                this.lastShieldGenAt = 0;
+                
+                // Heavier turning to feel like a capital ship
+                this.turnSpeed = (Math.PI * 2) / (18 * 60);
+                this.wallElasticity = 0.25;
+                
+                const hardHp = Math.round((18 + boost * 6) * hpScale);
+                const hs = this.cruiserHullScale;
+                this.hardpoints = [
+                    { id: 'LC', type: 'cannon',   off: { x: -20*hs, y: -4*hs }, r: 3.2*hs, hp: hardHp, maxHp: hardHp, cd: 0 },
+                    { id: 'RC', type: 'cannon',   off: { x:  20*hs, y: -4*hs }, r: 3.2*hs, hp: hardHp, maxHp: hardHp, cd: 0 },
+                    { id: 'SP', type: 'sprayer',  off: { x:    0, y: -12*hs }, r: 3.7*hs, hp: Math.round(hardHp * 1.1), maxHp: Math.round(hardHp * 1.1), cd: 0 },
+                    { id: 'MB', type: 'bay',      off: { x:    0, y:  12*hs }, r: 3.7*hs, hp: Math.round(hardHp * 1.1), maxHp: Math.round(hardHp * 1.1), cd: 0 },
+                    { id: 'SG', type: 'shieldgen',off: { x:    0, y:   3*hs }, r: 3.4*hs, hp: Math.round(hardHp * 1.2), maxHp: Math.round(hardHp * 1.2), cd: 0 }
+                ];
+                
+                // Phase sequence (rotated by encounter for variety)
+                this.phaseSeq = [
+                    { name: 'SALVO', duration: 360 },
+                    { name: 'CURTAIN', duration: 300 },
+                    { name: 'MINEFIELD', duration: 300 },
+                    { name: 'SWEEP', duration: 300 },
+                    { name: 'CHARGE', duration: 220 }
+                ];
+                const rot = encounterIndex % this.phaseSeq.length;
+                this.phaseSeq = this.phaseSeq.slice(rot).concat(this.phaseSeq.slice(0, rot));
 
                 const angle = Math.random() * Math.PI * 2;
                 const dist = 3000;
@@ -3314,8 +3688,26 @@
                 this.pos.y = player.pos.y + Math.sin(angle) * dist;
             }
 
+            hardpointWorld(hp) {
+                const ca = Math.cos(this.angle);
+                const sa = Math.sin(this.angle);
+                const ox = hp.off.x;
+                const oy = hp.off.y;
+                // rotate local offsets by current facing
+                return { x: this.pos.x + ox * ca - oy * sa, y: this.pos.y + ox * sa + oy * ca };
+            }
+            
+            hasHardpoint(type) {
+                return this.hardpoints.some(h => h.hp > 0 && h.type === type);
+            }
+            
+            livingHardpoints() {
+                return this.hardpoints.filter(h => h.hp > 0);
+            }
+
             updateAIState() {
                 // Override base random AI; cruiser uses custom mode switching.
+                this.aiTimer = 999999;
             }
 
             kill() {
@@ -3323,6 +3715,7 @@
                 this.dead = true;
                 playSound('base_explode');
                 spawnParticles(this.pos.x, this.pos.y, 100, '#f00');
+                bossBombs = [];
                 for(let i=0; i<13; i++) {
                     coins.push(new Coin(this.pos.x + (Math.random()-0.5)*100, this.pos.y + (Math.random()-0.5)*100, 10));
                 }
@@ -3348,36 +3741,359 @@
             }
 
             update() {
-                // Mode switching: alternate between strafing and charging
-                this.modeTimer--;
-                if (this.modeTimer <= 0) {
-                    if (this.cruiserMode === 'strafe') {
-                        this.cruiserMode = 'charge';
-                        this.modeTimer = this.chargeDuration;
-                        // prep a shot burst on charge start
-                        this.shootTimer = Math.min(this.shootTimer, 6);
-                    } else {
-                        this.cruiserMode = 'strafe';
-                        this.modeTimer = this.strafeDuration;
+                const now = Date.now();
+                
+                // Phase sequencing
+                this.phaseTimer--;
+                this.phaseTick++;
+                if (this.vulnerableTimer > 0) this.vulnerableTimer--;
+                
+                if (this.phaseTimer <= 0) {
+                    const prev = this.phaseName;
+                    if (prev === 'CHARGE') {
+                        // Overheated core: short vulnerability window after a charge phase.
+                        this.vulnerableTimer = 180;
+                    }
+                    
+                    // Advance to next valid phase
+                    for (let attempts = 0; attempts < this.phaseSeq.length; attempts++) {
+                        const next = this.phaseSeq[this.phaseIndex % this.phaseSeq.length];
+                        this.phaseIndex++;
+                        // Skip phases that rely on destroyed hardpoints
+                        if (next.name === 'SALVO' && !this.hasHardpoint('cannon')) continue;
+                        if ((next.name === 'CURTAIN' || next.name === 'SWEEP') && !this.hasHardpoint('sprayer')) continue;
+                        if ((next.name === 'MINEFIELD') && !this.hasHardpoint('bay')) continue;
+                        this.phaseName = next.name;
+                        this.phaseTimer = next.duration;
+                        this.phaseTick = 0;
+                        showOverlayMessage(`BOSS: ${this.phaseName}`, '#f0f', 900);
+                        break;
                     }
                 }
-
-                if (this.cruiserMode === 'charge') {
+                
+                // Movement style per phase
+                const charging = (this.phaseName === 'CHARGE');
+                if (charging) {
                     this.circleStrafePreferred = false;
                     this.aiState = 'SEEK';
-                    this.thrustPower = 0.35;
-                    this.maxSpeed = 7.2;
-                    this.gunboatRange = this.baseGunboatRange + 250;
+                    this.thrustPower = 0.16;
+                    this.maxSpeed = 4.2;
+                    this.gunboatRange = this.baseGunboatRange + 350;
                 } else {
-                    this.circleStrafePreferred = true;
-                    this.aiState = 'CIRCLE';
-                    this.thrustPower = 0.2;
-                    this.maxSpeed = 4.6;
+                    // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
+                    const dx = player.pos.x - this.pos.x;
+                    const dy = player.pos.y - this.pos.y;
+                    const dist = Math.hypot(dx, dy);
+                    
+                    if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
+                    if (!this.moveMode) this.moveMode = 'CIRCLE';
+                    this.moveModeTimer--;
+                    if (this.moveModeTimer <= 0) {
+                        const r = Math.random();
+                        if (dist > 1700) this.moveMode = (r < 0.55) ? 'SEEK' : (r < 0.80 ? 'CIRCLE' : 'ORBIT');
+                        else this.moveMode = (r < 0.38) ? 'CIRCLE' : (r < 0.60 ? 'ORBIT' : (r < 0.82 ? 'SEEK' : 'FLANK'));
+                        this.flankSide = Math.random() < 0.5 ? 1 : -1;
+                        this.moveModeTimer = 90 + Math.floor(Math.random() * 180);
+                    }
+                    
+                    if (this.moveMode === 'SEEK') {
+                        this.circleStrafePreferred = false;
+                        this.aiState = 'SEEK';
+                        this.thrustPower = 0.13;
+                        this.maxSpeed = 3.9;
+                    } else if (this.moveMode === 'ORBIT') {
+                        this.circleStrafePreferred = false;
+                        this.aiState = 'ORBIT';
+                        this.thrustPower = 0.12;
+                        this.maxSpeed = 3.3;
+                    } else if (this.moveMode === 'FLANK') {
+                        this.circleStrafePreferred = false;
+                        this.aiState = 'FLANK';
+                        this.thrustPower = 0.14;
+                        this.maxSpeed = 4.1;
+                    } else {
+                        this.circleStrafePreferred = true;
+                        this.aiState = 'CIRCLE';
+                        this.thrustPower = 0.10;
+                        this.maxSpeed = 2.9;
+                    }
                     this.gunboatRange = this.baseGunboatRange;
                 }
 
                 this.innerShieldRotation -= 0.02;
                 super.update();
+                
+                // Shield generator gimmick (destroy SG hardpoint to stop regen)
+                if (this.hasHardpoint('shieldgen')) {
+                    if (!this.lastShieldGenAt) this.lastShieldGenAt = now;
+                    if (now - this.lastShieldGenAt >= 1500) {
+                        const idx1 = this.shieldSegments.findIndex(s => s < this.shieldStrength);
+                        if (idx1 !== -1) this.shieldSegments[idx1] = Math.min(this.shieldStrength, this.shieldSegments[idx1] + 1);
+                        const idx2 = this.innerShieldSegments.findIndex(s => s < this.shieldStrength);
+                        if (idx2 !== -1) this.innerShieldSegments[idx2] = Math.min(this.shieldStrength, this.innerShieldSegments[idx2] + 1);
+                        this.lastShieldGenAt = now;
+                        spawnParticles(this.pos.x, this.pos.y, 6, '#0ff');
+                    }
+                }
+                
+                // Phase attacks
+                this.runPhaseAttacks();
+                
+                // Helper calls (few small ships only)
+                this.maybeCallHelpers();
+            }
+            
+            runPhaseAttacks() {
+                if (!player || player.dead) return;
+                
+                // Hardpoint cooldowns tick
+                for (let i = 0; i < this.hardpoints.length; i++) this.hardpoints[i].cd--;
+                
+                const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+                
+                if (this.phaseName === 'SALVO') {
+                    if (this.phaseTick % 22 === 0) {
+                        this.fireCannons(aim, 3, 0.18, 18, this.cruiserBaseDamage, '#f44');
+                    }
+                } else if (this.phaseName === 'CURTAIN') {
+                    if (this.phaseTick % 10 === 0) {
+                        this.fireSprayerFan(aim, 11, 1.1, 10, 1, '#f0f');
+                    }
+                    if (this.phaseTick % 70 === 0 && this.hasHardpoint('cannon')) {
+                        this.fireCannons(aim, 2, 0.12, 20, this.cruiserBaseDamage, '#ff0');
+                    }
+                } else if (this.phaseName === 'MINEFIELD') {
+                    if (this.phaseTick % 90 === 1) {
+                        this.launchMinefieldBombs();
+                    }
+                } else if (this.phaseName === 'SWEEP') {
+                    // Simple sweeping stream (telegraphed by consistent direction change)
+                    if (this.phaseTick % 3 === 0) {
+                        const t = (this.phaseTick % 240) / 240;
+                        const a = (Math.PI / 2 - 1.1) + t * 2.2;
+                        this.fireSprayerSingle(a, 12, 1, '#0ff');
+                    }
+                    if (this.phaseTick % 80 === 0) {
+                        this.fireRing(14, 8.4, 1, '#ff0');
+                    }
+                } else if (this.phaseName === 'CHARGE') {
+                    if (this.phaseTick % 18 === 0) {
+                        this.fireCannons(aim, 1, 0, 22, this.cruiserBaseDamage, '#f55');
+                    }
+                    if (this.phaseTick % 35 === 0) {
+                        this.dropMine(aim + (Math.random() - 0.5) * 0.6, 4.0, 2, '#f80');
+                    }
+                } else if (this.phaseName === 'INTRO') {
+                    // no-op
+                }
+            }
+            
+            fireCannons(baseAngle, shots, spread, speed, dmg, color) {
+                const cannons = this.hardpoints.filter(h => h.hp > 0 && h.type === 'cannon');
+                for (let c = 0; c < cannons.length; c++) {
+                    const hp = cannons[c];
+                    const p = this.hardpointWorld(hp);
+                    for (let i = 0; i < shots; i++) {
+                        const t = shots === 1 ? 0 : (i / (shots - 1) - 0.5);
+                        const a = baseAngle + t * spread;
+                        const shot = new Bullet(p.x, p.y, a, true, dmg, speed, 4, color);
+                        shot.life = Math.round(shot.life * this.cruiserWeaponRangeMult);
+                        bullets.push(shot);
+                        spawnBarrelSmoke(p.x, p.y, a);
+                    }
+                }
+                playSound('rapid_shoot');
+            }
+            
+            fireSprayerFan(baseAngle, count, spread, speed, dmg, color) {
+                const spr = this.hardpoints.find(h => h.hp > 0 && h.type === 'sprayer');
+                if (!spr) return;
+                const p = this.hardpointWorld(spr);
+                for (let i = 0; i < count; i++) {
+                    const t = count === 1 ? 0 : (i / (count - 1) - 0.5);
+                    const a = baseAngle + t * spread;
+                    const b = new Bullet(p.x, p.y, a, true, dmg, speed, 4, color);
+                    b.life = Math.round(120 * this.cruiserWeaponRangeMult);
+                    bullets.push(b);
+                }
+                playSound('shoot');
+            }
+            
+            fireSprayerSingle(angle, speed, dmg, color) {
+                const spr = this.hardpoints.find(h => h.hp > 0 && h.type === 'sprayer');
+                if (!spr) return;
+                const p = this.hardpointWorld(spr);
+                const b = new Bullet(p.x, p.y, angle, true, dmg, speed, 4, color);
+                b.life = Math.round(110 * this.cruiserWeaponRangeMult);
+                bullets.push(b);
+            }
+            
+            dropMine(angle, speed, dmg, color) {
+                const bay = this.hardpoints.find(h => h.hp > 0 && h.type === 'bay');
+                if (!bay) return;
+                const p = this.hardpointWorld(bay);
+                const b = new Bullet(p.x, p.y, angle, true, dmg, speed, 11, color, 0, 'square');
+                b.life = Math.round(220 * this.cruiserWeaponRangeMult);
+                bullets.push(b);
+                playSound('heavy_shoot');
+            }
+            
+            launchMinefieldBombs() {
+                const bay = this.hardpoints.find(h => h.hp > 0 && h.type === 'bay');
+                if (!bay) return;
+                const count = 5;
+                const base = Math.random() * Math.PI * 2;
+                const maxTravel = this.baseGunboatRange;
+                const blastRadius = this.radius * 1.3 * 1.5; // +50% blast radius
+                const dmg = Math.max(2, Math.round(this.cruiserBaseDamage));
+                for (let i = 0; i < count; i++) {
+                    const a = base + (Math.PI * 2 / count) * i;
+                    bossBombs.push(new CruiserMineBomb(this, a, maxTravel, dmg, blastRadius));
+                }
+                playSound('heavy_shoot');
+            }
+             
+            fireRing(n, speed, dmg, color) {
+                const bay = this.hardpoints.find(h => h.hp > 0 && h.type === 'bay');
+                const p = bay ? this.hardpointWorld(bay) : { x: this.pos.x, y: this.pos.y };
+                for (let i = 0; i < n; i++) {
+                    const a = (Math.PI * 2 / n) * i;
+                    const b = new Bullet(p.x, p.y, a, true, dmg, speed, 4, color);
+                    b.life = Math.round(140 * this.cruiserWeaponRangeMult);
+                    bullets.push(b);
+                }
+                playSound('shotgun');
+            }
+            
+            maybeCallHelpers() {
+                if (!bossActive) return;
+                if (!player || player.dead) return;
+                
+                const aliveHelpers = enemies.filter(e => e && !e.dead).length;
+                const maxHelpers = this.helperMax;
+                
+                const hpPct = this.hp / this.maxHp;
+                if (!this.called70 && hpPct <= 0.7) {
+                    this.called70 = true;
+                    this.spawnHelpers(this.helperCall70);
+                }
+                if (!this.called40 && hpPct <= 0.4) {
+                    this.called40 = true;
+                    this.spawnHelpers(this.helperCall40);
+                }
+                
+                this.helperCooldown--;
+                if (this.helperCooldown <= 0 && aliveHelpers < maxHelpers) {
+                    const burst = Math.min(this.helperBurst, maxHelpers - aliveHelpers);
+                    this.spawnHelpers(burst);
+                    this.helperCooldown = this.helperCooldownBase;
+                }
+            }
+            
+            spawnHelpers(count) {
+                const aliveHelpers = enemies.filter(e => e && !e.dead).length;
+                const slots = Math.max(0, this.helperMax - aliveHelpers);
+                if (slots <= 0) return;
+                count = Math.min(count, slots);
+                let types = ['roamer', 'roamer', 'elite_roamer'];
+                if (this.helperStrengthTier <= 0) types = ['roamer', 'roamer', 'roamer'];
+                else if (this.helperStrengthTier >= 2) types = ['roamer', 'elite_roamer', 'hunter'];
+                for (let i = 0; i < count; i++) {
+                    const type = types[Math.floor(Math.random() * types.length)];
+                    const a = Math.random() * Math.PI * 2;
+                    const d = 260 + Math.random() * 260;
+                    const e = new Enemy(type, { x: this.pos.x + Math.cos(a) * d, y: this.pos.y + Math.sin(a) * d });
+                    e.hp = Math.max(1, Math.round(e.hp * this.helperHpMult));
+                    if (e.shieldSegments && e.shieldSegments.length > 0) {
+                        const segMult = this.helperHpMult;
+                        e.shieldSegments = e.shieldSegments.map(s => Math.max(0, Math.round(s * segMult)));
+                    }
+                    enemies.push(e);
+                }
+                showOverlayMessage("BOSS CALLED REINFORCEMENTS", '#f00', 1100);
+            }
+            
+            applyPlayerBulletHit(b) {
+                if (!b || b.isEnemy) return false;
+                // Hardpoints can always be damaged to disable attacks.
+                for (let i = 0; i < this.hardpoints.length; i++) {
+                    const hp = this.hardpoints[i];
+                    if (hp.hp <= 0) continue;
+                    const p = this.hardpointWorld(hp);
+                    const dist = Math.hypot(b.pos.x - p.x, b.pos.y - p.y);
+                    if (dist < hp.r + b.radius) {
+                        hp.hp -= b.damage;
+                        spawnParticles(p.x, p.y, 6, '#fff');
+                        playSound('hit');
+                        if (hp.hp <= 0) {
+                            spawnParticles(p.x, p.y, 40, '#ff0');
+                            showOverlayMessage(`HARDPOINT ${hp.id} DESTROYED`, '#ff0', 1200);
+                        }
+                        return true;
+                    }
+                }
+                return false;
+            }
+            
+            drawBossHud(ctx) {
+                if (!bossActive || this.dead) return;
+                const w = canvas.width;
+                const barW = Math.min(560, w - 40);
+                const x = (w - barW) / 2;
+                const y = 14;
+                const pct = Math.max(0, this.hp / this.maxHp);
+                
+                ctx.save();
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.fillRect(x - 4, y - 4, barW + 8, 20);
+                ctx.strokeStyle = '#f00';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x - 4, y - 4, barW + 8, 20);
+                ctx.fillStyle = this.vulnerableTimer > 0 ? '#ff0' : '#f00';
+                ctx.fillRect(x, y, barW * pct, 12);
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 12px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                const phaseText = this.vulnerableTimer > 0 ? `${this.phaseName} (CORE EXPOSED)` : this.phaseName;
+                ctx.fillText(`CRUISER  (PHASE: ${phaseText})`, w / 2, y + 12);
+                
+                // Hardpoint status line
+                ctx.font = 'bold 11px Courier New';
+                ctx.fillStyle = '#ff0';
+                const hpStr = this.hardpoints.map(h => `${h.id}:${h.hp > 0 ? 'ON' : 'OFF'}`).join('  ');
+                ctx.fillText(hpStr, w / 2, y + 26);
+                ctx.restore();
+            }
+            
+            draw(ctx) {
+                super.draw(ctx);
+                if (this.dead) return;
+                // Hardpoints overlay
+                ctx.save();
+                for (let i = 0; i < this.hardpoints.length; i++) {
+                    const hp = this.hardpoints[i];
+                    const p = this.hardpointWorld(hp);
+                    const alive = hp.hp > 0;
+                    ctx.globalAlpha = alive ? 1 : 0.35;
+                    ctx.strokeStyle = alive ? '#ff0' : '#0f0';
+                    ctx.fillStyle = alive ? '#222' : '#040';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, hp.r, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                }
+                
+                if (this.vulnerableTimer > 0) {
+                    ctx.globalAlpha = 0.25 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.25;
+                    ctx.strokeStyle = '#ff0';
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.arc(this.pos.x, this.pos.y, this.radius + 18, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                ctx.restore();
             }
         }
 //space station class
@@ -3643,9 +4359,11 @@
         // --- Game State ---
         let player;
         let bullets = [];
+        let bossBombs = [];
         let enemies = [];
         let bases = [];
         let particles = [];
+        let floatingTexts = [];
         let coins = []; // New currency entity
         let nuggets = [];
         let spaceNuggets = 0;
@@ -3684,15 +4402,21 @@
         let rerollTokens = 0;
         let metaExtraLifeAvailable = false;
         
+        // --- Exploration Contracts ---
+        let activeContract = null;
+        let nextContractAt = 0;
+        let contractSequence = 0;
+        let contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+        
         // Cruiser spawn manager
-        let dreadManager = {
-            upgradesChosen: 0,
-            firstSpawnDone: false,
-            timerActive: false,
-            timerAt: null,
-            minDelayMs: 120000, // 120s
-            maxDelayMs: 210000 // 210s
-        };
+          let dreadManager = {
+              upgradesChosen: 0,
+              firstSpawnDone: false,
+              timerActive: false,
+              timerAt: null,
+              minDelayMs: 120000, // 2 minutes
+              maxDelayMs: 300000 // 5 minutes
+          };
 
         // Game timer
         let gameStartTime = null;
@@ -3830,6 +4554,7 @@
                 this.dead = false;
                 this.timer = 0;
                 this.lastShieldTick = Date.now();
+                this.lastHealTick = Date.now();
             }
             update() {
                 if (!player || player.dead) return;
@@ -3841,10 +4566,16 @@
                 this.pos.y = baseY;
                 this.timer++;
                 
-                if (this.type === 'heal' && this.timer % 480 === 0) {
-                    player.hp = Math.min(player.maxHp, player.hp + 3);
-                    updateHealthUI();
-                    spawnParticles(this.pos.x, this.pos.y, 8, '#0f0');
+                if (this.type === 'heal') {
+                    // 1 HP per 5 seconds
+                    if (now - this.lastHealTick >= 5000) {
+                        if (player.hp < player.maxHp) {
+                            player.hp = Math.min(player.maxHp, player.hp + 1);
+                            updateHealthUI();
+                            spawnParticles(this.pos.x, this.pos.y, 6, '#0f0');
+                        }
+                        this.lastHealTick = now;
+                    }
                 } else if (this.type === 'shield') {
                     // Time-gated to 1 segment per ~3 seconds
                     if (now - this.lastShieldTick >= 3000) {
@@ -3890,11 +4621,553 @@
         function spawnDrone(type) {
             drones.push(new Drone(type));
         }
+
+        function updateContractUI() {
+            const el = document.getElementById('contract-display');
+            if (!el) return;
+            if (!activeContract) {
+                el.innerText = 'CONTRACT: NONE';
+                return;
+            }
+            let extra = '';
+            if (activeContract.type === 'scan_beacon') {
+                if (activeContract.state === 'active') extra = ` (SCANNING ${Math.floor((activeContract.progress || 0) * 100)}%)`;
+                else extra = ' (GO TO BEACON)';
+            } else if (activeContract.type === 'gate_run') {
+                const remain = Math.max(0, (activeContract.endsAt || 0) - Date.now());
+                extra = ` (GATE ${activeContract.gateIndex + 1}/${activeContract.gateCount} ${formatTime(remain)})`;
+            } else if (activeContract.type === 'anomaly') {
+                extra = activeContract.state === 'inside' ? ' (FIND CORE)' : ' (ENTER ZONE)';
+            } else if (activeContract.type === 'destroy_fortress') {
+                const ringsLeft = (typeof activeContract.ringsLeft === 'number') ? activeContract.ringsLeft : 3;
+                const hpPct = (typeof activeContract.hpPct === 'number') ? activeContract.hpPct : 1;
+                extra = ` (RINGS ${ringsLeft} HP ${Math.max(0, Math.floor(hpPct * 100))}%)`;
+            }
+            el.innerText = `CONTRACT: ${activeContract.title}${extra}`;
+        }
         
-        function scheduleNextShootingStar() {
-            if (sectorIndex >= 2) {
-                nextShootingStarTime = Date.now() + 60000; // every ~1 minute
+        function completeContract(success = true) {
+            if (!activeContract) return;
+            const contractId = activeContract.id;
+            if (success) {
+                const rewardNugs = (activeContract.rewardNugs !== undefined) ? activeContract.rewardNugs : 4;
+                for (let i = 0; i < rewardNugs; i++) nuggets.push(new SpaceNugget(player.pos.x + (Math.random()-0.5)*120, player.pos.y + (Math.random()-0.5)*120, 1));
+                const rewardScore = (activeContract.rewardScore !== undefined) ? activeContract.rewardScore : 5000;
+                score += rewardScore;
+                showOverlayMessage("CONTRACT COMPLETE", '#0f0', 1500);
             } else {
+                showOverlayMessage("CONTRACT FAILED", '#f00', 1500);
+            }
+             // Cleanup entities
+             contractEntities.beacons.forEach(b => b.dead = true);
+             contractEntities.gates.forEach(g => g.dead = true);
+             contractEntities.anomalies.forEach(a => a.dead = true);
+             contractEntities.fortresses.forEach(f => f.dead = true);
+             contractEntities.wallTurrets.forEach(t => t.dead = true);
+             contractEntities.beacons = [];
+             contractEntities.gates = [];
+             contractEntities.anomalies = [];
+             contractEntities.fortresses = [];
+             contractEntities.wallTurrets = [];
+            // Cleanup anomaly maze debris (unbreakable asteroids)
+            if (contractId) {
+                environmentAsteroids = environmentAsteroids.filter(a => a && a.contractId !== contractId);
+                enemies = enemies.filter(e => e && e.contractId !== contractId);
+            }
+            activeContract = null;
+            nextContractAt = Date.now() + 45000 + Math.random() * 30000;
+            updateContractUI();
+        }
+        
+        class ContractBeacon extends Entity {
+            constructor(x, y, label = "SCAN") {
+                super(x, y);
+                this.radius = 90;
+                this.label = label;
+                this.t = 0;
+                this.scanStartAt = null;
+                this.scanMsRequired = 2000;
+            }
+            update() {
+                if (!player || player.dead) return;
+                this.t++;
+                if (!activeContract || activeContract.type !== 'scan_beacon') return;
+                const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (d < this.radius) {
+                    activeContract.state = 'active';
+                    if (!this.scanStartAt) this.scanStartAt = Date.now();
+                    activeContract.progress = Math.min(1, (Date.now() - this.scanStartAt) / this.scanMsRequired);
+                    if (activeContract.progress >= 1) completeContract(true);
+                } else {
+                    if (activeContract.state === 'active') activeContract.state = 'travel';
+                    this.scanStartAt = null;
+                    activeContract.progress = 0;
+                }
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                const pulse = 0.6 + Math.sin(this.t * 0.1) * 0.2;
+                ctx.strokeStyle = `rgba(0,255,0,${pulse})`;
+                ctx.lineWidth = 3;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#0f0';
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI*2);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                
+                // small crosshair
+                ctx.strokeStyle = '#0f0';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(-12, 0); ctx.lineTo(12, 0);
+                ctx.moveTo(0, -12); ctx.lineTo(0, 12);
+                ctx.stroke();
+                
+                // label
+                ctx.fillStyle = '#0f0';
+                ctx.font = 'bold 14px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText(this.label, 0, -this.radius - 10);
+                
+                // contextual prompt + progress bar (works with keyboard + gamepad)
+                if (player && !player.dead && activeContract && activeContract.type === 'scan_beacon') {
+                    const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                    if (d < this.radius) {
+                        const progress = Math.max(0, Math.min(1, activeContract.progress || 0));
+                        const w = 140;
+                        const h = 10;
+                        const x = -w / 2;
+                        const y = this.radius + 18;
+                        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+                        ctx.strokeStyle = '#0f0';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.rect(x, y, w, h);
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.fillStyle = '#0f0';
+                        ctx.fillRect(x, y, w * progress, h);
+
+                        ctx.fillStyle = '#fff';
+                        ctx.font = 'bold 13px Courier New';
+                        ctx.textBaseline = 'top';
+                        ctx.fillText('STAY IN ZONE 2s', 0, y + h + 6);
+                    }
+                }
+                ctx.restore();
+            }
+        }
+        
+        class GateRing extends Entity {
+            constructor(x, y, index, total) {
+                super(x, y);
+                this.radius = 140;
+                this.index = index;
+                this.total = total;
+                this.t = 0;
+            }
+            update() {
+                if (!player || player.dead) return;
+                this.t++;
+                if (!activeContract || activeContract.type !== 'gate_run') return;
+                if (activeContract.gateIndex !== this.index) return;
+                const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (d < this.radius) {
+                    // advance
+                    activeContract.gateIndex++;
+                    playSound('powerup');
+                    showOverlayMessage(`GATE ${this.index + 1} CLEARED`, '#0f0', 700);
+                    if (activeContract.gateIndex >= activeContract.gateCount) {
+                        completeContract(true);
+                    }
+                }
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                const active = activeContract && activeContract.type === 'gate_run' && activeContract.gateIndex === this.index;
+                const pulse = 0.45 + Math.abs(Math.sin(this.t * 0.08)) * 0.35;
+                ctx.strokeStyle = active ? `rgba(0,255,0,${pulse})` : 'rgba(0,80,0,0.6)';
+                ctx.lineWidth = active ? 6 : 3;
+                ctx.shadowBlur = active ? 18 : 0;
+                ctx.shadowColor = '#0f0';
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI*2);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = active ? '#0f0' : '#050';
+                ctx.font = 'bold 16px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`${this.index + 1}/${this.total}`, 0, 0);
+                ctx.restore();
+            }
+        }
+        
+        class ContractFortress extends Entity {
+            constructor(x, y, contractId = null) {
+                super(x, y);
+                this.contractId = contractId;
+                this.radius = 85; // core/base size
+                this.hp = 45;
+                this.maxHp = this.hp;
+                this.t = 0;
+                this.turretAngle = 0;
+                this.turretReload = 30;
+                
+                // Star Castle-ish: 3 concentric shield rings (outer -> inner)
+                this.rings = [
+                    { r: 260, segHp: 2, segments: new Array(32).fill(2), rot: 0, rotSpeed: 0.006 },
+                    { r: 200, segHp: 2, segments: new Array(26).fill(2), rot: 0, rotSpeed: -0.008 },
+                    { r: 140, segHp: 2, segments: new Array(20).fill(2), rot: 0, rotSpeed: 0.010 }
+                ];
+                this.ringThickness = 16;
+            }
+            
+            ringsLeft() {
+                return this.rings.reduce((acc, r) => acc + (r.segments.some(s => s > 0) ? 1 : 0), 0);
+            }
+            
+            update() {
+                if (this.dead) return;
+                if (!player || player.dead) return;
+                this.t++;
+                
+                // Rotate rings
+                for (let i = 0; i < this.rings.length; i++) {
+                    this.rings[i].rot += this.rings[i].rotSpeed;
+                }
+                
+                // Update contract HUD state
+                if (activeContract && activeContract.type === 'destroy_fortress' && activeContract.id === this.contractId) {
+                    activeContract.state = 'active';
+                    activeContract.ringsLeft = this.ringsLeft();
+                    activeContract.hpPct = this.maxHp > 0 ? (this.hp / this.maxHp) : 0;
+                }
+                
+                // Turret fires at player
+                const dx = player.pos.x - this.pos.x;
+                const dy = player.pos.y - this.pos.y;
+                const dist = Math.hypot(dx, dy);
+                this.turretAngle = Math.atan2(dy, dx);
+                if (dist < 3200) {
+                    this.turretReload--;
+                    if (this.turretReload <= 0) {
+                        const b = new Bullet(
+                            this.pos.x + Math.cos(this.turretAngle) * (this.radius + 12),
+                            this.pos.y + Math.sin(this.turretAngle) * (this.radius + 12),
+                            this.turretAngle,
+                            true,
+                            2,
+                            13,
+                            4,
+                            '#0f0'
+                        );
+                        bullets.push(b);
+                        spawnBarrelSmoke(b.pos.x, b.pos.y, this.turretAngle);
+                        playSound('shoot');
+                        this.turretReload = 26;
+                    }
+                } else {
+                    this.turretReload = Math.min(this.turretReload, 26);
+                }
+            }
+            
+            kill() {
+                if (this.dead) return;
+                this.dead = true;
+                playSound('base_explode');
+                spawnParticles(this.pos.x, this.pos.y, 80, '#0f0');
+                
+                // Drop nuggets as the main reward
+                const drop = 14;
+                for (let i = 0; i < drop; i++) {
+                    nuggets.push(new SpaceNugget(this.pos.x + (Math.random()-0.5)*160, this.pos.y + (Math.random()-0.5)*160, 1));
+                }
+                
+                showOverlayMessage("FORTRESS DESTROYED", '#0f0', 1200);
+                
+                if (activeContract && activeContract.type === 'destroy_fortress' && activeContract.id === this.contractId) {
+                    completeContract(true);
+                }
+            }
+            
+            draw(ctx) {
+                if (this.dead) return;
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                
+                // Rings
+                for (let r = 0; r < this.rings.length; r++) {
+                    const ring = this.rings[r];
+                    const count = ring.segments.length;
+                    const step = (Math.PI * 2) / count;
+                    ctx.save();
+                    ctx.rotate(ring.rot);
+                    ctx.lineWidth = 10;
+                    ctx.strokeStyle = '#0f0';
+                    ctx.shadowBlur = 16;
+                    ctx.shadowColor = '#0f0';
+                    for (let i = 0; i < count; i++) {
+                        if (ring.segments[i] <= 0) continue;
+                        const a0 = i * step;
+                        const a1 = a0 + step * 0.82; // segment gap
+                        ctx.globalAlpha = 0.35 + 0.30 * (ring.segments[i] / ring.segHp);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, ring.r, a0, a1);
+                        ctx.stroke();
+                    }
+                    ctx.restore();
+                }
+                ctx.globalAlpha = 1;
+                ctx.shadowBlur = 0;
+                
+                // Core/base
+                ctx.save();
+                ctx.rotate(this.turretAngle);
+                ctx.fillStyle = '#021';
+                ctx.strokeStyle = '#0f0';
+                ctx.lineWidth = 3;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#0f0';
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                
+                // Turret barrel
+                ctx.fillStyle = '#000';
+                ctx.strokeStyle = '#0f0';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.rect(0, -8, this.radius + 35, 16);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+                
+                // Small HP readout
+                ctx.fillStyle = '#0f0';
+                ctx.font = 'bold 14px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                const pct = this.maxHp > 0 ? Math.max(0, Math.floor((this.hp / this.maxHp) * 100)) : 0;
+                ctx.fillText(`FORTRESS ${pct}%`, 0, -this.rings[0].r - 18);
+                
+                ctx.restore();
+            }
+        }
+        
+         class AnomalyZone extends Entity {
+             constructor(x, y, contractId = null) {
+                 super(x, y);
+                 this.contractId = contractId;
+                 this.radius = 3200;
+                 this.t = 0;
+                 this.generated = false;
+                 this.coreRadius = 260;
+                 this.entryAngle = Math.random() * Math.PI * 2;
+             }
+             
+             generateMaze() {
+                 if (this.generated) return;
+                 this.generated = true;
+                 // Concentric indestructible asteroid rings with a single outer entrance.
+                 // Each ring has one intentional gap; the rest is packed tightly to avoid "leaks".
+                 const entry = this.entryAngle;
+                 const rings = [
+                     { r: 1100, gap: entry + Math.PI, width: 0.38, astR: 108, turretChance: 0.10 },
+                     { r: 1750, gap: entry,        width: 0.38, astR: 112, turretChance: 0.12 },
+                     { r: 2400, gap: entry + Math.PI, width: 0.38, astR: 116, turretChance: 0.12 },
+                     { r: 2900, gaps: [entry, entry + Math.PI], width: 0.48, astR: 122, turretChance: 0.00 } // outer ring entrances
+                 ];
+                 
+                 let turretBudget = 8;
+                 for (let ringIndex = 0; ringIndex < rings.length; ringIndex++) {
+                     const ring = rings[ringIndex];
+                     const count = Math.ceil((Math.PI * 2 * ring.r) / (ring.astR * 2 * 0.92));
+                     const step = (Math.PI * 2) / count;
+                     for (let i = 0; i < count; i++) {
+                         const a = i * step;
+                         const gaps = ring.gaps || [ring.gap];
+                         let nearGap = false;
+                         let d = a - gaps[0];
+                         while (d > Math.PI) d -= Math.PI * 2;
+                         while (d < -Math.PI) d += Math.PI * 2;
+                         for (let gi = 0; gi < gaps.length; gi++) {
+                             let dg = a - gaps[gi];
+                             while (dg > Math.PI) dg -= Math.PI * 2;
+                             while (dg < -Math.PI) dg += Math.PI * 2;
+                             if (Math.abs(dg) < ring.width) { nearGap = true; break; }
+                         }
+                         if (nearGap) continue; // intentional gap(s)
+                         
+                         const x = this.pos.x + Math.cos(a) * ring.r;
+                         const y = this.pos.y + Math.sin(a) * ring.r;
+                         const ast = new EnvironmentAsteroid(x, y, ring.astR, 3);
+                         ast.vel.x = 0;
+                         ast.vel.y = 0;
+                         ast.rotSpeed = 0;
+                         ast.unbreakable = true;
+                         ast.contractId = this.contractId;
+                         environmentAsteroids.push(ast);
+                         
+                         // Static defensive turrets mounted on some inner walls (not on the entrance ring).
+                         const allowTurretRing = (ringIndex === 1 || ringIndex === 2);
+                         if (allowTurretRing && turretBudget > 0 && contractEntities && contractEntities.wallTurrets) {
+                             if (Math.random() < ring.turretChance && Math.abs(d) > (ring.width + 0.25)) {
+                                 const tx = x - Math.cos(a) * (ring.astR + 34);
+                                 const ty = y - Math.sin(a) * (ring.astR + 34);
+                                 contractEntities.wallTurrets.push(new WallTurret(tx, ty, this.contractId, a));
+                                 turretBudget--;
+                             }
+                         }
+                     }
+                 }
+                 
+                 // Reward cache in the core
+                 caches.push(new ExplorationCache(this.pos.x, this.pos.y, this.contractId));
+                 
+                 // Defenders in the anomaly (pressure while navigating to the core)
+                 const defenderCount = 6;
+                 for (let i = 0; i < defenderCount; i++) {
+                     let spawned = false;
+                     for (let attempt = 0; attempt < 30 && !spawned; attempt++) {
+                         const a = Math.random() * Math.PI * 2;
+                         const d = 1200 + Math.random() * 1400;
+                         const sx = this.pos.x + Math.cos(a) * d;
+                         const sy = this.pos.y + Math.sin(a) * d;
+                         const distPlayer = player ? Math.hypot(player.pos.x - sx, player.pos.y - sy) : 99999;
+                         if (distPlayer < 500) continue;
+                        const def = new Enemy('defender', { x: sx, y: sy }, null);
+                        def.contractId = this.contractId;
+                        enemies.push(def);
+                        spawned = true;
+                    }
+                }
+                showOverlayMessage("ANOMALY STABILIZED: NAVIGATE TO CORE", '#0f0', 2500);
+            }
+            
+            update() {
+                if (!player || player.dead) return;
+                this.t++;
+                if (!activeContract || activeContract.type !== 'anomaly') return;
+                
+                const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (d < this.radius) {
+                    if (!this.generated) this.generateMaze();
+                    activeContract.state = 'inside';
+                    if (d < this.coreRadius) {
+                        completeContract(true);
+                    }
+                }
+            }
+             draw(ctx) {
+                 ctx.save();
+                 ctx.translate(this.pos.x, this.pos.y);
+                 const pulse = 0.25 + Math.abs(Math.sin(this.t * 0.02)) * 0.25;
+                 ctx.strokeStyle = `rgba(0,255,0,${pulse})`;
+                 ctx.lineWidth = 4;
+                 ctx.shadowBlur = 20;
+                 ctx.shadowColor = '#0f0';
+                 ctx.beginPath();
+                 ctx.arc(0, 0, this.radius, 0, Math.PI*2);
+                 ctx.stroke();
+                 ctx.shadowBlur = 0;
+                 
+                 // core target
+                 ctx.strokeStyle = 'rgba(0,255,0,0.8)';
+                 ctx.lineWidth = 3;
+                 ctx.beginPath();
+                 ctx.arc(0, 0, this.coreRadius, 0, Math.PI*2);
+                 ctx.stroke();
+                 ctx.restore();
+             }
+         }
+         
+         class WallTurret extends Entity {
+             constructor(x, y, contractId = null, baseAngle = 0) {
+                 super(x, y);
+                 this.contractId = contractId;
+                 this.baseAngle = baseAngle;
+                 this.radius = 26;
+                 this.hp = 6;
+                 this.maxHp = 6;
+                 this.reload = 25 + Math.floor(Math.random() * 20);
+                 this.t = 0;
+             }
+             
+             update() {
+                 if (this.dead) return;
+                 this.t++;
+                 if (!player || player.dead) return;
+                 if (!activeContract || activeContract.type !== 'anomaly' || activeContract.id !== this.contractId) return;
+                 
+                 const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                 if (dist > 3600) return;
+                 
+                 this.reload--;
+                 if (this.reload > 0) return;
+                 
+                 const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+                 const muzzleX = this.pos.x + Math.cos(aim) * (this.radius + 6);
+                 const muzzleY = this.pos.y + Math.sin(aim) * (this.radius + 6);
+                 bullets.push(new Bullet(muzzleX, muzzleY, aim, true, 1, 12, 4, '#f80'));
+                 if (Math.random() < 0.25) {
+                     bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.12, true, 1, 12, 4, '#f80'));
+                     bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.12, true, 1, 12, 4, '#f80'));
+                 }
+                 this.reload = 55 + Math.floor(Math.random() * 30);
+             }
+             
+             draw(ctx) {
+                 if (this.dead) return;
+                 ctx.save();
+                 ctx.translate(this.pos.x, this.pos.y);
+                 const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : this.baseAngle;
+                 ctx.rotate(aim);
+                 
+                 // Base
+                 ctx.fillStyle = '#111';
+                 ctx.strokeStyle = '#f80';
+                 ctx.lineWidth = 2;
+                 ctx.shadowBlur = 10;
+                 ctx.shadowColor = '#f80';
+                 ctx.beginPath();
+                 ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                 ctx.fill();
+                 ctx.stroke();
+                 
+                 // Barrel
+                 ctx.fillStyle = '#f80';
+                 ctx.fillRect(this.radius * 0.2, -5, this.radius * 1.25, 10);
+                 
+                 // Core
+                 ctx.shadowBlur = 0;
+                 ctx.fillStyle = '#222';
+                 ctx.beginPath();
+                 ctx.arc(0, 0, 8, 0, Math.PI * 2);
+                 ctx.fill();
+                 
+                 // HP ring
+                 const pct = this.maxHp > 0 ? Math.max(0, this.hp / this.maxHp) : 0;
+                 ctx.globalAlpha = 0.75;
+                 ctx.strokeStyle = '#ff6';
+                 ctx.lineWidth = 3;
+                 ctx.beginPath();
+                 ctx.arc(0, 0, this.radius + 8, -Math.PI/2, -Math.PI/2 + Math.PI * 2 * pct);
+                 ctx.stroke();
+                 
+                 ctx.restore();
+             }
+         }
+         
+         function scheduleNextShootingStar() {
+             if (sectorIndex >= 2) {
+                 nextShootingStarTime = Date.now() + 60000; // every ~1 minute
+             } else {
                 // 3-5 minutes = 180000 to 300000 ms
                 nextShootingStarTime = Date.now() + 180000 + Math.random() * 120000;
             }
@@ -3910,7 +5183,7 @@
         }
 
         function resolveEntityCollision() {
-            const allEntities = [player, ...enemies, ...bases].filter(e => e && !e.dead);
+            const allEntities = [player, ...enemies, ...bases, ...(contractEntities.fortresses || [])].filter(e => e && !e.dead);
             if (boss && !boss.dead) allEntities.push(boss);
             if (spaceStation) allEntities.push(spaceStation);
             
@@ -3922,11 +5195,11 @@
                     let r1 = e1.radius;
                     let r2 = e2.radius;
                     
-                    const isStatic1 = (e1 instanceof Base) || (e1 instanceof SpaceStation);
-                    const isStatic2 = (e2 instanceof Base) || (e2 instanceof SpaceStation);
+                    const isStatic1 = (e1 instanceof Base) || (e1 instanceof SpaceStation) || (e1 instanceof ContractFortress);
+                    const isStatic2 = (e2 instanceof Base) || (e2 instanceof SpaceStation) || (e2 instanceof ContractFortress);
 
-                    if (isStatic1 && e1.shieldSegments.some(s=>s>0)) r1 = e1.shieldRadius;
-                    if (isStatic2 && e2.shieldSegments.some(s=>s>0)) r2 = e2.shieldRadius;
+                    if (isStatic1 && e1.shieldSegments && e1.shieldSegments.some(s=>s>0)) r1 = e1.shieldRadius;
+                    if (isStatic2 && e2.shieldSegments && e2.shieldSegments.some(s=>s>0)) r2 = e2.shieldRadius;
                     
                     const dx = e2.pos.x - e1.pos.x;
                     const dy = e2.pos.y - e1.pos.y;
@@ -3953,7 +5226,7 @@
             }
             
             // Collision & Damage
-            const damageable = [player, ...enemies, ...bases];
+            const damageable = [player, ...enemies, ...bases, ...(contractEntities.fortresses || [])];
             if (boss && bossActive && !boss.dead) damageable.push(boss);
             for (let entity of damageable) {
                 if (entity.dead) continue;
@@ -3966,7 +5239,8 @@
                     const minDist = entity.radius + ast.radius;
                     
                     if (distSq < minDist * minDist) {
-                        const dist = Math.sqrt(distSq);
+                        let dist = Math.sqrt(distSq);
+                        if (dist < 0.001) dist = 0.001;
                         const overlap = minDist - dist;
                         const nx = dx / dist;
                         const ny = dy / dist;
@@ -3977,15 +5251,32 @@
                         }
                         entity.pos.x += nx * overlap;
                         entity.pos.y += ny * overlap;
-                        entity.vel.x += nx * 1;
-                        entity.vel.y += ny * 1;
                         
-                        if (entity === player) {
-                            if (Date.now() - player.lastAsteroidHitTime > 1000) {
-                                // Invincibility check from upgrade
-                                if (player.invincibilityOnHit > 0) {
-                                    // Trigger invuln? For now simpler logic: Just standard shield hit
-                                }
+                        if (entity !== player) {
+                            entity.vel.x += nx * 1;
+                            entity.vel.y += ny * 1;
+                        }
+                         
+                         if (entity === player) {
+                             // Bump response: bounce like a rubber wall + push away
+                             const vn = player.vel.x * nx + player.vel.y * ny;
+                             if (vn < 0) {
+                                 const restitution = 1.0; // elastic bounce
+                                 player.vel.x -= nx * vn * (1 + restitution);
+                                 player.vel.y -= ny * vn * (1 + restitution);
+                             }
+                             const outwardKick = Math.min(10, 3 + overlap * 0.12);
+                             player.vel.x += nx * outwardKick;
+                             player.vel.y += ny * outwardKick;
+                             player.vel.mult(0.98);
+                             shakeMagnitude = Math.max(shakeMagnitude, 6);
+                             shakeTimer = Math.max(shakeTimer, 10);
+
+                             if (Date.now() - player.lastAsteroidHitTime > 1000) {
+                                 // Invincibility check from upgrade
+                                 if (player.invincibilityOnHit > 0) {
+                                     // Trigger invuln? For now simpler logic: Just standard shield hit
+                                 }
                                 
                                 let shieldAbsorbed = false;
                                 const activeSeg = player.shieldSegments.findIndex(s => s > 0);
@@ -4067,6 +5358,7 @@
                         playSound('coin');
                         score += c.value;
                         player.addXp(c.value);
+                        addPickupFloatingText('gold', c.value, '#ff0');
                         c.dead = true;
                     }
                 }
@@ -4078,6 +5370,7 @@
                         playSound('coin');
                         spaceNuggets += n.value;
                         updateNuggetUI();
+                        addPickupFloatingText('nugs', n.value, '#ff0');
                         n.dead = true;
                     }
                 }
@@ -4101,35 +5394,107 @@
                         playSound('coin');
                         spaceNuggets += c.value;
                         updateNuggetUI();
+                        addPickupFloatingText('nugs', c.value, '#ff0');
                         showOverlayMessage(`CACHE +${c.value} NUGS`, '#ff0', 800);
                         c.dead = true;
                     }
                 }
             }
             
-            // Shooting Star Collisions
-            for (let s of shootingStars) {
-                if (s.dead) continue;
-                
-                // Vs Player
-                if (player && !player.dead && !player.invulnerable) {
-                    const dist = Math.hypot(s.pos.x - player.pos.x, s.pos.y - player.pos.y);
-                    if (dist < s.radius + player.radius) {
-                        player.hp -= s.damage;
-                        updateHealthUI();
-                        playSound('explode');
-                        spawnParticles(player.pos.x, player.pos.y, 20, '#f00');
-                        showOverlayMessage("HIT BY SHOOTING STAR!", '#f00', 2000);
-                        s.dead = true;
-                        if (player.hp <= 0) killPlayer();
-                        continue;
-                    }
-                }
-                
-                // Vs Asteroids
-                const nearby = asteroidGrid.query(s.pos.x, s.pos.y);
-                for (let ast of nearby) {
-                    if (ast.dead) continue;
+             // Shooting Star Collisions
+             for (let s of shootingStars) {
+                 if (s.dead) continue;
+                 
+                 // Vs Player
+                 if (player && !player.dead && !player.invulnerable) {
+                     const dist = Math.hypot(s.pos.x - player.pos.x, s.pos.y - player.pos.y);
+                     if (dist < s.radius + player.radius) {
+                         player.hp -= s.damage;
+                         updateHealthUI();
+                         playSound('explode');
+                         spawnParticles(player.pos.x, player.pos.y, 20, '#f00');
+                         showOverlayMessage("HIT BY SHOOTING STAR!", '#f00', 2000);
+                         s.dead = true;
+                         if (player.hp <= 0) killPlayer();
+                         continue;
+                     }
+                 }
+
+                 // Vs Enemies / Bases / Boss / Station
+                 let hitEntity = false;
+                 for (let e of enemies) {
+                     if (!e || e.dead) continue;
+                     const dist = Math.hypot(s.pos.x - e.pos.x, s.pos.y - e.pos.y);
+                     if (dist < s.radius + e.radius) {
+                         e.hp -= s.damage;
+                         spawnParticles(e.pos.x, e.pos.y, 14, '#fa0');
+                         playSound('explode');
+                         if (e.hp <= 0) e.kill();
+                         hitEntity = true;
+                         break;
+                     }
+                 }
+                 if (!hitEntity) {
+                     for (let b of bases) {
+                         if (!b || b.dead) continue;
+                         const dist = Math.hypot(s.pos.x - b.pos.x, s.pos.y - b.pos.y);
+                         if (dist < s.radius + b.radius) {
+                             b.hp -= s.damage;
+                             b.aggro = true;
+                             spawnParticles(b.pos.x, b.pos.y, 18, '#fa0');
+                             playSound('explode');
+                             if (b.hp <= 0) {
+                                 b.dead = true;
+                                 playSound('base_explode');
+                                 spawnParticles(b.pos.x, b.pos.y, 50, '#f0f');
+                                 for(let i=0; i<6; i++) coins.push(new Coin(b.pos.x + (Math.random()-0.5)*50, b.pos.y + (Math.random()-0.5)*50, 5));
+                                 nuggets.push(new SpaceNugget(b.pos.x, b.pos.y, 1));
+                                 basesDestroyed++;
+                                 basesDestroyedTotal++;
+                                 difficultyTier = 1 + Math.floor(basesDestroyedTotal / 6);
+                                 score += 1000;
+                                 document.getElementById('bases-display').innerText = `${basesDestroyedTotal}`;
+                                 enemies.forEach(e => { if (e.assignedBase === b) e.type = 'roamer'; });
+                                 const delay = 5000 + Math.random() * 5000;
+                                 baseRespawnTimers.push(Date.now() + delay);
+                             }
+                             hitEntity = true;
+                             break;
+                         }
+                     }
+                 }
+                 if (!hitEntity && bossActive && boss && !boss.dead) {
+                     const dist = Math.hypot(s.pos.x - boss.pos.x, s.pos.y - boss.pos.y);
+                     if (dist < s.radius + boss.radius) {
+                         boss.hp -= s.damage;
+                         spawnParticles(boss.pos.x, boss.pos.y, 22, '#fa0');
+                         playSound('explode');
+                         if (boss.hp <= 0) {
+                             boss.kill();
+                             score += 10000;
+                         }
+                         hitEntity = true;
+                     }
+                 }
+                 if (!hitEntity && spaceStation) {
+                     const dist = Math.hypot(s.pos.x - spaceStation.pos.x, s.pos.y - spaceStation.pos.y);
+                     if (dist < s.radius + spaceStation.radius) {
+                         spaceStation.hp -= s.damage;
+                         spawnParticles(spaceStation.pos.x, spaceStation.pos.y, 22, '#fa0');
+                         playSound('explode');
+                         if (spaceStation.hp <= 0) handleSpaceStationDestroyed();
+                         hitEntity = true;
+                     }
+                 }
+                 if (hitEntity) {
+                     s.dead = true;
+                     continue;
+                 }
+                 
+                 // Vs Asteroids
+                 const nearby = asteroidGrid.query(s.pos.x, s.pos.y);
+                 for (let ast of nearby) {
+                     if (ast.dead) continue;
                     const dist = Math.hypot(s.pos.x - ast.pos.x, s.pos.y - ast.pos.y);
                     if (dist < s.radius + ast.radius) {
                         ast.break();
@@ -4396,9 +5761,11 @@
             player.respawn();
             generateMap(); 
             bullets = [];
+            bossBombs = [];
             enemies = [];
             bases = [];
             particles = [];
+            floatingTexts = [];
             coins = [];
             nuggets = [];
             spaceNuggets = 0;
@@ -4406,6 +5773,9 @@
             shootingStars = [];
             drones = [];
             caches = [];
+            contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+            activeContract = null;
+            nextContractAt = Date.now() + 30000; // first contract after ~30s
             scheduleNextShootingStar();
             nextIntensityBreakAt = Date.now() + 120000; // first break at 2 minutes
             intensityBreakActive = false;
@@ -4441,6 +5811,29 @@
             pausedAccumMs = 0;
             const tEl = document.getElementById('game-timer');
             if (tEl) tEl.innerText = '00:00';
+        }
+        
+        function addPickupFloatingText(key, amount, color = '#ff0') {
+            if (!player || player.dead) return;
+            const x = player.pos.x;
+            const y = player.pos.y - player.radius - 10;
+            const now = Date.now();
+            
+            const mergeWindowMs = 450;
+            const existing = floatingTexts.find(t => t && !t.dead && t.key === key && (now - (t.lastBumpAt || 0)) <= mergeWindowMs);
+            if (existing) {
+                existing.bump(amount, x, y);
+                return;
+            }
+            
+            floatingTexts.push(new FloatingText(
+                x,
+                y,
+                `+${amount}`,
+                color,
+                70,
+                { key, amount, prefix: '+', suffix: '' }
+            ));
         }
         
         function spawnNewBaseRelative(initial = false) {
@@ -4619,6 +6012,11 @@
                     if (tier === 1) player.stats.shieldRegenRate = 5;
                     if (tier === 2) player.stats.shieldRegenRate = 3;
                     if (tier === 3) player.stats.shieldRegenRate = 1;
+                    break;
+                case 'hp_regen':
+                    player.stats.hpRegenAmount = tier; // 1/2/3 HP per tick
+                    player.stats.hpRegenRate = 5; // fixed 5s tick
+                    player.lastHpRegenTime = Date.now();
                     break;
                 case 'hull_strength':
                     player.maxHp += 25;
@@ -4812,6 +6210,8 @@
                 enemies = [];
                 bases = [];
                 bullets = [];
+                bossBombs = [];
+                floatingTexts = [];
                 bossActive = false;
                 boss = null;
             bossArena.active = false;
@@ -4857,36 +6257,137 @@
                     completeSectorWarp();
                 }
             }
-            // Cruiser timed spawn: if timer active and no boss present, spawn a cruiser
-            try {
-                if (!sectorTransitionActive && dreadManager.timerActive && !bossActive && dreadManager.timerAt && now >= dreadManager.timerAt) {
-                    cruiserEncounterCount++;
-                    boss = new Cruiser(cruiserEncounterCount);
-                    bossActive = true;
-                    bossArena.x = (player.pos.x + boss.pos.x) / 2;
-                    bossArena.y = (player.pos.y + boss.pos.y) / 2;
-                    bossArena.radius = 2500;
-                    bossArena.active = true;
-                    bossArena.growing = false;
-                    dreadManager.timerActive = false;
-                    dreadManager.firstSpawnDone = true;
-                    showOverlayMessage("WARNING: CRUISER APPROACHING - ARENA LOCKED", '#f00', 4000);
-                    playSound('boss_spawn');
-                    if (musicEnabled) { stopMusic(); startMusic('cruiser'); }
+
+            // Contracts: spawn and update (normal mode only, not during arena boss)
+            if (gameMode === 'normal' && gameActive && !gamePaused && !bossActive) {
+                if (!activeContract && now >= nextContractAt) {
+                    contractSequence++;
+                    const pick = Math.random();
+                    const target = findSpawnPointRelative(true, 6000, 9000);
+                    
+                    if (pick < 0.4) {
+                        // Scan Beacon
+                        const beacon = new ContractBeacon(target.x, target.y, "SCAN BEACON");
+                        contractEntities.beacons.push(beacon);
+                        activeContract = {
+                            id: `C${contractSequence}`,
+                            type: 'scan_beacon',
+                            state: 'travel',
+                            title: 'SCAN BEACON',
+                            target: { x: target.x, y: target.y },
+                            progress: 0,
+                            rewardNugs: 4 + Math.floor(Math.random() * 3),
+                            rewardScore: 7000
+                         };
+                         showOverlayMessage("NEW CONTRACT: SCAN BEACON (STAY IN ZONE)", '#0f0', 2000, 2);
+                         playSound('contract');
+                     } else if (pick < 0.7) {
+                         // Gate run puzzle
+                         const gateCount = 5;
+                         contractEntities.gates = [];
+                         const dir = Math.random() * Math.PI * 2;
+                        for (let i = 0; i < gateCount; i++) {
+                            const d = 1800 + i * 1500;
+                            const a = dir + (Math.random() - 0.5) * 0.45;
+                            const gx = player.pos.x + Math.cos(a) * d;
+                            const gy = player.pos.y + Math.sin(a) * d;
+                            contractEntities.gates.push(new GateRing(gx, gy, i, gateCount));
+                        }
+                        activeContract = {
+                            id: `C${contractSequence}`,
+                            type: 'gate_run',
+                            state: 'active',
+                            title: 'GATE RUN',
+                            gateIndex: 0,
+                            gateCount,
+                            endsAt: Date.now() + 45000,
+                            rewardNugs: 6 + Math.floor(Math.random() * 4),
+                            rewardScore: 10000
+                         };
+                         showOverlayMessage("NEW CONTRACT: GATE RUN", '#0f0', 2000, 2);
+                         playSound('contract');
+                     } else if (pick < 0.9) {
+                         // Anomaly maze zone
+                         const id = `C${contractSequence}`;
+                         activeContract = {
+                            id,
+                            type: 'anomaly',
+                            state: 'travel',
+                            title: 'ANOMALY',
+                            target: { x: target.x, y: target.y },
+                            rewardNugs: 7 + Math.floor(Math.random() * 5),
+                            rewardScore: 12000
+                        };
+                         const anomaly = new AnomalyZone(target.x, target.y, id);
+                         contractEntities.anomalies.push(anomaly);
+                         showOverlayMessage("NEW CONTRACT: INVESTIGATE ANOMALY", '#0f0', 2000, 2);
+                         playSound('contract');
+                     } else {
+                         // Destroy Fortress
+                         const id = `C${contractSequence}`;
+                         const fortress = new ContractFortress(target.x, target.y, id);
+                         contractEntities.fortresses.push(fortress);
+                        activeContract = {
+                            id,
+                            type: 'destroy_fortress',
+                            state: 'travel',
+                            title: 'DESTROY FORTRESS',
+                            target: { x: target.x, y: target.y },
+                            ringsLeft: 3,
+                            hpPct: 1,
+                            rewardNugs: 0,
+                            rewardScore: 8000
+                         };
+                         showOverlayMessage("NEW CONTRACT: DESTROY FORTRESS", '#0f0', 2000, 2);
+                         playSound('contract');
+                     }
+                     updateContractUI();
+                 }
+                
+                if (activeContract && activeContract.type === 'gate_run') {
+                    if (Date.now() > activeContract.endsAt) {
+                        completeContract(false);
+                    }
                 }
-            } catch(e) { console.warn('cruiser spawn check failed', e); }
-            
-            // Space Station Spawn (timer-driven)
-            if (!sectorTransitionActive && !spaceStation && pendingStations > 0 && nextSpaceStationTime && now >= nextSpaceStationTime) {
-                spaceStation = new SpaceStation();
-                pendingStations--;
-                showOverlayMessage("WARNING: SPACE STATION DETECTED", '#f00', 4000);
-                playSound('station_spawn');
-                nextSpaceStationTime = null;
             }
+            // Cruiser timed spawn: if timer active and no boss present, spawn a cruiser
+             try {
+                  if (!sectorTransitionActive && dreadManager.timerActive && !bossActive && dreadManager.timerAt && now >= dreadManager.timerAt) {
+                      // Cruisers can spawn even if a station exists
+                      cruiserEncounterCount++;
+                      // Arena boss fight: clear world threats; boss may call a few helpers.
+                      enemies = [];
+                      bases = [];
+                      baseRespawnTimers = [];
+                     roamerRespawnQueue = [];
+                     bullets = bullets.filter(b => b && !b.isEnemy);
+                     bossBombs = [];
+                     boss = new Cruiser(cruiserEncounterCount);
+                     bossActive = true;
+                     bossArena.x = (player.pos.x + boss.pos.x) / 2;
+                     bossArena.y = (player.pos.y + boss.pos.y) / 2;
+                     bossArena.radius = 2500;
+                     bossArena.active = true;
+                     bossArena.growing = false;
+                     dreadManager.timerActive = false;
+                     dreadManager.firstSpawnDone = true;
+                      showOverlayMessage("WARNING: CRUISER APPROACHING - ARENA LOCKED", '#f00', 4000);
+                      playSound('boss_spawn');
+                      if (musicEnabled) { stopMusic(); startMusic('cruiser'); }
+                  }
+              } catch(e) { console.warn('cruiser spawn check failed', e); }
+            
+             // Space Station Spawn (timer-driven)
+            if (!sectorTransitionActive && !spaceStation && pendingStations > 0 && nextSpaceStationTime && now >= nextSpaceStationTime) {
+                 spaceStation = new SpaceStation();
+                 pendingStations--;
+                 showOverlayMessage("WARNING: SPACE STATION DETECTED", '#f00', 4000);
+                 playSound('station_spawn');
+                 nextSpaceStationTime = null;
+             }
             
             // Gunboat respawn (one at a time)
-            if (!sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
+            if (!bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
                 const gunboatAlive = enemies.some(e => e.isGunboat);
                 const level2Alive = enemies.some(e => e.isGunboat && e.gunboatLevel === 2);
                 const level1Alive = enemies.some(e => e.isGunboat && e.gunboatLevel === 1);
@@ -4914,9 +6415,9 @@
                 }
             }
             
-            if (Date.now() > nextShootingStarTime) {
-                // Fire a volley of 3 comets from different directions, 1s apart
-                for (let i = 0; i < 3; i++) {
+            if (!bossActive && Date.now() > nextShootingStarTime) {
+                // Fire a meteor shower: 10 comets from different directions, 1s apart
+                for (let i = 0; i < 10; i++) {
                     const delay = i * 1000;
                     setTimeout(() => {
                         shootingStars.push(new ShootingStar());
@@ -4928,11 +6429,10 @@
             
             // Intensity breaks to let players collect/reposition
             if (!sectorTransitionActive && !gamePaused && gameActive) {
-                if (!intensityBreakActive && now >= nextIntensityBreakAt) {
-                    intensityBreakActive = true;
-                    nextIntensityBreakAt = now + INTENSITY_BREAK_DURATION + 90000; // after break, schedule next in ~90s
-                    showOverlayMessage("CALM ZONE: INTENSITY DROP", '#0f0', 2000);
-                }
+                 if (!intensityBreakActive && now >= nextIntensityBreakAt) {
+                     intensityBreakActive = true;
+                     nextIntensityBreakAt = now + INTENSITY_BREAK_DURATION + 90000; // after break, schedule next in ~90s
+                 }
                 if (intensityBreakActive && now >= nextIntensityBreakAt - (INTENSITY_BREAK_DURATION)) {
                     // during break, stop new roamer spawns
                 }
@@ -4941,7 +6441,7 @@
                 }
             }
 
-            if (!sectorTransitionActive && initialSpawnDone) {
+            if (!bossActive && !sectorTransitionActive && initialSpawnDone) {
                 // Time-based pacing for roamer count and strength
                 let elapsed = now - gameStartTime - pausedAccumMs;
                 if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
@@ -4994,7 +6494,7 @@
             asteroidGrid.clear();
             for (let i = 0; i < environmentAsteroids.length; i++) asteroidGrid.insert(environmentAsteroids[i]);
 
-            if (!sectorTransitionActive && initialSpawnDone) {
+            if (!bossActive && !sectorTransitionActive && initialSpawnDone) {
                 if (bases.length < 3) {
                     if (baseRespawnTimers.length === 0) spawnNewBaseRelative();
                 }
@@ -5008,9 +6508,19 @@
             }
             
             // Arena ring is now static; no shrinking/growing
+            
+            // Dynamic zoom: zoom out during Cruiser arena fights
+            const cruiserFight = !!(bossActive && boss && boss.isCruiser);
+            // Keep the dynamic zoom system in place, but make the default behavior "no change"
+            // (both normal gameplay and Cruiser fights use the same base zoom for now).
+            const CRUISER_ZOOM_OUT_FACTOR = 1.0;
+            const targetZoom = cruiserFight ? (ZOOM_LEVEL / CRUISER_ZOOM_OUT_FACTOR) : ZOOM_LEVEL;
+            currentZoom += (targetZoom - currentZoom) * 0.08;
+            if (Math.abs(currentZoom - targetZoom) < 0.001) currentZoom = targetZoom;
+            const zoom = currentZoom;
 
-            let camX = player.pos.x - width / (2 * ZOOM_LEVEL);
-            let camY = player.pos.y - height / (2 * ZOOM_LEVEL);
+            let camX = player.pos.x - width / (2 * zoom);
+            let camY = player.pos.y - height / (2 * zoom);
             if (shakeTimer > 0) {
                 shakeTimer--;
                 const rx = (Math.random() - 0.5) * shakeMagnitude * 2;
@@ -5068,7 +6578,7 @@
             }
 
             ctx.save();
-            ctx.scale(ZOOM_LEVEL, ZOOM_LEVEL);
+            ctx.scale(zoom, zoom);
             ctx.translate(-camX, -camY);
 
             coins.forEach(c => { c.update(); c.draw(ctx); });
@@ -5077,6 +6587,11 @@
             shootingStars.forEach(s => { s.update(); s.draw(ctx); });
             caches.forEach(c => { c.update(); c.draw(ctx); });
             environmentAsteroids.forEach(a => { a.update(); a.draw(ctx); });
+            contractEntities.beacons.forEach(b => { b.update(); b.draw(ctx); });
+            contractEntities.gates.forEach(g => { g.update(); g.draw(ctx); });
+            contractEntities.anomalies.forEach(a => { a.update(); a.draw(ctx); });
+            contractEntities.fortresses.forEach(f => { f.update(); f.draw(ctx); });
+            contractEntities.wallTurrets.forEach(t => { t.update(); t.draw(ctx); });
             
             if (bossArena.active) {
                 ctx.save();
@@ -5100,6 +6615,7 @@
             player.update();
             player.drawLaser(ctx);
             player.draw(ctx);
+            floatingTexts.forEach(t => { t.update(); t.draw(ctx); });
             drones.forEach(d => { d.update(); d.draw(ctx); });
 
             bases.forEach(b => { b.update(); b.draw(ctx); });
@@ -5128,6 +6644,7 @@
             }
 
             bullets.forEach(b => { b.update(); b.draw(ctx); });
+            bossBombs.forEach(b => { b.update(); b.draw(ctx); });
             particles.forEach(p => { p.update(); p.draw(ctx); });
             drones.forEach(d => { d.update(); d.draw(ctx); });
 
@@ -5138,16 +6655,23 @@
             shockwaves = shockwaves.filter(s => !s.dead);
 
             compactArray(bullets);
+            compactArray(bossBombs);
             compactArray(enemies);
             compactArray(bases);
             compactArray(environmentAsteroids);
             compactArray(particles);
+            compactArray(floatingTexts);
             compactArray(coins);
             compactArray(nuggets);
             compactArray(powerups);
             compactArray(shootingStars);
             compactArray(drones);
             compactArray(caches);
+            compactArray(contractEntities.beacons);
+            compactArray(contractEntities.gates);
+            compactArray(contractEntities.anomalies);
+            compactArray(contractEntities.fortresses);
+            compactArray(contractEntities.wallTurrets);
 
             resolveEntityCollision();
             
@@ -5193,9 +6717,9 @@
                         }
                     } 
                     else {
-                        for (let e of enemies) {
-                            if (!e.dead) {
-                                const dist = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
+                         for (let e of enemies) {
+                             if (!e.dead) {
+                                 const dist = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
                                 if (!b.ignoreShields && e.shieldSegments && e.shieldSegments.length > 0 && dist < e.shieldRadius + b.radius && dist > e.shieldRadius - 10) {
                                       const activeIdx = e.shieldSegments.findIndex(s => s > 0);
                                       if (activeIdx !== -1) {
@@ -5217,12 +6741,30 @@
                                     }
                                     break;
                                 }
-                            }
-                        }
-                        
-                        if (!hit && spaceStation) {
-                             const dist = Math.hypot(b.pos.x - spaceStation.pos.x, b.pos.y - spaceStation.pos.y);
-                             if (!b.ignoreShields && dist < spaceStation.shieldRadius + 10 && dist > spaceStation.shieldRadius - 10) {
+                             }
+                         }
+                         
+                         if (!hit && contractEntities && contractEntities.wallTurrets && contractEntities.wallTurrets.length > 0) {
+                             for (let t of contractEntities.wallTurrets) {
+                                 if (!t || t.dead) continue;
+                                 const dist = Math.hypot(b.pos.x - t.pos.x, b.pos.y - t.pos.y);
+                                 if (dist < t.radius + b.radius) {
+                                     t.hp -= b.damage;
+                                     hit = true;
+                                     playSound('hit');
+                                     spawnParticles(b.pos.x, b.pos.y, 6, '#ff8');
+                                     if (t.hp <= 0) {
+                                         t.dead = true;
+                                         spawnParticles(t.pos.x, t.pos.y, 18, '#ff6');
+                                     }
+                                     break;
+                                 }
+                             }
+                         }
+                         
+                         if (!hit && spaceStation) {
+                              const dist = Math.hypot(b.pos.x - spaceStation.pos.x, b.pos.y - spaceStation.pos.y);
+                              if (!b.ignoreShields && dist < spaceStation.shieldRadius + 10 && dist > spaceStation.shieldRadius - 10) {
                                   let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.shieldRotation;
                                   while(angle < 0) angle += Math.PI*2;
                                   const count = spaceStation.shieldSegments.length;
@@ -5258,11 +6800,18 @@
                         }
 
                         if (!hit && bossActive && boss && !boss.dead) {
-                             const dist = Math.hypot(b.pos.x - boss.pos.x, b.pos.y - boss.pos.y);
-                             if (!b.ignoreShields && dist < boss.shieldRadius + 5 && dist > boss.shieldRadius - 15) {
-                                let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.shieldRotation;
-                                while(angle < 0) angle += Math.PI*2;
-                                const segCount = boss.shieldSegments.length;
+                             if (typeof boss.applyPlayerBulletHit === 'function') {
+                                 if (boss.applyPlayerBulletHit(b)) {
+                                     hit = true;
+                                 }
+                             }
+                             
+                             if (!hit) {
+                              const dist = Math.hypot(b.pos.x - boss.pos.x, b.pos.y - boss.pos.y);
+                              if (!b.ignoreShields && dist < boss.shieldRadius + 5 && dist > boss.shieldRadius - 15) {
+                                 let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.shieldRotation;
+                                 while(angle < 0) angle += Math.PI*2;
+                                 const segCount = boss.shieldSegments.length;
                                 const segIndex = Math.floor((angle / (Math.PI*2)) * segCount) % segCount;
                                 if (boss.shieldSegments[segIndex] > 0) {
                                     boss.shieldSegments[segIndex]--;
@@ -5282,17 +6831,69 @@
                                     playSound('shield_hit');
                                     spawnParticles(b.pos.x, b.pos.y, 3, '#f00');
                                 }
+                              }
+                              if (!hit && dist < boss.radius + b.radius) {
+                                   const dmg = (boss.vulnerableTimer && boss.vulnerableTimer > 0) ? (b.damage * 2) : b.damage;
+                                   boss.hp -= dmg;
+                                   hit = true;
+                                   playSound('hit');
+                                   spawnParticles(b.pos.x, b.pos.y, 5, '#f00');
+                                   if (boss.hp <= 0) {
+                                       boss.kill(); // Drops coins
+                                       score += 10000;
+                                   }
+                              }
                              }
-                             if (!hit && dist < boss.radius + b.radius) {
-                                  boss.hp -= b.damage;
-                                  hit = true;
-                                  playSound('hit');
-                                  spawnParticles(b.pos.x, b.pos.y, 5, '#f00');
-                                  if (boss.hp <= 0) {
-                                      boss.kill(); // Drops coins
-                                      score += 10000;
-                                  }
-                             }
+                         }
+
+                        if (!hit) {
+                            // Contract fortress collision (player bullets only)
+                            if (contractEntities && contractEntities.fortresses && contractEntities.fortresses.length > 0) {
+                                for (let fortress of contractEntities.fortresses) {
+                                    if (!fortress || fortress.dead) continue;
+                                    const distF = Math.hypot(b.pos.x - fortress.pos.x, b.pos.y - fortress.pos.y);
+                                    
+                                    // Shield rings absorb first (outer -> inner)
+                                    if (!b.ignoreShields) {
+                                        for (let ri = 0; ri < fortress.rings.length; ri++) {
+                                            const ring = fortress.rings[ri];
+                                            if (!ring || !ring.segments || !ring.segments.some(s => s > 0)) continue;
+                                            if (distF < ring.r + fortress.ringThickness && distF > ring.r - fortress.ringThickness) {
+                                                let ang = Math.atan2(b.pos.y - fortress.pos.y, b.pos.x - fortress.pos.x) - ring.rot;
+                                                while (ang < 0) ang += Math.PI*2;
+                                                const count = ring.segments.length;
+                                                const segIndex = Math.floor((ang / (Math.PI*2)) * count) % count;
+                                                if (ring.segments[segIndex] > 0) {
+                                                    ring.segments[segIndex] = Math.max(0, ring.segments[segIndex] - 1);
+                                                    hit = true;
+                                                    playSound('shield_hit');
+                                                    if (ring.segments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 10, '#0f0');
+                                                    else spawnParticles(b.pos.x, b.pos.y, 4, '#060');
+                                                    if (!ring.segments.some(s => s > 0)) {
+                                                        showOverlayMessage("FORTRESS SHIELD RING DOWN", '#0f0', 900);
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (hit) break;
+                                    
+                                    // Core can only be damaged once all rings are down (unless ignoreShields)
+                                    const ringsUp = fortress.rings.some(r => r && r.segments && r.segments.some(s => s > 0));
+                                    if (ringsUp && !b.ignoreShields) continue;
+                                    
+                                    if (distF < fortress.radius + b.radius) {
+                                        fortress.hp -= b.damage;
+                                        hit = true;
+                                        playSound('hit');
+                                        spawnParticles(b.pos.x, b.pos.y, 6, '#0f0');
+                                        if (fortress.hp <= 0) fortress.kill();
+                                        break;
+                                    }
+                                }
+                            }
                         }
 
                         if (!hit) {
@@ -5376,6 +6977,8 @@
             ctx.restore();
             drawStationIndicator();
             drawMinimap();
+            drawContractIndicator();
+            if (bossActive && boss && typeof boss.drawBossHud === 'function') boss.drawBossHud(ctx);
         }
 
         function drawStationIndicator() {
@@ -5385,10 +6988,11 @@
             const screenH = canvas.height;
             
             // Check if on screen (approximate bounds)
-            const camX = player.pos.x - screenW / (2 * ZOOM_LEVEL);
-            const camY = player.pos.y - screenH / (2 * ZOOM_LEVEL);
-            const viewW = screenW / ZOOM_LEVEL;
-            const viewH = screenH / ZOOM_LEVEL;
+            const z = currentZoom || ZOOM_LEVEL;
+            const camX = player.pos.x - screenW / (2 * z);
+            const camY = player.pos.y - screenH / (2 * z);
+            const viewW = screenW / z;
+            const viewH = screenH / z;
             
             // If center of station is within view (plus a bit of margin), don't draw arrow
             if (spaceStation.pos.x > camX && spaceStation.pos.x < camX + viewW &&
@@ -5440,6 +7044,84 @@
             // Distance Text
             ctx.rotate(-angle);
             ctx.fillStyle = '#0ff';
+            ctx.font = 'bold 14px Courier New';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = '#000';
+            const dist = Math.hypot(dx, dy);
+            ctx.fillText((dist/1000).toFixed(1) + 'km', 0, 25);
+            ctx.shadowBlur = 0;
+            
+            ctx.restore();
+        }
+
+        function drawContractIndicator() {
+            if (!activeContract || !player || player.dead) return;
+            let tx = null, ty = null;
+            if (activeContract.type === 'gate_run' && contractEntities.gates.length > 0) {
+                const idx = activeContract.gateIndex || 0;
+                const g = contractEntities.gates[idx];
+                if (g && !g.dead) { tx = g.pos.x; ty = g.pos.y; }
+            } else if (activeContract.target) {
+                tx = activeContract.target.x; ty = activeContract.target.y;
+            } else if (contractEntities.beacons.length > 0) {
+                tx = contractEntities.beacons[0].pos.x; ty = contractEntities.beacons[0].pos.y;
+            }
+            if (tx === null || ty === null) return;
+
+            const screenW = canvas.width;
+            const screenH = canvas.height;
+            const z = currentZoom || ZOOM_LEVEL;
+            const camX = player.pos.x - screenW / (2 * z);
+            const camY = player.pos.y - screenH / (2 * z);
+            const viewW = screenW / z;
+            const viewH = screenH / z;
+
+            if (tx > camX && tx < camX + viewW && ty > camY && ty < camY + viewH) return;
+
+            const dx = tx - player.pos.x;
+            const dy = ty - player.pos.y;
+            const angle = Math.atan2(dy, dx);
+            
+            // Match the space-station indicator style/position (edge, pulsing, distance readout).
+            const margin = 60;
+            const cx = screenW / 2;
+            const cy = screenH / 2;
+            const vx = Math.cos(angle);
+            const vy = Math.sin(angle);
+            
+            const bx = cx - margin;
+            const by = cy - margin;
+            const txEdge = Math.abs(vx) > 0.001 ? bx / Math.abs(vx) : Infinity;
+            const tyEdge = Math.abs(vy) > 0.001 ? by / Math.abs(vy) : Infinity;
+            const tEdge = Math.min(txEdge, tyEdge);
+            
+            const arrowX = cx + vx * tEdge;
+            const arrowY = cy + vy * tEdge;
+            
+            ctx.save();
+            ctx.translate(arrowX, arrowY);
+            ctx.rotate(angle);
+            
+            const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
+            ctx.scale(pulse, pulse);
+            
+            ctx.fillStyle = '#0f0';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            
+            ctx.beginPath();
+            ctx.moveTo(15, 0);
+            ctx.lineTo(-15, 12);
+            ctx.lineTo(-15, -12);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            
+            // Distance Text
+            ctx.rotate(-angle);
+            ctx.fillStyle = '#0f0';
             ctx.font = 'bold 14px Courier New';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -5566,13 +7248,51 @@
                     minimapCtx.fill();
                 }
             }
-            
+
+            // Contract target indicator on minimap
+            if (player && activeContract) {
+                let tx = null, ty = null;
+                if (activeContract.type === 'gate_run' && contractEntities.gates.length > 0) {
+                    const idx = activeContract.gateIndex || 0;
+                    const g = contractEntities.gates[idx];
+                    if (g && !g.dead) { tx = g.pos.x; ty = g.pos.y; }
+                } else if (activeContract.target) {
+                    tx = activeContract.target.x; ty = activeContract.target.y;
+                } else if (contractEntities.beacons.length > 0) {
+                    tx = contractEntities.beacons[0].pos.x; ty = contractEntities.beacons[0].pos.y;
+                }
+                
+                if (tx !== null && ty !== null) {
+                    const dx = tx - player.pos.x;
+                    const dy = ty - player.pos.y;
+                    const dist = Math.hypot(dx, dy);
+                    const angle = Math.atan2(dy, dx);
+                    minimapCtx.fillStyle = '#0f0';
+                    
+                    // Always draw an arrow; clamp to edge if target is out of range.
+                    const inRange = (dist * scale <= 95);
+                    const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
+                    const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
+                    
+                    minimapCtx.beginPath();
+                    minimapCtx.moveTo(px + Math.cos(angle)*10, py + Math.sin(angle)*10);
+                    minimapCtx.lineTo(px + Math.cos(angle + 2.5)*8, py + Math.sin(angle + 2.5)*8);
+                    minimapCtx.lineTo(px + Math.cos(angle - 2.5)*8, py + Math.sin(angle - 2.5)*8);
+                    minimapCtx.fill();
+                }
+            }
+
             minimapCtx.restore();
         }
 
         function startGame() {
                         // Always reset audio state to normal before a new run
             musicMode = 'normal';
+            gameMode = 'normal';
+            arcadeBoss = null;
+            arcadeWave = 0;
+            arcadeWaveNextAt = 0;
+            currentZoom = ZOOM_LEVEL;
             stopMusic();
             player = new Spaceship(); 
             score = 0;
@@ -5586,7 +7306,7 @@
             dreadManager.upgradesChosen = 0;
             dreadManager.firstSpawnDone = false;
             dreadManager.timerActive = true;
-            dreadManager.timerAt = Date.now() + dreadManager.minDelayMs;
+            dreadManager.timerAt = Date.now() + dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
             rerollTokens = metaProfile.purchases.rerollTokens || 0;
             metaExtraLifeAvailable = !!metaProfile.purchases.extraLife;
             
@@ -5609,10 +7329,13 @@
                 multiShot: 1,
                 homing: 0, 
                 shieldRegenRate: 8, // seconds per segment baseline
+                hpRegenAmount: 0,
+                hpRegenRate: 5,
                 speedMult: 1.0,
                 slowField: 0,
                 slowFieldDuration: 0
             };
+            player.lastHpRegenTime = Date.now();
             player.staticWeapons = [];
             player.nukeMaxCooldown = 600;
             player.magnetRadius = 150;
@@ -5676,6 +7399,7 @@
             gamePaused = false;
             
             setupGameWorld();
+            updateContractUI();
             
             if (musicEnabled) {
                 initAudio();
@@ -5711,6 +7435,9 @@
             gameActive = false;
             gamePaused = false;
             stopMusic();
+            currentZoom = ZOOM_LEVEL;
+            activeContract = null;
+            contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
             document.getElementById('pause-menu').style.display = 'none';
             document.getElementById('start-screen').style.display = 'block';
             const endScreen = document.getElementById('end-screen');
@@ -5753,10 +7480,11 @@
                 mouseScreen.y = e.clientY;
             }
             if (player) {
-                const camX = player.pos.x - width / (2 * ZOOM_LEVEL);
-                const camY = player.pos.y - height / (2 * ZOOM_LEVEL);
-                mouseWorld.x = (e.clientX / ZOOM_LEVEL) + camX;
-                mouseWorld.y = (e.clientY / ZOOM_LEVEL) + camY;
+                const z = currentZoom || ZOOM_LEVEL;
+                const camX = player.pos.x - width / (2 * z);
+                const camY = player.pos.y - height / (2 * z);
+                mouseWorld.x = (e.clientX / z) + camX;
+                mouseWorld.y = (e.clientY / z) + camY;
             }
         });
         
@@ -6007,6 +7735,6 @@
         mainLoop();
 
     </script>
-<script type="module" src="/index.tsx"></script>
+<!-- (intentionally no external module entry) -->
 </body>
 </html>
