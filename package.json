@@ -1,0 +1,41 @@
+{
+  "name": "spacebros",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Neon Space Cave (Electron wrapper)",
+  "main": "electron/main.js",
+  "author": "",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "node scripts/start-electron.js",
+    "start:dev": "node scripts/start-electron.js --devtools",
+    "start:smoke": "node scripts/start-electron.js --smoke",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win --x64"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.spacebros.neonspacecave",
+    "productName": "Neon Space Cave",
+    "files": [
+      "package.json",
+      "electron/**/*",
+      "index.html",
+      "node_modules/phaser/dist/phaser.min.js"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}
