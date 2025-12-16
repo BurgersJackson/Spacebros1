@@ -138,6 +138,20 @@
             transition: width 0.1s linear;
         }
 
+        /* Turbo Cooldown Bar */
+        #turbo-status {
+            display: none; /* Hidden until unlocked */
+            align-items: center;
+            gap: 10px;
+        }
+        #turbo-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #f00, #ff0);
+            box-shadow: 0 0 10px rgba(255, 200, 0, 0.8);
+            transition: width 0.1s linear, background-color 0.1s linear;
+        }
+
         #minimap-container {
             position: absolute;
             bottom: 20px;
@@ -403,6 +417,13 @@
                     </div>
                 </div>
 
+                <div class="status-group" id="turbo-status">
+                    <span>TURBO:</span>
+                    <div class="bar-container">
+                        <div id="turbo-fill"></div>
+                    </div>
+                </div>
+
                 <div class="status-group nugget-display">
                     <span>NUGS:</span>
                     <div class="nugget-icon"></div>
@@ -417,6 +438,8 @@
                 <div id="game-timer" class="hud-timer">00:00</div>
                 <div class="objective-text">KILLS: <span id="bases-display">0</span></div>
                 <div class="objective-text" id="contract-display" style="color:#0f0; text-shadow:0 0 6px #0f0;">CONTRACT: NONE</div>
+                <div class="objective-text" id="event-display" style="color:#ff0; text-shadow:0 0 6px #ff0; display:none;">EVENT: NONE</div>
+                <div class="objective-text" id="keys-display" style="color:#ff0; text-shadow:0 0 6px #ff0;">KEYS: 0/3</div>
             </div>
         </div>
         
@@ -501,22 +524,23 @@
                 { "id": "homing_missiles", "name": "Homing Missiles", "tier1": "2x Missiles / 2s", "tier2": "4x Missiles / 2s", "tier3": "6x Missiles / 2s", "notes": "Shield-piercing swarm." }
               ]
             },
-            {
-              "name": "Shields & Hull",
-              "upgrades": [
-                { "id": "hull_strength", "name": "Hull Strength", "tier1": "+25 Max HP, Heal 25", "tier2": "+25 Max HP, Heal 25", "tier3": "+25 Max HP, Heal 25", "notes": "Increases survival." },
-                { "id": "segment_count", "name": "Segment Count", "tier1": "+2 segments (total 10)", "tier2": "+4 total (14)", "tier3": "+8 total (18)", "notes": "Larger shield bubble." },
-                { "id": "segment_hp", "name": "Segment HP", "tier1": "+50% HP/seg.", "tier2": "+100% total", "tier3": "+200% total", "notes": "Tankier defense." },
-                { "id": "shield_regen", "name": "Shield Regen", "tier1": "Regen 1 seg./5s", "tier2": "1 seg./3s", "tier3": "1 seg./1s", "notes": "Sustain in long fights." },
-                { "id": "hp_regen", "name": "Hull Regen", "tier1": "Regen 1 HP / 5s", "tier2": "Regen 2 HP / 5s", "tier3": "Regen 3 HP / 5s", "notes": "Slow passive healing." }
-              ]
-            },
-            {
-              "name": "Mobility",
-              "upgrades": [
-                { "id": "speed", "name": "Speed", "tier1": "+15% max speed", "tier2": "+30% total", "tier3": "+50% total", "notes": "Dodge better." }
-              ]
-            },
+             {
+               "name": "Shields & Hull",
+               "upgrades": [
+                 { "id": "hull_strength", "name": "Hull Strength", "tier1": "+25 Max HP, Heal 25", "tier2": "+25 Max HP, Heal 25", "tier3": "+25 Max HP, Heal 25", "notes": "Increases survival." },
+                 { "id": "segment_count", "name": "Segment Count", "tier1": "+2 segments (total 10)", "tier2": "+4 total (14)", "tier3": "+8 total (18)", "notes": "Larger shield bubble." },
+                 { "id": "outer_shield", "name": "Outer Shield", "tier1": "6 purple segments", "tier2": "8 segments (restore all)", "tier3": "12 segments (restore all)", "notes": "Extra rotating ring (1 HP/seg)." },
+                 { "id": "shield_regen", "name": "Shield Regen", "tier1": "Regen 1 seg./5s", "tier2": "1 seg./3s", "tier3": "1 seg./1s", "notes": "Sustain in long fights." },
+                 { "id": "hp_regen", "name": "Hull Regen", "tier1": "Regen 1 HP / 5s", "tier2": "Regen 2 HP / 5s", "tier3": "Regen 3 HP / 5s", "notes": "Slow passive healing." }
+               ]
+             },
+             {
+               "name": "Mobility",
+               "upgrades": [
+                { "id": "speed", "name": "Speed", "tier1": "+15% max speed", "tier2": "+30% total", "tier3": "+50% total", "notes": "Dodge better." },
+                { "id": "turbo_boost", "name": "Turbo Boost", "tier1": "+50% speed for 2s", "tier2": "+50% speed for 3.5s", "tier3": "+50% speed for 5s", "notes": "Press E / Gamepad X." }
+               ]
+             },
             {
               "name": "Specials",
               "upgrades": [
@@ -1086,31 +1110,40 @@
                      osc1.stop(now + 6);
                      osc2.stop(now + 6);
                  } else if (type === 'contract') {
-                     // Short two-chirp notification
-                     const osc1 = audioCtx.createOscillator();
-                     const gain1 = audioCtx.createGain();
-                     osc1.type = 'triangle';
-                     osc1.frequency.setValueAtTime(660, now);
-                     osc1.frequency.exponentialRampToValueAtTime(990, now + 0.12);
-                     gain1.gain.setValueAtTime(0.16, now);
-                     gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-                     osc1.connect(gain1);
-                     gain1.connect(audioCtx.destination);
-                     osc1.start(now);
-                     osc1.stop(now + 0.25);
- 
-                     const osc2 = audioCtx.createOscillator();
-                     const gain2 = audioCtx.createGain();
-                     osc2.type = 'triangle';
-                     gain2.gain.setValueAtTime(0, now);
-                     gain2.gain.setValueAtTime(0.14, now + 0.18);
-                     gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
-                     osc2.frequency.setValueAtTime(880, now + 0.18);
-                     osc2.frequency.exponentialRampToValueAtTime(1320, now + 0.32);
-                     osc2.connect(gain2);
-                     gain2.connect(audioCtx.destination);
-                     osc2.start(now + 0.18);
-                     osc2.stop(now + 0.36);
+                     // Longer, more prominent contract stinger (3-note arcade chirp)
+                     const oscA = audioCtx.createOscillator();
+                     const oscB = audioCtx.createOscillator();
+                     const gain = audioCtx.createGain();
+                     
+                     oscA.type = 'square';
+                     oscB.type = 'triangle';
+                     
+                     // Envelope
+                     gain.gain.setValueAtTime(0.0001, now);
+                     gain.gain.exponentialRampToValueAtTime(0.22, now + 0.03);
+                     gain.gain.exponentialRampToValueAtTime(0.14, now + 0.45);
+                     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.95);
+                     
+                     const seq = [
+                         { t: 0.00, f: 880 },
+                         { t: 0.28, f: 1320 },
+                         { t: 0.56, f: 1760 }
+                     ];
+                     for (const n of seq) {
+                         oscA.frequency.setValueAtTime(n.f, now + n.t);
+                         oscA.frequency.exponentialRampToValueAtTime(n.f * 1.06, now + n.t + 0.18);
+                         oscB.frequency.setValueAtTime(n.f * 0.5, now + n.t);
+                         oscB.frequency.exponentialRampToValueAtTime(n.f * 0.5 * 1.04, now + n.t + 0.18);
+                     }
+                     
+                     oscA.connect(gain);
+                     oscB.connect(gain);
+                     gain.connect(audioCtx.destination);
+                     
+                     oscA.start(now);
+                     oscB.start(now);
+                     oscA.stop(now + 0.95);
+                     oscB.stop(now + 0.95);
                  } else if (type === 'levelup') {
                      const { osc, gain } = createOsc('square', 440, 0.6, 0.2);
                      osc.frequency.setValueAtTime(440, now);
@@ -1163,6 +1196,8 @@
         const overlayMessage = document.getElementById('overlay-message');
         const warpStatus = document.getElementById('warp-status');
         const warpFill = document.getElementById('warp-fill');
+        const turboStatus = document.getElementById('turbo-status');
+        const turboFill = document.getElementById('turbo-fill');
         const xpFill = document.getElementById('xp-fill');
 
         let width, height;
@@ -1195,7 +1230,7 @@
             aim: { x: 0, y: 0 },
             fire: false,
             warp: false,
-            nuke: false,
+            turbo: false,
             pausePressed: false
         };
         let menuDebounce = 0;
@@ -1246,6 +1281,8 @@
             if (overlayTimeout) { clearTimeout(overlayTimeout); overlayTimeout = null; }
             pendingStations = 0;
             nextSpaceStationTime = null;
+            radiationStorm = null;
+            miniEvent = null;
             gamePaused = false;
             gameActive = true;
             pendingTransitionClear = true; // clear arrays safely next frame
@@ -1262,6 +1299,9 @@
             player.hp = player.maxHp;
             player.invulnerable = 180;
             player.shieldSegments = player.shieldSegments.map(() => 2);
+            if (player.maxOuterShieldSegments && player.maxOuterShieldSegments > 0) {
+                player.outerShieldSegments = new Array(player.maxOuterShieldSegments).fill(1);
+            }
             updateHealthUI();
             
             // Warp effect
@@ -1282,6 +1322,23 @@
             asteroidRespawnTimers = [];
             baseRespawnTimers = [];
             roamerRespawnQueue = [];
+            caches = [];
+            powerups = [];
+            shootingStars = [];
+            drones = [];
+            contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+            activeContract = null;
+            nextContractAt = Date.now() + 30000;
+            radiationStorm = null;
+            scheduleNextRadiationStorm(Date.now() + 15000);
+            miniEvent = null;
+            nextMiniEventAt = Date.now() + 120000;
+            scheduleNextMiniEvent(Date.now() + 20000);
+            pois = [];
+            gateKeys = 0;
+            gateKeyItems = [];
+            flagshipSpawned = false;
+            flagshipSpawnAt = 0;
             generateMap();
             initStars(); // update nebula palette
             for(let i=0; i<3; i++) spawnNewBaseRelative(true);
@@ -1294,10 +1351,9 @@
             // Stations for new sector
             pendingStations = 2;
             spaceStation = null;
-            nextSpaceStationTime = Date.now() + 1000;
+            nextSpaceStationTime = (sectorIndex === 2) ? (Date.now() + 180000) : (Date.now() + 1000);
             scheduleNextShootingStar();
             showOverlayMessage("NEW SECTOR ENTERED", '#0ff', 3000);
-            spawnExplorationCaches();
         }
         
         function endGame(elapsedMs) {
@@ -1329,18 +1385,17 @@
         
         function handleSpaceStationDestroyed() {
             if (!spaceStation) return;
+            const sx = spaceStation.pos.x;
+            const sy = spaceStation.pos.y;
             playSound('base_explode');
-            spawnParticles(spaceStation.pos.x, spaceStation.pos.y, 200, '#fff');
-            for(let k=0; k<50; k++) coins.push(new Coin(spaceStation.pos.x + (Math.random()-0.5)*200, spaceStation.pos.y + (Math.random()-0.5)*200, 10));
-            for(let k=0; k<25; k++) nuggets.push(new SpaceNugget(spaceStation.pos.x + (Math.random()-0.5)*220, spaceStation.pos.y + (Math.random()-0.5)*220, 1));
+            spawnParticles(sx, sy, 200, '#fff');
+            for(let k=0; k<50; k++) coins.push(new Coin(sx + (Math.random()-0.5)*200, sy + (Math.random()-0.5)*200, 10));
+            for(let k=0; k<25; k++) nuggets.push(new SpaceNugget(sx + (Math.random()-0.5)*220, sy + (Math.random()-0.5)*220, 1));
+            gateKeyItems.push(new GateKey(sx, sy));
             showOverlayMessage("SPACE STATION DESTROYED", '#0f0', 5000);
             spaceStation = null;
             score += 50000;
-            if (sectorIndex === 1 && !sectorTransitionActive) {
-                startSectorTransition();
-            } else if (pendingStations > 0) {
-                nextSpaceStationTime = Date.now() + 7000;
-            }
+            if (pendingStations > 0 && !sectorTransitionActive) nextSpaceStationTime = Date.now() + 7000;
         }
         
         window.addEventListener('resize', resize);
@@ -1406,7 +1461,9 @@
                  this.pos.add(this.vel);
                  this.angle += this.rotSpeed;
                  // Contract / maze walls should persist until the contract cleans them up.
-                 if (!(this.unbreakable && this.contractId)) {
+                 // (Older builds used other contractId prefixes; those should despawn normally.)
+                 const persistentContractWall = !!(this.unbreakable && this.contractId && String(this.contractId).startsWith('C'));
+                 if (!persistentContractWall) {
                      checkDespawn(this, 5000);
                  }
              }
@@ -1469,10 +1526,43 @@
         function generateMap() {
             environmentAsteroids = [];
             asteroidRespawnTimers = [];
+            caches = [];
+            pois = [];
             for(let i=0; i<60; i++) {
                 spawnOneAsteroidRelative(true);
             }
             spawnExplorationCaches();
+            spawnSectorPOIs();
+        }
+
+        function spawnSectorPOIs() {
+            if (!player) return;
+            const constructors = [DerelictShipPOI, DebrisFieldPOI];
+
+            const placed = [];
+            for (let i = 0; i < constructors.length; i++) {
+                let placedOne = false;
+                for (let attempts = 0; attempts < 40; attempts++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = 1900 + Math.random() * 2600;
+                    const x = player.pos.x + Math.cos(angle) * dist;
+                    const y = player.pos.y + Math.sin(angle) * dist;
+                    let ok = true;
+                    for (const p of placed) {
+                        if (Math.hypot(x - p.x, y - p.y) < 1400) { ok = false; break; }
+                    }
+                    if (!ok) continue;
+                    placed.push({ x, y });
+                    const C = constructors[i];
+                    const poi = new C(x, y);
+                    pois.push(poi);
+                    placedOne = true;
+                    break;
+                }
+                if (!placedOne) {
+                    // fallback: skip
+                }
+            }
         }
 
         function spawnExplorationCaches() {
@@ -1598,6 +1688,12 @@
                 this.shieldSegments = new Array(8).fill(2);
                 this.shieldRotation = 0;
                 
+                // Optional outer shield ring (separate from the main shield)
+                this.outerShieldRadius = this.shieldRadius + 26;
+                this.maxOuterShieldSegments = 0;
+                this.outerShieldSegments = [];
+                this.outerShieldRotation = 0;
+                
                 this.baseFireDelay = 24;
                 this.fireDelay = 24; 
                 this.autofireTimer = 0;
@@ -1629,6 +1725,18 @@
                     timer: 0,
                     stats: { duration: 0, cooldown: 0, regen: false }
                 };
+                
+                // Turbo boost (activated by E / gamepad X)
+                this.turboBoost = {
+                    // Stock ship has a small turbo (upgrades extend duration).
+                    unlocked: true,
+                    activeFrames: 0,
+                    cooldownFrames: 0,
+                    durationFrames: 60, // 1.0s
+                    cooldownTotalFrames: 600, // fixed 10s cooldown
+                    speedMult: 1.25, // +25% speed
+                    buttonHeld: false
+                };
             }
 
             respawn() {
@@ -1645,10 +1753,14 @@
                 this.lastArenaDamageTime = 0;
                 this.lastShieldRegenTime = Date.now();
                 this.shieldSegments = new Array(this.maxShieldSegments).fill(2); 
+                this.outerShieldSegments = (this.maxOuterShieldSegments > 0) ? new Array(this.maxOuterShieldSegments).fill(1) : [];
                 this.warpCooldown = 0;
                 this.nukeCooldown = 0;
                 this.invincibilityCycle.state = 'ready';
                 this.invincibilityCycle.timer = 0;
+                this.turboBoost.activeFrames = 0;
+                this.turboBoost.cooldownFrames = 0;
+                this.turboBoost.buttonHeld = false;
                 this.shotgunTimer = 0;
                 updateHealthUI();
                 updateWarpUI();
@@ -1677,6 +1789,25 @@
             update() {
                 if (this.dead) return;
                 this.shieldRotation += 0.02;
+                if (this.outerShieldSegments && this.outerShieldSegments.some(s => s > 0)) {
+                    this.outerShieldRotation -= 0.026;
+                }
+
+                // Turbo boost timers + activation (E / gamepad X)
+                if (this.turboBoost && this.turboBoost.unlocked) {
+                    if (this.turboBoost.activeFrames > 0) this.turboBoost.activeFrames--;
+                    if (this.turboBoost.cooldownFrames > 0) this.turboBoost.cooldownFrames--;
+                    const turboInput = !!(keys.e || gpState.turbo);
+                    if (turboInput && !this.turboBoost.buttonHeld) {
+                        if (this.turboBoost.activeFrames <= 0 && this.turboBoost.cooldownFrames <= 0) {
+                            this.turboBoost.activeFrames = this.turboBoost.durationFrames;
+                            this.turboBoost.cooldownFrames = this.turboBoost.cooldownTotalFrames;
+                            playSound('powerup');
+                        }
+                    }
+                    this.turboBoost.buttonHeld = turboInput;
+                    updateTurboUI();
+                }
 
                 const aimMag = Math.sqrt(gpState.aim.x*gpState.aim.x + gpState.aim.y*gpState.aim.y);
                 if (aimMag > 0.2) {
@@ -1690,8 +1821,9 @@
                 let thrusting = false;
                 
                 // Removed acceleration stat multiplier, using base or 1.0 implicitly
-                const currentThrust = this.thrustPower; 
-                const currentMaxSpeed = this.maxSpeed * this.stats.speedMult;
+                const turboMult = (this.turboBoost && this.turboBoost.activeFrames > 0) ? (this.turboBoost.speedMult || 1.5) : 1.0;
+                const currentThrust = this.thrustPower * turboMult; 
+                const currentMaxSpeed = this.maxSpeed * this.stats.speedMult * turboMult;
                 // Removed rotation stat multiplier
                 const currentRot = this.rotationSpeed;
 
@@ -1734,10 +1866,17 @@
                 if (this.stats.shieldRegenRate > 0) {
                     const now = Date.now();
                     if (now - this.lastShieldRegenTime > this.stats.shieldRegenRate * 1000) {
-                        const emptyIdx = this.shieldSegments.findIndex(s => s < 2);
-                        if (emptyIdx !== -1) {
-                            this.shieldSegments[emptyIdx] = 2;
+                        // Regen prioritizes the main (inner) shield; once full, it repairs the outer shield (if owned).
+                        const innerIdx = this.shieldSegments.findIndex(s => s < 2);
+                        if (innerIdx !== -1) {
+                            this.shieldSegments[innerIdx] = 2;
                             playSound('powerup'); // Soft sound
+                        } else if (this.outerShieldSegments && this.outerShieldSegments.length > 0) {
+                            const outerIdx = this.outerShieldSegments.findIndex(s => s <= 0);
+                            if (outerIdx !== -1) {
+                                this.outerShieldSegments[outerIdx] = 1;
+                                playSound('powerup'); // Soft sound
+                            }
                         }
                         this.lastShieldRegenTime = now;
                     }
@@ -1969,8 +2108,31 @@
                     ctx.lineWidth = 3;
                     ctx.strokeStyle = 'rgba(255,220,0,0.6)';
                     ctx.beginPath();
-                    ctx.arc(0, 0, this.shieldRadius + 8, 0, Math.PI * 2);
+                    const outerR = (this.outerShieldSegments && this.outerShieldSegments.some(s => s > 0)) ? this.outerShieldRadius : 0;
+                    ctx.arc(0, 0, Math.max(this.shieldRadius, outerR) + 14, 0, Math.PI * 2);
                     ctx.stroke();
+                    ctx.restore();
+                }
+                
+                // Outer shield ring (purple, rotates opposite the main shield)
+                if (this.outerShieldSegments && this.outerShieldSegments.some(s => s > 0)) {
+                    ctx.save();
+                    ctx.rotate(this.outerShieldRotation);
+                    ctx.lineWidth = 4;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = '#b0f';
+                    const outerCount = this.outerShieldSegments.length;
+                    const outerAngle = (Math.PI * 2) / outerCount;
+                    for (let i = 0; i < outerCount; i++) {
+                        if (this.outerShieldSegments[i] > 0) {
+                            ctx.strokeStyle = '#b0f';
+                            ctx.globalAlpha = 0.9;
+                            ctx.beginPath();
+                            ctx.arc(0, 0, this.outerShieldRadius, i * outerAngle + 0.08, (i + 1) * outerAngle - 0.08);
+                            ctx.stroke();
+                        }
+                    }
+                    ctx.shadowBlur = 0;
                     ctx.restore();
                 }
                 
@@ -2010,6 +2172,46 @@
                 ctx.shadowColor = '#0ff';
                 
                 const s = 1.4; 
+
+                // Turbo flame VFX (big red/yellow exhaust)
+                if (this.turboBoost && this.turboBoost.activeFrames > 0) {
+                    const flicker = 0.75 + Math.random() * 0.35;
+                    const flameLen = 95 * s * flicker;
+                    const flameWid = 22 * s * flicker;
+                    const baseX = -25 * s;
+
+                    const grad = ctx.createLinearGradient(baseX, 0, baseX - flameLen, 0);
+                    grad.addColorStop(0, 'rgba(255,255,180,0.95)');
+                    grad.addColorStop(0.25, 'rgba(255,220,0,0.95)');
+                    grad.addColorStop(0.6, 'rgba(255,80,0,0.9)');
+                    grad.addColorStop(1, 'rgba(255,0,0,0)');
+
+                    ctx.save();
+                    ctx.shadowBlur = 25;
+                    ctx.shadowColor = '#f80';
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.moveTo(baseX, 0);
+                    ctx.lineTo(baseX - flameLen, -flameWid);
+                    ctx.lineTo(baseX - flameLen * 0.88, 0);
+                    ctx.lineTo(baseX - flameLen, flameWid);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Inner white-hot core
+                    ctx.shadowBlur = 18;
+                    ctx.shadowColor = '#ff0';
+                    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+                    ctx.beginPath();
+                    ctx.moveTo(baseX, 0);
+                    ctx.lineTo(baseX - flameLen * 0.55, -flameWid * 0.35);
+                    ctx.lineTo(baseX - flameLen * 0.75, 0);
+                    ctx.lineTo(baseX - flameLen * 0.55, flameWid * 0.35);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                }
+                
                 ctx.beginPath();
                 ctx.moveTo(25*s, 0); 
                 ctx.lineTo(-10*s, 10*s);
@@ -2157,6 +2359,14 @@
                                 continue;
                             }
                             let remaining = Math.max(0, Math.ceil(this.damage));
+                            if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
+                                for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
+                                    if (player.outerShieldSegments[i] > 0) {
+                                        player.outerShieldSegments[i] = 0;
+                                        remaining -= 1;
+                                    }
+                                }
+                            }
                             for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
                                 const absorb = Math.min(remaining, player.shieldSegments[i]);
                                 player.shieldSegments[i] -= absorb;
@@ -2213,46 +2423,56 @@
             }
         }
         
-        class CruiserMineBomb extends Entity {
-            constructor(owner, angle, maxTravel, damage, blastRadius) {
-                super(owner.pos.x, owner.pos.y);
-                this.owner = owner;
-                this.angle = angle;
-                this.speed = 6.5;
-                this.vel.x = Math.cos(angle) * this.speed;
-                this.vel.y = Math.sin(angle) * this.speed;
-                this.radius = 14;
-                this.damage = damage;
-                this.blastRadius = blastRadius;
-                this.maxTravel = maxTravel;
-                this.startX = this.pos.x;
-                this.startY = this.pos.y;
-                this.t = 0;
-                
-                // Spawn around the cruiser, not on the center
-                const off = (owner.radius * 0.75) + 18;
-                this.pos.x += Math.cos(angle) * off;
-                this.pos.y += Math.sin(angle) * off;
-                this.startX = this.pos.x;
-                this.startY = this.pos.y;
-            }
-            update() {
-                this.t++;
-                this.pos.add(this.vel);
-                
-                if (this.t % 2 === 0) {
-                    particles.push(new Particle(
-                        this.pos.x + (Math.random()-0.5)*6,
+         class CruiserMineBomb extends Entity {
+             constructor(owner, angle, maxTravel, damage, blastRadius) {
+                 super(owner.pos.x, owner.pos.y);
+                 this.owner = owner;
+                 this.angle = angle;
+                 this.speed = 6.5;
+                 this.vel.x = Math.cos(angle) * this.speed;
+                 this.vel.y = Math.sin(angle) * this.speed;
+                 this.radius = 14;
+                 this.damage = damage;
+                 this.blastRadius = blastRadius;
+                 this.maxTravel = maxTravel;
+                 // Proximity fuse so the mine can detonate early if the player gets too close.
+                 this.proximityFuseRadius = Math.max(260, Math.min(520, this.blastRadius * 0.55));
+                 this.startX = this.pos.x;
+                 this.startY = this.pos.y;
+                 this.t = 0;
+                 
+                 // Spawn around the cruiser, not on the center
+                 const off = (owner.radius * 0.75) + 18;
+                 this.pos.x += Math.cos(angle) * off;
+                 this.pos.y += Math.sin(angle) * off;
+                 this.startX = this.pos.x;
+                 this.startY = this.pos.y;
+             }
+             update() {
+                 this.t++;
+                 this.pos.add(this.vel);
+                 
+                 if (player && !player.dead) {
+                     const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                     if (d <= this.proximityFuseRadius) {
+                         this.explode();
+                         return;
+                     }
+                 }
+                 
+                 if (this.t % 2 === 0) {
+                     particles.push(new Particle(
+                         this.pos.x + (Math.random()-0.5)*6,
                         this.pos.y + (Math.random()-0.5)*6,
                         -this.vel.x * 0.05 + (Math.random()-0.5)*0.6,
                         -this.vel.y * 0.05 + (Math.random()-0.5)*0.6,
                         '#fa0'
                     ));
                 }
-                
-                const travelled = Math.hypot(this.pos.x - this.startX, this.pos.y - this.startY);
-                if (travelled >= this.maxTravel) this.explode();
-            }
+                 
+                 const travelled = Math.hypot(this.pos.x - this.startX, this.pos.y - this.startY);
+                 if (travelled >= this.maxTravel) this.explode();
+             }
             explode() {
                 if (this.dead) return;
                 this.dead = true;
@@ -2730,7 +2950,35 @@
                     }
                 }
                 if (count > 0) { sepForce.mult(1.5); desiredVel.add(sepForce); }
-                
+
+                // Avoid bases/stations/fortresses so we don't rely on collision pushing.
+                const avoid = new Vector(0, 0);
+                const obstacles = [];
+                for (let b of bases) if (b && !b.dead) obstacles.push({ e: b, r: b.radius + 420 });
+                if (spaceStation && !spaceStation.dead) obstacles.push({ e: spaceStation, r: spaceStation.radius + 520 });
+                if (contractEntities && contractEntities.fortresses) {
+                    for (let f of contractEntities.fortresses) if (f && !f.dead) obstacles.push({ e: f, r: f.radius + 420 });
+                }
+
+                for (let o of obstacles) {
+                    // Defenders can be assigned to a base; only repel strongly if they get too close.
+                    const dx = this.pos.x - o.e.pos.x;
+                    const dy = this.pos.y - o.e.pos.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist < 0.001) continue;
+                    const r = o.r;
+                    if (dist < r) {
+                        const t = (r - dist) / r;
+                        avoid.x += (dx / dist) * (t * 1.6);
+                        avoid.y += (dy / dist) * (t * 1.6);
+                    }
+                }
+                if (avoid.mag() > 0) {
+                    avoid.normalize();
+                    avoid.mult(0.9);
+                    desiredVel.add(avoid);
+                }
+                 
                 if (desiredVel.mag() > 0) desiredVel.normalize();
                 
                 this.smoothDir.x = this.smoothDir.x * 0.92 + desiredVel.x * 0.08;
@@ -3375,7 +3623,122 @@
                 }
 
                 ctx.lineWidth = 3;
-                if (this.type === 'heavy') {
+                if (this.isCruiser) {
+                    // Battlestar-ish cruiser hull (rotated 180° via visualAngleOffset)
+                    ctx.save();
+                    const hs = this.cruiserHullScale || this.gunboatScale || 6;
+                    const ang = this.angle + (this.visualAngleOffset || 0);
+                    ctx.rotate(ang);
+                    const rr = (x, y, w, h, r) => {
+                        if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, w, h, r);
+                        else ctx.rect(x, y, w, h);
+                    };
+                    
+                    const moving = (this.vel && this.vel.mag && this.vel.mag() > 0.18);
+                    const bodyLen = 40 * hs;
+                    const bodyWid = 12 * hs;
+                    
+                    // Main hull (long slab with ridges)
+                    ctx.shadowBlur = 16;
+                    ctx.shadowColor = '#66ffff';
+                    ctx.fillStyle = '#1a2230';
+                    ctx.strokeStyle = '#66ffff';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    rr(-bodyLen * 0.55, -bodyWid * 0.55, bodyLen * 1.1, bodyWid * 1.1, 10 * hs);
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    ctx.shadowBlur = 0;
+                    ctx.globalAlpha = 0.65;
+                    ctx.strokeStyle = '#88aaff';
+                    for (let i = -2; i <= 2; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(-bodyLen * 0.45, i * bodyWid * 0.18);
+                        ctx.lineTo(bodyLen * 0.55, i * bodyWid * 0.18);
+                        ctx.stroke();
+                    }
+                    ctx.globalAlpha = 1;
+                    
+                    // Nose plate
+                    ctx.fillStyle = '#0d131d';
+                    ctx.strokeStyle = '#aaf';
+                    ctx.beginPath();
+                    rr(bodyLen * 0.38, -bodyWid * 0.38, bodyLen * 0.25, bodyWid * 0.76, 8 * hs);
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    // Two engine pods
+                    const podX = -bodyLen * 0.52;
+                    const podY = bodyWid * 0.55;
+                    const podLen = 18 * hs;
+                    const podWid = 8 * hs;
+                    const pods = [
+                        { x: podX, y: -podY },
+                        { x: podX, y: podY }
+                    ];
+                    
+                    for (const p of pods) {
+                        ctx.save();
+                        ctx.translate(p.x, p.y);
+                        ctx.fillStyle = '#121a26';
+                        ctx.strokeStyle = '#ffcc66';
+                        ctx.shadowBlur = 14;
+                        ctx.shadowColor = '#ffcc66';
+                        ctx.beginPath();
+                        rr(-podLen * 0.5, -podWid * 0.5, podLen, podWid, 6 * hs);
+                        ctx.fill();
+                        ctx.stroke();
+                        
+                        // Thruster nozzle
+                        ctx.shadowBlur = 0;
+                        ctx.fillStyle = '#222';
+                        ctx.strokeStyle = '#888';
+                        ctx.beginPath();
+                        rr(-podLen * 0.68, -podWid * 0.25, podLen * 0.25, podWid * 0.5, 4 * hs);
+                        ctx.fill();
+                        ctx.stroke();
+                        
+                        // Flame when moving
+                        if (moving) {
+                            const flicker = 0.75 + Math.random() * 0.35;
+                            const flameLen = (28 * hs) * flicker;
+                            const flameWid = (10 * hs) * flicker;
+                            const baseX = -podLen * 0.78;
+                            
+                            const grad = ctx.createLinearGradient(baseX, 0, baseX - flameLen, 0);
+                            grad.addColorStop(0, 'rgba(255,255,180,0.95)');
+                            grad.addColorStop(0.25, 'rgba(255,220,0,0.95)');
+                            grad.addColorStop(0.6, 'rgba(255,80,0,0.9)');
+                            grad.addColorStop(1, 'rgba(255,0,0,0)');
+                            
+                            ctx.shadowBlur = 26;
+                            ctx.shadowColor = '#ff6600';
+                            ctx.fillStyle = grad;
+                            ctx.beginPath();
+                            ctx.moveTo(baseX, 0);
+                            ctx.lineTo(baseX - flameLen, -flameWid);
+                            ctx.lineTo(baseX - flameLen * 0.88, 0);
+                            ctx.lineTo(baseX - flameLen, flameWid);
+                            ctx.closePath();
+                            ctx.fill();
+                            
+                            ctx.shadowBlur = 18;
+                            ctx.shadowColor = '#ff0';
+                            ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                            ctx.beginPath();
+                            ctx.moveTo(baseX, 0);
+                            ctx.lineTo(baseX - flameLen * 0.55, -flameWid * 0.35);
+                            ctx.lineTo(baseX - flameLen * 0.72, 0);
+                            ctx.lineTo(baseX - flameLen * 0.55, flameWid * 0.35);
+                            ctx.closePath();
+                            ctx.fill();
+                        }
+                        ctx.restore();
+                    }
+                    
+                    ctx.restore();
+                } else if (this.type === 'heavy') {
                     // 70s sci-fi monolith style
                     ctx.save();
                     ctx.rotate(this.angle);
@@ -3541,6 +3904,579 @@
                 ctx.restore();
             }
         }
+
+        class GateKey extends Entity {
+            constructor(x, y) {
+                super(x, y);
+                this.radius = 14;
+                this.vel.x = (Math.random() - 0.5) * 0.8;
+                this.vel.y = (Math.random() - 0.5) * 0.8;
+                this.magnetized = false;
+                this.t = 0;
+            }
+            update() {
+                if (!player || player.dead) return;
+                this.t++;
+                const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (dist < player.magnetRadius) this.magnetized = true;
+                if (this.magnetized) {
+                    const a = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+                    const speed = 9 + (900/Math.max(10, dist));
+                    this.vel.x = Math.cos(a) * speed;
+                    this.vel.y = Math.sin(a) * speed;
+                } else {
+                    this.vel.mult(0.985);
+                }
+                this.pos.add(this.vel);
+
+                if (dist < player.radius + this.radius) {
+                    this.dead = true;
+                    gateKeys = Math.min(99, gateKeys + 1);
+                    showOverlayMessage(`GATE KEY ACQUIRED (${gateKeys}/3)`, '#ff0', 1600);
+                    playSound('powerup');
+                    player.addXp(15);
+                    // Trigger flagship spawn once per sector after 3 keys
+                    if (!flagshipSpawned && gateKeys >= 3 && !sectorTransitionActive) {
+                        flagshipSpawned = true;
+                        flagshipSpawnAt = Date.now() + 6000;
+                        showOverlayMessage("FLAGSHIP SIGNAL DETECTED - INCOMING", '#f00', 2500);
+                        try { dreadManager.timerActive = false; dreadManager.timerAt = null; } catch(e) {}
+                    }
+                }
+            }
+            draw(ctx) {
+                if (this.dead) return;
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                ctx.rotate(this.t * 0.08);
+                ctx.shadowBlur = 18;
+                ctx.shadowColor = '#ff0';
+                ctx.strokeStyle = '#fff';
+                ctx.fillStyle = '#ff0';
+                ctx.lineWidth = 2;
+
+                // simple key icon
+                ctx.beginPath();
+                ctx.arc(0, 0, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(8, 0);
+                ctx.lineTo(22, 0);
+                ctx.lineTo(22, 6);
+                ctx.lineTo(18, 6);
+                ctx.lineTo(18, 2);
+                ctx.lineTo(8, 2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            }
+        }
+
+        class RadiationStorm extends Entity {
+            constructor(x, y, radius = 900, durationMs = 45000) {
+                super(x, y);
+                this.radius = radius;
+                this.endsAt = Date.now() + durationMs;
+                this.t = 0;
+                this.tick = 0;
+                this.wasInside = false;
+            }
+            update() {
+                if (!player || player.dead) return;
+                this.t++;
+                const now = Date.now();
+                if (now >= this.endsAt) {
+                    this.dead = true;
+                    return;
+                }
+                const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                const inside = d < this.radius;
+                if (inside) {
+                    if (!this.wasInside) {
+                        showOverlayMessage("RADIATION STORM - HIGH RISK ZONE", '#ff0', 1800);
+                    }
+                    this.tick++;
+                    if (this.tick % 60 === 0) {
+                        // Reward: XP + small gold drip
+                        player.addXp(4);
+                        coins.push(new Coin(player.pos.x + (Math.random()-0.5)*40, player.pos.y + (Math.random()-0.5)*40, 2));
+
+                        // Cost: drains shields (main shield first, then outer shield)
+                        let drained = false;
+                        const idx = player.shieldSegments.findIndex(s => s > 0);
+                        if (idx !== -1) {
+                            player.shieldSegments[idx] = Math.max(0, player.shieldSegments[idx] - 1);
+                            drained = true;
+                        } else if (player.outerShieldSegments && player.outerShieldSegments.some(s => s > 0)) {
+                            const o = player.outerShieldSegments.findIndex(s => s > 0);
+                            if (o !== -1) {
+                                player.outerShieldSegments[o] = 0;
+                                drained = true;
+                            }
+                        }
+                        if (drained) {
+                            spawnParticles(player.pos.x, player.pos.y, 6, '#ff0');
+                            playSound('shield_hit');
+                        }
+                    }
+                } else {
+                    this.tick = 0;
+                }
+                this.wasInside = inside;
+            }
+            draw(ctx) {
+                if (this.dead) return;
+                const now = Date.now();
+                const remaining = Math.max(0, this.endsAt - now);
+                const lifeT = Math.min(1, remaining / 45000);
+                const pulse = 0.25 + Math.abs(Math.sin(this.t * 0.03)) * 0.25;
+
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                ctx.lineWidth = 6;
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = '#ff0';
+                ctx.strokeStyle = `rgba(255, 220, 0, ${0.35 + pulse})`;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                // subtle haze fill
+                ctx.globalAlpha = 0.08 + (1 - lifeT) * 0.08;
+                ctx.fillStyle = '#ff0';
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // sparks
+                for (let i = 0; i < 8; i++) {
+                    const a = (this.t * 0.02) + i * (Math.PI * 2 / 8);
+                    const r = this.radius * (0.65 + 0.35 * Math.sin(this.t * 0.02 + i));
+                    const x = Math.cos(a) * r;
+                    const y = Math.sin(a) * r;
+                    ctx.fillStyle = `rgba(255, ${160 + (i*8)%80}, 0, 0.55)`;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 4 + (i % 3), 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        class MiniEventDefendCache extends Entity {
+            constructor(x, y) {
+                super(x, y);
+                this.kind = 'defend_cache';
+                this.radius = 520;
+                this.requiredMs = 30000;
+                this.progressMs = 0;
+                this.expiresAt = Date.now() + 75000;
+                this.lastUpdateAt = Date.now();
+                this.nextWaveAt = Date.now() + 1500;
+                this.activated = false;
+                this.t = 0;
+            }
+            update() {
+                if (this.dead) return;
+                if (!player || player.dead) { this.dead = true; return; }
+                const now = Date.now();
+                const dt = Math.min(120, Math.max(0, now - this.lastUpdateAt));
+                this.lastUpdateAt = now;
+                this.t++;
+
+                const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (!this.activated && d < 900) {
+                    this.activated = true;
+                    showOverlayMessage("DEFEND THE CACHE - HOLD POSITION", '#ff0', 1500, 1);
+                }
+
+                if (now >= this.expiresAt) {
+                    this.fail();
+                    return;
+                }
+
+                if (d < this.radius) {
+                    this.progressMs += dt;
+                }
+
+                if (this.activated && now >= this.nextWaveAt) {
+                    this.spawnWave();
+                    this.nextWaveAt = now + 2600 + Math.floor(Math.random() * 1600);
+                }
+
+                if (this.progressMs >= this.requiredMs) {
+                    this.success();
+                }
+            }
+            spawnWave() {
+                const cap = 22;
+                if (enemies.length >= cap) return;
+                const count = 2 + Math.floor(Math.random() * 2);
+                for (let i = 0; i < count; i++) {
+                    if (enemies.length >= cap) break;
+                    const a = Math.random() * Math.PI * 2;
+                    const dist = 900 + Math.random() * 600;
+                    const sx = this.pos.x + Math.cos(a) * dist;
+                    const sy = this.pos.y + Math.sin(a) * dist;
+                    enemies.push(new Enemy('roamer', { x: sx, y: sy }));
+                }
+            }
+            success() {
+                if (this.dead) return;
+                this.dead = true;
+                showOverlayMessage("EVENT COMPLETE - CACHE SECURED", '#0f0', 2200, 1);
+                playSound('powerup');
+                player.addXp(60);
+                spawnParticles(this.pos.x, this.pos.y, 40, '#ff0');
+                for (let i = 0; i < 10; i++) coins.push(new Coin(this.pos.x + (Math.random()-0.5) * 220, this.pos.y + (Math.random()-0.5) * 220, 8));
+            }
+            fail() {
+                if (this.dead) return;
+                this.dead = true;
+                showOverlayMessage("EVENT FAILED", '#f00', 2000, 1);
+            }
+            getUiText() {
+                const pct = Math.max(0, Math.min(100, Math.floor((this.progressMs / this.requiredMs) * 100)));
+                return `EVENT: DEFEND CACHE ${pct}%`;
+            }
+            draw(ctx) {
+                if (this.dead) return;
+                const now = Date.now();
+                const remain = Math.max(0, this.expiresAt - now);
+                const pct = Math.max(0, Math.min(1, this.progressMs / this.requiredMs));
+                const pulse = 0.85 + Math.sin(this.t * 0.08) * 0.15;
+
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                ctx.lineWidth = 6;
+                ctx.shadowBlur = 18;
+                ctx.shadowColor = '#ff0';
+                ctx.strokeStyle = 'rgba(255, 220, 0, 0.45)';
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.shadowBlur = 0;
+                ctx.lineWidth = 8;
+                ctx.strokeStyle = 'rgba(0, 255, 0, 0.6)';
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius + 12, -Math.PI/2, -Math.PI/2 + Math.PI * 2 * pct);
+                ctx.stroke();
+
+                ctx.globalAlpha = 0.35 * pulse;
+                ctx.fillStyle = '#ff0';
+                ctx.beginPath();
+                ctx.arc(0, 0, 54, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                ctx.fillStyle = '#ff0';
+                ctx.font = 'bold 48px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText("DEFEND", 0, -this.radius - 64);
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 24px Courier New';
+                ctx.fillText(`${(remain/1000).toFixed(0)}s`, 0, -this.radius - 26);
+
+                ctx.restore();
+            }
+        }
+
+        class MiniEventEscortDrone extends Entity {
+            constructor(x, y) {
+                super(x, y);
+                this.kind = 'escort_drone';
+                this.dronePos = new Vector(x, y);
+                this.droneVel = new Vector(0, 0);
+                this.droneRadius = 18;
+                const a = Math.random() * Math.PI * 2;
+                const dist = 2200 + Math.random() * 800;
+                this.waypoint = { x: x + Math.cos(a) * dist, y: y + Math.sin(a) * dist, r: 110 };
+                this.expiresAt = Date.now() + 80000;
+                this.lastUpdateAt = Date.now();
+                this.tetherRange = 750;
+                this.failMs = 0;
+                this.nextWaveAt = Date.now() + 2000;
+                this.activated = false;
+                this.t = 0;
+                this.startDist = Math.max(1, Math.hypot(this.waypoint.x - this.dronePos.x, this.waypoint.y - this.dronePos.y));
+            }
+            update() {
+                if (this.dead) return;
+                if (!player || player.dead) { this.dead = true; return; }
+                const now = Date.now();
+                const dt = Math.min(120, Math.max(0, now - this.lastUpdateAt));
+                this.lastUpdateAt = now;
+                this.t++;
+
+                const dPlayer = Math.hypot(player.pos.x - this.dronePos.x, player.pos.y - this.dronePos.y);
+                if (!this.activated && dPlayer < 900) {
+                    this.activated = true;
+                    showOverlayMessage("ESCORT DRONE - STAY CLOSE", '#ff0', 1500, 1);
+                }
+
+                if (now >= this.expiresAt) { this.fail(); return; }
+
+                const dx = this.waypoint.x - this.dronePos.x;
+                const dy = this.waypoint.y - this.dronePos.y;
+                const dWp = Math.hypot(dx, dy);
+                if (dWp < 70) { this.success(); return; }
+
+                const close = dPlayer <= this.tetherRange;
+                const targetSpeed = close ? 3.0 : 0.55;
+                const ang = Math.atan2(dy, dx);
+                const desiredVx = Math.cos(ang) * targetSpeed;
+                const desiredVy = Math.sin(ang) * targetSpeed;
+                this.droneVel.x += (desiredVx - this.droneVel.x) * 0.08;
+                this.droneVel.y += (desiredVy - this.droneVel.y) * 0.08;
+                this.dronePos.x += this.droneVel.x;
+                this.dronePos.y += this.droneVel.y;
+
+                if (!close) this.failMs += dt;
+                else this.failMs = Math.max(0, this.failMs - dt * 0.6);
+                if (this.failMs >= 5000) { this.fail(); return; }
+
+                if (this.activated && now >= this.nextWaveAt) {
+                    this.spawnWave();
+                    this.nextWaveAt = now + 3600 + Math.floor(Math.random() * 1800);
+                }
+            }
+            spawnWave() {
+                const cap = 22;
+                if (enemies.length >= cap) return;
+                const count = 1 + Math.floor(Math.random() * 2);
+                for (let i = 0; i < count; i++) {
+                    if (enemies.length >= cap) break;
+                    const a = Math.random() * Math.PI * 2;
+                    const dist = 950 + Math.random() * 650;
+                    const sx = this.dronePos.x + Math.cos(a) * dist;
+                    const sy = this.dronePos.y + Math.sin(a) * dist;
+                    enemies.push(new Enemy('roamer', { x: sx, y: sy }));
+                }
+            }
+            success() {
+                if (this.dead) return;
+                this.dead = true;
+                showOverlayMessage("EVENT COMPLETE - DRONE DELIVERED", '#0f0', 2200, 1);
+                playSound('powerup');
+                player.addXp(80);
+                spawnParticles(this.waypoint.x, this.waypoint.y, 50, '#0ff');
+                for (let i = 0; i < 12; i++) coins.push(new Coin(this.waypoint.x + (Math.random()-0.5) * 240, this.waypoint.y + (Math.random()-0.5) * 240, 8));
+            }
+            fail() {
+                if (this.dead) return;
+                this.dead = true;
+                showOverlayMessage("EVENT FAILED", '#f00', 2000, 1);
+            }
+            getUiText() {
+                const d = Math.hypot(this.waypoint.x - this.dronePos.x, this.waypoint.y - this.dronePos.y);
+                const pct = Math.max(0, Math.min(100, Math.floor((1 - (d / this.startDist)) * 100)));
+                return `EVENT: ESCORT DRONE ${pct}%`;
+            }
+            draw(ctx) {
+                if (this.dead) return;
+                const now = Date.now();
+                const remain = Math.max(0, this.expiresAt - now);
+                const d = Math.hypot(this.waypoint.x - this.dronePos.x, this.waypoint.y - this.dronePos.y);
+                const pct = Math.max(0, Math.min(1, 1 - (d / this.startDist)));
+                const pulse = 0.85 + Math.sin(this.t * 0.1) * 0.15;
+
+                // Waypoint
+                ctx.save();
+                ctx.translate(this.waypoint.x, this.waypoint.y);
+                ctx.strokeStyle = 'rgba(0, 255, 255, 0.65)';
+                ctx.lineWidth = 5;
+                ctx.shadowBlur = 18;
+                ctx.shadowColor = '#0ff';
+                ctx.beginPath();
+                ctx.arc(0, 0, 70, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.restore();
+
+                // Drone + tether
+                ctx.save();
+                ctx.strokeStyle = `rgba(255, 220, 0, ${0.25 + 0.35 * pulse})`;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(player.pos.x, player.pos.y);
+                ctx.lineTo(this.dronePos.x, this.dronePos.y);
+                ctx.stroke();
+                ctx.restore();
+
+                ctx.save();
+                ctx.translate(this.dronePos.x, this.dronePos.y);
+                ctx.rotate(this.t * 0.06);
+                ctx.shadowBlur = 14;
+                ctx.shadowColor = '#ff0';
+                ctx.fillStyle = '#ff0';
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(20, 0);
+                ctx.lineTo(-14, 10);
+                ctx.lineTo(-10, 0);
+                ctx.lineTo(-14, -10);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.restore();
+
+                // Progress ring around drone
+                ctx.save();
+                ctx.translate(this.dronePos.x, this.dronePos.y);
+                ctx.lineWidth = 6;
+                ctx.strokeStyle = 'rgba(0, 255, 0, 0.65)';
+                ctx.beginPath();
+                ctx.arc(0, 0, 34, -Math.PI/2, -Math.PI/2 + Math.PI * 2 * pct);
+                ctx.stroke();
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 12px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`${(remain/1000).toFixed(0)}s`, 0, -46);
+                ctx.restore();
+            }
+        }
+
+        class SectorPOI extends Entity {
+            constructor(x, y, name, color = '#0ff', radius = 170) {
+                super(x, y);
+                this.kind = 'poi';
+                this.name = name;
+                this.color = color;
+                this.radius = radius;
+                this.claimed = false;
+                this.t = 0;
+                this.rewardXp = 20;
+                this.rewardCoins = 30;
+            }
+            canClaim() {
+                if (!player || player.dead) return false;
+                if (this.claimed) return false;
+                const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                return d <= this.radius + player.radius;
+            }
+            claim() {
+                if (this.claimed) return;
+                this.claimed = true;
+                showOverlayMessage(`POI CLEARED: ${this.name}`, '#0ff', 1600, 1);
+                playSound('powerup');
+                if (player) player.addXp(this.rewardXp);
+                const coinsToSpawn = Math.max(1, Math.floor(this.rewardCoins / 8));
+                for (let i = 0; i < coinsToSpawn; i++) {
+                    coins.push(new Coin(this.pos.x + (Math.random()-0.5) * 220, this.pos.y + (Math.random()-0.5) * 220, 8));
+                }
+                spawnParticles(this.pos.x, this.pos.y, 30, this.color);
+            }
+            update() {
+                if (this.dead) return;
+                this.t++;
+                if (this.canClaim()) this.claim();
+            }
+            draw(ctx) {
+                if (this.dead || this.claimed) return;
+                const pulse = 0.8 + Math.sin(this.t * 0.08) * 0.2;
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                ctx.shadowBlur = 16;
+                ctx.shadowColor = this.color;
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 5;
+                ctx.globalAlpha = 0.35 + pulse * 0.15;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+                ctx.shadowBlur = 0;
+
+                ctx.fillStyle = this.color;
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(0, -18);
+                ctx.lineTo(16, 0);
+                ctx.lineTo(0, 18);
+                ctx.lineTo(-16, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = this.color;
+                ctx.font = 'bold 42px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.name, 0, -this.radius - 18);
+                ctx.restore();
+            }
+        }
+
+        class DerelictShipPOI extends SectorPOI {
+            constructor(x, y) {
+                super(x, y, 'DERELICT SHIP', '#0ff', 160);
+                this.rewardXp = 25;
+                this.rewardCoins = 32;
+            }
+        }
+
+        class DebrisFieldPOI extends SectorPOI {
+            constructor(x, y) {
+                super(x, y, 'DEBRIS FIELD', '#fa0', 220);
+                this.rewardXp = 20;
+                this.rewardCoins = 40;
+                this.captureMsRequired = 3000;
+                this.captureMs = 0;
+                this.captureActive = false;
+                this.lastUpdateAt = Date.now();
+            }
+            update() {
+                if (this.dead || this.claimed) return;
+                this.t++;
+                if (!player || player.dead) return;
+                const now = Date.now();
+                const dt = Math.min(120, Math.max(0, now - (this.lastUpdateAt || now)));
+                this.lastUpdateAt = now;
+
+                const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                const inside = d <= this.radius + player.radius;
+                if (inside) {
+                    if (!this.captureActive) {
+                        this.captureActive = true;
+                        this.captureMs = 0;
+                    }
+                    this.captureMs += dt;
+                    if (this.captureMs >= this.captureMsRequired) this.claim();
+                } else {
+                    this.captureActive = false;
+                    this.captureMs = 0;
+                }
+            }
+            draw(ctx) {
+                if (this.dead || this.claimed) return;
+                super.draw(ctx);
+                const pct = Math.max(0, Math.min(1, (this.captureMs || 0) / this.captureMsRequired));
+                if (pct <= 0) return;
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                ctx.lineWidth = 10;
+                ctx.strokeStyle = 'rgba(0, 255, 0, 0.65)';
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = '#0f0';
+                ctx.beginPath();
+                ctx.arc(0, 0, 42, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            }
+        }
         
         class ExplorationCache extends Entity {
             constructor(x, y, contractId = null) {
@@ -3632,6 +4568,7 @@
                 this.turretAngle = 0;
                 this.shootTimer = this.cruiserFireDelay;
                 this.encounterIndex = encounterIndex;
+                this.visualAngleOffset = Math.PI; // rotate cruiser art 180°
                 
                 // Disable the default Enemy.update shooting; cruiser uses scripted patterns.
                 this.disableAutoFire = true;
@@ -3689,8 +4626,9 @@
             }
 
             hardpointWorld(hp) {
-                const ca = Math.cos(this.angle);
-                const sa = Math.sin(this.angle);
+                const ang = this.angle + (this.visualAngleOffset || 0);
+                const ca = Math.cos(ang);
+                const sa = Math.sin(ang);
                 const ox = hp.off.x;
                 const oy = hp.off.y;
                 // rotate local offsets by current facing
@@ -3722,6 +4660,8 @@
                 for(let i=0; i<5; i++) {
                     nuggets.push(new SpaceNugget(this.pos.x + (Math.random()-0.5)*120, this.pos.y + (Math.random()-0.5)*120, 1));
                 }
+                // Gate key progression: each cruiser drops one key
+                gateKeyItems.push(new GateKey(this.pos.x, this.pos.y));
                 powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
                 bossActive = false;
                 bossArena.active = false;
@@ -4056,7 +4996,8 @@
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'top';
                 const phaseText = this.vulnerableTimer > 0 ? `${this.phaseName} (CORE EXPOSED)` : this.phaseName;
-                ctx.fillText(`CRUISER  (PHASE: ${phaseText})`, w / 2, y + 12);
+                const bossName = this.isFlagship ? 'FLAGSHIP' : 'CRUISER';
+                ctx.fillText(`${bossName}  (PHASE: ${phaseText})`, w / 2, y + 12);
                 
                 // Hardpoint status line
                 ctx.font = 'bold 11px Courier New';
@@ -4094,6 +5035,85 @@
                     ctx.stroke();
                 }
                 ctx.restore();
+            }
+        }
+
+        class Flagship extends Cruiser {
+            constructor() {
+                super(Math.max(4, cruiserEncounterCount));
+                this.type = 'flagship';
+                this.isFlagship = true;
+                this.despawnImmune = true;
+
+                // Bigger, slower, higher-stakes fight
+                this.cruiserHullScale = 8.8;
+                this.gunboatScale = this.cruiserHullScale;
+                this.radius = Math.round(22 * this.cruiserHullScale);
+                this.shieldRadius = Math.round(34 * this.cruiserHullScale);
+                this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+
+                // Spawn above the player (arcade "top of screen" vibe)
+                if (player && !player.dead) {
+                    this.pos.x = player.pos.x;
+                    this.pos.y = player.pos.y - 2200;
+                }
+
+                const bonus = Math.max(0, cruiserEncounterCount - 1);
+                const baseHp = 260 + bonus * 35;
+                this.hp = Math.round(baseHp);
+                this.maxHp = this.hp;
+
+                this.shieldStrength = Math.max(3, this.shieldStrength + 1);
+                this.shieldSegments = new Array(14).fill(this.shieldStrength);
+                this.innerShieldSegments = new Array(22).fill(this.shieldStrength);
+
+                this.thrustPower = 0.09;
+                this.maxSpeed = 2.7;
+                this.baseGunboatRange = this.baseGunboatRange * 1.15;
+                this.gunboatRange = this.baseGunboatRange;
+                this.cruiserBaseDamage = Math.max(this.cruiserBaseDamage, 2 + Math.floor(bonus / 2));
+
+                // Less clutter: only a few helpers, ever
+                this.helperScale = 0.35;
+                this.helperMax = 3;
+
+                // Tighten phases to keep it frantic
+                this.phaseSeq = [
+                    { name: 'SALVO', duration: 140 },
+                    { name: 'CURTAIN', duration: 170 },
+                    { name: 'MINEFIELD', duration: 200 },
+                    { name: 'SWEEP', duration: 160 },
+                    { name: 'CHARGE', duration: 120 }
+                ];
+                this.phaseIndex = 0;
+                this.phaseName = 'INTRO';
+                this.phaseTimer = 90;
+                this.phaseTick = 0;
+            }
+
+            kill() {
+                if (this.dead) return;
+                this.dead = true;
+                playSound('base_explode');
+                spawnParticles(this.pos.x, this.pos.y, 200, '#f0f');
+                bossBombs = [];
+
+                for (let i = 0; i < 40; i++) coins.push(new Coin(this.pos.x + (Math.random()-0.5) * 260, this.pos.y + (Math.random()-0.5) * 260, 10));
+                for (let i = 0; i < 16; i++) nuggets.push(new SpaceNugget(this.pos.x + (Math.random()-0.5) * 320, this.pos.y + (Math.random()-0.5) * 320, 1));
+
+                bossActive = false;
+                bossArena.active = false;
+                bossArena.growing = false;
+                boss = null;
+
+                // Reset gate progression for next sector
+                gateKeys = 0;
+                gateKeyItems = [];
+                flagshipSpawned = false;
+                flagshipSpawnAt = 0;
+
+                showOverlayMessage("FLAGSHIP DESTROYED - WARP CORE CHARGING", '#0ff', 3500, 2);
+                if (!sectorTransitionActive) startSectorTransition();
             }
         }
 //space station class
@@ -4371,6 +5391,15 @@
         let shootingStars = [];
         let drones = [];
         let caches = [];
+        let radiationStorm = null;
+        let nextRadiationStormAt = 0;
+        let miniEvent = null;
+        let nextMiniEventAt = 0;
+        let pois = [];
+        let gateKeys = 0;
+        let gateKeyItems = [];
+        let flagshipSpawned = false;
+        let flagshipSpawnAt = 0;
         let nextShootingStarTime = 0;
         let nextIntensityBreakAt = 0;
         let intensityBreakActive = false;
@@ -4637,7 +5666,8 @@
                 const remain = Math.max(0, (activeContract.endsAt || 0) - Date.now());
                 extra = ` (GATE ${activeContract.gateIndex + 1}/${activeContract.gateCount} ${formatTime(remain)})`;
             } else if (activeContract.type === 'anomaly') {
-                extra = activeContract.state === 'inside' ? ' (FIND CORE)' : ' (ENTER ZONE)';
+                if (activeContract.coreCollected) extra = ' (ESCAPE ZONE)';
+                else extra = activeContract.state === 'inside' ? ' (FIND CORE)' : ' (ENTER ZONE)';
             } else if (activeContract.type === 'destroy_fortress') {
                 const ringsLeft = (typeof activeContract.ringsLeft === 'number') ? activeContract.ringsLeft : 3;
                 const hpPct = (typeof activeContract.hpPct === 'number') ? activeContract.hpPct : 1;
@@ -4645,19 +5675,47 @@
             }
             el.innerText = `CONTRACT: ${activeContract.title}${extra}`;
         }
+
+        function updateMiniEventUI() {
+            const el = document.getElementById('event-display');
+            if (!el) return;
+            if (!miniEvent || miniEvent.dead) {
+                el.style.display = 'none';
+                el.innerText = 'EVENT: NONE';
+                return;
+            }
+            el.style.display = 'block';
+            if (typeof miniEvent.getUiText === 'function') el.innerText = miniEvent.getUiText();
+            else el.innerText = 'EVENT: ACTIVE';
+        }
+
+        function updateKeysUI() {
+            const el = document.getElementById('keys-display');
+            if (!el) return;
+            el.innerText = `KEYS: ${Math.max(0, Math.min(3, gateKeys))}/3`;
+            if (gateKeys >= 3) {
+                el.style.color = '#f00';
+                el.style.textShadow = '0 0 6px #f00';
+            } else {
+                el.style.color = '#ff0';
+                el.style.textShadow = '0 0 6px #ff0';
+            }
+        }
         
         function completeContract(success = true) {
             if (!activeContract) return;
             const contractId = activeContract.id;
-            if (success) {
-                const rewardNugs = (activeContract.rewardNugs !== undefined) ? activeContract.rewardNugs : 4;
-                for (let i = 0; i < rewardNugs; i++) nuggets.push(new SpaceNugget(player.pos.x + (Math.random()-0.5)*120, player.pos.y + (Math.random()-0.5)*120, 1));
-                const rewardScore = (activeContract.rewardScore !== undefined) ? activeContract.rewardScore : 5000;
-                score += rewardScore;
-                showOverlayMessage("CONTRACT COMPLETE", '#0f0', 1500);
-            } else {
-                showOverlayMessage("CONTRACT FAILED", '#f00', 1500);
-            }
+             if (success) {
+                 const rewardNugs = (activeContract.rewardNugs !== undefined) ? activeContract.rewardNugs : 4;
+                 for (let i = 0; i < rewardNugs; i++) nuggets.push(new SpaceNugget(player.pos.x + (Math.random()-0.5)*120, player.pos.y + (Math.random()-0.5)*120, 1));
+                 // Bonus gold (coins) for all contracts
+                 coins.push(new Coin(player.pos.x + (Math.random()-0.5)*80, player.pos.y + (Math.random()-0.5)*80, 10));
+                 const rewardScore = (activeContract.rewardScore !== undefined) ? activeContract.rewardScore : 5000;
+                 score += rewardScore;
+                 showOverlayMessage("CONTRACT COMPLETE", '#0f0', 1500);
+             } else {
+                 showOverlayMessage("CONTRACT FAILED", '#f00', 1500);
+             }
              // Cleanup entities
              contractEntities.beacons.forEach(b => b.dead = true);
              contractEntities.gates.forEach(g => g.dead = true);
@@ -4964,27 +6022,28 @@
              constructor(x, y, contractId = null) {
                  super(x, y);
                  this.contractId = contractId;
-                 this.radius = 3200;
+                 this.radius = 2400; // 25% smaller
                  this.t = 0;
                  this.generated = false;
-                 this.coreRadius = 260;
+                 this.defendersSpawned = false;
+                 this.coreRadius = 195;
                  this.entryAngle = Math.random() * Math.PI * 2;
              }
              
              generateMaze() {
                  if (this.generated) return;
                  this.generated = true;
-                 // Concentric indestructible asteroid rings with a single outer entrance.
+                 // Concentric indestructible asteroid rings with an outer ring that has multiple entrances.
                  // Each ring has one intentional gap; the rest is packed tightly to avoid "leaks".
                  const entry = this.entryAngle;
                  const rings = [
-                     { r: 1100, gap: entry + Math.PI, width: 0.38, astR: 108, turretChance: 0.10 },
-                     { r: 1750, gap: entry,        width: 0.38, astR: 112, turretChance: 0.12 },
-                     { r: 2400, gap: entry + Math.PI, width: 0.38, astR: 116, turretChance: 0.12 },
-                     { r: 2900, gaps: [entry, entry + Math.PI], width: 0.48, astR: 122, turretChance: 0.00 } // outer ring entrances
+                     { r: 825,  gap: entry + Math.PI, width: 0.34, astR: 86, turretChance: 0.10 },
+                     { r: 1310, gap: entry,        width: 0.34, astR: 90, turretChance: 0.12 },
+                     { r: 1800, gap: entry + Math.PI, width: 0.34, astR: 94, turretChance: 0.12 },
+                     { r: 2175, gaps: [entry, entry + Math.PI/2, entry + Math.PI, entry + (Math.PI*3/2)], width: 0.22, astR: 98, turretChance: 0.00 } // outer ring entrances
                  ];
                  
-                 let turretBudget = 8;
+                 let turretBudget = 6;
                  for (let ringIndex = 0; ringIndex < rings.length; ringIndex++) {
                      const ring = rings[ringIndex];
                      const count = Math.ceil((Math.PI * 2 * ring.r) / (ring.astR * 2 * 0.92));
@@ -5013,57 +6072,68 @@
                          ast.unbreakable = true;
                          ast.contractId = this.contractId;
                          environmentAsteroids.push(ast);
-                         
-                         // Static defensive turrets mounted on some inner walls (not on the entrance ring).
-                         const allowTurretRing = (ringIndex === 1 || ringIndex === 2);
-                         if (allowTurretRing && turretBudget > 0 && contractEntities && contractEntities.wallTurrets) {
-                             if (Math.random() < ring.turretChance && Math.abs(d) > (ring.width + 0.25)) {
-                                 const tx = x - Math.cos(a) * (ring.astR + 34);
-                                 const ty = y - Math.sin(a) * (ring.astR + 34);
-                                 contractEntities.wallTurrets.push(new WallTurret(tx, ty, this.contractId, a));
-                                 turretBudget--;
-                             }
+                     
+                     // Static defensive turrets mounted on some inner walls (not on the entrance ring).
+                     const allowTurretRing = (ringIndex === 1 || ringIndex === 2);
+                     if (allowTurretRing && turretBudget > 0 && contractEntities && contractEntities.wallTurrets) {
+                         if (Math.random() < ring.turretChance && Math.abs(d) > (ring.width + 0.25)) {
+                             const tx = x - Math.cos(a) * (ring.astR + 34);
+                             const ty = y - Math.sin(a) * (ring.astR + 34);
+                             contractEntities.wallTurrets.push(new WallTurret(tx, ty, this.contractId, a));
+                             turretBudget--;
                          }
                      }
                  }
+             }
+             
+             // Reward cache in the core
+             caches.push(new ExplorationCache(this.pos.x, this.pos.y, this.contractId));
+         }
+         
+         update() {
+             if (!player || player.dead) return;
+             this.t++;
+             if (!activeContract || activeContract.type !== 'anomaly') return;
+             
+             const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+             
+             // Build the maze before the player hits the ring so it can be seen on approach.
+             if (d < this.radius * 1.6) {
+                 if (!this.generated) this.generateMaze();
+             }
+             
+             const collected = !!activeContract.coreCollected;
+             if (d < this.radius) {
+                 activeContract.state = collected ? 'escape' : 'inside';
                  
-                 // Reward cache in the core
-                 caches.push(new ExplorationCache(this.pos.x, this.pos.y, this.contractId));
-                 
-                 // Defenders in the anomaly (pressure while navigating to the core)
-                 const defenderCount = 6;
-                 for (let i = 0; i < defenderCount; i++) {
-                     let spawned = false;
-                     for (let attempt = 0; attempt < 30 && !spawned; attempt++) {
-                         const a = Math.random() * Math.PI * 2;
-                         const d = 1200 + Math.random() * 1400;
-                         const sx = this.pos.x + Math.cos(a) * d;
-                         const sy = this.pos.y + Math.sin(a) * d;
-                         const distPlayer = player ? Math.hypot(player.pos.x - sx, player.pos.y - sy) : 99999;
-                         if (distPlayer < 500) continue;
-                        const def = new Enemy('defender', { x: sx, y: sy }, null);
-                        def.contractId = this.contractId;
-                        enemies.push(def);
-                        spawned = true;
-                    }
-                }
-                showOverlayMessage("ANOMALY STABILIZED: NAVIGATE TO CORE", '#0f0', 2500);
-            }
-            
-            update() {
-                if (!player || player.dead) return;
-                this.t++;
-                if (!activeContract || activeContract.type !== 'anomaly') return;
-                
-                const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-                if (d < this.radius) {
-                    if (!this.generated) this.generateMaze();
-                    activeContract.state = 'inside';
-                    if (d < this.coreRadius) {
-                        completeContract(true);
-                    }
-                }
-            }
+                 if (!this.defendersSpawned) {
+                     this.defendersSpawned = true;
+                     const defenderCount = 6;
+                     for (let i = 0; i < defenderCount; i++) {
+                         let spawned = false;
+                         for (let attempt = 0; attempt < 30 && !spawned; attempt++) {
+                             const a = Math.random() * Math.PI * 2;
+                             const dd = 850 + Math.random() * 950;
+                             const sx = this.pos.x + Math.cos(a) * dd;
+                             const sy = this.pos.y + Math.sin(a) * dd;
+                             const distPlayer = player ? Math.hypot(player.pos.x - sx, player.pos.y - sy) : 99999;
+                             if (distPlayer < 500) continue;
+                             const def = new Enemy('defender', { x: sx, y: sy }, null);
+                             def.contractId = this.contractId;
+                             enemies.push(def);
+                             spawned = true;
+                         }
+                     }
+                     showOverlayMessage("ANOMALY STABILIZED: NAVIGATE TO CORE", '#0f0', 2500);
+                 }
+             } else {
+                 // Outside the ring: if the cache was collected, escaping completes the contract.
+                 activeContract.state = 'travel';
+                 if (collected) {
+                     completeContract(true);
+                 }
+             }
+         }
              draw(ctx) {
                  ctx.save();
                  ctx.translate(this.pos.x, this.pos.y);
@@ -5173,6 +6243,41 @@
             }
         }
 
+        function scheduleNextRadiationStorm(fromNow = Date.now()) {
+            // Keep them impactful but not constant.
+            const min = 90000;   // 1.5m
+            const max = 170000;  // 2.8m
+            nextRadiationStormAt = fromNow + min + Math.floor(Math.random() * (max - min + 1));
+        }
+
+        function spawnRadiationStormRelative() {
+            if (!player) return;
+            const p = findSpawnPointRelative(true, 2400, 4200);
+            const radius = 820 + Math.random() * 320;
+            radiationStorm = new RadiationStorm(p.x, p.y, radius, 45000);
+            showOverlayMessage("RADIATION STORM FORMED", '#ff0', 2000);
+        }
+
+        function scheduleNextMiniEvent(fromNow = Date.now()) {
+            const min = 120000;  // 2m
+            const max = 210000;  // 3.5m
+            nextMiniEventAt = fromNow + min + Math.floor(Math.random() * (max - min + 1));
+        }
+
+        function spawnMiniEventRelative() {
+            if (!player) return;
+            const p = findSpawnPointRelative(true, 2400, 4400);
+            const pick = Math.random();
+            if (pick < 0.5) {
+                miniEvent = new MiniEventDefendCache(p.x, p.y);
+                showOverlayMessage("MINI-EVENT: DEFEND THE CACHE", '#ff0', 2200, 1);
+            } else {
+                miniEvent = new MiniEventEscortDrone(p.x, p.y);
+                showOverlayMessage("MINI-EVENT: ESCORT THE DRONE", '#ff0', 2200, 1);
+            }
+            playSound('contract');
+        }
+
         function findSpawnPointRelative(random = false, min = 1500, max = 2500) {
              if (!player) return {x:0, y:0};
              const angle = Math.random() * Math.PI * 2;
@@ -5192,6 +6297,11 @@
                 for (let j = i + 1; j < allEntities.length; j++) {
                     const e1 = allEntities[i];
                     const e2 = allEntities[j];
+
+                    // Bases shouldn't "push" ships around; ships should avoid them instead.
+                    if ((e1 instanceof Base && e2 instanceof Enemy) || (e2 instanceof Base && e1 instanceof Enemy)) {
+                        continue;
+                    }
                     let r1 = e1.radius;
                     let r2 = e2.radius;
                     
@@ -5279,12 +6389,23 @@
                                  }
                                 
                                 let shieldAbsorbed = false;
-                                const activeSeg = player.shieldSegments.findIndex(s => s > 0);
-                                if (activeSeg !== -1) {
-                                    player.shieldSegments[activeSeg]--;
-                                    playSound('shield_hit');
-                                    spawnParticles(player.pos.x, player.pos.y, 5, '#0ff');
-                                    shieldAbsorbed = true;
+                                if (player.outerShieldSegments && player.outerShieldSegments.some(s => s > 0)) {
+                                    const outerIdx = player.outerShieldSegments.findIndex(s => s > 0);
+                                    if (outerIdx !== -1) {
+                                        player.outerShieldSegments[outerIdx] = 0;
+                                        playSound('shield_hit');
+                                        spawnParticles(player.pos.x, player.pos.y, 7, '#b0f');
+                                        shieldAbsorbed = true;
+                                    }
+                                }
+                                if (!shieldAbsorbed) {
+                                    const activeSeg = player.shieldSegments.findIndex(s => s > 0);
+                                    if (activeSeg !== -1) {
+                                        player.shieldSegments[activeSeg]--;
+                                        playSound('shield_hit');
+                                        spawnParticles(player.pos.x, player.pos.y, 5, '#0ff');
+                                        shieldAbsorbed = true;
+                                    }
                                 }
 
                                 if (!shieldAbsorbed && player.invulnerable <= 0) {
@@ -5328,6 +6449,14 @@
 
                             let remaining = ramDamage;
                             // Shields absorb first
+                            if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
+                                for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
+                                    if (player.outerShieldSegments[i] > 0) {
+                                        player.outerShieldSegments[i] = 0;
+                                        remaining -= 1;
+                                    }
+                                }
+                            }
                             for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
                                 const absorb = Math.min(remaining, player.shieldSegments[i]);
                                 player.shieldSegments[i] -= absorb;
@@ -5390,15 +6519,24 @@
                 for (let c of caches) {
                     if (c.dead) continue;
                     const dist = Math.hypot(player.pos.x - c.pos.x, player.pos.y - c.pos.y);
-                    if (dist < player.radius + c.radius) {
-                        playSound('coin');
-                        spaceNuggets += c.value;
-                        updateNuggetUI();
-                        addPickupFloatingText('nugs', c.value, '#ff0');
-                        showOverlayMessage(`CACHE +${c.value} NUGS`, '#ff0', 800);
-                        c.dead = true;
-                    }
-                }
+                     if (dist < player.radius + c.radius) {
+                         playSound('coin');
+                         spaceNuggets += c.value;
+                         updateNuggetUI();
+                         addPickupFloatingText('nugs', c.value, '#ff0');
+                         showOverlayMessage(`CACHE +${c.value} NUGS`, '#ff0', 800);
+                         
+                         // Anomaly contract: picking up the cache is step 1; you must escape the ring to finish.
+                         if (activeContract && activeContract.type === 'anomaly' && activeContract.id && c.contractId === activeContract.id) {
+                             if (!activeContract.coreCollected) {
+                                 activeContract.coreCollected = true;
+                                 showOverlayMessage("CORE ACQUIRED - ESCAPE ANOMALY", '#0f0', 2000);
+                                 updateContractUI();
+                             }
+                         }
+                         c.dead = true;
+                     }
+                 }
             }
             
              // Shooting Star Collisions
@@ -5599,6 +6737,8 @@
                     maxHp: player.maxHp,
                     shieldSegments: [...player.shieldSegments],
                     maxShieldSegments: player.maxShieldSegments,
+                    outerShieldSegments: [...(player.outerShieldSegments || [])],
+                    maxOuterShieldSegments: player.maxOuterShieldSegments || 0,
                     stats: { ...player.stats },
                     inventory: { ...player.inventory },
                     level: player.level,
@@ -5610,7 +6750,10 @@
                     nukeMaxCooldown: player.nukeMaxCooldown,
                     staticWeapons: [...player.staticWeapons],
                     shieldRotation: player.shieldRotation,
+                    outerShieldRotation: player.outerShieldRotation,
+                    outerShieldRadius: player.outerShieldRadius,
                     invincibilityCycle: { ...player.invincibilityCycle },
+                    turboBoost: { ...player.turboBoost },
                     nukeDamage: player.nukeDamage,
                     nukeRange: player.nukeRange
                 }
@@ -5627,6 +6770,8 @@
             player.hp = Math.min(src.hp || player.hp, player.maxHp);
             if (src.shieldSegments) player.shieldSegments = [...src.shieldSegments];
             player.maxShieldSegments = src.maxShieldSegments || player.shieldSegments.length;
+            if (typeof src.maxOuterShieldSegments === 'number') player.maxOuterShieldSegments = src.maxOuterShieldSegments;
+            if (src.outerShieldSegments) player.outerShieldSegments = [...src.outerShieldSegments];
             player.stats = { ...player.stats, ...(src.stats || {}) };
             player.inventory = { ...(src.inventory || {}) };
             player.level = src.level || player.level;
@@ -5639,10 +6784,19 @@
             if (typeof src.nukeDamage === 'number') player.nukeDamage = src.nukeDamage;
             if (typeof src.nukeRange === 'number') player.nukeRange = src.nukeRange;
             player.staticWeapons = src.staticWeapons ? [...src.staticWeapons] : player.staticWeapons;
-            player.shieldRotation = src.shieldRotation || player.shieldRotation;
+            if (typeof src.shieldRotation === 'number') player.shieldRotation = src.shieldRotation;
+            if (typeof src.outerShieldRotation === 'number') player.outerShieldRotation = src.outerShieldRotation;
+            if (typeof src.outerShieldRadius === 'number') player.outerShieldRadius = src.outerShieldRadius;
             player.invincibilityCycle = { ...player.invincibilityCycle, ...(src.invincibilityCycle || {}) };
+            if (src.turboBoost) player.turboBoost = { ...player.turboBoost, ...(src.turboBoost || {}) };
+            // Stock ship always has a minimal turbo boost even on older saves.
+            player.turboBoost.unlocked = true;
+            player.turboBoost.durationFrames = Math.max(60, player.turboBoost.durationFrames || 0);
+            player.turboBoost.cooldownTotalFrames = 600;
+            player.turboBoost.speedMult = Math.max(1.25, player.turboBoost.speedMult || 0);
             updateHealthUI();
             updateWarpUI();
+            updateTurboUI();
             updateXpUI();
             pendingProfile = null;
         }
@@ -5757,9 +6911,33 @@
             }
         }
 
+        function updateTurboUI() {
+            if (!player || !turboStatus || !turboFill) return;
+            if (!player.turboBoost || !player.turboBoost.unlocked) {
+                turboStatus.style.display = 'none';
+                return;
+            }
+            turboStatus.style.display = 'flex';
+
+            const cooldownTotal = 600; // 10 seconds at 60fps
+            const cd = Math.max(0, player.turboBoost.cooldownFrames || 0);
+            const active = Math.max(0, player.turboBoost.activeFrames || 0);
+
+            if (active > 0) {
+                turboFill.style.width = `100%`;
+                turboFill.style.background = 'linear-gradient(90deg, #ff0, #f80, #f00)';
+            } else if (cd > 0) {
+                const pct = (1 - (cd / cooldownTotal)) * 100;
+                turboFill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+                turboFill.style.background = 'linear-gradient(90deg, #f00, #ff0)';
+            } else {
+                turboFill.style.width = `100%`;
+                turboFill.style.background = 'linear-gradient(90deg, #0ff, #0f0)';
+            }
+        }
+
         function setupGameWorld() {
             player.respawn();
-            generateMap(); 
             bullets = [];
             bossBombs = [];
             enemies = [];
@@ -5773,10 +6951,21 @@
             shootingStars = [];
             drones = [];
             caches = [];
+            radiationStorm = null;
+            nextRadiationStormAt = Date.now() + 90000;
+            miniEvent = null;
+            nextMiniEventAt = Date.now() + 120000;
+            pois = [];
+            gateKeys = 0;
+            gateKeyItems = [];
+            flagshipSpawned = false;
+            flagshipSpawnAt = 0;
             contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
             activeContract = null;
             nextContractAt = Date.now() + 30000; // first contract after ~30s
             scheduleNextShootingStar();
+            scheduleNextRadiationStorm();
+            scheduleNextMiniEvent();
             nextIntensityBreakAt = Date.now() + 120000; // first break at 2 minutes
             intensityBreakActive = false;
             warpParticles = []; 
@@ -5798,11 +6987,14 @@
             gunboatLevel2Unlocked = false;
             initialSpawnDone = false;
             initialSpawnDelayAt = Date.now() + 5000;
+
+            generateMap(); 
             
             maxRoamers = 3; 
             document.getElementById('bases-display').innerText = `0`;
             shakeMagnitude = 0;
             updateWarpUI();
+            updateTurboUI();
             updateXpUI();
             updateNuggetUI();
             // Start / reset game timer
@@ -6004,9 +7196,12 @@
                     if (tier === 3) player.shieldSegments.push(2, 2, 2, 2); // 14+4=18
                     player.maxShieldSegments = player.shieldSegments.length;
                     break;
-                case 'segment_hp':
-                    // Just visual/math concept here, implemented as damage mitigation?
-                    // For now, simpler: shield HP isn't tracked per segment > 1, so effectively just recharges faster implicitly or invuln time
+                case 'outer_shield':
+                    if (tier === 1) player.maxOuterShieldSegments = 6;
+                    if (tier === 2) player.maxOuterShieldSegments = 8;
+                    if (tier === 3) player.maxOuterShieldSegments = 12;
+                    player.outerShieldRadius = player.shieldRadius + 26;
+                    player.outerShieldSegments = new Array(player.maxOuterShieldSegments).fill(1);
                     break;
                 case 'shield_regen':
                     if (tier === 1) player.stats.shieldRegenRate = 5;
@@ -6028,6 +7223,18 @@
                     if (tier === 2) player.stats.speedMult = 1.30;
                     if (tier === 3) player.stats.speedMult = 1.50;
                     break;
+                case 'turbo_boost': {
+                    player.turboBoost.unlocked = true;
+                    if (tier === 1) player.turboBoost.durationFrames = 120; // 2.0s
+                    if (tier === 2) player.turboBoost.durationFrames = 210; // 3.5s
+                    if (tier === 3) player.turboBoost.durationFrames = 300; // 5.0s
+                    player.turboBoost.cooldownTotalFrames = 600; // fixed 10s cooldown
+                    player.turboBoost.speedMult = 1.5;
+                    player.turboBoost.activeFrames = 0;
+                    player.turboBoost.cooldownFrames = 0;
+                    updateTurboUI();
+                    break;
+                }
                 case 'xp_magnet':
                     if (tier === 1) player.magnetRadius = 300;
                     if (tier === 2) player.magnetRadius = 600;
@@ -6105,7 +7312,7 @@
             }
 
             gpState.warp = gp.buttons[0].pressed; 
-            gpState.nuke = gp.buttons[2].pressed; // Button 2 (X/Square)
+            gpState.turbo = gp.buttons[2].pressed; // Button 2 (X/Square)
             
             // Menu Navigation Support
             if ((!gameActive || gamePaused) && now - menuDebounce > 150) {
@@ -6310,14 +7517,15 @@
                          // Anomaly maze zone
                          const id = `C${contractSequence}`;
                          activeContract = {
-                            id,
-                            type: 'anomaly',
-                            state: 'travel',
-                            title: 'ANOMALY',
-                            target: { x: target.x, y: target.y },
-                            rewardNugs: 7 + Math.floor(Math.random() * 5),
-                            rewardScore: 12000
-                        };
+                             id,
+                             type: 'anomaly',
+                             state: 'travel',
+                             title: 'ANOMALY',
+                             coreCollected: false,
+                             target: { x: target.x, y: target.y },
+                             rewardNugs: 7 + Math.floor(Math.random() * 5),
+                             rewardScore: 12000
+                         };
                          const anomaly = new AnomalyZone(target.x, target.y, id);
                          contractEntities.anomalies.push(anomaly);
                          showOverlayMessage("NEW CONTRACT: INVESTIGATE ANOMALY", '#0f0', 2000, 2);
@@ -6352,7 +7560,34 @@
             }
             // Cruiser timed spawn: if timer active and no boss present, spawn a cruiser
              try {
-                  if (!sectorTransitionActive && dreadManager.timerActive && !bossActive && dreadManager.timerAt && now >= dreadManager.timerAt) {
+                  // Flagship: spawns once after collecting 3 Gate Keys
+                  if (!sectorTransitionActive && flagshipSpawned && gateKeys >= 3 && flagshipSpawnAt && now >= flagshipSpawnAt && !bossActive) {
+                      enemies = [];
+                      bases = [];
+                      baseRespawnTimers = [];
+                      roamerRespawnQueue = [];
+                      bullets = bullets.filter(b => b && !b.isEnemy);
+                      bossBombs = [];
+                      radiationStorm = null;
+                      scheduleNextRadiationStorm(Date.now() + 60000);
+                      miniEvent = null;
+                      scheduleNextMiniEvent(Date.now() + 90000);
+                      boss = new Flagship();
+                      bossActive = true;
+                      bossArena.x = (player.pos.x + boss.pos.x) / 2;
+                      bossArena.y = (player.pos.y + boss.pos.y) / 2;
+                      bossArena.radius = 3200;
+                      bossArena.active = true;
+                      bossArena.growing = false;
+                      dreadManager.timerActive = false;
+                      dreadManager.firstSpawnDone = true;
+                      flagshipSpawnAt = 0;
+                      showOverlayMessage("WARNING: FLAGSHIP APPROACHING - ARENA LOCKED", '#f0f', 4500, 2);
+                      playSound('boss_spawn');
+                      if (musicEnabled) { stopMusic(); startMusic('cruiser'); }
+                  }
+
+                  if (!sectorTransitionActive && dreadManager.timerActive && !bossActive && dreadManager.timerAt && now >= dreadManager.timerAt && !(flagshipSpawned && gateKeys >= 3)) {
                       // Cruisers can spawn even if a station exists
                       cruiserEncounterCount++;
                       // Arena boss fight: clear world threats; boss may call a few helpers.
@@ -6369,6 +7604,11 @@
                      bossArena.radius = 2500;
                      bossArena.active = true;
                      bossArena.growing = false;
+                     // Keep arena fights clean
+                     radiationStorm = null;
+                     scheduleNextRadiationStorm(Date.now() + 60000);
+                     miniEvent = null;
+                     scheduleNextMiniEvent(Date.now() + 90000);
                      dreadManager.timerActive = false;
                      dreadManager.firstSpawnDone = true;
                       showOverlayMessage("WARNING: CRUISER APPROACHING - ARENA LOCKED", '#f00', 4000);
@@ -6425,6 +7665,24 @@
                 }
                 scheduleNextShootingStar();
                 showOverlayMessage("WARNING: COSMIC EVENT DETECTED", '#fa0', 3000);
+            }
+
+            // Risk zones: Radiation Storms
+            if (!bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
+                if (radiationStorm && radiationStorm.dead) radiationStorm = null;
+                if ((!radiationStorm || radiationStorm.dead) && nextRadiationStormAt && now >= nextRadiationStormAt) {
+                    spawnRadiationStormRelative();
+                    scheduleNextRadiationStorm(now);
+                }
+            }
+
+            // Mini-events
+            if (!bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
+                if (miniEvent && miniEvent.dead) miniEvent = null;
+                if (!miniEvent && nextMiniEventAt && now >= nextMiniEventAt) {
+                    spawnMiniEventRelative();
+                    scheduleNextMiniEvent(now);
+                }
             }
             
             // Intensity breaks to let players collect/reposition
@@ -6584,9 +7842,13 @@
             coins.forEach(c => { c.update(); c.draw(ctx); });
             nuggets.forEach(n => { n.update(); n.draw(ctx); });
             powerups.forEach(p => { p.update(); p.draw(ctx); });
+            gateKeyItems.forEach(k => { k.update(); k.draw(ctx); });
             shootingStars.forEach(s => { s.update(); s.draw(ctx); });
             caches.forEach(c => { c.update(); c.draw(ctx); });
             environmentAsteroids.forEach(a => { a.update(); a.draw(ctx); });
+            pois.forEach(p => { p.update(); p.draw(ctx); });
+            if (radiationStorm && !radiationStorm.dead) { radiationStorm.update(); radiationStorm.draw(ctx); }
+            if (miniEvent && !miniEvent.dead) { miniEvent.update(); miniEvent.draw(ctx); }
             contractEntities.beacons.forEach(b => { b.update(); b.draw(ctx); });
             contractEntities.gates.forEach(g => { g.update(); g.draw(ctx); });
             contractEntities.anomalies.forEach(a => { a.update(); a.draw(ctx); });
@@ -6664,9 +7926,11 @@
             compactArray(coins);
             compactArray(nuggets);
             compactArray(powerups);
+            compactArray(gateKeyItems);
             compactArray(shootingStars);
             compactArray(drones);
             compactArray(caches);
+            compactArray(pois);
             compactArray(contractEntities.beacons);
             compactArray(contractEntities.gates);
             compactArray(contractEntities.anomalies);
@@ -6689,14 +7953,27 @@
                 }
                 
                 if (!hit) {
-                    if (b.isEnemy) {
-                        if (!player.dead && !player.invulnerable) {
-                             const dist = Math.hypot(b.pos.x - player.pos.x, b.pos.y - player.pos.y);
-                             if (dist < player.shieldRadius + b.radius && dist > player.shieldRadius - 10) {
-                                  let angle = Math.atan2(b.pos.y - player.pos.y, b.pos.x - player.pos.x) - player.shieldRotation;
-                                  while(angle < 0) angle += Math.PI*2;
-                                  const count = player.shieldSegments.length;
-                                  const segIndex = Math.floor((angle / (Math.PI*2)) * count) % count;
+                     if (b.isEnemy) {
+                         if (!player.dead && !player.invulnerable) {
+                              const dist = Math.hypot(b.pos.x - player.pos.x, b.pos.y - player.pos.y);
+                              if (!hit && player.outerShieldSegments && player.outerShieldSegments.some(s => s > 0) &&
+                                  dist < player.outerShieldRadius + b.radius && dist > player.outerShieldRadius - 10) {
+                                   let angle = Math.atan2(b.pos.y - player.pos.y, b.pos.x - player.pos.x) - player.outerShieldRotation;
+                                   while(angle < 0) angle += Math.PI*2;
+                                   const count = player.outerShieldSegments.length;
+                                   const segIndex = Math.floor((angle / (Math.PI*2)) * count) % count;
+                                   if (player.outerShieldSegments[segIndex] > 0) {
+                                       player.outerShieldSegments[segIndex] = 0;
+                                       hit = true;
+                                       playSound('shield_hit');
+                                       spawnParticles(b.pos.x, b.pos.y, 7, '#b0f');
+                                   }
+                              }
+                              if (!hit && dist < player.shieldRadius + b.radius && dist > player.shieldRadius - 10) {
+                                   let angle = Math.atan2(b.pos.y - player.pos.y, b.pos.x - player.pos.x) - player.shieldRotation;
+                                   while(angle < 0) angle += Math.PI*2;
+                                   const count = player.shieldSegments.length;
+                                   const segIndex = Math.floor((angle / (Math.PI*2)) * count) % count;
                                   if (player.shieldSegments[segIndex] > 0) {
                                       player.shieldSegments[segIndex]--;
                                       hit = true;
@@ -6880,9 +8157,8 @@
                                     
                                     if (hit) break;
                                     
-                                    // Core can only be damaged once all rings are down (unless ignoreShields)
-                                    const ringsUp = fortress.rings.some(r => r && r.segments && r.segments.some(s => s > 0));
-                                    if (ringsUp && !b.ignoreShields) continue;
+                                    // Core can be damaged even while shield rings still have segments;
+                                    // shields only block bullets that actually hit an active segment.
                                     
                                     if (distF < fortress.radius + b.radius) {
                                         fortress.hp -= b.damage;
@@ -6978,6 +8254,9 @@
             drawStationIndicator();
             drawMinimap();
             drawContractIndicator();
+            drawMiniEventIndicator();
+            updateMiniEventUI();
+            updateKeysUI();
             if (bossActive && boss && typeof boss.drawBossHud === 'function') boss.drawBossHud(ctx);
         }
 
@@ -7134,6 +8413,80 @@
             ctx.restore();
         }
 
+        function drawMiniEventIndicator() {
+            if (!miniEvent || miniEvent.dead || !player || player.dead) return;
+
+            let tx = miniEvent.pos.x;
+            let ty = miniEvent.pos.y;
+            if (miniEvent.kind === 'escort_drone' && miniEvent.dronePos && miniEvent.waypoint) {
+                const dDrone = Math.hypot(miniEvent.dronePos.x - player.pos.x, miniEvent.dronePos.y - player.pos.y);
+                if (dDrone > 900) { tx = miniEvent.dronePos.x; ty = miniEvent.dronePos.y; }
+                else { tx = miniEvent.waypoint.x; ty = miniEvent.waypoint.y; }
+            }
+
+            const screenW = canvas.width;
+            const screenH = canvas.height;
+            const z = currentZoom || ZOOM_LEVEL;
+            const camX = player.pos.x - screenW / (2 * z);
+            const camY = player.pos.y - screenH / (2 * z);
+            const viewW = screenW / z;
+            const viewH = screenH / z;
+
+            if (tx > camX && tx < camX + viewW && ty > camY && ty < camY + viewH) return;
+
+            const dx = tx - player.pos.x;
+            const dy = ty - player.pos.y;
+            const angle = Math.atan2(dy, dx);
+
+            const margin = 60;
+            const cx = screenW / 2;
+            const cy = screenH / 2;
+            const vx = Math.cos(angle);
+            const vy = Math.sin(angle);
+
+            const bx = cx - margin;
+            const by = cy - margin;
+            const txEdge = Math.abs(vx) > 0.001 ? bx / Math.abs(vx) : Infinity;
+            const tyEdge = Math.abs(vy) > 0.001 ? by / Math.abs(vy) : Infinity;
+            const tEdge = Math.min(txEdge, tyEdge);
+
+            const arrowX = cx + vx * tEdge;
+            const arrowY = cy + vy * tEdge;
+
+            ctx.save();
+            ctx.translate(arrowX, arrowY);
+            ctx.rotate(angle);
+
+            const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
+            const blink = (Math.sin(Date.now() * 0.012) > 0.2) ? 1 : 0.55;
+            ctx.scale(pulse, pulse);
+            ctx.globalAlpha = blink;
+
+            ctx.fillStyle = '#ff0';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(15, 0);
+            ctx.lineTo(-15, 12);
+            ctx.lineTo(-15, -12);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.rotate(-angle);
+            ctx.fillStyle = '#ff0';
+            ctx.font = 'bold 14px Courier New';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = '#000';
+            const dist = Math.hypot(dx, dy);
+            ctx.fillText((dist/1000).toFixed(1) + 'km', 0, 25);
+            ctx.shadowBlur = 0;
+
+            ctx.restore();
+        }
+
         function drawMinimap() {
             minimapFrame++;
             if (minimapFrame % 2 === 1) return; // throttle updates
@@ -7201,6 +8554,29 @@
                 minimapCtx.arc(dx, dy, 8, 0, Math.PI*2);
                 minimapCtx.fill();
             }
+
+            if (radiationStorm && !radiationStorm.dead && player) {
+                const dx = radiationStorm.pos.x - player.pos.x;
+                const dy = radiationStorm.pos.y - player.pos.y;
+                const dist = Math.hypot(dx, dy);
+                const angle = Math.atan2(dy, dx);
+                minimapCtx.strokeStyle = 'rgba(255, 220, 0, 0.7)';
+                minimapCtx.lineWidth = 2;
+                if (dist * scale > 95) {
+                    const px = Math.cos(angle) * 90;
+                    const py = Math.sin(angle) * 90;
+                    minimapCtx.fillStyle = '#ff0';
+                    minimapCtx.beginPath();
+                    minimapCtx.moveTo(px + Math.cos(angle)*10, py + Math.sin(angle)*10);
+                    minimapCtx.lineTo(px + Math.cos(angle + 2.5)*8, py + Math.sin(angle + 2.5)*8);
+                    minimapCtx.lineTo(px + Math.cos(angle - 2.5)*8, py + Math.sin(angle - 2.5)*8);
+                    minimapCtx.fill();
+                } else {
+                    minimapCtx.beginPath();
+                    minimapCtx.arc(dx * scale, dy * scale, Math.max(4, radiationStorm.radius * scale), 0, Math.PI*2);
+                    minimapCtx.stroke();
+                }
+            }
             
             minimapCtx.fillStyle = '#ff0';
             coins.forEach(c => {
@@ -7223,6 +8599,31 @@
                     }
                 }
             });
+
+            if (player && pois && pois.length > 0) {
+                for (const p of pois) {
+                    if (!p || p.dead || p.claimed) continue;
+                    const dx = p.pos.x - player.pos.x;
+                    const dy = p.pos.y - player.pos.y;
+                    const dist = Math.hypot(dx, dy);
+                    const angle = Math.atan2(dy, dx);
+                    const inRange = (dist * scale <= 95);
+                    const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
+                    const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
+                    minimapCtx.fillStyle = p.color || '#0ff';
+                    if (inRange) {
+                        minimapCtx.beginPath();
+                        minimapCtx.arc(px, py, 4, 0, Math.PI * 2);
+                        minimapCtx.fill();
+                    } else {
+                        minimapCtx.beginPath();
+                        minimapCtx.moveTo(px + Math.cos(angle)*10, py + Math.sin(angle)*10);
+                        minimapCtx.lineTo(px + Math.cos(angle + 2.5)*8, py + Math.sin(angle + 2.5)*8);
+                        minimapCtx.lineTo(px + Math.cos(angle - 2.5)*8, py + Math.sin(angle - 2.5)*8);
+                        minimapCtx.fill();
+                    }
+                }
+            }
             
             if (spaceStation && player) {
                 const dx = spaceStation.pos.x - player.pos.x;
@@ -7280,6 +8681,29 @@
                     minimapCtx.lineTo(px + Math.cos(angle - 2.5)*8, py + Math.sin(angle - 2.5)*8);
                     minimapCtx.fill();
                 }
+            }
+
+            // Mini-event indicator on minimap
+            if (player && miniEvent && !miniEvent.dead) {
+                let tx = miniEvent.pos.x, ty = miniEvent.pos.y;
+                if (miniEvent.kind === 'escort_drone' && miniEvent.dronePos && miniEvent.waypoint) {
+                    const dDrone = Math.hypot(miniEvent.dronePos.x - player.pos.x, miniEvent.dronePos.y - player.pos.y);
+                    if (dDrone > 900) { tx = miniEvent.dronePos.x; ty = miniEvent.dronePos.y; }
+                    else { tx = miniEvent.waypoint.x; ty = miniEvent.waypoint.y; }
+                }
+                const dx = tx - player.pos.x;
+                const dy = ty - player.pos.y;
+                const dist = Math.hypot(dx, dy);
+                const angle = Math.atan2(dy, dx);
+                minimapCtx.fillStyle = '#ff0';
+                const inRange = (dist * scale <= 95);
+                const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
+                const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
+                minimapCtx.beginPath();
+                minimapCtx.moveTo(px + Math.cos(angle)*10, py + Math.sin(angle)*10);
+                minimapCtx.lineTo(px + Math.cos(angle + 2.5)*8, py + Math.sin(angle + 2.5)*8);
+                minimapCtx.lineTo(px + Math.cos(angle - 2.5)*8, py + Math.sin(angle - 2.5)*8);
+                minimapCtx.fill();
             }
 
             minimapCtx.restore();
