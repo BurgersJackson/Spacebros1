@@ -1,0 +1,70 @@
+﻿	            if (e.ctrlKey && e.shiftKey && (e.key === 'q' || e.key === 'Q')) {
+	                e.preventDefault();
+	                if (!gameActive || !player) return;
+	                if (warpSnapshot) exitWarpMaze();
+	            }
+	        });
+
+        window.addEventListener('keyup', e => {
+            if (e.key === 'w' || e.key === 'W') keys.w = false;
+            if (e.key === 'a' || e.key === 'A') keys.a = false;
+            if (e.key === 's' || e.key === 'S') keys.s = false;
+            if (e.key === 'd' || e.key === 'D') keys.d = false;
+            if (e.key === ' ') keys.space = false;
+            if (e.key === 'e' || e.key === 'E') keys.e = false;
+            if (e.key === 'Shift') keys.shift = false;
+        });
+
+        window.addEventListener('mousemove', e => {
+            usingGamepad = false;
+            document.body.classList.remove('no-cursor');
+            if (typeof mouseScreen !== 'undefined') {
+                mouseScreen.x = e.clientX;
+                mouseScreen.y = e.clientY;
+            }
+            if (player) {
+                const z = currentZoom || ZOOM_LEVEL;
+                const camX = player.pos.x - width / (2 * z);
+                const camY = player.pos.y - height / (2 * z);
+                mouseWorld.x = (e.clientX / z) + camX;
+                mouseWorld.y = (e.clientY / z) + camY;
+            }
+        });
+        
+        window.addEventListener('mousedown', (e) => {
+             mouseState.down = true;
+        });
+        
+        window.addEventListener('mouseup', () => {
+             mouseState.down = false;
+        });
+
+        window.addEventListener("gamepadconnected", (e) => {
+            console.log("Gamepad connected");
+            gamepadIndex = e.gamepad.index;
+            initAudio();
+        });
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            initAudio();
+            startGame();
+        });
+        const loadBtn = document.getElementById('load-btn');
+        if (loadBtn) loadBtn.addEventListener('click', () => {
+            initAudio();
+            loadGameFromStorage();
+        });
+        const newProfileBtn = document.getElementById('new-profile-btn');
+        if (newProfileBtn) newProfileBtn.addEventListener('click', () => {
+            if (confirm("Reset profile? This clears all nugs/stats and saved profiles.")) {
+                wipeProfiles();
+            }
+        });
+        const buyStart = document.getElementById('buy-start-dmg');
+        if (buyStart) buyStart.addEventListener('click', () => {
+            const cost = Math.ceil(10 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+            if (metaProfile.bank >= cost && !metaProfile.purchases.startDamage) {
+                metaProfile.bank -= cost;
+                metaProfile.purchases.startDamage = true;
+                saveMetaProfile();
+                showOverlayMessage("START DAMAGE UNLOCKED", '#0f0', 1500);

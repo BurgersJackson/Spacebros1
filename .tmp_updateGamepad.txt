@@ -1,0 +1,120 @@
+﻿                    const ensureDrone = (t) => {
+                        if (!drones.find(d => d.type === t)) spawnDrone(t);
+                    };
+                    if (tier >= 1) ensureDrone('shooter');
+                    if (tier >= 2) ensureDrone('shield');
+                    if (tier >= 3) ensureDrone('heal');
+                    break;
+                }
+            }
+            
+            showOverlayMessage(`${id.replace('_', ' ').toUpperCase()} UPGRADED!`, '#ff0', 1500);
+        }
+
+        // --- Core Loop ---
+
+        function updateGamepad() {
+            const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+            const gp = pads[gamepadIndex];
+            if (!gp) {
+                for (let i = 0; i < pads.length; i++) {
+                    if (pads[i]) { gamepadIndex = i; break; }
+                }
+                return;
+            }
+
+            const deadzone = 0.1;
+            const applyDeadzone = (v) => Math.abs(v) < deadzone ? 0 : v;
+
+            let gamepadInput = false;
+            if (gp.axes.some(axis => Math.abs(axis) > deadzone) || gp.buttons.some(button => button.pressed)) {
+                gamepadInput = true;
+            }
+
+            if (gamepadInput) {
+                usingGamepad = true;
+                document.body.classList.add('no-cursor');
+            }
+
+            gpState.move.x = applyDeadzone(gp.axes[0]);
+            gpState.move.y = applyDeadzone(gp.axes[1]);
+            gpState.aim.x = applyDeadzone(gp.axes[2]);
+            gpState.aim.y = applyDeadzone(gp.axes[3]);
+            
+            const now = Date.now();
+            if (gp.buttons[9].pressed && !gpState.pausePressed) { // Start
+                togglePause();
+                gpState.pausePressed = true;
+            } else if (!gp.buttons[9].pressed) {
+                gpState.pausePressed = false;
+            }
+
+            gpState.warp = gp.buttons[0].pressed; 
+            gpState.turbo = gp.buttons[2].pressed; // Button 2 (X/Square)
+            
+            // Menu Navigation Support
+            if ((!gameActive || gamePaused) && now - menuDebounce > 150) {
+                const activeElements = getActiveMenuElements();
+                if (activeElements.length > 0) {
+                    let change = 0;
+                    
+                    // Vertical (Up/Down) - Standard Menus
+                    if (gp.axes[1] < -0.5 || gp.buttons[12].pressed) change = -1;
+                    if (gp.axes[1] > 0.5 || gp.buttons[13].pressed) change = 1;
+                    
+                    // Horizontal (Left/Right) - Upgrade Cards
+                    if (gp.axes[0] < -0.5 || gp.buttons[14].pressed) change = -1;
+                    if (gp.axes[0] > 0.5 || gp.buttons[15].pressed) change = 1;
+
+                    if (change !== 0) {
+                         menuSelectionIndex += change;
+                         if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
+                         if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
+                         updateMenuVisuals(activeElements);
+                         menuDebounce = now;
+                    }
+
+                    // A Button / Cross - Select
+                    if (gp.buttons[0].pressed) {
+                        activeElements[menuSelectionIndex].click();
+                        menuDebounce = now + 200; 
+                    }
+                }
+            }
+        }
+        
+        function getActiveMenuElements() {
+            if (document.getElementById('start-screen').style.display !== 'none') {
+                 return Array.from(document.querySelectorAll('#start-screen button'));
+            }
+            if (document.getElementById('pause-menu').style.display !== 'none') {
+                 return Array.from(document.querySelectorAll('#pause-menu button'));
+            }
+            if (document.getElementById('levelup-screen').style.display !== 'none') {
+                 return Array.from(document.querySelectorAll('.upgrade-card'));
+            }
+            return [];
+        }
+        
+        function updateMenuVisuals(elements) {
+            elements.forEach((el, idx) => {
+                if (idx === menuSelectionIndex) {
+                    el.classList.add('selected');
+                    if(el.tagName === 'BUTTON') el.focus();
+                } else {
+                    el.classList.remove('selected');
+                    if(el.tagName === 'BUTTON') el.blur();
+                }
+            });
+        }
+        
+        function killPlayer() {
+            player.dead = true;
+            if (metaExtraLifeAvailable) {
+                metaExtraLifeAvailable = false;
+                player.dead = false;
+                player.hp = Math.max(1, Math.floor(player.maxHp * 0.5));
+                player.invulnerable = 180;
+                spawnParticles(player.pos.x, player.pos.y, 20, '#0f0');
+                showOverlayMessage("SECOND CHANCE!", '#0f0', 1500);
+                updateHealthUI();

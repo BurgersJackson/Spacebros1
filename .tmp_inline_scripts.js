@@ -1,4 +1,4 @@
-﻿
+
         // Phaser is used for the Electron-packaged build (local `node_modules`), with a CDN fallback for browser runs.
         (function loadPhaser() {
             const localSrc = "./node_modules/phaser/dist/phaser.min.js";
@@ -151,11 +151,22 @@
         class Particle extends Entity {
             constructor(x, y, vx, vy, color = '#fff', life = 30) {
                 super(x, y);
+                this._poolType = 'particle';
                 this.vel.x = vx || (Math.random() - 0.5) * 3;
                 this.vel.y = vy || (Math.random() - 0.5) * 3;
                 this.life = life + Math.random() * 10;
                 this.maxLife = this.life;
                 this.color = color;
+            }
+            reset(x, y, vx, vy, color = '#fff', life = 30) {
+                this.pos.x = x;
+                this.pos.y = y;
+                this.vel.x = vx || (Math.random() - 0.5) * 3;
+                this.vel.y = vy || (Math.random() - 0.5) * 3;
+                this.life = life + Math.random() * 10;
+                this.maxLife = this.life;
+                this.color = color;
+                this.dead = false;
             }
             update() {
                 super.update();
@@ -173,11 +184,22 @@
         class SmokeParticle extends Entity {
             constructor(x, y, vx, vy) {
                 super(x, y);
+                this._poolType = 'smoke';
                 this.vel.x = vx || (Math.random() - 0.5) * 1;
                 this.vel.y = vy || (Math.random() - 0.5) * 1;
                 this.life = 60 + Math.random() * 30;
                 this.maxLife = this.life;
                 this.size = 2 + Math.random() * 4;
+            }
+            reset(x, y, vx, vy) {
+                this.pos.x = x;
+                this.pos.y = y;
+                this.vel.x = vx || (Math.random() - 0.5) * 1;
+                this.vel.y = vy || (Math.random() - 0.5) * 1;
+                this.life = 60 + Math.random() * 30;
+                this.maxLife = this.life;
+                this.size = 2 + Math.random() * 4;
+                this.dead = false;
             }
             update() {
                 this.pos.add(this.vel);
@@ -704,9 +726,15 @@
 
         // --- Game Setup ---
         const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = (() => {
+            try { return canvas.getContext('2d', { desynchronized: true }); }
+            catch (e) { return canvas.getContext('2d'); }
+        })();
         const minimapCanvas = document.getElementById('minimap');
-        const minimapCtx = minimapCanvas.getContext('2d');
+        const minimapCtx = (() => {
+            try { return minimapCanvas.getContext('2d', { desynchronized: true }); }
+            catch (e) { return minimapCanvas.getContext('2d'); }
+        })();
         const healthFill = document.getElementById('health-fill');
         const overlayMessage = document.getElementById('overlay-message');
         const warpStatus = document.getElementById('warp-status');
@@ -714,6 +742,11 @@
         const turboStatus = document.getElementById('turbo-status');
         const turboFill = document.getElementById('turbo-fill');
         const xpFill = document.getElementById('xp-fill');
+        const fpsCounterEl = document.getElementById('fps-counter');
+        let fpsLastFrameAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        let fpsSmoothMs = 16.7;
+        let fpsNextUiAt = 0;
+        let fpsUiVisible = null;
 
         let width, height;
         let animationId;
@@ -737,6 +770,8 @@
         const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, e: false };
         const mouseScreen = { x: 0, y: 0 };
         const mouseWorld = { x: 0, y: 0 };
+        let lastMouseInputAt = 0;
+        let lastGamepadInputAt = 0;
         
         // Gamepad State
         let gamepadIndex = null;
@@ -751,6 +786,16 @@
         let usingGamepad = false;
         let menuDebounce = 0;
 
+        function updateInputMode(now = Date.now()) {
+            const preferGamepadMs = 1200;
+            const mouseGraceMs = 220;
+            const gamepadRecent = (now - lastGamepadInputAt) < preferGamepadMs;
+            const mouseRecent = (now - lastMouseInputAt) < mouseGraceMs;
+            usingGamepad = gamepadRecent && !mouseRecent;
+            if (usingGamepad) document.body.classList.add('no-cursor');
+            else document.body.classList.remove('no-cursor');
+        }
+
         function resize() {
             width = canvas.width = window.innerWidth;
             height = canvas.height = window.innerHeight;
@@ -764,13 +809,15 @@
             nebulas = [];
             const count = Math.floor((width * height) / 3000); 
             for(let i=0; i<count; i++) {
-                starfield.push({
+                const s = {
                     x: Math.random() * width,
                     y: Math.random() * height,
                     size: Math.random() < 0.95 ? 1 : 2,
                     alpha: Math.random() * 0.4 + 0.05,
                     parallax: 0.05 + Math.random() * 0.1 
-                });
+                };
+                s.fillStyle = `rgba(255, 255, 255, ${s.alpha})`;
+                starfield.push(s);
             }
             
             // Generate Nebulas
@@ -779,14 +826,33 @@
                 const hue = sectorIndex >= 2
                     ? (40 + Math.random() * 60) // warmer hues for new sector
                     : (Math.random() > 0.5 ? 260 + Math.random() * 50 : 180 + Math.random() * 50);
-                nebulas.push({
+                const n = {
                     x: Math.random() * width,
                     y: Math.random() * height,
                     radius: 300 + Math.random() * 400,
                     colorStart: `hsla(${hue}, 80%, 30%, 0.15)`,
                     colorEnd: `hsla(${hue}, 80%, 10%, 0)`,
                     parallax: 0.02 + Math.random() * 0.03
-                });
+                };
+
+                // Cache nebula gradient to an offscreen sprite (avoids per-frame createRadialGradient()).
+                const spriteScale = 0.5; // scale up at draw time; soft gradients hide scaling artifacts
+                const sprRad = Math.max(32, Math.floor(n.radius * spriteScale));
+                const sprSize = sprRad * 2;
+                const spr = document.createElement('canvas');
+                spr.width = sprSize;
+                spr.height = sprSize;
+                const sctx = spr.getContext('2d');
+                const g = sctx.createRadialGradient(sprRad, sprRad, 0, sprRad, sprRad, sprRad);
+                g.addColorStop(0, n.colorStart);
+                g.addColorStop(1, n.colorEnd);
+                sctx.fillStyle = g;
+                sctx.beginPath();
+                sctx.arc(sprRad, sprRad, sprRad, 0, Math.PI * 2);
+                sctx.fill();
+                n._sprite = spr;
+                n._spriteScale = spriteScale;
+                nebulas.push(n);
             }
         }
         
@@ -1386,11 +1452,15 @@
                 let thrusting = false;
                 
                 const aimMag = Math.sqrt(gpState.aim.x*gpState.aim.x + gpState.aim.y*gpState.aim.y);
-                if (aimMag > 0.2) {
-                    this.turretAngle = Math.atan2(gpState.aim.y, gpState.aim.x);
-                } else if (usingGamepad) {
-                    // In gamepad mode, don't let the turret follow the mouse.
-                    if (moveMag > 0.2) this.turretAngle = Math.atan2(gpState.move.y, gpState.move.x);
+                const aimThresh = 0.08;
+                const moveAimThresh = 0.08;
+                if (usingGamepad) {
+                    // In gamepad mode, never snap aim back to the mouse when sticks go idle.
+                    if (aimMag > aimThresh) {
+                        this.turretAngle = Math.atan2(gpState.aim.y, gpState.aim.x);
+                    } else if (moveMag > moveAimThresh) {
+                        this.turretAngle = Math.atan2(gpState.move.y, gpState.move.x);
+                    }
                 } else {
                     this.turretAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
                 }
@@ -1406,7 +1476,7 @@
                 // Removed rotation stat multiplier
                 const currentRot = this.rotationSpeed;
 
-                if (moveMag > 0.1) {
+                if (moveMag > 0.06) {
                     const targetAngle = Math.atan2(gpState.move.y, gpState.move.x);
                     let angleDiff = targetAngle - this.angle;
                     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
@@ -1682,7 +1752,7 @@
                 // Draw Phase Shield Visual
                 if (this.invincibilityCycle.unlocked && this.invincibilityCycle.state === 'active') {
                     ctx.save();
-                    // Keep the phase shield a constant, transparent yellow â€” no pulsing or glow
+                    // Keep the phase shield a constant, transparent yellow — no pulsing or glow
                     ctx.shadowBlur = 0;
                     ctx.shadowColor = 'rgba(0,0,0,0)';
                     ctx.lineWidth = 3;
@@ -2041,13 +2111,14 @@
                  }
                  
                  if (this.t % 2 === 0) {
-                     particles.push(new Particle(
+                     emitParticle(
                          this.pos.x + (Math.random()-0.5)*6,
-                        this.pos.y + (Math.random()-0.5)*6,
-                        -this.vel.x * 0.05 + (Math.random()-0.5)*0.6,
-                        -this.vel.y * 0.05 + (Math.random()-0.5)*0.6,
-                        '#fa0'
-                    ));
+                         this.pos.y + (Math.random()-0.5)*6,
+                         -this.vel.x * 0.05 + (Math.random()-0.5)*0.6,
+                         -this.vel.y * 0.05 + (Math.random()-0.5)*0.6,
+                         '#fa0',
+                         30
+                     );
                 }
                  
                  const travelled = Math.hypot(this.pos.x - this.startX, this.pos.y - this.startY);
@@ -2174,13 +2245,14 @@
                 this.pos.add(this.vel); 
                 
                 if (this.t % 2 === 0) {
-                    particles.push(new Particle(
+                    emitParticle(
                         this.pos.x + (Math.random() - 0.5) * 6,
                         this.pos.y + (Math.random() - 0.5) * 6,
                         -this.vel.x * 0.08 + (Math.random() - 0.5) * 0.6,
                         -this.vel.y * 0.08 + (Math.random() - 0.5) * 0.6,
-                        '#fa0'
-                    ));
+                        '#fa0',
+                        30
+                    );
                 }
                 
                 checkWallCollision(this, 0.15); 
@@ -2335,13 +2407,14 @@
                 
                 // Trail
                 for(let i=0; i<5; i++) {
-                    particles.push(new Particle(
+                    emitParticle(
                         this.pos.x + (Math.random()-0.5)*20, 
                         this.pos.y + (Math.random()-0.5)*20, 
                         -this.vel.x * 0.2 + (Math.random()-0.5)*2, 
                         -this.vel.y * 0.2 + (Math.random()-0.5)*2, 
-                        '#ffaa00'
-                    ));
+                        '#ffaa00',
+                        30
+                    );
                 }
             }
             
@@ -3530,7 +3603,7 @@
 
                 ctx.lineWidth = 3;
                 if (this.isCruiser) {
-                    // Battlestar-ish cruiser hull (rotated 180Â° via visualAngleOffset)
+                    // Battlestar-ish cruiser hull (rotated 180° via visualAngleOffset)
                     ctx.save();
                     const hs = this.cruiserHullScale || this.gunboatScale || 6;
                     const ang = this.angle + (this.visualAngleOffset || 0);
@@ -4115,13 +4188,14 @@
 	                this.pos.add(this.vel);
 	                
 	                if (this.t % 2 === 0) {
-	                    particles.push(new Particle(
+	                    emitParticle(
 	                        this.pos.x + (Math.random() - 0.5) * 6,
 	                        this.pos.y + (Math.random() - 0.5) * 6,
 	                        -this.vel.x * 0.08 + (Math.random() - 0.5) * 0.6,
 	                        -this.vel.y * 0.08 + (Math.random() - 0.5) * 0.6,
-	                        '#fa0'
-	                    ));
+	                        '#fa0',
+	                        30
+	                    );
 	                }
 	                
 	                checkWallCollision(this, 0.12); 
@@ -4814,7 +4888,7 @@
 	                    if (this.timer <= 0) this.fall(); 
 	                    // Falling debris visuals 
 	                    if (this.t % 3 === 0) { 
-	                        particles.push(new Particle(this.pos.x + (Math.random() - 0.5) * 700, this.pos.y - 800 + Math.random() * 400, (Math.random() - 0.5) * 0.8, 3 + Math.random() * 2, '#888', 50)); 
+	                        emitParticle(this.pos.x + (Math.random() - 0.5) * 700, this.pos.y - 800 + Math.random() * 400, (Math.random() - 0.5) * 0.8, 3 + Math.random() * 2, '#888', 50); 
 	                    } 
 	                } 
 	            } 
@@ -7358,13 +7432,14 @@
                 this.turretAngle = 0;
                 this.shootTimer = this.cruiserFireDelay;
                 this.encounterIndex = encounterIndex;
-                this.visualAngleOffset = Math.PI; // rotate cruiser art 180Â°
+                this.visualAngleOffset = Math.PI; // rotate cruiser art 180°
                 
                 // Disable the default Enemy.update shooting; cruiser uses scripted patterns.
                 this.disableAutoFire = true;
                 
                 // Arcade-style boss kit
                 this.shieldStrength = shieldStrength;
+                this.vulnerableDurationFrames = 180;
                 this.vulnerableTimer = 0;
                 this.phaseName = 'INTRO';
                 this.phaseTimer = 90;
@@ -7488,7 +7563,7 @@
                     const prev = this.phaseName;
                     if (prev === 'CHARGE') {
                         // Overheated core: short vulnerability window after a charge phase.
-                        this.vulnerableTimer = 180;
+                        this.vulnerableTimer = this.vulnerableDurationFrames;
                     }
                     
                     // Advance to next valid phase
@@ -7853,6 +7928,8 @@
                 this.type = 'flagship';
                 this.isFlagship = true;
                 this.despawnImmune = true;
+                // Harder to punish: +2s invul by shrinking the core-exposed window.
+                this.vulnerableDurationFrames = 60;
 
                 // Bigger, slower, higher-stakes fight
                 this.cruiserHullScale = 8.8;
@@ -7873,10 +7950,10 @@
 
                 const bonus = Math.max(0, cruiserEncounterCount - 1);
                 const baseHp = 260 + bonus * 35;
-                this.hp = Math.round(baseHp);
+                this.hp = Math.round(baseHp * 1.25);
                 this.maxHp = this.hp;
 
-                this.shieldStrength = Math.max(3, this.shieldStrength + 1);
+                this.shieldStrength = Math.max(3, Math.ceil((this.shieldStrength + 1) * 1.5));
                 this.shieldSegments = new Array(14).fill(this.shieldStrength);
                 this.innerShieldSegments = new Array(22).fill(this.shieldStrength);
 
@@ -8775,8 +8852,12 @@
             }
             
             manageDefenders() {
-                const myDefenders = enemies.filter(e => e.assignedBase === this && !e.dead);
-                if (myDefenders.length < 8) {
+                let myDefenderCount = 0;
+                for (let i = 0; i < enemies.length; i++) {
+                    const e = enemies[i];
+                    if (e && !e.dead && e.assignedBase === this) myDefenderCount++;
+                }
+                if (myDefenderCount < 8) {
                     if (this.defenderSpawnTimer <= 0) {
                         const angle = Math.random() * Math.PI * 2;
                         const d = this.radius + 70;
@@ -8815,6 +8896,7 @@
             draw(ctx) {
                 ctx.save();
                 ctx.translate(this.pos.x, this.pos.y);
+                const now = (typeof frameNow === 'number' && frameNow > 0) ? frameNow : Date.now();
                 
                 // --- 1. Rotating Outer Ring Structure ---
                 ctx.save();
@@ -8881,7 +8963,7 @@
                 }
 
                 // --- 4. Central Reactor Core ---
-                const pulse = 1.0 + Math.sin(Date.now() * 0.005) * 0.15;
+                const pulse = 1.0 + Math.sin(now * 0.005) * 0.15;
                 
                 // Core housing
                 ctx.fillStyle = '#000';
@@ -8950,14 +9032,15 @@
                     ctx.lineWidth = 8;
                     const count = segments.length;
                     const arcLen = (Math.PI * 2) / count;
+                    ctx.strokeStyle = color;
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = color;
+                    const t = now * 0.008;
                     for(let i=0; i<count; i++) {
                         if (segments[i] > 0) {
-                            ctx.strokeStyle = color;
                             // Pulse alpha for "energy" feel
-                            const energyPulse = 0.6 + Math.sin(Date.now() * 0.008 + i) * 0.3;
+                            const energyPulse = 0.6 + Math.sin(t + i) * 0.3;
                             ctx.globalAlpha = Math.min(1, (segments[i] / 2) * energyPulse); 
-                            ctx.shadowBlur = 15;
-                            ctx.shadowColor = color;
                             ctx.beginPath();
                             ctx.arc(0, 0, radius, i*arcLen + 0.02, (i+1)*arcLen - 0.02);
                             ctx.stroke();
@@ -9038,6 +9121,7 @@
         let bossArena = { x: 0, y: 0, radius: 2500, active: false, growing: false };
         const GAME_DURATION_MS = 30 * 60 * 1000; // 30 minutes
         let minimapFrame = 0;
+        let frameNow = 0;
         let pendingTransitionClear = false;
         let gunboatRespawnAt = null;
         let gunboatLevel2Unlocked = false;
@@ -9325,12 +9409,52 @@
 	            showOverlayMessage("RETURNED FROM WARP", '#0ff', 1800, 2);
 	        }
 
+            // --- Performance: particle pooling (render-only, no gameplay impact) ---
+            const PARTICLE_POOL_MAX = 12000;
+            const SMOKE_POOL_MAX = 6000;
+            const particlePool = [];
+            const smokeParticlePool = [];
+
+            function emitParticle(x, y, vx, vy, color = '#fff', life = 30) {
+                let p = particlePool.length > 0 ? particlePool.pop() : null;
+                if (!p) p = new Particle(x, y, vx, vy, color, life);
+                else p.reset(x, y, vx, vy, color, life);
+                particles.push(p);
+                return p;
+            }
+
+            function emitSmokeParticle(x, y, vx, vy) {
+                let p = smokeParticlePool.length > 0 ? smokeParticlePool.pop() : null;
+                if (!p) p = new SmokeParticle(x, y, vx, vy);
+                else p.reset(x, y, vx, vy);
+                particles.push(p);
+                return p;
+            }
+
+            function compactParticles(arr) {
+                let alive = 0;
+                for (let i = 0; i < arr.length; i++) {
+                    const p = arr[i];
+                    if (p && !p.dead) {
+                        arr[alive++] = p;
+                        continue;
+                    }
+                    if (!p) continue;
+                    if (p._poolType === 'particle') {
+                        if (particlePool.length < PARTICLE_POOL_MAX) particlePool.push(p);
+                    } else if (p._poolType === 'smoke') {
+                        if (smokeParticlePool.length < SMOKE_POOL_MAX) smokeParticlePool.push(p);
+                    }
+                }
+                arr.length = alive;
+            }
+
 	        function spawnParticles(x, y, count = 10, color = '#fff') {
-	            for(let i=0; i<count; i++) particles.push(new Particle(x, y, null, null, color));
+	            for(let i=0; i<count; i++) emitParticle(x, y, null, null, color, 30);
 	        }
 
         function spawnSmoke(x, y, count = 1) {
-            for(let i=0; i<count; i++) particles.push(new SmokeParticle(x, y));
+            for(let i=0; i<count; i++) emitSmokeParticle(x, y, null, null);
         }
 
         function spawnBarrelSmoke(x, y, angle) {
@@ -9339,7 +9463,7 @@
                 const spread = (Math.random()-0.5) * 0.5;
                 const vx = Math.cos(angle + spread) * speed;
                 const vy = Math.sin(angle + spread) * speed;
-                particles.push(new SmokeParticle(x, y, vx, vy));
+                emitSmokeParticle(x, y, vx, vy);
             }
         }
         
@@ -10044,7 +10168,7 @@
                  }
              }
          }
-             draw(ctx) {
+         draw(ctx) {
                  ctx.save();
                  ctx.translate(this.pos.x, this.pos.y);
                  
@@ -10067,21 +10191,34 @@
                  }
                  
                  const pulse = 0.25 + Math.abs(Math.sin(this.t * 0.02)) * 0.25;
-                 ctx.strokeStyle = `rgba(0,255,255,${pulse})`;
+                 // Outer anomaly edge: green so it doesn't blend with cyan walls.
+                 ctx.strokeStyle = `rgba(0,255,120,${pulse})`;
                  ctx.lineWidth = 4;
                  ctx.shadowBlur = 20;
-                 ctx.shadowColor = '#0ff';
+                 ctx.shadowColor = '#0f0';
                  ctx.beginPath();
                  ctx.arc(0, 0, this.radius, 0, Math.PI*2);
                  ctx.stroke();
                  ctx.shadowBlur = 0;
                  
-                 // core target
-                 ctx.strokeStyle = 'rgba(0,255,255,0.8)';
-                 ctx.lineWidth = 3;
+                 // Core target: distinct color/fill to show it's not a wall.
+                 ctx.save();
+                 ctx.fillStyle = `rgba(255,140,0,${0.10 + pulse * 0.20})`;
                  ctx.beginPath();
                  ctx.arc(0, 0, this.coreRadius, 0, Math.PI*2);
+                 ctx.fill();
+                 ctx.shadowBlur = 18;
+                 ctx.shadowColor = '#f80';
+                 ctx.strokeStyle = `rgba(255,140,0,${0.55 + pulse * 0.25})`;
+                 ctx.lineWidth = 4;
                  ctx.stroke();
+                 ctx.shadowBlur = 0;
+                 ctx.fillStyle = '#fff';
+                 ctx.font = `bold ${Math.round(16 / (currentZoom || ZOOM_LEVEL))}px Courier New`;
+                 ctx.textAlign = 'center';
+                 ctx.textBaseline = 'middle';
+                 ctx.fillText('CORE', 0, 0);
+                 ctx.restore();
                  ctx.restore();
              }
          }
@@ -11330,11 +11467,23 @@
                 for (let i = 0; i < pads.length; i++) {
                     if (pads[i]) { gamepadIndex = i; break; }
                 }
+                // If no pads are present, fall back to mouse/keyboard mode.
+                if (!pads.some(p => p)) {
+                    gamepadIndex = null;
+                    lastGamepadInputAt = 0;
+                    updateInputMode(Date.now());
+                }
                 return;
             }
 
-            const deadzone = 0.1;
-            const applyDeadzone = (v) => Math.abs(v) < deadzone ? 0 : v;
+            const deadzone = 0.12;
+            const applyDeadzone = (v) => {
+                const a = Math.abs(v);
+                if (a <= deadzone) return 0;
+                // Rescale so values just outside the deadzone don't feel sluggish.
+                const scaled = (a - deadzone) / (1 - deadzone);
+                return Math.sign(v) * scaled;
+            };
 
             let gamepadInput = false;
             if (gp.axes.some(axis => Math.abs(axis) > deadzone) || gp.buttons.some(button => button.pressed)) {
@@ -11342,8 +11491,7 @@
             }
 
             if (gamepadInput) {
-                usingGamepad = true;
-                document.body.classList.add('no-cursor');
+                lastGamepadInputAt = Date.now();
             }
 
             gpState.move.x = applyDeadzone(gp.axes[0]);
@@ -11352,6 +11500,7 @@
             gpState.aim.y = applyDeadzone(gp.axes[3]);
             
             const now = Date.now();
+            updateInputMode(now);
             if (gp.buttons[9].pressed && !gpState.pausePressed) { // Start
                 togglePause();
                 gpState.pausePressed = true;
@@ -11450,6 +11599,25 @@
 
         function mainLoop() {
             animationId = requestAnimationFrame(mainLoop);
+            // FPS counter (render-only).
+            if (fpsCounterEl) {
+                const shouldShow = !!gameActive;
+                if (fpsUiVisible !== shouldShow) {
+                    fpsCounterEl.style.display = shouldShow ? 'block' : 'none';
+                    fpsUiVisible = shouldShow;
+                }
+                
+                const t = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+                const dt = Math.max(0, Math.min(250, t - fpsLastFrameAt));
+                fpsLastFrameAt = t;
+                fpsSmoothMs = fpsSmoothMs * 0.9 + dt * 0.1;
+                
+                if (shouldShow && t >= fpsNextUiAt) {
+                    const fps = fpsSmoothMs > 0 ? (1000 / fpsSmoothMs) : 0;
+                    fpsCounterEl.textContent = `FPS ${fps.toFixed(0)}  ${fpsSmoothMs.toFixed(1)}ms`;
+                    fpsNextUiAt = t + 250;
+                }
+            }
             updateGamepad();
             if (gameActive && !gamePaused) {
                 gameLoopLogic();
@@ -11460,6 +11628,7 @@
 	            if (!player) return;
 	            
 	            const now = Date.now();
+                frameNow = now;
 	            const warpActive = !!(warpZone && warpZone.active);
             
             // Safe clears after a station destruction to avoid mid-loop mutation
@@ -11935,13 +12104,17 @@
      
                     const drawNebula = (x, y) => { 
                         if (x + n.radius < 0 || x - n.radius > width || y + n.radius < 0 || y - n.radius > height) return; 
-                        const g = ctx.createRadialGradient(x, y, 0, x, y, n.radius); 
-                        g.addColorStop(0, n.colorStart); 
-                        g.addColorStop(1, n.colorEnd); 
-                        ctx.fillStyle = g; 
-                        ctx.beginPath(); 
-                        ctx.arc(x, y, n.radius, 0, Math.PI*2); 
-                        ctx.fill(); 
+                        if (n._sprite) {
+                            ctx.drawImage(n._sprite, x - n.radius, y - n.radius, n.radius * 2, n.radius * 2);
+                        } else {
+                            const g = ctx.createRadialGradient(x, y, 0, x, y, n.radius); 
+                            g.addColorStop(0, n.colorStart); 
+                            g.addColorStop(1, n.colorEnd); 
+                            ctx.fillStyle = g; 
+                            ctx.beginPath(); 
+                            ctx.arc(x, y, n.radius, 0, Math.PI*2); 
+                            ctx.fill(); 
+                        }
                     }; 
      
                     drawNebula(bx, by); 
@@ -11964,7 +12137,7 @@
                     if (x < 0) x += width; 
                     if (y < 0) y += height; 
                      
-                    ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha})`; 
+                    ctx.fillStyle = s.fillStyle; 
                     ctx.fillRect(x, y, s.size, s.size); 
                 } 
             }  
@@ -12055,14 +12228,14 @@
             bullets.forEach(b => { b.update(); b.draw(ctx); });
             bossBombs.forEach(b => { b.update(); b.draw(ctx); });
             guidedMissiles.forEach(m => { m.update(); m.draw(ctx); });
-            particles.forEach(p => { p.update(); p.draw(ctx); });
+            for (let i = 0; i < particles.length; i++) { const p = particles[i]; p.update(); p.draw(ctx); }
             drones.forEach(d => { d.update(); d.draw(ctx); });
 
-            warpParticles.forEach(p => { p.update(); p.draw(ctx); });
-            warpParticles = warpParticles.filter(p => !p.dead);
+            for (let i = 0; i < warpParticles.length; i++) { const p = warpParticles[i]; p.update(); p.draw(ctx); }
+            compactArray(warpParticles);
 
-            shockwaves.forEach(s => { s.update(); s.draw(ctx); });
-            shockwaves = shockwaves.filter(s => !s.dead);
+            for (let i = 0; i < shockwaves.length; i++) { const s = shockwaves[i]; s.update(); s.draw(ctx); }
+            compactArray(shockwaves);
 
             compactArray(bullets);
             compactArray(bossBombs);
@@ -12070,7 +12243,7 @@
             compactArray(enemies);
             compactArray(bases);
             compactArray(environmentAsteroids);
-            compactArray(particles);
+            compactParticles(particles);
             compactArray(floatingTexts);
             compactArray(coins);
             compactArray(nuggets);
@@ -12515,6 +12688,7 @@
             ctx.restore(); 
             drawStationIndicator(); 
             drawWarpGateIndicator();
+            drawFlagshipWarpZoneIndicator();
             drawMinimap(); 
             drawContractIndicator(); 
             drawMiniEventIndicator();
@@ -12661,6 +12835,75 @@
             ctx.shadowBlur = 4;
             ctx.shadowColor = '#000';
             ctx.fillText("WARP", 0, -18);
+            const dist = Math.hypot(dx, dy);
+            ctx.fillText((dist/1000).toFixed(1) + 'km', 0, 25);
+            ctx.shadowBlur = 0;
+
+            ctx.restore();
+        }
+
+        function drawFlagshipWarpZoneIndicator() {
+            if (!flagshipWarpZone || !player || player.dead || flagshipWarpZone.dead) return;
+
+            const screenW = canvas.width;
+            const screenH = canvas.height;
+            const z = currentZoom || ZOOM_LEVEL;
+            const camX = player.pos.x - screenW / (2 * z);
+            const camY = player.pos.y - screenH / (2 * z);
+            const viewW = screenW / z;
+            const viewH = screenH / z;
+
+            if (flagshipWarpZone.pos.x > camX && flagshipWarpZone.pos.x < camX + viewW &&
+                flagshipWarpZone.pos.y > camY && flagshipWarpZone.pos.y < camY + viewH) {
+                return;
+            }
+
+            const dx = flagshipWarpZone.pos.x - player.pos.x;
+            const dy = flagshipWarpZone.pos.y - player.pos.y;
+            const angle = Math.atan2(dy, dx);
+
+            const margin = 60;
+            const cx = screenW / 2;
+            const cy = screenH / 2;
+            const vx = Math.cos(angle);
+            const vy = Math.sin(angle);
+
+            const bx = cx - margin;
+            const by = cy - margin;
+            const tx = Math.abs(vx) > 0.001 ? bx / Math.abs(vx) : Infinity;
+            const ty = Math.abs(vy) > 0.001 ? by / Math.abs(vy) : Infinity;
+            const t = Math.min(tx, ty);
+
+            const arrowX = cx + vx * t;
+            const arrowY = cy + vy * t;
+
+            ctx.save();
+            ctx.translate(arrowX, arrowY);
+            ctx.rotate(angle);
+
+            const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
+            ctx.scale(pulse, pulse);
+
+            ctx.fillStyle = '#f0f';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.moveTo(15, 0);
+            ctx.lineTo(-15, 12);
+            ctx.lineTo(-15, -12);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.rotate(-angle);
+            ctx.fillStyle = '#f0f';
+            ctx.font = 'bold 14px Courier New';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = '#000';
+            ctx.fillText("FLAGSHIP", 0, -18);
             const dist = Math.hypot(dx, dy);
             ctx.fillText((dist/1000).toFixed(1) + 'km', 0, 25);
             ctx.shadowBlur = 0;
@@ -13316,8 +13559,12 @@
         });
 
         window.addEventListener('mousemove', e => {
-            usingGamepad = false;
-            document.body.classList.remove('no-cursor');
+            const now = Date.now();
+            const dx = Math.abs(e.clientX - mouseScreen.x);
+            const dy = Math.abs(e.clientY - mouseScreen.y);
+            // Ignore tiny pointer jitter so it doesn't steal aim from the gamepad.
+            if (dx + dy >= 2) lastMouseInputAt = now;
+            updateInputMode(now);
             if (typeof mouseScreen !== 'undefined') {
                 mouseScreen.x = e.clientX;
                 mouseScreen.y = e.clientY;
@@ -13343,6 +13590,12 @@
             console.log("Gamepad connected");
             gamepadIndex = e.gamepad.index;
             initAudio();
+        });
+
+        window.addEventListener("gamepaddisconnected", (e) => {
+            if (gamepadIndex === e.gamepad.index) gamepadIndex = null;
+            lastGamepadInputAt = 0;
+            updateInputMode(Date.now());
         });
 
         document.getElementById('start-btn').addEventListener('click', () => {

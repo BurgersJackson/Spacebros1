@@ -1,0 +1,40 @@
+﻿        let asteroidRespawnTimers = []; 
+        let baseRespawnTimers = [];     
+
+        // Camera Shake
+        let shakeTimer = 0;
+        let shakeMagnitude = 0;
+
+        // Inputs
+        const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, e: false };
+        const mouseScreen = { x: 0, y: 0 };
+        const mouseWorld = { x: 0, y: 0 };
+        
+        // Gamepad State
+        let gamepadIndex = null;
+        let gpState = {
+            move: { x: 0, y: 0 },
+            aim: { x: 0, y: 0 },
+            fire: false,
+            warp: false,
+            turbo: false,
+            pausePressed: false
+        };
+        let usingGamepad = false;
+        let menuDebounce = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            minimapCanvas.width = 200;
+            minimapCanvas.height = 200;
+            initStars();
+        }
+        
+        function initStars() {
+            starfield = [];
+            nebulas = [];
+            const count = Math.floor((width * height) / 3000); 
+            for(let i=0; i<count; i++) {
+                starfield.push({
+                    x: Math.random() * width,
