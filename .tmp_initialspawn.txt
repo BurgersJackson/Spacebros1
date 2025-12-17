@@ -1,0 +1,40 @@
+﻿            // Safe clears after a station destruction to avoid mid-loop mutation
+            if (pendingTransitionClear) {
+                enemies = [];
+                bases = [];
+                bullets = [];
+                bossBombs = [];
+                floatingTexts = [];
+                bossActive = false;
+                boss = null;
+            bossArena.active = false;
+            roamerRespawnQueue = [];
+            baseRespawnTimers = [];
+            pendingTransitionClear = false;
+            gunboatRespawnAt = null;
+        }
+            // Delay the first wave to give the player breathing room (not used in cave mode) 
+            if (!caveMode && !initialSpawnDone && initialSpawnDelayAt && now >= initialSpawnDelayAt) { 
+                initialSpawnDone = true; 
+                initialSpawnDelayAt = null; 
+                showOverlayMessage("ENEMIES DETECTED", '#f00', 2000); 
+                maxRoamers = 3; 
+                for (let i = 0; i < 3; i++) { 
+                    const start = findSpawnPointRelative(true, 1200); 
+                    enemies.push(new Enemy('roamer', start)); 
+                } 
+                for (let i = 0; i < 3; i++) spawnNewBaseRelative(true); 
+            } 
+            // Update HUD timer (exclude paused time)
+            try {
+                const tEl = document.getElementById('game-timer');
+                if (tEl && gameStartTime) {
+                    let elapsed = now - gameStartTime - pausedAccumMs;
+                    if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
+                    if (elapsed < 0) elapsed = 0;
+                    tEl.innerText = formatTime(elapsed);
+                    if (!gameEnded && elapsed >= GAME_DURATION_MS) {
+                        endGame(elapsed);
+                        return;
+                    }
+                }

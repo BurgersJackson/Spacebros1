@@ -1,0 +1,40 @@
+﻿	                
+	                nextShootingStarTime,
+	                nextIntensityBreakAt,
+	                intensityBreakActive
+	            };
+	        }
+	        
+	        function enterWarpMaze() { 
+	            if (warpZone && warpZone.active) return;
+	            if (warpSnapshot) return;
+	            if (warpCompletedOnce) {
+	                showOverlayMessage("WARP ALREADY COMPLETED", '#0ff', 1200, 2);
+	                return;
+	            }
+	            warpSnapshot = snapshotWorldForWarp();
+	            
+	            // Clear world to make a controlled encounter space.
+	            bullets = [];
+	            bossBombs = [];
+	            guidedMissiles = [];
+	            enemies = [];
+	            bases = [];
+	            particles = [];
+	            floatingTexts = [];
+	            coins = [];
+	            nuggets = [];
+	            powerups = [];
+	            shootingStars = [];
+	            drones = [];
+	            caches = [];
+	            pois = [];
+	            gateKeyItems = [];
+	            
+	            environmentAsteroids = [];
+	            asteroidRespawnTimers = [];
+	            baseRespawnTimers = [];
+	            
+	            radiationStorm = null;
+	            miniEvent = null;
+	            

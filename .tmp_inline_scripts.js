@@ -856,6 +856,7 @@
             gateKeys = 0;
             gateKeyItems = [];
             flagshipWarpZone = null;
+            warpCompletedOnce = false;
             caveMode = false;
             caveLevel = null;
             flagshipSpawned = false;
@@ -1230,8 +1231,8 @@
                     multiShot: 1,
                     homing: 0, // 0=none, 1=weak, 2=strong
                     shieldRegenRate: 8, // seconds per segment
-                    hpRegenAmount: 0, // HP per tick
-                    hpRegenRate: 5, // seconds per tick
+                    hpRegenAmount: 1, // HP per tick
+                    hpRegenRate: 10, // seconds per tick
                     speedMult: 1.0,
                     // accelMult and rotMult removed
                     slowField: 0, // Radius
@@ -1618,14 +1619,15 @@
                 const shotgunTier = this.inventory['shotgun'] || 0;
                 if (shotgunTier > 0 && this.shotgunTimer <= 0) {
                     const count = shotgunTier === 1 ? 5 : (shotgunTier === 2 ? 8 : 12);
-                    const dmg = this.stats.damageMult * 0.5;
+                    const dmg = this.stats.damageMult * 0.7;
                     const spread = 0.5; 
+                    const lifeByTier = [0, 23, 25, 28];
                     
                     for(let i=0; i<count; i++) {
                         const a = this.turretAngle + (Math.random() - 0.5) * spread;
                         const s = 12 + (Math.random() - 0.5) * 4;
                         const b = new Bullet(this.pos.x, this.pos.y, a, false, dmg, s, 3, '#ff0', 0, 'square');
-                        b.life = (20 + (shotgunTier * 5)) * this.stats.rangeMult;
+                        b.life = (lifeByTier[shotgunTier] || 23) * this.stats.rangeMult;
                         bullets.push(b);
                     }
                     // Shotgun uses a soft visual only (no sound)
@@ -3379,15 +3381,25 @@
                         }
                     }
 
+                    // Aggression ramp: ease-in early, then match prior behavior.
+                    let elapsed = Date.now() - gameStartTime - pausedAccumMs;
+                    if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
+                    if (elapsed < 0) elapsed = 0;
+                    const elapsedMinutes = elapsed / 60000;
+                    const rampT = Math.max(0, Math.min(1, elapsedMinutes / 10));
+                    const chaseAccel = (0.03 + 0.02 * rampT);
+                    const speedRamp = (0.85 + 0.15 * rampT);
+
                     if (dist > 250) { 
                         const angle = Math.atan2(dy, dx);
-                        this.vel.x += Math.cos(angle) * 0.05; 
-                        this.vel.y += Math.sin(angle) * 0.05;
+                        this.vel.x += Math.cos(angle) * chaseAccel; 
+                        this.vel.y += Math.sin(angle) * chaseAccel;
                     }
                     this.vel.x += dreadAvoidX;
                     this.vel.y += dreadAvoidY;
                     const speed = this.vel.mag();
                     let maxSpeed = this.type === 'heavy' ? 1.5 : (this.type === 'rapid' ? 3.0 : 2.5);
+                    maxSpeed *= speedRamp;
                     if (speed > maxSpeed) this.vel.mult(maxSpeed/speed);
                 } else {
                     this.vel.mult(0.99);
@@ -3401,6 +3413,15 @@
                 if (this.hp <= 5 && Math.random() < 0.1) spawnSmoke(this.pos.x, this.pos.y, 1);
 
                 if (player && !player.dead) {
+                    // Start easier: bases ramp up aggression over the first minutes.
+                    const now = Date.now();
+                    let elapsed = now - gameStartTime - pausedAccumMs;
+                    if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
+                    if (elapsed < 0) elapsed = 0;
+                    const elapsedMinutes = elapsed / 60000;
+                    const rampT = Math.max(0, Math.min(1, elapsedMinutes / 10));
+                    const cooldownMult = 1.35 - 0.35 * rampT; // slower early, normal later
+
                     let px = player.pos.x, py = player.pos.y;
                     const dx = px - this.pos.x;
                     const dy = py - this.pos.y;
@@ -3409,7 +3430,8 @@
                     this.turretAngle = Math.atan2(dy, dx);
                     this.angle += 0.002;
 
-                    if (dist < 1500) {
+                    const fireRange = 1100 + 400 * rampT;
+                    if (dist < fireRange) {
                         this.shootTimer--;
                         if (this.shootTimer <= 0) {
                             const shootAngle = this.turretAngle;
@@ -3422,7 +3444,7 @@
                                     spawnBarrelSmoke(bx, by, a);
                                 }
                                 playSound('heavy_shoot');
-                                this.shootTimer = 120;
+                                this.shootTimer = Math.round(120 * cooldownMult);
                             } else if (this.type === 'rapid') {
                                 const spread = (Math.random() - 0.5) * 0.1;
                                 const a = shootAngle + spread;
@@ -3431,7 +3453,7 @@
                                 bullets.push(new Bullet(bx, by, a, true, 1, 14, 3, '#0ff'));
                                 spawnBarrelSmoke(bx, by, a);
                                 playSound('rapid_shoot');
-                                this.shootTimer = 20; 
+                                this.shootTimer = Math.round(20 * cooldownMult); 
                             } else {
                                 const damage = 2;
                                 // 3-sided star shooting pattern
@@ -3443,7 +3465,7 @@
                                     spawnBarrelSmoke(bx, by, a);
                                 }
                                 playSound('shoot');
-                                this.shootTimer = difficultyTier >= 2 ? 40 : 60; 
+                                this.shootTimer = Math.round((difficultyTier >= 2 ? 40 : 60) * cooldownMult); 
                             }
                         }
                     }
@@ -3868,11 +3890,11 @@
 	                
 	                if (this.mode === 'entry') {
 	                    if (warpCompletedOnce) {
-	                        showOverlayMessage("WARP ALREADY COMPLETED", '#0ff', 1200, 2);
+	                        showOverlayMessage("WARP ALREADY USED THIS SECTOR", '#f80', 1200, 2);
 	                        return;
 	                    }
-	                    if (gateKeys < 1) {
-	                        showOverlayMessage("WARP GATE LOCKED (NEED 1 KEY)", '#ff0', 1200);
+	                    if (gateKeys < 2) {
+	                        showOverlayMessage("WARP GATE LOCKED (NEED 2 KEYS)", '#ff0', 1200);
 	                        return;
 	                    }
 	                    if (warpZone && warpZone.active) return;
@@ -3895,18 +3917,19 @@
 	                if (this.dead) return;
 	                const z = currentZoom || ZOOM_LEVEL;
 	                const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.45;
+	                const gateColor = '#f80';
 	                ctx.save();
 	                ctx.translate(this.pos.x, this.pos.y);
 	                ctx.lineWidth = 6 / z;
 	                ctx.shadowBlur = 24;
-	                ctx.shadowColor = this.mode === 'exit' ? '#0ff' : '#b0f';
-	                ctx.strokeStyle = this.mode === 'exit' ? `rgba(0,255,255,${0.35 + pulse})` : `rgba(180,0,255,${0.35 + pulse})`;
+	                ctx.shadowColor = gateColor;
+	                ctx.strokeStyle = `rgba(255,140,0,${0.35 + pulse})`;
 	                ctx.beginPath();
 	                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
 	                ctx.stroke();
 	                ctx.shadowBlur = 0;
 	                ctx.globalAlpha = 0.08;
-	                ctx.fillStyle = this.mode === 'exit' ? '#0ff' : '#b0f';
+	                ctx.fillStyle = gateColor;
 	                ctx.beginPath();
 	                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
 	                ctx.fill();
@@ -8987,6 +9010,7 @@
 	        let warpGate = null;
 	        let warpZone = null;
 	        let warpSnapshot = null;
+	        // Per-sector limiter: only allow entering the warp maze once per sector.
 	        let warpCompletedOnce = false;
 	        let flagshipWarpZone = null;
 	        let caveMode = false;
@@ -9115,9 +9139,10 @@
 	            if (warpZone && warpZone.active) return;
 	            if (warpSnapshot) return;
 	            if (warpCompletedOnce) {
-	                showOverlayMessage("WARP ALREADY COMPLETED", '#0ff', 1200, 2);
+	                showOverlayMessage("WARP ALREADY USED THIS SECTOR", '#f80', 1200, 2);
 	                return;
 	            }
+	            warpCompletedOnce = true;
 	            warpSnapshot = snapshotWorldForWarp();
 	            
 	            // Clear world to make a controlled encounter space.
@@ -9297,7 +9322,6 @@
 	            warpZone = null;
 	            warpGate = null;
 	            warpSnapshot = null;
-	            if (completedRun) warpCompletedOnce = true;
 	            showOverlayMessage("RETURNED FROM WARP", '#0ff', 1800, 2);
 	        }
 
@@ -11459,11 +11483,11 @@
                 initialSpawnDelayAt = null; 
                 showOverlayMessage("ENEMIES DETECTED", '#f00', 2000); 
                 maxRoamers = 3; 
-                for (let i = 0; i < 3; i++) { 
+                for (let i = 0; i < 2; i++) { 
                     const start = findSpawnPointRelative(true, 1200); 
                     enemies.push(new Enemy('roamer', start)); 
                 } 
-                for (let i = 0; i < 3; i++) spawnNewBaseRelative(true); 
+                for (let i = 0; i < 1; i++) spawnNewBaseRelative(true); 
             } 
             // Update HUD timer (exclude paused time)
             try {
@@ -11491,15 +11515,14 @@
 	                }
 	            }
 	            
-	            // World warp gate (opens when you have at least 1 key, and you're not already in a warp zone).
-	            // One-time per run: once completed, it never opens again.
+	            // World warp gate (opens after the 2nd cruiser key, once per sector).
 	            if (!warpActive && !bossActive && !sectorTransitionActive && !warpCompletedOnce && !caveMode) { 
-	                if (gateKeys >= 1) { 
+	                if (gateKeys >= 2) { 
 	                    if (!warpGate || warpGate.mode !== 'entry') { 
 	                        const gx = player.pos.x + 900; 
 	                        const gy = player.pos.y; 
 	                        warpGate = new WarpGate(gx, gy, 'entry'); 
-	                        showOverlayMessage("WARP GATE OPEN", '#b0f', 1600);
+	                        showOverlayMessage("WARP GATE OPEN", '#f80', 1600);
 	                    }
 	                } else {
 	                    if (warpGate && warpGate.mode === 'entry') warpGate = null;
@@ -11775,7 +11798,8 @@
                 const rampMinutes = 28; // slower ramp
                 const rampT = Math.min(1, elapsedMinutes / rampMinutes);
                 const difficultyBonus = Math.max(0, (difficultyTier + player.level * 0.1) - 1) * 0.3;
-                const targetRoamers = Math.floor(baseRoamers + (maxRoamers - baseRoamers) * rampT + difficultyBonus);
+                const earlyEnemyFactor = (elapsedMinutes < 4) ? 0.75 : 1.0;
+                const targetRoamers = Math.floor((baseRoamers + (maxRoamers - baseRoamers) * rampT + difficultyBonus) * earlyEnemyFactor);
 
                 const currentRoamers = enemies.filter(e => e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter').length;
                 if (!intensityBreakActive && currentRoamers + roamerRespawnQueue.length < targetRoamers) {
@@ -11832,16 +11856,35 @@
             for (let i = 0; i < environmentAsteroids.length; i++) asteroidGrid.insert(environmentAsteroids[i]);
 
 	            if (!warpActive && !bossActive && !sectorTransitionActive && initialSpawnDone) {
-	                if (bases.length < 3) {
+	                // Ramp base count up over the first few minutes (start easier).
+	                let elapsed = now - gameStartTime - pausedAccumMs;
+	                if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
+	                if (elapsed < 0) elapsed = 0;
+	                const elapsedMinutes = elapsed / 60000;
+
+	                let targetBases = caveMode ? 3 : 3;
+	                if (!caveMode) {
+	                    if (elapsedMinutes < 2) targetBases = 1;
+	                    else if (elapsedMinutes < 5) targetBases = 2;
+	                    else if (elapsedMinutes < 10) targetBases = 3;
+	                    else targetBases = 4;
+	                }
+
+	                if (bases.length < targetBases) {
 	                    if (baseRespawnTimers.length === 0) spawnNewBaseRelative();
 	                }
-                
-                for(let i = baseRespawnTimers.length - 1; i >= 0; i--) {
-                    if (now > baseRespawnTimers[i]) {
-                        spawnNewBaseRelative();
-                        baseRespawnTimers.splice(i, 1);
-                    }
-                }
+
+	                for(let i = baseRespawnTimers.length - 1; i >= 0; i--) {
+	                    if (now > baseRespawnTimers[i]) {
+	                        if (bases.length < targetBases) {
+	                            spawnNewBaseRelative();
+	                            baseRespawnTimers.splice(i, 1);
+	                        } else {
+	                            // Delay respawns until the current target count needs them.
+	                            baseRespawnTimers[i] = now + 8000;
+	                        }
+	                    }
+	                }
             }
             
             // Arena ring is now static; no shrinking/growing
@@ -12471,6 +12514,7 @@
              
             ctx.restore(); 
             drawStationIndicator(); 
+            drawWarpGateIndicator();
             drawMinimap(); 
             drawContractIndicator(); 
             drawMiniEventIndicator();
@@ -12551,6 +12595,76 @@
             ctx.fillText((dist/1000).toFixed(1) + 'km', 0, 25);
             ctx.shadowBlur = 0;
             
+            ctx.restore();
+        }
+
+        function drawWarpGateIndicator() {
+            if (!warpGate || !player || player.dead || warpGate.dead) return;
+            if (warpGate.mode !== 'entry') return;
+
+            const screenW = canvas.width;
+            const screenH = canvas.height;
+            const z = currentZoom || ZOOM_LEVEL;
+            const camX = player.pos.x - screenW / (2 * z);
+            const camY = player.pos.y - screenH / (2 * z);
+            const viewW = screenW / z;
+            const viewH = screenH / z;
+
+            if (warpGate.pos.x > camX && warpGate.pos.x < camX + viewW &&
+                warpGate.pos.y > camY && warpGate.pos.y < camY + viewH) {
+                return;
+            }
+
+            const dx = warpGate.pos.x - player.pos.x;
+            const dy = warpGate.pos.y - player.pos.y;
+            const angle = Math.atan2(dy, dx);
+
+            const margin = 60;
+            const cx = screenW / 2;
+            const cy = screenH / 2;
+            const vx = Math.cos(angle);
+            const vy = Math.sin(angle);
+
+            const bx = cx - margin;
+            const by = cy - margin;
+            const tx = Math.abs(vx) > 0.001 ? bx / Math.abs(vx) : Infinity;
+            const ty = Math.abs(vy) > 0.001 ? by / Math.abs(vy) : Infinity;
+            const t = Math.min(tx, ty);
+
+            const arrowX = cx + vx * t;
+            const arrowY = cy + vy * t;
+
+            ctx.save();
+            ctx.translate(arrowX, arrowY);
+            ctx.rotate(angle);
+
+            const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
+            ctx.scale(pulse, pulse);
+
+            ctx.fillStyle = '#f80';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.moveTo(15, 0);
+            ctx.lineTo(-15, 12);
+            ctx.lineTo(-15, -12);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.rotate(-angle);
+            ctx.fillStyle = '#f80';
+            ctx.font = 'bold 14px Courier New';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = '#000';
+            ctx.fillText("WARP", 0, -18);
+            const dist = Math.hypot(dx, dy);
+            ctx.fillText((dist/1000).toFixed(1) + 'km', 0, 25);
+            ctx.shadowBlur = 0;
+
             ctx.restore();
         }
 
@@ -12765,7 +12879,7 @@
 	                if (warpGate && !warpGate.dead) {
 	                    const dx = (warpGate.pos.x - refX) * scale;
 	                    const dy = (warpGate.pos.y - refY) * scale;
-	                    minimapCtx.strokeStyle = warpGate.mode === 'exit' ? 'rgba(0,255,255,0.9)' : 'rgba(180,0,255,0.9)';
+	                    minimapCtx.strokeStyle = 'rgba(255,140,0,0.9)';
 	                    minimapCtx.beginPath();
 	                    minimapCtx.arc(dx, dy, 7, 0, Math.PI * 2);
 	                    minimapCtx.stroke();
@@ -13020,8 +13134,8 @@
                 multiShot: 1,
                 homing: 0, 
                 shieldRegenRate: 8, // seconds per segment baseline
-                hpRegenAmount: 0,
-                hpRegenRate: 5,
+                hpRegenAmount: 1,
+                hpRegenRate: 10,
                 speedMult: 1.0,
                 slowField: 0,
                 slowFieldDuration: 0

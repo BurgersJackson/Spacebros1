@@ -1,0 +1,70 @@
+﻿            gameActive = true;
+            gamePaused = false;
+            sectorTransitionActive = false;
+            warpCountdownAt = null;
+            sectorIndex++;
+            // Heal player
+            player.hp = player.maxHp;
+            player.invulnerable = 180;
+            player.shieldSegments = player.shieldSegments.map(() => 2);
+            if (player.maxOuterShieldSegments && player.maxOuterShieldSegments > 0) {
+                player.outerShieldSegments = new Array(player.maxOuterShieldSegments).fill(1);
+            }
+            updateHealthUI();
+            
+            // Warp effect
+            spawnParticles(player.pos.x, player.pos.y, 40, '#0ff');
+            player.pos.x = 0;
+            player.pos.y = 0;
+            player.vel.x = 0;
+            player.vel.y = 0;
+            spawnParticles(player.pos.x, player.pos.y, 40, '#0ff');
+            
+            // Reset world for new sector
+            bullets = [];
+            bossBombs = [];
+            guidedMissiles = [];
+            enemies = [];
+            bases = [];
+            coins = [];
+            nuggets = [];
+            environmentAsteroids = [];
+            asteroidRespawnTimers = [];
+            baseRespawnTimers = [];
+            roamerRespawnQueue = [];
+            caches = [];
+            powerups = [];
+            shootingStars = [];
+            drones = [];
+            contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+            activeContract = null;
+            nextContractAt = Date.now() + 30000;
+            radiationStorm = null;
+            scheduleNextRadiationStorm(Date.now() + 15000);
+            miniEvent = null;
+            nextMiniEventAt = Date.now() + 120000;
+            scheduleNextMiniEvent(Date.now() + 20000);
+            pois = [];
+            gateKeys = 0;
+            gateKeyItems = [];
+            flagshipWarpZone = null;
+            caveMode = false;
+            caveLevel = null;
+            flagshipSpawned = false;
+            flagshipSpawnAt = 0;
+            
+            initStars(); // update nebula palette
+            
+            // Sector 2: long cave run instead of open space.
+            if (sectorIndex === 2) {
+                startCaveSector2();
+                dreadManager.timerActive = false;
+                dreadManager.timerAt = null;
+                cruiserTimerPausedAt = null;
+                return;
+            }
+            
+            generateMap();
+            for(let i=0; i<3; i++) spawnNewBaseRelative(true);
+            gunboatRespawnAt = Date.now() + 5000;
+            gunboatLevel2Unlocked = true; // level 2 gunboats allowed after warp

@@ -1,0 +1,60 @@
+﻿	                
+	                if (dreadManager && dreadManager.timerActive && typeof dreadManager.timerAt === 'number') {
+	                    dreadManager.timerAt += warpDt;
+	                }
+	                
+	                if (radiationStorm && typeof radiationStorm.endsAt === 'number') {
+	                    radiationStorm.endsAt += warpDt;
+	                }
+	                if (miniEvent) {
+	                    if (typeof miniEvent.expiresAt === 'number') miniEvent.expiresAt += warpDt;
+	                    if (typeof miniEvent.nextWaveAt === 'number') miniEvent.nextWaveAt += warpDt;
+	                    if (typeof miniEvent.lastUpdateAt === 'number') miniEvent.lastUpdateAt = Date.now();
+	                }
+	                if (activeContract) {
+	                    if (typeof activeContract.endsAt === 'number') activeContract.endsAt += warpDt;
+	                }
+	            }
+	            
+	            nextShootingStarTime = warpSnapshot.nextShootingStarTime;
+	            nextIntensityBreakAt = warpSnapshot.nextIntensityBreakAt;
+	            intensityBreakActive = warpSnapshot.intensityBreakActive;
+	            
+	            // Player returns.
+	            player.pos.x = warpSnapshot.playerPos.x;
+	            player.pos.y = warpSnapshot.playerPos.y;
+	            player.vel.x = warpSnapshot.playerVel.x;
+	            player.vel.y = warpSnapshot.playerVel.y;
+	            
+	            warpZone = null;
+	            warpGate = null;
+	            warpSnapshot = null;
+	            if (completedRun) warpCompletedOnce = true;
+	            showOverlayMessage("RETURNED FROM WARP", '#0ff', 1800, 2);
+	        }
+
+	        function spawnParticles(x, y, count = 10, color = '#fff') {
+	            for(let i=0; i<count; i++) particles.push(new Particle(x, y, null, null, color));
+	        }
+
+        function spawnSmoke(x, y, count = 1) {
+            for(let i=0; i<count; i++) particles.push(new SmokeParticle(x, y));
+        }
+
+        function spawnBarrelSmoke(x, y, angle) {
+            for(let i=0; i<3; i++) {
+                const speed = 2 + Math.random() * 2;
+                const spread = (Math.random()-0.5) * 0.5;
+                const vx = Math.cos(angle + spread) * speed;
+                const vy = Math.sin(angle + spread) * speed;
+                particles.push(new SmokeParticle(x, y, vx, vy));
+            }
+        }
+        
+        // --- Meta Progression ---
+        function loadMetaProfile() {
+            try {
+                const raw = localStorage.getItem('meta_profile_v1');
+                if (raw) metaProfile = JSON.parse(raw);
+                if (!metaProfile.purchases) metaProfile.purchases = {};
+                metaProfile.purchases = Object.assign({

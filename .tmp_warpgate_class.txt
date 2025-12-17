@@ -1,0 +1,180 @@
+﻿                ctx.strokeStyle = '#fff';
+                ctx.fillStyle = '#ff0';
+                ctx.lineWidth = 2;
+
+                // simple key icon
+                ctx.beginPath();
+                ctx.arc(0, 0, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(8, 0);
+                ctx.lineTo(22, 0);
+                ctx.lineTo(22, 6);
+                ctx.lineTo(18, 6);
+                ctx.lineTo(18, 2);
+                ctx.lineTo(8, 2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            }
+	        }
+	        
+	        class WarpGate extends Entity {
+	            constructor(x, y, mode = 'entry') {
+	                super(x, y);
+	                this.mode = mode; // 'entry' (world) | 'exit' (warp)
+	                this.radius = 140;
+	                this.t = 0;
+	            }
+	            update() {
+	                if (!player || player.dead) return;
+	                this.t++;
+	                const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+	                if (dist > this.radius + player.radius) return;
+	                
+	                if (this.mode === 'entry') {
+	                    if (warpCompletedOnce) {
+	                        showOverlayMessage("WARP ALREADY COMPLETED", '#0ff', 1200, 2);
+	                        return;
+	                    }
+	                    if (gateKeys < 1) {
+	                        showOverlayMessage("WARP GATE LOCKED (NEED 1 KEY)", '#ff0', 1200);
+	                        return;
+	                    }
+	                    if (warpZone && warpZone.active) return;
+	                    showOverlayMessage("WARP INITIATED", '#0ff', 1400, 3);
+	                    playSound('contract');
+	                    enterWarpMaze();
+	                } else if (this.mode === 'exit') {
+	                    if (!warpZone || !warpZone.active) return;
+	                    const bossEngaged = (warpZone.state === 'boss') || (bossActive && boss && boss.isWarpBoss && !boss.dead);
+	                    if (bossEngaged && !warpZone.exitUnlocked) {
+	                        showOverlayMessage("EXIT SEALED - DEFEAT THE SENTINEL", '#f0f', 1400, 3);
+	                        return;
+	                    }
+	                    showOverlayMessage(bossEngaged ? "WARP EXIT STABILIZED" : "RETREATING FROM WARP", '#0ff', 1200, 3);
+	                    playSound('contract');
+	                    exitWarpMaze();
+	                }
+	            }
+	            draw(ctx) {
+	                if (this.dead) return;
+	                const z = currentZoom || ZOOM_LEVEL;
+	                const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.45;
+	                ctx.save();
+	                ctx.translate(this.pos.x, this.pos.y);
+	                ctx.lineWidth = 6 / z;
+	                ctx.shadowBlur = 24;
+	                ctx.shadowColor = this.mode === 'exit' ? '#0ff' : '#b0f';
+	                ctx.strokeStyle = this.mode === 'exit' ? `rgba(0,255,255,${0.35 + pulse})` : `rgba(180,0,255,${0.35 + pulse})`;
+	                ctx.beginPath();
+	                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+	                ctx.stroke();
+	                ctx.shadowBlur = 0;
+	                ctx.globalAlpha = 0.08;
+	                ctx.fillStyle = this.mode === 'exit' ? '#0ff' : '#b0f';
+	                ctx.beginPath();
+	                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+	                ctx.fill();
+	                ctx.globalAlpha = 1;
+	                
+	                ctx.fillStyle = '#fff';
+	                ctx.font = `bold ${Math.round(16 / z)}px Courier New`;
+	                ctx.textAlign = 'center';
+	                ctx.textBaseline = 'middle';
+	                ctx.shadowColor = '#000';
+	                ctx.shadowBlur = 8;
+	                ctx.fillText(this.mode === 'exit' ? 'EXIT' : 'WARP', 0, 0);
+	                ctx.shadowBlur = 0;
+	                ctx.restore();
+	            }
+	        }
+	        
+	        class FlagshipWarpZone extends Entity {
+	            constructor(x, y) {
+	                super(x, y);
+	                this.radius = 3200;
+	                this.t = 0;
+	                this.activated = false;
+	            }
+	            update() {
+	                if (this.dead) return;
+	                this.t++;
+	                if (!player || player.dead) return;
+	                if (warpZone && warpZone.active) return;
+	                if (sectorTransitionActive) return;
+	                if (bossActive) return;
+	                
+	                const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+	                if (!this.activated && d < this.radius + 900) {
+	                    this.activated = true;
+	                    showOverlayMessage("FLAGSHIP WARP ZONE - ENTER TO ENGAGE", '#f0f', 2200, 2);
+	                }
+	                
+	                if (d < this.radius) {
+	                    beginFlagshipFight(this.pos.x, this.pos.y, this.radius);
+	                    this.dead = true;
+	                }
+	            }
+	            draw(ctx) {
+	                if (this.dead) return;
+	                const z = currentZoom || ZOOM_LEVEL;
+	                const pulse = 0.45 + Math.abs(Math.sin(this.t * 0.02)) * 0.35;
+	                ctx.save();
+	                ctx.translate(this.pos.x, this.pos.y);
+	                ctx.lineWidth = 8 / z;
+	                ctx.shadowBlur = 22;
+	                ctx.shadowColor = '#f0f';
+	                ctx.strokeStyle = `rgba(255,0,255,${0.25 + pulse})`;
+	                ctx.beginPath();
+	                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+	                ctx.stroke();
+	                ctx.shadowBlur = 0;
+	                
+	                ctx.fillStyle = '#fff';
+	                ctx.font = `bold ${Math.round(22 / z)}px Courier New`;
+	                ctx.textAlign = 'center';
+	                ctx.textBaseline = 'middle';
+	                ctx.shadowColor = '#000';
+	                ctx.shadowBlur = 10;
+	                ctx.fillText("FLAGSHIP", 0, -this.radius - (48 / z));
+	                ctx.shadowBlur = 0;
+	                ctx.restore();
+	            }
+	        }
+	        
+	        function beginFlagshipFight(cx, cy, radius = 3200) {
+	            if (bossActive || sectorTransitionActive) return;
+	            // Clear the zone marker.
+	            try { if (flagshipWarpZone) flagshipWarpZone.dead = true; } catch (e) {}
+	            flagshipWarpZone = null;
+	            
+	            // Start the fight without wiping the whole world (regular asteroids + roaming enemies remain).
+	            boss = new Flagship({ x: cx, y: cy - 2200 });
+	            bossActive = true;
+	            bossArena.x = cx;
+	            bossArena.y = cy;
+	            bossArena.radius = radius;
+	            bossArena.active = true;
+	            bossArena.growing = false;
+	            
+	            // Don't let the cruiser timer trigger during a flagship boss.
+	            try { dreadManager.timerActive = false; dreadManager.timerAt = null; } catch (e) {}
+	            
+	            showOverlayMessage("WARNING: FLAGSHIP ENGAGED - ARENA LOCKED", '#f0f', 4500, 2);
+	            playSound('boss_spawn');
+	            if (musicEnabled) { stopMusic(); startMusic('cruiser'); }
+	        }
+	        
+	        class CaveGuidedMissile extends Entity { 
+	            constructor(owner, opts = {}) { 
+	                super(owner && owner.pos ? owner.pos.x : 0, owner && owner.pos ? owner.pos.y : 0); 
+	                this.owner = owner || null; 
+	                this.t = 0; 
+	                this.radius = opts.radius || 18; 
+	                this.hp = opts.hp || 4; 
+	                this.maxHp = this.hp; 

@@ -1,0 +1,60 @@
+﻿            
+            // Intensity breaks to let players collect/reposition
+            if (!warpActive && !sectorTransitionActive && !gamePaused && gameActive) {
+                 if (!intensityBreakActive && now >= nextIntensityBreakAt) {
+                     intensityBreakActive = true;
+                     nextIntensityBreakAt = now + INTENSITY_BREAK_DURATION + 90000; // after break, schedule next in ~90s
+                 }
+                if (intensityBreakActive && now >= nextIntensityBreakAt - (INTENSITY_BREAK_DURATION)) {
+                    // during break, stop new roamer spawns
+                }
+                if (intensityBreakActive && now >= nextIntensityBreakAt) {
+                    intensityBreakActive = false;
+                }
+            }
+
+	            if (!warpActive && !caveMode && !bossActive && !sectorTransitionActive && initialSpawnDone) { 
+                // Time-based pacing for roamer count and strength 
+                let elapsed = now - gameStartTime - pausedAccumMs; 
+                if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs; 
+                if (elapsed < 0) elapsed = 0; 
+                const elapsedMinutes = elapsed / 60000; 
+
+                const baseRoamers = 6;
+                const maxRoamers = 15;
+                const rampMinutes = 28; // slower ramp
+                const rampT = Math.min(1, elapsedMinutes / rampMinutes);
+                const difficultyBonus = Math.max(0, (difficultyTier + player.level * 0.1) - 1) * 0.3;
+                const targetRoamers = Math.floor(baseRoamers + (maxRoamers - baseRoamers) * rampT + difficultyBonus);
+
+                const currentRoamers = enemies.filter(e => e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter').length;
+                if (!intensityBreakActive && currentRoamers + roamerRespawnQueue.length < targetRoamers) {
+                    roamerRespawnQueue.push(100); 
+                }
+
+                const eliteUnlocked = elapsedMinutes >= 5 || difficultyTier >= 3 || player.level >= 4;
+                const hunterUnlocked = elapsedMinutes >= 11 || difficultyTier >= 5 || player.level >= 7;
+                // Keep elites/hunters rare and capped
+                const eliteChance = eliteUnlocked ? Math.min(0.25, 0.08 + (elapsedMinutes / 25) * 0.2) : 0;
+                const hunterChance = hunterUnlocked ? Math.min(0.15, 0.05 + (elapsedMinutes / 35) * 0.12) : 0;
+                const eliteSoftCap = 3;
+                const hunterSoftCap = 3;
+
+                for(let i = roamerRespawnQueue.length - 1; i >= 0; i--) {
+                    roamerRespawnQueue[i]--;
+                    if (roamerRespawnQueue[i] <= 0) {
+                        roamerRespawnQueue.splice(i, 1);
+                        let type = 'roamer';
+                        const currentElite = enemies.filter(e => e.type === 'elite_roamer').length;
+                        const currentHunter = enemies.filter(e => e.type === 'hunter').length;
+                        if (eliteUnlocked && currentElite < eliteSoftCap && Math.random() < eliteChance) {
+                            type = 'elite_roamer';
+                            if (hunterUnlocked && currentHunter < hunterSoftCap && Math.random() < hunterChance) {
+                                type = 'hunter';
+                            }
+                        }
+                        enemies.push(new Enemy(type));
+                    }
+                }
+            } else {
+                roamerRespawnQueue = [];
