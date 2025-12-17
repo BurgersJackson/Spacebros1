@@ -30,7 +30,10 @@ function createWindow() {
   });
 
   if (process.env.ELECTRON_SMOKE !== "1") {
-    win.once("ready-to-show", () => win.show());
+    win.once("ready-to-show", () => {
+      win.maximize();
+      win.show();
+    });
   }
 
   win.loadFile(path.join(__dirname, "..", "index.html"));

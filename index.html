@@ -1258,6 +1258,7 @@
             turbo: false,
             pausePressed: false
         };
+        let usingGamepad = false;
         let menuDebounce = 0;
 
         function resize() {
@@ -1339,6 +1340,8 @@
             
             // Reset world for new sector
             bullets = [];
+            bossBombs = [];
+            guidedMissiles = [];
             enemies = [];
             bases = [];
             coins = [];
@@ -1362,6 +1365,7 @@
             pois = [];
             gateKeys = 0;
             gateKeyItems = [];
+            flagshipWarpZone = null;
             flagshipSpawned = false;
             flagshipSpawnAt = 0;
             generateMap();
@@ -1371,7 +1375,10 @@
             gunboatLevel2Unlocked = true; // level 2 gunboats allowed after warp
             // Restart cruiser timer for the new sector
             dreadManager.timerActive = true;
-            dreadManager.timerAt = Date.now() + dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
+            cruiserTimerPausedAt = null;
+            const firstCruiserGraceMs = 180000; // 3 minutes breathing room after entering a new sector
+            const baseDelay = dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
+            dreadManager.timerAt = Date.now() + Math.max(firstCruiserGraceMs, baseDelay);
             
             // Stations for new sector
             pendingStations = 2;
@@ -1871,16 +1878,18 @@
                     updateTurboUI();
                 }
 
+                const moveMag = Math.sqrt(gpState.move.x*gpState.move.x + gpState.move.y*gpState.move.y);
+                let thrusting = false;
+                
                 const aimMag = Math.sqrt(gpState.aim.x*gpState.aim.x + gpState.aim.y*gpState.aim.y);
                 if (aimMag > 0.2) {
                     this.turretAngle = Math.atan2(gpState.aim.y, gpState.aim.x);
+                } else if (usingGamepad) {
+                    // In gamepad mode, don't let the turret follow the mouse.
+                    if (moveMag > 0.2) this.turretAngle = Math.atan2(gpState.move.y, gpState.move.x);
                 } else {
-                    const targetAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
-                    this.turretAngle = targetAngle;
+                    this.turretAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
                 }
-
-                const moveMag = Math.sqrt(gpState.move.x*gpState.move.x + gpState.move.y*gpState.move.y);
-                let thrusting = false;
                 
                 // Removed acceleration stat multiplier, using base or 1.0 implicitly
                 const turboMult = (this.turboBoost && this.turboBoost.activeFrames > 0) ? (this.turboBoost.speedMult || 1.5) : 1.0;
@@ -2564,6 +2573,185 @@
                 ctx.restore();
             }
         }
+        
+        class FlagshipGuidedMissile extends Entity {
+            constructor(owner) {
+                super(owner.pos.x, owner.pos.y);
+                this.owner = owner || null;
+                this.t = 0;
+                this.radius = 28;
+                this.hp = 10;
+                this.maxHp = 10;
+                this.speed = 7.2;
+                this.turnRate = 0.085;
+                this.life = 900;
+                this.angle = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
+                
+                const off = (owner && owner.radius) ? (owner.radius * 0.85 + 14) : 60;
+                this.pos.x += Math.cos(this.angle) * off;
+                this.pos.y += Math.sin(this.angle) * off;
+                
+                this.vel.x = Math.cos(this.angle) * this.speed;
+                this.vel.y = Math.sin(this.angle) * this.speed;
+            }
+            
+            explode(color = '#fa0') {
+                if (this.dead) return;
+                this.dead = true;
+                playSound('explode');
+                spawnParticles(this.pos.x, this.pos.y, 26, color);
+            }
+            
+            applyDamageToPlayer(amount) {
+                if (!player || player.dead) return;
+                if (player.invulnerable > 0) return;
+                let remaining = Math.max(0, Math.ceil(amount));
+                
+                if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
+                    for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
+                        if (player.outerShieldSegments[i] > 0) {
+                            player.outerShieldSegments[i] = 0;
+                            remaining -= 1;
+                        }
+                    }
+                }
+                
+                if (player.shieldSegments && player.shieldSegments.length > 0) {
+                    for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
+                        const absorb = Math.min(remaining, player.shieldSegments[i]);
+                        player.shieldSegments[i] -= absorb;
+                        remaining -= absorb;
+                    }
+                }
+                
+                if (remaining > 0) {
+                    player.hp -= remaining;
+                    spawnParticles(player.pos.x, player.pos.y, 14, '#f00');
+                    playSound('hit');
+                    updateHealthUI();
+                    if (player.hp <= 0) killPlayer();
+                } else {
+                    playSound('shield_hit');
+                    spawnParticles(player.pos.x, player.pos.y, 10, '#0ff');
+                }
+                player.invulnerable = 45;
+            }
+            
+            takeHit(damage) {
+                if (this.dead) return;
+                const d = Math.max(0, damage || 0);
+                this.hp -= d;
+                spawnParticles(this.pos.x, this.pos.y, 6, '#ff0');
+                playSound('hit');
+                if (this.hp <= 0) this.explode('#ff0');
+            }
+            
+            update() {
+                if (this.dead) return;
+                this.t++;
+                this.life--;
+                if (this.life <= 0) { this.explode(); return; }
+                if (!player || player.dead) { this.dead = true; return; }
+                
+                const targetAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+                let angleDiff = targetAngle - this.angle;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), this.turnRate);
+                
+                this.vel.x = Math.cos(this.angle) * this.speed;
+                this.vel.y = Math.sin(this.angle) * this.speed;
+                this.pos.add(this.vel);
+                
+                if (this.t % 2 === 0) {
+                    particles.push(new Particle(
+                        this.pos.x + (Math.random() - 0.5) * 6,
+                        this.pos.y + (Math.random() - 0.5) * 6,
+                        -this.vel.x * 0.08 + (Math.random() - 0.5) * 0.6,
+                        -this.vel.y * 0.08 + (Math.random() - 0.5) * 0.6,
+                        '#fa0'
+                    ));
+                }
+                
+                checkWallCollision(this, 0.15);
+                
+                const dP = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (dP < player.radius + this.radius) {
+                    const dmg = Math.max(0, Math.ceil(this.hp));
+                    this.explode('#fa0');
+                    this.applyDamageToPlayer(dmg);
+                    shakeMagnitude = Math.max(shakeMagnitude, 10);
+                    shakeTimer = Math.max(shakeTimer, 10);
+                }
+            }
+            
+            draw(ctx) {
+                if (this.dead) return;
+                const z = currentZoom || ZOOM_LEVEL;
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                ctx.rotate(this.angle);
+                
+                const len = 64;
+                const w = 18;
+                ctx.shadowBlur = 22;
+                ctx.shadowColor = '#fa0';
+                
+                // Body
+                const grad = ctx.createLinearGradient(-len/2, 0, len/2, 0);
+                grad.addColorStop(0, '#fff');
+                grad.addColorStop(0.35, '#ff6');
+                grad.addColorStop(1, '#f80');
+                ctx.fillStyle = grad;
+                ctx.strokeStyle = '#111';
+                ctx.lineWidth = 2 / z;
+                ctx.beginPath();
+                ctx.moveTo(len/2, 0);
+                ctx.lineTo(-len/2 + 10, w/2);
+                ctx.lineTo(-len/2, 0);
+                ctx.lineTo(-len/2 + 10, -w/2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                
+                // Fins
+                ctx.fillStyle = '#c33';
+                ctx.beginPath();
+                ctx.moveTo(-len/2 + 14, w/2);
+                ctx.lineTo(-len/2 - 2, w/2 + 8);
+                ctx.lineTo(-len/2 + 8, w/2 - 2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(-len/2 + 14, -w/2);
+                ctx.lineTo(-len/2 - 2, -w/2 - 8);
+                ctx.lineTo(-len/2 + 8, -w/2 + 2);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Engine glow
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 0.8;
+                ctx.fillStyle = `rgba(255, 120, 0, ${0.35 + Math.random() * 0.45})`;
+                ctx.fillRect(-len/2 - 10, -5, 14, 10);
+                ctx.globalAlpha = 1;
+                
+                // HP ring
+                const pct = this.maxHp > 0 ? Math.max(0, this.hp / this.maxHp) : 0;
+                ctx.save();
+                ctx.rotate(-this.angle);
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#ff0';
+                ctx.strokeStyle = 'rgba(255,255,0,0.6)';
+                ctx.lineWidth = 3 / z;
+                ctx.beginPath();
+                ctx.arc(0, 0, 34, -Math.PI/2, -Math.PI/2 + Math.PI * 2 * pct);
+                ctx.stroke();
+                ctx.restore();
+                
+                ctx.restore();
+            }
+        }
 
         class ShootingStar extends Entity {
             constructor() {
@@ -2643,17 +2831,24 @@
                 // Homing Logic
                 if (this.homing > 0 && !this.isEnemy) {
                     let target = null;
-                    let minDist = 500;
-                    for (let e of enemies) {
-                        const d = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
-                        if (d < minDist && !e.dead) {
-                            minDist = d;
-                            target = e;
-                        }
+                    let minDist = Infinity;
+                    const acquireRange = 8000;
+                    
+                    const consider = (obj) => {
+                        if (!obj || obj.dead || !obj.pos) return;
+                        const d = Math.hypot(obj.pos.x - this.pos.x, obj.pos.y - this.pos.y);
+                        if (d < minDist && d <= acquireRange) { minDist = d; target = obj; }
+                    };
+                    
+                    for (let e of enemies) consider(e);
+                    if (bossActive && boss && !boss.dead) consider(boss);
+                    if (bases && bases.length > 0) for (let b of bases) consider(b);
+                    if (spaceStation && !spaceStation.dead) consider(spaceStation);
+                    if (contractEntities && contractEntities.wallTurrets && contractEntities.wallTurrets.length > 0) {
+                        for (let t of contractEntities.wallTurrets) consider(t);
                     }
-                    if (boss && !boss.dead && bossActive) {
-                         const d = Math.hypot(boss.pos.x - this.pos.x, boss.pos.y - this.pos.y);
-                         if (d < minDist) target = boss;
+                    if (warpZone && warpZone.active && warpZone.turrets && warpZone.turrets.length > 0) {
+                        for (let t of warpZone.turrets) consider(t);
                     }
                     
                     if (target) {
@@ -4038,18 +4233,10 @@
 
                 if (dist < player.radius + this.radius) {
                     this.dead = true;
-                    gateKeys = Math.min(99, gateKeys + 1);
-                    showOverlayMessage(`GATE KEY ACQUIRED (${gateKeys}/3)`, '#ff0', 1600);
-                    playSound('powerup');
+	                    gateKeys = Math.min(99, gateKeys + 1);
+	                    showOverlayMessage(`GATE KEY ACQUIRED (${gateKeys}/3)`, '#ff0', 1600);
+	                    playSound('powerup');
 	                    player.addXp(15);
-	                    // Trigger flagship spawn once per sector after 3 keys
-	                    // Don't trigger flagship spawns while inside a warp maze encounter.
-	                    if (!(warpZone && warpZone.active) && !flagshipSpawned && gateKeys >= 3 && !sectorTransitionActive) {
-	                        flagshipSpawned = true;
-	                        flagshipSpawnAt = Date.now() + 6000;
-	                        showOverlayMessage("FLAGSHIP SIGNAL DETECTED - INCOMING", '#f00', 2500);
-	                        try { dreadManager.timerActive = false; dreadManager.timerAt = null; } catch(e) {}
-	                    }
 	                }
             }
             draw(ctx) {
@@ -4098,27 +4285,26 @@
 	                if (dist > this.radius + player.radius) return;
 	                
 	                if (this.mode === 'entry') {
+	                    if (warpCompletedOnce) {
+	                        showOverlayMessage("WARP ALREADY COMPLETED", '#0ff', 1200, 2);
+	                        return;
+	                    }
 	                    if (gateKeys < 1) {
 	                        showOverlayMessage("WARP GATE LOCKED (NEED 1 KEY)", '#ff0', 1200);
 	                        return;
 	                    }
 	                    if (warpZone && warpZone.active) return;
-	                    gateKeys = Math.max(0, gateKeys - 1);
 	                    showOverlayMessage("WARP INITIATED", '#0ff', 1400, 3);
 	                    playSound('contract');
 	                    enterWarpMaze();
 	                } else if (this.mode === 'exit') {
 	                    if (!warpZone || !warpZone.active) return;
-	                    if (!warpZone.exitUnlocked) {
+	                    const bossEngaged = (warpZone.state === 'boss') || (bossActive && boss && boss.isWarpBoss && !boss.dead);
+	                    if (bossEngaged && !warpZone.exitUnlocked) {
 	                        showOverlayMessage("EXIT SEALED - DEFEAT THE SENTINEL", '#f0f', 1400, 3);
 	                        return;
 	                    }
-	                    if (gateKeys < 1) {
-	                        showOverlayMessage("EXIT NEEDS 1 KEY", '#ff0', 1200, 3);
-	                        return;
-	                    }
-	                    gateKeys = Math.max(0, gateKeys - 1);
-	                    showOverlayMessage("WARP EXIT STABILIZED", '#0ff', 1200, 3);
+	                    showOverlayMessage(bossEngaged ? "WARP EXIT STABILIZED" : "RETREATING FROM WARP", '#0ff', 1200, 3);
 	                    playSound('contract');
 	                    exitWarpMaze();
 	                }
@@ -4154,6 +4340,82 @@
 	                ctx.shadowBlur = 0;
 	                ctx.restore();
 	            }
+	        }
+	        
+	        class FlagshipWarpZone extends Entity {
+	            constructor(x, y) {
+	                super(x, y);
+	                this.radius = 3200;
+	                this.t = 0;
+	                this.activated = false;
+	            }
+	            update() {
+	                if (this.dead) return;
+	                this.t++;
+	                if (!player || player.dead) return;
+	                if (warpZone && warpZone.active) return;
+	                if (sectorTransitionActive) return;
+	                if (bossActive) return;
+	                
+	                const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+	                if (!this.activated && d < this.radius + 900) {
+	                    this.activated = true;
+	                    showOverlayMessage("FLAGSHIP WARP ZONE - ENTER TO ENGAGE", '#f0f', 2200, 2);
+	                }
+	                
+	                if (d < this.radius) {
+	                    beginFlagshipFight(this.pos.x, this.pos.y, this.radius);
+	                    this.dead = true;
+	                }
+	            }
+	            draw(ctx) {
+	                if (this.dead) return;
+	                const z = currentZoom || ZOOM_LEVEL;
+	                const pulse = 0.45 + Math.abs(Math.sin(this.t * 0.02)) * 0.35;
+	                ctx.save();
+	                ctx.translate(this.pos.x, this.pos.y);
+	                ctx.lineWidth = 8 / z;
+	                ctx.shadowBlur = 22;
+	                ctx.shadowColor = '#f0f';
+	                ctx.strokeStyle = `rgba(255,0,255,${0.25 + pulse})`;
+	                ctx.beginPath();
+	                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+	                ctx.stroke();
+	                ctx.shadowBlur = 0;
+	                
+	                ctx.fillStyle = '#fff';
+	                ctx.font = `bold ${Math.round(22 / z)}px Courier New`;
+	                ctx.textAlign = 'center';
+	                ctx.textBaseline = 'middle';
+	                ctx.shadowColor = '#000';
+	                ctx.shadowBlur = 10;
+	                ctx.fillText("FLAGSHIP", 0, -this.radius - (48 / z));
+	                ctx.shadowBlur = 0;
+	                ctx.restore();
+	            }
+	        }
+	        
+	        function beginFlagshipFight(cx, cy, radius = 3200) {
+	            if (bossActive || sectorTransitionActive) return;
+	            // Clear the zone marker.
+	            try { if (flagshipWarpZone) flagshipWarpZone.dead = true; } catch (e) {}
+	            flagshipWarpZone = null;
+	            
+	            // Start the fight without wiping the whole world (regular asteroids + roaming enemies remain).
+	            boss = new Flagship({ x: cx, y: cy - 2200 });
+	            bossActive = true;
+	            bossArena.x = cx;
+	            bossArena.y = cy;
+	            bossArena.radius = radius;
+	            bossArena.active = true;
+	            bossArena.growing = false;
+	            
+	            // Don't let the cruiser timer trigger during a flagship boss.
+	            try { dreadManager.timerActive = false; dreadManager.timerAt = null; } catch (e) {}
+	            
+	            showOverlayMessage("WARNING: FLAGSHIP ENGAGED - ARENA LOCKED", '#f0f', 4500, 2);
+	            playSound('boss_spawn');
+	            if (musicEnabled) { stopMusic(); startMusic('cruiser'); }
 	        }
 	        
 	        function closestPointOnSegment(px, py, ax, ay, bx, by) {
@@ -4271,6 +4533,8 @@
 	            kill() {
 	                if (this.dead) return;
 	                this.dead = true;
+	                // Drop coins like a roamer ship.
+	                for (let i = 0; i < 3; i++) coins.push(new Coin(this.pos.x, this.pos.y, 2));
 	                spawnParticles(this.pos.x, this.pos.y, 18, '#0ff');
 	                playSound('explode');
 	            }
@@ -4294,11 +4558,11 @@
 	                
 	                // Rings define the "maze". Each ring has a gap you must find to get inward.
 	                const a = this.entryAngle;
-		                this.rings = [
+	                this.rings = [
 		                    // Multiple openings per ring so the maze never "feels sealed".
-		                    { r: 5400, gaps: [a, a + Math.PI], width: 0.55, turretCount: 4 },
-		                    { r: 4400, gaps: [a + Math.PI/2, a + (Math.PI*3/2)], width: 0.50, turretCount: 4 },
-		                    { r: 3400, gaps: [a + Math.PI, a], width: 0.48, turretCount: 3 },
+		                    { r: 5400, gaps: [a, a + Math.PI], width: 0.55, turretCount: 6 },
+		                    { r: 4400, gaps: [a + Math.PI/2, a + (Math.PI*3/2)], width: 0.50, turretCount: 6 },
+		                    { r: 3400, gaps: [a + Math.PI, a], width: 0.48, turretCount: 5 },
 		                    // Arena ring: 4 entrances so you can always reach the center.
 		                    { r: this.arenaRadius, gaps: [a, a + Math.PI/2, a + Math.PI, a + (Math.PI*3/2)], width: 0.65, turretCount: 0, isArena: true }
 		                ];
@@ -4352,6 +4616,22 @@
 	                
 		                // Maze turrets placed along outer rings away from gaps.
 		                this.turrets = [];
+	                // Extra boundary turrets to make the warp perimeter feel defended (avoid the entrance direction).
+	                const boundaryTurrets = 10;
+	                for (let i = 0; i < boundaryTurrets; i++) {
+	                    for (let attempt = 0; attempt < 50; attempt++) {
+	                        const ang = Math.random() * Math.PI * 2;
+	                        let d = ang - this.entryAngle;
+	                        while (d > Math.PI) d -= Math.PI * 2;
+	                        while (d < -Math.PI) d += Math.PI * 2;
+	                        if (Math.abs(d) < 0.7) continue;
+	                        const rr = this.boundaryRadius - 260;
+	                        const x = this.pos.x + Math.cos(ang) * rr;
+	                        const y = this.pos.y + Math.sin(ang) * rr;
+	                        this.turrets.push(new WarpTurret(x, y));
+	                        break;
+	                    }
+	                }
 		                for (const ring of this.rings) {
 		                    if (ring.isArena) continue;
 	                    const gaps = ring.gaps || [ring.gap];
@@ -4631,7 +4911,7 @@
                 super(x, y);
                 this.kind = 'defend_cache';
                 this.radius = 520;
-                this.requiredMs = 30000;
+                this.requiredMs = 5000;
                 this.progressMs = 0;
                 this.expiresAt = Date.now() + 75000;
                 this.lastUpdateAt = Date.now();
@@ -5093,7 +5373,7 @@
                 super('gunboat', null, null, { gunboatLevel: 2 });
                 const boost = Math.max(0, encounterIndex - 1);
                 const hpScale = 1 + boost * 0.35;
-                const shieldStrength = 2 + boost;
+                let shieldStrength = 2 + boost;
                 const baseCruiserHp = 70 * 0.75; // first cruiser is 25% lower HP; later cruisers scale from this baseline
                 this.type = 'cruiser';
                 this.isCruiser = true;
@@ -5105,7 +5385,13 @@
                 this.gunboatScale = this.cruiserHullScale;
                 this.radius = Math.round(22 * this.cruiserHullScale);
                 // Longer, pattern-driven fights
-                this.hp = Math.round(baseCruiserHp * hpScale);
+                let hp = Math.round(baseCruiserHp * hpScale);
+                // Second cruiser: give a real difficulty bump.
+                if (encounterIndex === 2) {
+                    hp = Math.round(hp * 1.25);
+                    shieldStrength = Math.max(shieldStrength, Math.ceil(shieldStrength * 1.25));
+                }
+                this.hp = hp;
                 this.maxHp = this.hp;
                 this.shieldRadius = Math.round(34 * this.cruiserHullScale);
                 this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
@@ -5150,6 +5436,12 @@
                 this.called70 = false;
                 this.called40 = false;
                 this.lastShieldGenAt = 0;
+                
+                // Guided missiles for the 2nd cruiser (like flagship, but slower).
+                this.guidedMissileEnabled = (encounterIndex === 2);
+                this.guidedMissileCd = 180;
+                this.guidedMissileInterval = 180; // ~3s
+                this.guidedMissileCap = 2;
                 
                 // Heavier turning to feel like a capital ship
                 this.turnSpeed = (Math.PI * 2) / (18 * 60);
@@ -5338,6 +5630,19 @@
                 
                 // Helper calls (few small ships only)
                 this.maybeCallHelpers();
+                
+                if (this.guidedMissileEnabled && bossActive && boss === this) {
+                    this.guidedMissileCd--;
+                    if (this.guidedMissileCd <= 0) {
+                        const alive = guidedMissiles.filter(m => m && !m.dead).length;
+                        if (alive < this.guidedMissileCap) {
+                            guidedMissiles.push(new FlagshipGuidedMissile(this));
+                            spawnParticles(this.pos.x, this.pos.y, 10, '#fa0');
+                            playSound('heavy_shoot');
+                        }
+                        this.guidedMissileCd = this.guidedMissileInterval;
+                    }
+                }
             }
             
             runPhaseAttacks() {
@@ -5596,7 +5901,7 @@
         }
 
 	        class Flagship extends Cruiser {
-            constructor() {
+            constructor(spawnAt = null) {
                 super(Math.max(4, cruiserEncounterCount));
                 this.type = 'flagship';
                 this.isFlagship = true;
@@ -5609,8 +5914,12 @@
                 this.shieldRadius = Math.round(34 * this.cruiserHullScale);
                 this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
 
-                // Spawn above the player (arcade "top of screen" vibe)
-                if (player && !player.dead) {
+                // Spawn above a target point (defaults to the player).
+                if (spawnAt && typeof spawnAt.x === 'number' && typeof spawnAt.y === 'number') {
+                    this.pos.x = spawnAt.x;
+                    this.pos.y = spawnAt.y;
+                } else if (player && !player.dead) {
+                    // Arcade "top of screen" vibe
                     this.pos.x = player.pos.x;
                     this.pos.y = player.pos.y - 2200;
                 }
@@ -5646,7 +5955,34 @@
                 this.phaseName = 'INTRO';
                 this.phaseTimer = 90;
                 this.phaseTick = 0;
+                
+                this.guidedMissileCd = 210;
+                this.guidedMissileInterval = 210; // ~3.5s
+                this.guidedMissileCap = 4;
             }
+            
+	            update() {
+	                super.update();
+	                if (this.dead) return;
+	                if (!bossActive || boss !== this) return;
+	                if (!player || player.dead) return;
+	                
+	                if (this.phaseName === 'INTRO') return;
+	                
+	                this.guidedMissileCd--;
+	                if (this.guidedMissileCd > 0) return;
+	                
+	                const alive = guidedMissiles.filter(m => m && !m.dead).length;
+	                if (alive >= this.guidedMissileCap) {
+	                    this.guidedMissileCd = Math.max(30, Math.floor(this.guidedMissileInterval * 0.5));
+	                    return;
+	                }
+	                
+	                guidedMissiles.push(new FlagshipGuidedMissile(this));
+	                spawnParticles(this.pos.x, this.pos.y, 10, '#fa0');
+	                playSound('heavy_shoot');
+	                this.guidedMissileCd = this.guidedMissileInterval;
+	            }
 
 	            kill() {
                 if (this.dead) return;
@@ -5654,6 +5990,7 @@
                 playSound('base_explode');
                 spawnParticles(this.pos.x, this.pos.y, 200, '#f0f');
                 bossBombs = [];
+                guidedMissiles = [];
 
                 for (let i = 0; i < 40; i++) coins.push(new Coin(this.pos.x + (Math.random()-0.5) * 260, this.pos.y + (Math.random()-0.5) * 260, 10));
                 for (let i = 0; i < 16; i++) nuggets.push(new SpaceNugget(this.pos.x + (Math.random()-0.5) * 320, this.pos.y + (Math.random()-0.5) * 320, 1));
@@ -5731,7 +6068,9 @@
 		                this.helperCooldownBase = 420;
 		                this.helperCooldown = 180;
 		                this.called70 = false;
+		                this.called50 = false;
 		                this.called40 = false;
+		                this.phase2Started = false;
 		                this.helperStrengthTier = 1;
 		                
 		                this.spiralTimer = 0;
@@ -5800,6 +6139,16 @@
 		                
 		                const hpPct = this.maxHp > 0 ? this.hp / this.maxHp : 0;
 		                this.phase = hpPct < 0.5 ? 2 : 1;
+		                
+		                if (this.phase === 2 && !this.phase2Started) {
+		                    this.phase2Started = true;
+		                    // Phase 2: faster laser cadence + heavier reinforcement pressure.
+		                    this.helperMax = 10;
+		                    this.helperBurst = 3;
+		                    this.helperCooldownBase = 320;
+		                    this.spawnDefenders(6);
+		                    showOverlayMessage("SENTINEL PHASE 2", '#f0f', 1800, 3);
+		                }
 		                
 		                // Orbit the zone center (smooth steering).
 		                const cx = this.zone ? this.zone.pos.x : this.pos.x;
@@ -5936,7 +6285,7 @@
 		                    }
 		                } else {
 		                    this.laserCooldown--;
-		                    const cd = (this.phase === 2) ? 440 : 560;
+		                    const cd = (this.phase === 2) ? 280 : 560;
 		                    const wantCharge = (this.phase === 2) ? 55 : 70;
 		                    if (this.laserCooldown <= 0 && distToPlayer < 3200 && distToPlayer > 450) {
 		                        this.laserAngle = aimToPlayer;
@@ -6039,7 +6388,7 @@
 		                const phase2 = (this.phase === 2);
 		                let types = ['roamer', 'defender', 'roamer', 'elite_roamer'];
 		                if (this.helperStrengthTier <= 0) types = ['roamer', 'roamer', 'defender'];
-		                if (phase2) types = ['roamer', 'elite_roamer', 'hunter', 'defender'];
+		                if (phase2) types = ['defender', 'defender', 'hunter', 'elite_roamer'];
 		                
 		                for (let i = 0; i < count; i++) {
 		                    const type = types[Math.floor(Math.random() * types.length)];
@@ -6059,6 +6408,31 @@
 		                    }
 		                }
 		                showOverlayMessage("SENTINEL SUMMONED REINFORCEMENTS", '#f0f', 1200);
+		            }
+		            
+		            spawnDefenders(count) {
+		                const aliveHelpers = enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
+		                const slots = Math.max(0, this.helperMax - aliveHelpers);
+		                if (slots <= 0) return;
+		                count = Math.min(count, slots);
+		                
+		                for (let i = 0; i < count; i++) {
+		                    for (let attempt = 0; attempt < 25; attempt++) {
+		                        const a = Math.random() * Math.PI * 2;
+		                        const d = 900 + Math.random() * 700;
+		                        const x = this.pos.x + Math.cos(a) * d;
+		                        const y = this.pos.y + Math.sin(a) * d;
+		                        const distP = Math.hypot(x - player.pos.x, y - player.pos.y);
+		                        if (distP < 650) continue;
+		                        const e = new Enemy('defender', { x, y }, null);
+		                        e.despawnImmune = true;
+		                        e.isWarpReinforcement = true;
+		                        enemies.push(e);
+		                        spawnParticles(x, y, 10, '#f0f');
+		                        break;
+		                    }
+		                }
+		                showOverlayMessage("DEFENDERS DEPLOYED", '#f0f', 1200);
 		            }
 		            
 		            draw(ctx) {
@@ -6423,6 +6797,7 @@
         let player;
         let bullets = [];
         let bossBombs = [];
+        let guidedMissiles = [];
         let enemies = [];
         let bases = [];
         let particles = [];
@@ -6444,6 +6819,8 @@
 	        let warpGate = null;
 	        let warpZone = null;
 	        let warpSnapshot = null;
+	        let warpCompletedOnce = false;
+	        let flagshipWarpZone = null;
 	        let flagshipSpawned = false;
 	        let flagshipSpawnAt = 0;
 	        let nextShootingStarTime = 0;
@@ -6492,6 +6869,7 @@
               minDelayMs: 120000, // 2 minutes
               maxDelayMs: 300000 // 5 minutes
           };
+          let cruiserTimerPausedAt = null;
 
         // Game timer
         let gameStartTime = null;
@@ -6510,12 +6888,14 @@
 	        
 	        function snapshotWorldForWarp() {
 	            return {
+	                warpEnteredAt: Date.now(),
 	                playerPos: { x: player.pos.x, y: player.pos.y },
 	                playerVel: { x: player.vel.x, y: player.vel.y },
 	                
 	                // Arrays / entities
 	                bullets,
 	                bossBombs,
+	                guidedMissiles,
 	                enemies,
 	                bases,
 	                particles,
@@ -6564,11 +6944,16 @@
 	        function enterWarpMaze() {
 	            if (warpZone && warpZone.active) return;
 	            if (warpSnapshot) return;
+	            if (warpCompletedOnce) {
+	                showOverlayMessage("WARP ALREADY COMPLETED", '#0ff', 1200, 2);
+	                return;
+	            }
 	            warpSnapshot = snapshotWorldForWarp();
 	            
 	            // Clear world to make a controlled encounter space.
 	            bullets = [];
 	            bossBombs = [];
+	            guidedMissiles = [];
 	            enemies = [];
 	            bases = [];
 	            particles = [];
@@ -6617,9 +7002,9 @@
 	            player.vel.x = 0;
 	            player.vel.y = 0;
 	            
-	            // Seed warp asteroids to normal-space density (and let runtime spawning maintain it).
+	            // Seed warp asteroids to reduced density (and let runtime spawning maintain it).
 	            let seedTries = 0;
-	            while (environmentAsteroids.length < 100 && seedTries < 800) {
+	            while (environmentAsteroids.length < 50 && seedTries < 800) {
 	                spawnOneWarpAsteroidRelative(true);
 	                seedTries++;
 	            }
@@ -6637,11 +7022,13 @@
 	        
 	        function exitWarpMaze() {
 	            if (!warpSnapshot) return;
+	            const completedRun = !!(warpZone && warpZone.exitUnlocked);
 	            if (warpZone && warpZone.active) warpZone.active = false;
 	            
 	            // Restore world.
 	            bullets = warpSnapshot.bullets;
 	            bossBombs = warpSnapshot.bossBombs;
+	            guidedMissiles = warpSnapshot.guidedMissiles;
 	            enemies = warpSnapshot.enemies;
 	            bases = warpSnapshot.bases;
 	            particles = warpSnapshot.particles;
@@ -6680,6 +7067,45 @@
 	            maxRoamers = warpSnapshot.maxRoamers;
 	            gunboatRespawnAt = warpSnapshot.gunboatRespawnAt;
 	            dreadManager = { ...warpSnapshot.dreadManager };
+	            // Pause all absolute-time timers while inside the warp zone (game time played continues).
+	            const warpDt = warpSnapshot && warpSnapshot.warpEnteredAt ? Math.max(0, Date.now() - warpSnapshot.warpEnteredAt) : 0;
+	            if (warpDt > 0) {
+	                const shiftIfNumber = (val) => (typeof val === 'number' && isFinite(val) && val > 0) ? (val + warpDt) : val;
+	                const shiftArrayNumbers = (arr) => {
+	                    if (!Array.isArray(arr)) return arr;
+	                    for (let i = 0; i < arr.length; i++) {
+	                        if (typeof arr[i] === 'number' && isFinite(arr[i]) && arr[i] > 0) arr[i] += warpDt;
+	                    }
+	                    return arr;
+	                };
+	                
+	                nextRadiationStormAt = shiftIfNumber(nextRadiationStormAt);
+	                nextMiniEventAt = shiftIfNumber(nextMiniEventAt);
+	                nextContractAt = shiftIfNumber(nextContractAt);
+	                nextSpaceStationTime = shiftIfNumber(nextSpaceStationTime);
+	                nextShootingStarTime = shiftIfNumber(nextShootingStarTime);
+	                nextIntensityBreakAt = shiftIfNumber(nextIntensityBreakAt);
+	                gunboatRespawnAt = shiftIfNumber(gunboatRespawnAt);
+	                
+	                asteroidRespawnTimers = shiftArrayNumbers(asteroidRespawnTimers);
+	                baseRespawnTimers = shiftArrayNumbers(baseRespawnTimers);
+	                
+	                if (dreadManager && dreadManager.timerActive && typeof dreadManager.timerAt === 'number') {
+	                    dreadManager.timerAt += warpDt;
+	                }
+	                
+	                if (radiationStorm && typeof radiationStorm.endsAt === 'number') {
+	                    radiationStorm.endsAt += warpDt;
+	                }
+	                if (miniEvent) {
+	                    if (typeof miniEvent.expiresAt === 'number') miniEvent.expiresAt += warpDt;
+	                    if (typeof miniEvent.nextWaveAt === 'number') miniEvent.nextWaveAt += warpDt;
+	                    if (typeof miniEvent.lastUpdateAt === 'number') miniEvent.lastUpdateAt = Date.now();
+	                }
+	                if (activeContract) {
+	                    if (typeof activeContract.endsAt === 'number') activeContract.endsAt += warpDt;
+	                }
+	            }
 	            
 	            nextShootingStarTime = warpSnapshot.nextShootingStarTime;
 	            nextIntensityBreakAt = warpSnapshot.nextIntensityBreakAt;
@@ -6694,6 +7120,7 @@
 	            warpZone = null;
 	            warpGate = null;
 	            warpSnapshot = null;
+	            if (completedRun) warpCompletedOnce = true;
 	            showOverlayMessage("RETURNED FROM WARP", '#0ff', 1800, 2);
 	        }
 
@@ -6962,7 +7389,7 @@
              contractEntities.anomalies = [];
              contractEntities.fortresses = [];
              contractEntities.wallTurrets = [];
-            // Cleanup anomaly maze debris (unbreakable asteroids)
+            // Cleanup anomaly contract debris
             if (contractId) {
                 environmentAsteroids = environmentAsteroids.filter(a => a && a.contractId !== contractId);
                 enemies = enemies.filter(e => e && e.contractId !== contractId);
@@ -7263,13 +7690,13 @@
                  this.defendersSpawned = false;
                  this.coreRadius = 195;
                  this.entryAngle = Math.random() * Math.PI * 2;
+                 this.segments = []; // 1px line walls (like warp maze)
              }
              
 	             generateMaze() {
 	                 if (this.generated) return;
 	                 this.generated = true;
-	                 // Concentric indestructible asteroid rings with an outer ring that has multiple entrances.
-	                 // Each ring has one intentional gap; the rest is packed tightly to avoid "leaks".
+	                 // Concentric 1px line rings (warp-maze style). Each ring has intentional gap(s).
 	                 const entry = this.entryAngle;
 	                 const rings = [
 	                     // Path widths doubled to make navigation less punishing.
@@ -7278,6 +7705,12 @@
 	                     { r: 1800, gap: entry + Math.PI, width: 0.68, astR: 94, turretChance: 0.12 },
 	                     { r: 2175, gaps: [entry, entry + Math.PI/2, entry + Math.PI, entry + (Math.PI*3/2)], width: 0.44, astR: 98, turretChance: 0.00 } // outer ring entrances
 	                 ];
+                 
+                 this.segments = [];
+                 for (const ring of rings) {
+                     const gaps = ring.gaps || [ring.gap];
+                     this.segments.push(...this.buildRing(ring.r, gaps, ring.width, 0.065));
+                 }
                  
                  let turretBudget = 6;
                  for (let ringIndex = 0; ringIndex < rings.length; ringIndex++) {
@@ -7301,20 +7734,13 @@
                          
                          const x = this.pos.x + Math.cos(a) * ring.r;
                          const y = this.pos.y + Math.sin(a) * ring.r;
-                         const ast = new EnvironmentAsteroid(x, y, ring.astR, 3);
-                         ast.vel.x = 0;
-                         ast.vel.y = 0;
-                         ast.rotSpeed = 0;
-                         ast.unbreakable = true;
-                         ast.contractId = this.contractId;
-                         environmentAsteroids.push(ast);
                      
                      // Static defensive turrets mounted on some inner walls (not on the entrance ring).
                      const allowTurretRing = (ringIndex === 1 || ringIndex === 2);
                      if (allowTurretRing && turretBudget > 0 && contractEntities && contractEntities.wallTurrets) {
                          if (Math.random() < ring.turretChance && Math.abs(d) > (ring.width + 0.25)) {
-                             const tx = x - Math.cos(a) * (ring.astR + 34);
-                             const ty = y - Math.sin(a) * (ring.astR + 34);
+                             const tx = x - Math.cos(a) * (ring.astR * 0.75 + 34);
+                             const ty = y - Math.sin(a) * (ring.astR * 0.75 + 34);
                              contractEntities.wallTurrets.push(new WallTurret(tx, ty, this.contractId, a));
                              turretBudget--;
                          }
@@ -7324,6 +7750,53 @@
              
              // Reward cache in the core
              caches.push(new ExplorationCache(this.pos.x, this.pos.y, this.contractId));
+         }
+         
+         buildRing(r, gaps, width, step = 0.065) {
+             const segs = [];
+             for (let ang = 0; ang < Math.PI * 2; ang += step) {
+                 const a0 = ang;
+                 const a1 = Math.min(Math.PI * 2, ang + step);
+                 let inGap = false;
+                 for (const g of gaps) {
+                     let d = a0 - g;
+                     while (d > Math.PI) d -= Math.PI * 2;
+                     while (d < -Math.PI) d += Math.PI * 2;
+                     if (Math.abs(d) < width) { inGap = true; break; }
+                 }
+                 if (inGap) continue;
+                 const x0 = this.pos.x + Math.cos(a0) * r;
+                 const y0 = this.pos.y + Math.sin(a0) * r;
+                 const x1 = this.pos.x + Math.cos(a1) * r;
+                 const y1 = this.pos.y + Math.sin(a1) * r;
+                 segs.push({ x0, y0, x1, y1 });
+             }
+             return segs;
+         }
+         
+         allSegments() {
+             return this.segments || [];
+         }
+         
+         applyWallCollisions(entity, elasticity = 0.95) {
+             const segs = this.allSegments();
+             for (let i = 0; i < segs.length; i++) {
+                 const s = segs[i];
+                 resolveCircleSegment(entity, s.x0, s.y0, s.x1, s.y1, elasticity);
+             }
+         }
+         
+         bulletHitsWall(bullet) {
+             const segs = this.allSegments();
+             for (let i = 0; i < segs.length; i++) {
+                 const s = segs[i];
+                 const cp = closestPointOnSegment(bullet.pos.x, bullet.pos.y, s.x0, s.y0, s.x1, s.y1);
+                 const dx = bullet.pos.x - cp.x;
+                 const dy = bullet.pos.y - cp.y;
+                 const dist = Math.hypot(dx, dy);
+                 if (dist < (bullet.radius || 0) + 0.8) return true;
+             }
+             return false;
          }
          
          update() {
@@ -7373,18 +7846,37 @@
              draw(ctx) {
                  ctx.save();
                  ctx.translate(this.pos.x, this.pos.y);
+                 
+                 // Maze rings (warp-maze style 1px line walls)
+                 if (this.segments && this.segments.length > 0) {
+                     const z = currentZoom || ZOOM_LEVEL;
+                     ctx.save();
+                     ctx.lineWidth = 1 / z;
+                     ctx.shadowBlur = 10;
+                     ctx.shadowColor = '#0ff';
+                     ctx.strokeStyle = 'rgba(0,255,255,0.55)';
+                     ctx.beginPath();
+                     for (let i = 0; i < this.segments.length; i++) {
+                         const s = this.segments[i];
+                         ctx.moveTo(s.x0 - this.pos.x, s.y0 - this.pos.y);
+                         ctx.lineTo(s.x1 - this.pos.x, s.y1 - this.pos.y);
+                     }
+                     ctx.stroke();
+                     ctx.restore();
+                 }
+                 
                  const pulse = 0.25 + Math.abs(Math.sin(this.t * 0.02)) * 0.25;
-                 ctx.strokeStyle = `rgba(0,255,0,${pulse})`;
+                 ctx.strokeStyle = `rgba(0,255,255,${pulse})`;
                  ctx.lineWidth = 4;
                  ctx.shadowBlur = 20;
-                 ctx.shadowColor = '#0f0';
+                 ctx.shadowColor = '#0ff';
                  ctx.beginPath();
                  ctx.arc(0, 0, this.radius, 0, Math.PI*2);
                  ctx.stroke();
                  ctx.shadowBlur = 0;
                  
                  // core target
-                 ctx.strokeStyle = 'rgba(0,255,0,0.8)';
+                 ctx.strokeStyle = 'rgba(0,255,255,0.8)';
                  ctx.lineWidth = 3;
                  ctx.beginPath();
                  ctx.arc(0, 0, this.coreRadius, 0, Math.PI*2);
@@ -7403,6 +7895,15 @@
                  this.maxHp = 6;
                  this.reload = 25 + Math.floor(Math.random() * 20);
                  this.t = 0;
+             }
+             
+             kill() {
+                 if (this.dead) return;
+                 this.dead = true;
+                 // Drop coins like a roamer ship.
+                 for (let i = 0; i < 3; i++) coins.push(new Coin(this.pos.x, this.pos.y, 2));
+                 spawnParticles(this.pos.x, this.pos.y, 18, '#ff6');
+                 playSound('explode');
              }
              
              update() {
@@ -7527,6 +8028,10 @@
             const allEntities = [player, ...enemies, ...bases, ...(contractEntities.fortresses || [])].filter(e => e && !e.dead);
             if (boss && !boss.dead) allEntities.push(boss);
             if (spaceStation) allEntities.push(spaceStation);
+            
+            const activeAnomalyZone = (activeContract && activeContract.type === 'anomaly' && contractEntities && contractEntities.anomalies)
+                ? contractEntities.anomalies.find(a => a && !a.dead && a.contractId === activeContract.id)
+                : null;
             
             // Push physics
             for (let i = 0; i < allEntities.length; i++) {
@@ -7678,6 +8183,12 @@
 	                    if (entity === player || entity instanceof Enemy || (bossActive && boss && entity === boss) || (entity && entity.isWarpBoss)) {
 	                        warpZone.applyWallCollisions(entity);
 	                    }
+	                }
+	                
+	                // Anomaly maze collision: 1px line walls (warp-maze style).
+	                if (activeAnomalyZone && (entity === player || entity instanceof Enemy)) {
+	                    const dA = Math.hypot(entity.pos.x - activeAnomalyZone.pos.x, entity.pos.y - activeAnomalyZone.pos.y);
+	                    if (dA < activeAnomalyZone.radius + 800) activeAnomalyZone.applyWallCollisions(entity);
 	                }
 	            }
 	            
@@ -7941,6 +8452,14 @@
 	             if (warpZone && warpZone.active && typeof warpZone.bulletHitsWall === 'function') {
 	                 if (warpZone.bulletHitsWall(bullet)) return { hit: true, kind: 'warp_wall', obj: null };
 	             }
+	             // Anomaly maze 1px line walls.
+	             if (activeContract && activeContract.type === 'anomaly' && contractEntities && contractEntities.anomalies) {
+	                 const az = contractEntities.anomalies.find(a => a && !a.dead && a.contractId === activeContract.id && typeof a.bulletHitsWall === 'function');
+	                 if (az) {
+	                     const dA = Math.hypot(bullet.pos.x - az.pos.x, bullet.pos.y - az.pos.y);
+	                     if (dA < az.radius + 900 && az.bulletHitsWall(bullet)) return { hit: true, kind: 'anomaly_wall', obj: null };
+	                 }
+	             }
 	             const nearby = asteroidGrid.query(bullet.pos.x, bullet.pos.y);
 	             for(let ast of nearby) {
 	                 if (ast.dead) continue;
@@ -8197,6 +8716,7 @@
             player.respawn();
             bullets = [];
             bossBombs = [];
+            guidedMissiles = [];
             enemies = [];
             bases = [];
             particles = [];
@@ -8215,6 +8735,7 @@
             pois = [];
             gateKeys = 0;
             gateKeyItems = [];
+            flagshipWarpZone = null;
             flagshipSpawned = false;
             flagshipSpawnAt = 0;
             contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
@@ -8552,6 +9073,7 @@
             }
 
             if (gamepadInput) {
+                usingGamepad = true;
                 document.body.classList.add('no-cursor');
             }
 
@@ -8725,7 +9247,8 @@
 	            }
 	            
 	            // World warp gate (opens when you have at least 1 key, and you're not already in a warp zone).
-	            if (!warpActive && !bossActive && !sectorTransitionActive) {
+	            // One-time per run: once completed, it never opens again.
+	            if (!warpActive && !bossActive && !sectorTransitionActive && !warpCompletedOnce) {
 	                if (gateKeys >= 1) {
 	                    if (!warpGate || warpGate.mode !== 'entry') {
 	                        const gx = player.pos.x + 900;
@@ -8736,6 +9259,8 @@
 	                } else {
 	                    if (warpGate && warpGate.mode === 'entry') warpGate = null;
 	                }
+	            } else {
+	                if (warpGate && warpGate.mode === 'entry') warpGate = null;
 	            }
 	            if (warpActive && warpZone) {
 	                if (!warpGate || warpGate.mode !== 'exit') {
@@ -8744,6 +9269,22 @@
 	                    warpGate.pos.x = warpZone.entrancePos.x;
 	                    warpGate.pos.y = warpZone.entrancePos.y;
 	                }
+	            }
+	            
+	            // Flagship warp zone: appears once you have 3 keys; entering it starts the flagship fight.
+	            if (!warpActive && !bossActive && !sectorTransitionActive) {
+	                if (gateKeys >= 3) {
+	                    if (!flagshipWarpZone || flagshipWarpZone.dead) {
+	                        const p = findSpawnPointRelative(true, 6500, 8500);
+	                        flagshipWarpZone = new FlagshipWarpZone(p.x, p.y);
+	                        showOverlayMessage("FLAGSHIP WARP ZONE DETECTED", '#f0f', 2200, 2);
+	                    }
+	                } else {
+	                    if (flagshipWarpZone) flagshipWarpZone = null;
+	                }
+	            } else {
+	                // Don't keep it around during warp/boss/transition.
+	                if (flagshipWarpZone) flagshipWarpZone = null;
 	            }
 
 	            // Contracts: spawn and update (normal mode only, not during arena boss)
@@ -8839,36 +9380,22 @@
                     }
                 }
             }
+	            
+	            // Pause the cruiser timer while the player is inside an anomaly.
+	            // (Warp-zone pausing is handled via the warp snapshot so it doesn't count warp time.)
+	            const inAnomaly = !!(activeContract && activeContract.type === 'anomaly' && activeContract.state && activeContract.state !== 'travel');
+	            if (inAnomaly) {
+	                if (cruiserTimerPausedAt === null) cruiserTimerPausedAt = now;
+	            } else if (cruiserTimerPausedAt !== null) {
+	                const dt = Math.max(0, now - cruiserTimerPausedAt);
+	                if (dreadManager && dreadManager.timerActive && typeof dreadManager.timerAt === 'number') {
+	                    dreadManager.timerAt += dt;
+	                }
+	                cruiserTimerPausedAt = null;
+	            }
 	            // Cruiser timed spawn: if timer active and no boss present, spawn a cruiser
 	             try {
-	                  // Flagship: spawns once after collecting 3 Gate Keys
-	                  if (!sectorTransitionActive && !warpActive && flagshipSpawned && gateKeys >= 3 && flagshipSpawnAt && now >= flagshipSpawnAt && !bossActive) {
-                      enemies = [];
-                      bases = [];
-                      baseRespawnTimers = [];
-                      roamerRespawnQueue = [];
-                      bullets = bullets.filter(b => b && !b.isEnemy);
-                      bossBombs = [];
-                      radiationStorm = null;
-                      scheduleNextRadiationStorm(Date.now() + 60000);
-                      miniEvent = null;
-                      scheduleNextMiniEvent(Date.now() + 90000);
-                      boss = new Flagship();
-                      bossActive = true;
-                      bossArena.x = (player.pos.x + boss.pos.x) / 2;
-                      bossArena.y = (player.pos.y + boss.pos.y) / 2;
-                      bossArena.radius = 3200;
-                      bossArena.active = true;
-                      bossArena.growing = false;
-                      dreadManager.timerActive = false;
-                      dreadManager.firstSpawnDone = true;
-                      flagshipSpawnAt = 0;
-                      showOverlayMessage("WARNING: FLAGSHIP APPROACHING - ARENA LOCKED", '#f0f', 4500, 2);
-                      playSound('boss_spawn');
-                      if (musicEnabled) { stopMusic(); startMusic('cruiser'); }
-                  }
-
-	                  if (!sectorTransitionActive && !warpActive && dreadManager.timerActive && !bossActive && dreadManager.timerAt && now >= dreadManager.timerAt && !(flagshipSpawned && gateKeys >= 3)) {
+	                  if (!sectorTransitionActive && !warpActive && dreadManager.timerActive && !bossActive && dreadManager.timerAt && now >= dreadManager.timerAt) {
                       // Cruisers can spawn even if a station exists
                       cruiserEncounterCount++;
                       // Arena boss fight: clear world threats; boss may call a few helpers.
@@ -8878,6 +9405,7 @@
                      roamerRespawnQueue = [];
                      bullets = bullets.filter(b => b && !b.isEnemy);
                      bossBombs = [];
+                     guidedMissiles = [];
                      boss = new Cruiser(cruiserEncounterCount);
                      bossActive = true;
                      bossArena.x = (player.pos.x + boss.pos.x) / 2;
@@ -8967,7 +9495,7 @@
             }
             
             // Intensity breaks to let players collect/reposition
-            if (!sectorTransitionActive && !gamePaused && gameActive) {
+            if (!warpActive && !sectorTransitionActive && !gamePaused && gameActive) {
                  if (!intensityBreakActive && now >= nextIntensityBreakAt) {
                      intensityBreakActive = true;
                      nextIntensityBreakAt = now + INTENSITY_BREAK_DURATION + 90000; // after break, schedule next in ~90s
@@ -9031,7 +9559,7 @@
 	                while (environmentAsteroids.length < 100) spawnOneAsteroidRelative();
 	            } else if (warpZone && warpZone.active && !bossActive) {
 	                let tries = 0;
-	                while (environmentAsteroids.length < 100 && tries < 300) {
+	                while (environmentAsteroids.length < 50 && tries < 300) {
 	                    if (!spawnOneWarpAsteroidRelative(false)) break;
 	                    tries++;
 	                }
@@ -9140,6 +9668,7 @@
 	            
 	            if (warpZone && warpZone.active) { warpZone.update(); warpZone.draw(ctx); }
 	            if (warpGate && !warpGate.dead) { warpGate.update(); warpGate.draw(ctx); }
+	            if (flagshipWarpZone && !flagshipWarpZone.dead) { flagshipWarpZone.update(); flagshipWarpZone.draw(ctx); }
 
 	            coins.forEach(c => { c.update(); c.draw(ctx); });
             nuggets.forEach(n => { n.update(); n.draw(ctx); });
@@ -9209,6 +9738,7 @@
 
             bullets.forEach(b => { b.update(); b.draw(ctx); });
             bossBombs.forEach(b => { b.update(); b.draw(ctx); });
+            guidedMissiles.forEach(m => { m.update(); m.draw(ctx); });
             particles.forEach(p => { p.update(); p.draw(ctx); });
             drones.forEach(d => { d.update(); d.draw(ctx); });
 
@@ -9220,6 +9750,7 @@
 
             compactArray(bullets);
             compactArray(bossBombs);
+            compactArray(guidedMissiles);
             compactArray(enemies);
             compactArray(bases);
             compactArray(environmentAsteroids);
@@ -9254,8 +9785,8 @@
 	                        spawnParticles(b.pos.x, b.pos.y, 8, '#aa8');
 	                        playSound('hit');
 	                    } else {
-	                        // Warp maze line walls: bullets just fizzle.
-	                        spawnParticles(b.pos.x, b.pos.y, 6, '#0ff');
+	                        // Warp/anomaly line walls: bullets just fizzle.
+	                        spawnParticles(b.pos.x, b.pos.y, 6, astCol.kind === 'anomaly_wall' ? '#0f0' : '#0ff');
 	                        playSound('hit');
 	                    }
 	                }
@@ -9302,6 +9833,19 @@
                         }
                     } 
                     else {
+                         for (let m of guidedMissiles) {
+                             if (!m || m.dead) continue;
+                             const dist = Math.hypot(b.pos.x - m.pos.x, b.pos.y - m.pos.y);
+                             if (dist < (m.radius || 0) + (b.radius || 0)) {
+                                 if (typeof m.takeHit === 'function') m.takeHit(b.damage);
+                                 else m.dead = true;
+                                 hit = true;
+                                 b.dead = true;
+                                 break;
+                             }
+                         }
+                         
+                         if (hit) continue;
                          for (let e of enemies) {
                              if (!e.dead) {
                                  const dist = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
@@ -9339,8 +9883,8 @@
 	                                     playSound('hit');
 	                                     spawnParticles(b.pos.x, b.pos.y, 6, '#ff8');
 	                                     if (t.hp <= 0) {
-	                                         t.dead = true;
-	                                         spawnParticles(t.pos.x, t.pos.y, 18, '#ff6');
+	                                         if (typeof t.kill === 'function') t.kill();
+	                                         else t.dead = true;
 	                                     }
 	                                     break;
 	                                 }
@@ -10078,6 +10622,7 @@
 
         function startGame() {
                         resetWarpState();
+                        warpCompletedOnce = false;
                         // Always reset audio state to normal before a new run
             musicMode = 'normal';
             gameMode = 'normal';
@@ -10095,6 +10640,7 @@
             bossArena.active = false;
             bossArena.growing = false;
             cruiserEncounterCount = 0;
+            cruiserTimerPausedAt = null;
             dreadManager.upgradesChosen = 0;
             dreadManager.firstSpawnDone = false;
             dreadManager.timerActive = true;
@@ -10282,7 +10828,8 @@
             if (e.key === 'Shift') keys.shift = false;
         });
 
-                window.addEventListener('mousemove', e => {
+        window.addEventListener('mousemove', e => {
+            usingGamepad = false;
             document.body.classList.remove('no-cursor');
             if (typeof mouseScreen !== 'undefined') {
                 mouseScreen.x = e.clientX;
