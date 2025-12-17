@@ -1,0 +1,120 @@
+﻿	                    if (musicEnabled) { stopMusic(); startMusic('cruiser'); }
+	                }
+	                
+	                // Update cave wall turrets. 
+	                for (let i = 0; i < this.wallTurrets.length; i++) { 
+	                    const t = this.wallTurrets[i]; 
+	                    if (t && !t.dead) t.update(); 
+	                } 
+	                compactArray(this.wallTurrets); 
+	                 
+	                // Boss arena reshaping: add temporary narrowing + moving blockers. 
+	                this.arenaSegments = []; 
+	                if (bossActive && boss && !boss.dead && (boss instanceof CaveGateBoss || boss instanceof SuperFlagshipBoss)) { 
+	                    const arenaY = boss.pos.y; 
+	                    if (!isFinite(arenaY) || !isFinite(boss.pos.x)) { 
+	                        this.arenaSegments = []; 
+	                    } else { 
+	                    const span = boss instanceof SuperFlagshipBoss ? 2200 : 1600; 
+	                    const b = this.boundsAt(arenaY); 
+	                    const cx = (b.left + b.right) * 0.5; 
+	                    const t = Date.now() * 0.001; 
+	                    const baseW = boss instanceof SuperFlagshipBoss ? 2600 : 2200; 
+	                    const wobble = boss instanceof SuperFlagshipBoss ? 500 : 380; 
+	                    const w = baseW + Math.sin(t * 1.2) * wobble; 
+	                    const leftX = cx - w * 0.5; 
+	                    const rightX = cx + w * 0.5; 
+	                    this.arenaSegments.push({ x0: leftX, y0: arenaY - span, x1: leftX, y1: arenaY + span, kind: 'arena' }); 
+	                    this.arenaSegments.push({ x0: rightX, y0: arenaY - span, x1: rightX, y1: arenaY + span, kind: 'arena' }); 
+	                     
+	                    // Moving blocker bar with a gap 
+	                    const gap = boss instanceof SuperFlagshipBoss ? 720 : 560; 
+	                    const barY = arenaY + Math.sin(t * 1.8) * (span * 0.55); 
+	                    const gx = cx + Math.sin(t * 1.1) * 320; 
+	                    this.arenaSegments.push({ x0: leftX + 60, y0: barY, x1: gx - gap * 0.5, y1: barY, kind: 'arena' }); 
+	                    this.arenaSegments.push({ x0: gx + gap * 0.5, y0: barY, x1: rightX - 60, y1: barY, kind: 'arena' }); 
+	                    } 
+	                } 
+	                 
+	                // Maintain ambient Level-1 enemies in the cave (no bases/stations here). 
+	                this.enemySpawnCooldown--; 
+	                if (this.enemySpawnCooldown <= 0) { 
+	                    const living = enemies.filter(e => e && !e.dead && (e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter' || e.type === 'defender')).length; 
+	                    const cap = (bossActive ? 10 : 14) + Math.min(6, this.bossesDefeated * 2); 
+	                    if (living < cap) { 
+	                        const toSpawn = Math.min(2, cap - living); 
+	                        let gateLimitY = -Infinity; 
+	                        for (let i = 0; i < this.gates.length; i++) { 
+	                            const g = this.gates[i]; 
+	                            if (!g || g.open) continue; 
+	                            if (g.y < player.pos.y) gateLimitY = Math.max(gateLimitY, g.y); 
+	                        } 
+	                        for (let i = 0; i < toSpawn; i++) { 
+	                            let y = player.pos.y - (1400 + Math.random() * 2800); 
+	                            if (gateLimitY > -Infinity) y = Math.max(y, gateLimitY + 1100); 
+	                            y = Math.min(y, player.pos.y - 900); 
+	                            const b = this.boundsAt(y); 
+	                            const x = b.left + 260 + Math.random() * Math.max(200, (b.right - b.left - 520)); 
+	                    const r = Math.random(); 
+	                    // Hunters should be rare in the cave; keep variety with defenders + occasional elites. 
+	                    const type = r < 0.30 ? 'roamer' : (r < 0.78 ? 'defender' : (r < 0.93 ? 'elite_roamer' : 'hunter')); 
+	                    enemies.push(new Enemy(type, { x, y }, null)); 
+	                } 
+	                    } 
+	                    this.enemySpawnCooldown = 160 + Math.floor(Math.random() * 140); 
+	                } 
+	            } 
+	            
+	            draw(ctx, camX, camY, height, zoom) {  
+	                if (!this.active) return;  
+	                let z = zoom || (currentZoom || ZOOM_LEVEL);  
+	                if (!isFinite(z) || z <= 0) z = ZOOM_LEVEL;  
+	                const safeCamX = (isFinite(camX) ? camX : (player ? player.pos.x - (canvas.width / (2 * z)) : 0)); 
+	                const safeCamY = (isFinite(camY) ? camY : (player ? player.pos.y - (canvas.height / (2 * z)) : 0)); 
+	                const y0 = safeCamY - 1200;  
+	                const y1 = safeCamY + (height / z) + 1200;  
+	                let i0 = this.bucketIndexForY(y1);  
+	                let i1 = this.bucketIndexForY(y0);  
+	                if (!isFinite(i0) || !isFinite(i1)) { 
+	                    i0 = 0; 
+	                    i1 = Math.max(0, (this.buckets ? this.buckets.length - 1 : 0)); 
+	                } 
+	                const segFinite = (s) => (s && isFinite(s.x0) && isFinite(s.y0) && isFinite(s.x1) && isFinite(s.y1)); 
+	                  
+	                ctx.save();  
+	                // Re-apply the world transform in case a draw routine left the canvas in a bad state.
+	                ctx.setTransform(1, 0, 0, 1, 0, 0);
+	                ctx.scale(z, z);
+	                ctx.translate(-safeCamX, -safeCamY);
+	                // Defensive reset: cave walls are drawn last and must not inherit corrupted state.
+	                ctx.globalAlpha = 1;  
+	                ctx.globalCompositeOperation = 'source-over';  
+	                ctx.shadowBlur = 0;  
+	                ctx.shadowColor = 'transparent';  
+	                try { ctx.setLineDash([]); } catch (e) {}  
+	                ctx.lineCap = 'round';  
+	                ctx.lineJoin = 'round';  
+	                 
+	                // Thick outer boundary (reads as a solid wall) 
+	                ctx.shadowBlur = 0;  
+	                ctx.lineWidth = 18 / z;  
+	                ctx.strokeStyle = 'rgba(0, 70, 120, 0.85)';  
+	                ctx.beginPath();  
+	                for (let i = Math.max(0, i0 - 1); i <= Math.min(this.buckets.length - 1, i1 + 1); i++) {  
+	                    const b = this.buckets[i];  
+	                    if (!b) continue;  
+	                    for (let j = 0; j < b.length; j++) {  
+	                        const s = b[j];  
+	                        if (s.kind !== 'outer' || !segFinite(s)) continue;  
+	                        ctx.moveTo(s.x0, s.y0);  
+	                        ctx.lineTo(s.x1, s.y1);  
+	                    }  
+	                }  
+	                ctx.stroke();  
+	                 
+	                // Neon edge highlight (outer boundary) 
+	                ctx.shadowBlur = 22;  
+	                ctx.shadowColor = '#0ff';  
+	                ctx.lineWidth = 3 / z;  
+	                ctx.strokeStyle = 'rgba(140, 240, 255, 0.90)';  
+	                ctx.beginPath();  

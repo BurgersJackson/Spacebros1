@@ -1,0 +1,160 @@
+﻿	                    ctx.setLineDash([]); 
+	                    ctx.restore(); 
+	                } 
+	                if (this.state === 'fallen' && this.segments && this.segments.length) { 
+	                    ctx.save(); 
+	                    ctx.lineWidth = 16 / z; 
+	                    ctx.strokeStyle = 'rgba(0, 55, 100, 0.90)'; 
+	                    ctx.shadowBlur = 0; 
+	                    ctx.beginPath(); 
+	                    for (let i = 0; i < this.segments.length; i++) { 
+	                        const s = this.segments[i]; 
+	                        ctx.moveTo(s.x0, s.y0); 
+	                        ctx.lineTo(s.x1, s.y1); 
+	                    } 
+	                    ctx.stroke(); 
+	                    ctx.shadowBlur = 18; 
+	                    ctx.shadowColor = '#0ff'; 
+	                    ctx.lineWidth = 3 / z; 
+	                    ctx.strokeStyle = 'rgba(140, 240, 255, 0.75)'; 
+	                    ctx.stroke(); 
+	                    ctx.restore(); 
+	                } 
+	            } 
+	        } 
+	         
+	        class CaveDraftZone extends Entity { 
+	            constructor(x, y, w, h, forceY = -0.08) { 
+	                super(x, y); 
+	                this.w = w; 
+	                this.h = h; 
+	                this.forceY = forceY; 
+	                this.t = 0; 
+	            } 
+	            contains(entity) { 
+	                if (!entity || entity.dead) return false; 
+	                return (entity.pos.x > this.pos.x - this.w/2 && entity.pos.x < this.pos.x + this.w/2 && entity.pos.y > this.pos.y - this.h/2 && entity.pos.y < this.pos.y + this.h/2); 
+	            } 
+	            update() { 
+	                this.t++; 
+	                const apply = (e) => { 
+	                    if (!this.contains(e)) return; 
+	                    e.vel.y += this.forceY; 
+	                    // Slight stabilization so it feels like a current. 
+	                    e.vel.x *= 0.995; 
+	                }; 
+	                apply(player); 
+	                for (let i = 0; i < enemies.length; i++) apply(enemies[i]); 
+	            } 
+	            draw(ctx) { 
+	                const z = currentZoom || ZOOM_LEVEL; 
+	                const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.35; 
+	                ctx.save(); 
+	                ctx.translate(this.pos.x, this.pos.y); 
+	                ctx.globalAlpha = 0.35; 
+	                ctx.strokeStyle = `rgba(0,255,255,${0.08 + pulse * 0.08})`; 
+	                ctx.lineWidth = 2 / z; 
+	                ctx.strokeRect(-this.w/2, -this.h/2, this.w, this.h); 
+	                ctx.globalAlpha = 0.18; 
+	                ctx.fillStyle = '#0ff'; 
+	                for (let i = -2; i <= 2; i++) { 
+	                    const y = (i * 120) + Math.sin(this.t * 0.06 + i) * 30; 
+	                    ctx.beginPath(); 
+	                    ctx.moveTo(-this.w/2 + 20, y); 
+	                    ctx.lineTo(this.w/2 - 20, y); 
+	                    ctx.stroke(); 
+	                } 
+	                ctx.globalAlpha = 1; 
+	                ctx.restore(); 
+	            } 
+	        } 
+	         
+	        class CaveCritter extends Entity { 
+	            constructor(x, y) { 
+	                super(x, y); 
+	                this.radius = 14; 
+	                this.t = 0; 
+	                this.vel.x = (Math.random() - 0.5) * 2.2; 
+	                this.vel.y = (Math.random() - 0.5) * 2.2; 
+	            } 
+	            scatter(fromX, fromY) { 
+	                const a = Math.atan2(this.pos.y - fromY, this.pos.x - fromX); 
+	                this.vel.x += Math.cos(a) * 4.2; 
+	                this.vel.y += Math.sin(a) * 4.2; 
+	            } 
+	            update() { 
+	                if (this.dead) return; 
+	                this.t++; 
+	                if (player && !player.dead) { 
+	                    const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y); 
+	                    if (d < 520) this.scatter(player.pos.x, player.pos.y); 
+	                } 
+	                this.vel.x *= 0.98; 
+	                this.vel.y *= 0.98; 
+	                this.pos.add(this.vel); 
+	                checkWallCollision(this, 0.35); 
+	            } 
+	            draw(ctx) { 
+	                if (this.dead) return; 
+	                const z = currentZoom || ZOOM_LEVEL; 
+	                ctx.save(); 
+	                ctx.translate(this.pos.x, this.pos.y); 
+	                ctx.shadowBlur = 10; 
+	                ctx.shadowColor = '#6f6'; 
+	                ctx.fillStyle = '#3c3'; 
+	                ctx.strokeStyle = '#0a0'; 
+	                ctx.lineWidth = 2 / z; 
+	                ctx.beginPath(); 
+	                ctx.arc(0, 0, this.radius, 0, Math.PI * 2); 
+	                ctx.fill(); 
+	                ctx.stroke(); 
+	                ctx.shadowBlur = 0; 
+	                ctx.restore(); 
+	            } 
+	        } 
+
+	        class CaveGateBoss extends Entity {
+	            constructor(x, y, gateIndex = 0) {
+	                super(x, y);
+	                this.gateIndex = gateIndex;
+	                this.name = `GATE SENTINEL ${gateIndex + 1}`;
+	                this.radius = 128;
+	                this.maxHp = 140 + gateIndex * 70;
+	                this.hp = this.maxHp;
+	                this.t = 0;
+	                this.anchorY = y;
+	                this.despawnImmune = true;
+
+	                this.reload = 18;
+	                this.missileCooldown = 200;
+	                this.summonCooldown = 320;
+
+	                this.beamCooldown = 240;
+	                this.beamCharge = 0;
+	                this.beamChargeTotal = 70;
+	                this.beamFire = 0;
+	                this.beamFireTotal = 18;
+	                this.beamAngle = 0;
+	                this.beamLen = 5200;
+	                this.beamWidth = 32;
+	                this.beamSweep = 1.1;
+	                this.beamHitThisShot = false;
+	            }
+
+	            phase2() {
+	                return this.hp <= this.maxHp * 0.5;
+	            }
+
+	            applyDamageToPlayer(amount) {
+	                if (!player || player.dead) return;
+	                if (player.invulnerable > 0) return;
+	                let remaining = Math.max(0, Math.ceil(amount));
+
+	                if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
+	                    for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
+	                        if (player.outerShieldSegments[i] > 0) {
+	                            player.outerShieldSegments[i] = 0;
+	                            remaining -= 1;
+	                        }
+	                    }
+	                }

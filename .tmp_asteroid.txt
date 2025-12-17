@@ -1,0 +1,170 @@
+﻿            spaceStation = null;
+            score += 50000;
+            if (pendingStations > 0 && !sectorTransitionActive) nextSpaceStationTime = Date.now() + 7000;
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+
+        function checkDespawn(entity, range = 6000) {
+            if (!player) return;
+            const dist = Math.hypot(entity.pos.x - player.pos.x, entity.pos.y - player.pos.y);
+            if (dist > range) {
+                entity.dead = true;
+            }
+        }
+
+        let overlayToken = 0;
+        let overlayPriority = 0;
+        let overlayLockUntil = 0;
+
+        function showOverlayMessage(text, color = '#0ff', duration = 2000, priority = 0) {
+            const el = document.getElementById('overlay-message');
+            const now = Date.now();
+            if (now < overlayLockUntil && priority < overlayPriority) return;
+
+            overlayPriority = priority;
+            overlayLockUntil = now + duration;
+            overlayToken++;
+            const token = overlayToken;
+
+            el.innerText = text;
+            el.style.color = color;
+            el.style.textShadow = `0 0 10px ${color}`;
+            el.style.display = 'block';
+            if (overlayTimeout) clearTimeout(overlayTimeout);
+            overlayTimeout = setTimeout(() => {
+                if (overlayToken !== token) return;
+                el.style.display = 'none';
+                overlayPriority = 0;
+                overlayLockUntil = 0;
+            }, duration);
+        }
+
+        // --- Map Entities ---
+        class EnvironmentAsteroid extends Entity {
+            constructor(x, y, r, sizeLevel = 3) {
+                super(x, y);
+                this.radius = r;
+                this.sizeLevel = sizeLevel;
+                const speed = (Math.random() * 0.2) + 0.1; 
+                const angle = Math.random() * Math.PI * 2;
+                this.vel.x = Math.cos(angle) * speed;
+                this.vel.y = Math.sin(angle) * speed;
+                this.rotSpeed = (Math.random() - 0.5) * 0.01;
+                
+                this.vertices = [];
+                const points = 8 + Math.floor(Math.random() * 6);
+                for(let i=0; i<points; i++) {
+                    const angle = (i / points) * Math.PI * 2;
+                    const rad = r * (0.8 + Math.random() * 0.4);
+                    this.vertices.push({x: Math.cos(angle)*rad, y: Math.sin(angle)*rad});
+                }
+            }
+            
+             update() {
+                 this.pos.add(this.vel);
+                 this.angle += this.rotSpeed;
+                 // Contract / maze walls should persist until the contract cleans them up.
+                 // (Older builds used other contractId prefixes; those should despawn normally.)
+                 const persistentContractWall = !!(this.unbreakable && this.contractId && String(this.contractId).startsWith('C'));
+                 if (!persistentContractWall) {
+                     checkDespawn(this, 5000);
+                 }
+             }
+            
+            break() {
+                if (this.dead) return;
+                if (this.unbreakable) return;
+                this.dead = true;
+                // previously dropped a coin here; asteroid drops disabled
+                
+                if (this.sizeLevel > 1) {
+                     const newSize = this.sizeLevel - 1;
+                     const newR = this.radius * 0.6;
+                     for(let i=0; i<3; i++) {
+                         const a = new EnvironmentAsteroid(this.pos.x, this.pos.y, newR, newSize);
+                         a.vel.x = this.vel.x + (Math.random()-0.5)*2;
+                         a.vel.y = this.vel.y + (Math.random()-0.5)*2;
+                         environmentAsteroids.push(a);
+                     }
+                }
+            }
+            
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                ctx.rotate(this.angle);
+                
+                if (this.unbreakable) {
+                    // Indestructible "walls" (used by anomaly maze rings)
+                    ctx.strokeStyle = '#00aaff';
+                    ctx.shadowColor = '#0077ff';
+                    ctx.lineWidth = 4;
+                    ctx.shadowBlur = 14;
+                } else {
+                    if (sectorIndex >= 2) {
+                        ctx.strokeStyle = '#ccc';
+                        ctx.shadowColor = '#bbb';
+                    } else {
+                        if (this.sizeLevel === 3) ctx.strokeStyle = '#005500';
+                        else if (this.sizeLevel === 2) ctx.strokeStyle = '#006600';
+                        else ctx.strokeStyle = '#008800';
+                        ctx.shadowColor = '#003300';
+                    }
+                    ctx.lineWidth = 3;
+                    ctx.shadowBlur = 10;
+                }
+                
+                ctx.beginPath();
+                ctx.moveTo(this.vertices[0].x, this.vertices[0].y);
+                for(let i=1; i<this.vertices.length; i++) {
+                    ctx.lineTo(this.vertices[i].x, this.vertices[i].y);
+                }
+                ctx.closePath();
+                ctx.stroke();
+                
+                ctx.restore();
+            }
+        }
+
+        function generateMap() {
+            environmentAsteroids = [];
+            asteroidRespawnTimers = [];
+            caches = [];
+            pois = [];
+            for(let i=0; i<60; i++) {
+                spawnOneAsteroidRelative(true);
+            }
+            spawnExplorationCaches();
+            spawnSectorPOIs();
+        }
+
+        function spawnSectorPOIs() {
+            if (!player) return;
+            const constructors = [DerelictShipPOI, DebrisFieldPOI];
+
+            const placed = [];
+            for (let i = 0; i < constructors.length; i++) {
+                let placedOne = false;
+                for (let attempts = 0; attempts < 40; attempts++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = 1900 + Math.random() * 2600;
+                    const x = player.pos.x + Math.cos(angle) * dist;
+                    const y = player.pos.y + Math.sin(angle) * dist;
+                    let ok = true;
+                    for (const p of placed) {
+                        if (Math.hypot(x - p.x, y - p.y) < 1400) { ok = false; break; }
+                    }
+                    if (!ok) continue;
+                    placed.push({ x, y });
+                    const C = constructors[i];
+                    const poi = new C(x, y);
+                    pois.push(poi);
+                    placedOne = true;
+                    break;
+                }
+                if (!placedOne) {
+                    // fallback: skip
+                }
+            }

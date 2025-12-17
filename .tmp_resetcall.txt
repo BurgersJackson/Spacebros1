@@ -1,0 +1,120 @@
+﻿                
+                if (tx !== null && ty !== null) {
+                    const dx = tx - player.pos.x;
+                    const dy = ty - player.pos.y;
+                    const dist = Math.hypot(dx, dy);
+                    const angle = Math.atan2(dy, dx);
+                    minimapCtx.fillStyle = '#0f0';
+                    
+                    // Always draw an arrow; clamp to edge if target is out of range.
+                    const inRange = (dist * scale <= 95);
+                    const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
+                    const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
+                    
+                    minimapCtx.beginPath();
+                    minimapCtx.moveTo(px + Math.cos(angle)*10, py + Math.sin(angle)*10);
+                    minimapCtx.lineTo(px + Math.cos(angle + 2.5)*8, py + Math.sin(angle + 2.5)*8);
+                    minimapCtx.lineTo(px + Math.cos(angle - 2.5)*8, py + Math.sin(angle - 2.5)*8);
+                    minimapCtx.fill();
+                }
+            }
+
+            // Mini-event indicator on minimap
+	            if (!warpActive && player && miniEvent && !miniEvent.dead) {
+	                let tx = miniEvent.pos.x, ty = miniEvent.pos.y;
+	                if (miniEvent.kind === 'escort_drone' && miniEvent.dronePos && miniEvent.waypoint) {
+                    const dDrone = Math.hypot(miniEvent.dronePos.x - player.pos.x, miniEvent.dronePos.y - player.pos.y);
+                    if (dDrone > 900) { tx = miniEvent.dronePos.x; ty = miniEvent.dronePos.y; }
+                    else { tx = miniEvent.waypoint.x; ty = miniEvent.waypoint.y; }
+                }
+                const dx = tx - player.pos.x;
+                const dy = ty - player.pos.y;
+                const dist = Math.hypot(dx, dy);
+                const angle = Math.atan2(dy, dx);
+                minimapCtx.fillStyle = '#ff0';
+                const inRange = (dist * scale <= 95);
+                const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
+                const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
+                minimapCtx.beginPath();
+                minimapCtx.moveTo(px + Math.cos(angle)*10, py + Math.sin(angle)*10);
+                minimapCtx.lineTo(px + Math.cos(angle + 2.5)*8, py + Math.sin(angle + 2.5)*8);
+                minimapCtx.lineTo(px + Math.cos(angle - 2.5)*8, py + Math.sin(angle - 2.5)*8);
+                minimapCtx.fill();
+            }
+
+            minimapCtx.restore();
+        }
+
+        function startGame() { 
+                        resetWarpState(); 
+                        resetCaveState(); 
+                        warpCompletedOnce = false; 
+                        // Always reset audio state to normal before a new run 
+            musicMode = 'normal'; 
+            gameMode = 'normal'; 
+            arcadeBoss = null;
+            arcadeWave = 0;
+            arcadeWaveNextAt = 0;
+            currentZoom = ZOOM_LEVEL;
+            stopMusic();
+            player = new Spaceship(); 
+            score = 0;
+            difficultyTier = 1;
+            basesDestroyedTotal = 0;
+            bossActive = false;
+            boss = null;
+            bossArena.active = false;
+            bossArena.growing = false;
+            cruiserEncounterCount = 0;
+            cruiserTimerPausedAt = null;
+            dreadManager.upgradesChosen = 0;
+            dreadManager.firstSpawnDone = false;
+            dreadManager.timerActive = true;
+            dreadManager.timerAt = Date.now() + dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
+            rerollTokens = metaProfile.purchases.rerollTokens || 0;
+            metaExtraLifeAvailable = !!metaProfile.purchases.extraLife;
+            
+            // Reset player stats/inventory
+            player.fireDelay = 24;
+            
+            player.turretLevel = 1;
+            player.canWarp = false;
+            player.shieldSegments = new Array(8).fill(2);
+            player.hp = player.maxHp;
+            player.inventory = {};
+            player.xp = 0;
+            player.level = 1;
+            player.nextLevelXp = 100;
+            player.stats = {
+                damageMult: 1.0,
+                fireRateMult: 1.0,
+                shotgunFireRateMult: 1.0,
+                rangeMult: 1.0,
+                multiShot: 1,
+                homing: 0, 
+                shieldRegenRate: 8, // seconds per segment baseline
+                hpRegenAmount: 0,
+                hpRegenRate: 5,
+                speedMult: 1.0,
+                slowField: 0,
+                slowFieldDuration: 0
+            };
+            player.lastHpRegenTime = Date.now();
+            player.staticWeapons = [];
+            player.nukeMaxCooldown = 600;
+            player.magnetRadius = 150;
+            player.nukeUnlocked = false;
+            gameEnded = false;
+
+            // Apply meta bonuses
+            if (metaProfile.purchases.startDamage) {
+                player.stats.damageMult *= 1.2; // starter damage bump
+            }
+            if (metaProfile.purchases.passiveHp) {
+                player.maxHp += 10;
+                player.hp = player.maxHp;
+                updateHealthUI();
+            }
+            if (metaProfile.purchases.hullPlating) {
+                player.maxHp += 15;
+                player.hp = player.maxHp;

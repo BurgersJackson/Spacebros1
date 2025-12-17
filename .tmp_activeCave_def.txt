@@ -1,0 +1,40 @@
+﻿                 const dist = min + Math.random() * (max - min);
+                 // Bias spawns "up the tunnel" so progression stays pressured.
+                 const y = player.pos.y - dist * (0.85 + Math.random() * 0.3);
+                 const bounds = caveLevel.boundsAt(y);
+                 const margin = 180;
+                 const w = Math.max(200, (bounds.right - bounds.left) - margin * 2);
+                 const x = bounds.left + margin + Math.random() * w;
+                 return { x, y };
+             }
+             const angle = Math.random() * Math.PI * 2;
+             const dist = min + Math.random() * (max - min);
+             const x = player.pos.x + Math.cos(angle) * dist;
+             const y = player.pos.y + Math.sin(angle) * dist;
+             return {x, y};
+        }
+
+        function resolveEntityCollision() {
+            const allEntities = [player, ...enemies, ...bases, ...(contractEntities.fortresses || [])].filter(e => e && !e.dead);
+            if (boss && !boss.dead) allEntities.push(boss);
+            if (spaceStation) allEntities.push(spaceStation);
+            
+            const activeAnomalyZone = (activeContract && activeContract.type === 'anomaly' && contractEntities && contractEntities.anomalies)
+                ? contractEntities.anomalies.find(a => a && !a.dead && a.contractId === activeContract.id)
+                : null;
+            
+            const activeCave = (caveMode && caveLevel && caveLevel.active) ? caveLevel : null;
+            
+            // Push physics
+            for (let i = 0; i < allEntities.length; i++) {
+                for (let j = i + 1; j < allEntities.length; j++) {
+                    const e1 = allEntities[i];
+                    const e2 = allEntities[j];
+
+                    // Bases shouldn't "push" ships around; ships should avoid them instead.
+                    if ((e1 instanceof Base && e2 instanceof Enemy) || (e2 instanceof Base && e1 instanceof Enemy)) {
+                        continue;
+                    }
+                    let r1 = e1.radius;
+                    let r2 = e2.radius;
+                    

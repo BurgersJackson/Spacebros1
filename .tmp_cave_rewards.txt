@@ -1,0 +1,180 @@
+﻿	                    const bounds = this.boundsAt(y); 
+	                    const side = (Math.random() < 0.5) ? 'left' : 'right'; 
+	                    const x = side === 'left' ? (bounds.left + 160) : (bounds.right - 160); 
+	                    const mode = modes[i % modes.length]; 
+	                    const armored = (mode === 'rapid') && (Math.random() < 0.28); 
+	                    this.wallTurrets.push(new CaveWallTurret(x, y, mode, { armored })); 
+	                } 
+	                 
+	                // Side caves with rewards + switchable doors (optional detours). 
+	                this.doors = []; 
+	                this.switches = []; 
+	                this.rewards = []; 
+	                this.relays = []; 
+	                this.gasVents = []; 
+	                this.draftZones = []; 
+	                this.critters = []; 
+	                this.rockfalls = []; 
+	                this.arenaSegments = []; 
+	                 
+	                const isNearGate = (y) => this.gates.some(g => g && Math.abs(g.y - y) < 9000); 
+	                const sideCaveCount = 8; 
+	                for (let sc = 0; sc < sideCaveCount; sc++) { 
+	                    const y = this.startY - (sc + 1) * 24000 - Math.random() * 6000; 
+	                    if (y < this.endY + 16000) break; 
+	                    if (isNearGate(y)) continue; 
+	                    const b = this.boundsAt(y); 
+	                    const side = (sc % 2 === 0) ? 'left' : 'right'; 
+	                    const w = 1100; 
+	                    const h = 1800; 
+	                    const margin = 30; 
+	                    const x1 = side === 'left' ? (b.left + margin + w) : (b.right - margin); 
+	                    const x0 = x1 - w; 
+	                    const y0 = y - h * 0.5; 
+	                    const y1c = y + h * 0.5; 
+	                    const faceX = side === 'left' ? x1 : x0; 
+	                     
+	                    // Chamber walls (mostly sealed, with 2 doorways on the face that reconnect later). 
+	                    const segs = []; 
+	                    const step = 140; 
+	                    // Top / bottom 
+	                    segs.push({ x0, y0: y0, x1, y1: y0, kind: 'inner' }); 
+	                    segs.push({ x0, y0: y1c, x1, y1: y1c, kind: 'inner' }); 
+	                    // Outer wall (flush to boundary side) 
+	                    const outerX = side === 'left' ? x0 : x1; 
+	                    for (let yy = y0; yy < y1c; yy += step) { 
+	                        segs.push({ x0: outerX, y0: yy, x1: outerX, y1: Math.min(y1c, yy + step), kind: 'inner' }); 
+	                    } 
+	                    // Face wall with two gaps 
+	                    const gapH = 220; 
+	                    const gap1 = y + 520; 
+	                    const gap2 = y - 520; 
+	                    const pieces = [ 
+	                        { a: y0, b: gap2 - gapH/2 }, 
+	                        { a: gap2 + gapH/2, b: gap1 - gapH/2 }, 
+	                        { a: gap1 + gapH/2, b: y1c } 
+	                    ]; 
+	                    for (let p = 0; p < pieces.length; p++) { 
+	                        const A = pieces[p].a, B = pieces[p].b; 
+	                        for (let yy = A; yy < B; yy += step) { 
+	                            segs.push({ x0: faceX, y0: yy, x1: faceX, y1: Math.min(B, yy + step), kind: 'inner' }); 
+	                        } 
+	                    } 
+	                    // Add segments to buckets 
+	                    for (let i = 0; i < segs.length; i++) { 
+	                        const s = segs[i]; 
+	                        const bi = this.bucketIndexForY((s.y0 + s.y1) * 0.5); 
+	                        if (this.buckets[bi]) this.buckets[bi].push(s); 
+	                    } 
+	                     
+	                    // Door that blocks the lower entrance until the player shoots a switch. 
+	                    const doorId = `side_${sc}`; 
+	                    const doorSeg = { x0: faceX, y0: gap1 - gapH/2, x1: faceX, y1: gap1 + gapH/2, kind: 'door' }; 
+	                    this.doors.push({ id: doorId, open: false, segments: [doorSeg] }); 
+	                    const towardCenter = side === 'left' ? 1 : -1; 
+	                    this.switches.push(new CaveWallSwitch(faceX + towardCenter * 140, gap1, [doorId])); 
+	                     
+	                    // Reward in the chamber 
+	                    const rewardType = (sc % 4 === 0) ? 'coins' : (sc % 4 === 1 ? 'upgrade' : (sc % 4 === 2 ? 'shield' : 'fragment')); 
+	                    this.rewards.push(new CaveRewardPickup((x0 + x1) * 0.5, y, rewardType, 0)); 
+	                } 
+	                 
+	                // Hazards / traversal moments sprinkled throughout. 
+	                for (let i = 0; i < 10; i++) { 
+	                    const y = this.startY - (i + 1) * 18000 - Math.random() * 8000; 
+	                    if (y < this.endY + 14000) break; 
+	                    if (isNearGate(y)) continue; 
+	                    const b = this.boundsAt(y); 
+	                    const x = (b.left + b.right) * 0.5 + (Math.random() - 0.5) * (Math.min(1400, (b.right - b.left) * 0.25)); 
+	                    this.gasVents.push(new CaveGasVent(x, y)); 
+	                } 
+	                for (let i = 0; i < 8; i++) { 
+	                    const y = this.startY - (i + 1) * 26000 - Math.random() * 9000; 
+	                    if (y < this.endY + 12000) break; 
+	                    if (isNearGate(y)) continue; 
+	                    const b = this.boundsAt(y); 
+	                    const cx = (b.left + b.right) * 0.5; 
+	                    this.draftZones.push(new CaveDraftZone(cx, y, 1200, 3200, (Math.random() < 0.5) ? -0.10 : 0.10)); 
+	                } 
+	                for (let i = 0; i < 6; i++) { 
+	                    const y = this.startY - (i + 1) * 30000 - Math.random() * 9000; 
+	                    if (y < this.endY + 16000) break; 
+	                    if (isNearGate(y)) continue; 
+	                    const b = this.boundsAt(y); 
+	                    const cx = (b.left + b.right) * 0.5; 
+	                    const closeSide = (Math.random() < 0.5) ? 'left' : 'right'; 
+	                    this.rockfalls.push(new CaveRockfall(cx, y, 1600, closeSide)); 
+	                } 
+	                 
+	                // Seal the entrance behind the player so there's no way back out of the cave. 
+	                const sealY = this.startY + 1400; 
+	                const b0 = this.boundsAt(this.startY); 
+	                const entranceLeftX = b0.left; 
+	                const entranceRightX = b0.right; 
+	                const sealLeft = entranceLeftX; 
+	                const sealRight = entranceRightX; 
+	                const sealSegs = []; 
+	                const n = 34; 
+	                const step = (sealRight - sealLeft) / n; 
+	                const jitter = 60; 
+	                const pts = []; 
+	                for (let i = 0; i <= n; i++) { 
+	                    const x = sealLeft + i * step; 
+	                    let y = sealY + (Math.random() - 0.5) * jitter; 
+	                    if (i === 0 || i === n) y = sealY; 
+	                    pts.push({ x, y }); 
+	                } 
+	                for (let i = 0; i < n; i++) { 
+	                    sealSegs.push({ x0: pts[i].x, y0: pts[i].y, x1: pts[i + 1].x, y1: pts[i + 1].y, kind: 'seal' }); 
+	                } 
+	                // Connect the seal to the cave boundary with side walls. 
+	                const sideSegs = []; 
+	                const sideStep = 220; 
+	                for (let y = this.startY; y < sealY; y += sideStep) { 
+	                    const y1 = Math.min(sealY, y + sideStep); 
+	                    sideSegs.push({ x0: entranceLeftX, y0: y, x1: entranceLeftX, y1, kind: 'seal' }); 
+	                    sideSegs.push({ x0: entranceRightX, y0: y, x1: entranceRightX, y1, kind: 'seal' }); 
+	                } 
+	                this.entranceSeal = { y: sealY, segments: sealSegs, sideSegments: sideSegs, leftX: entranceLeftX, rightX: entranceRightX }; 
+	            } 
+	            
+	            bucketIndexForY(y) {
+	                const idx = Math.floor((this.startY - y) / this.stepY);
+	                return Math.max(0, Math.min(this.buckets.length - 1, idx));
+	            }
+	            
+	            boundsAt(y) {
+	                if (!this.leftPts || this.leftPts.length < 2) return { left: -1500, right: 1500 };
+	                const idx = Math.max(0, Math.min(this.leftPts.length - 1, Math.floor((this.startY - y) / this.stepY)));
+	                const l = this.leftPts[idx];
+	                const r = this.rightPts[idx];
+	                return { left: l ? l.x : -1500, right: r ? r.x : 1500 };
+	            }
+	            
+	            centerXAt(y) {
+	                const b = this.boundsAt(y);
+	                return (b.left + b.right) * 0.5;
+	            }
+	            
+	            segmentsNearY(y, spanBuckets = 3) { 
+	                if (!this.buckets || this.buckets.length === 0) return [];
+	                const idx = this.bucketIndexForY(y);
+	                const segs = [];
+	                for (let i = Math.max(0, idx - spanBuckets); i <= Math.min(this.buckets.length - 1, idx + spanBuckets); i++) {
+	                    const b = this.buckets[i];
+	                    if (b && b.length) segs.push(...b);
+	                }
+	                // Closed gates add barrier segments. 
+	                for (let g = 0; g < this.gates.length; g++) { 
+	                    const gate = this.gates[g]; 
+	                    if (!gate || gate.open) continue; 
+	                    if (Math.abs(gate.y - y) < this.stepY * (spanBuckets + 2)) { 
+	                        if (gate.segments && gate.segments.length) segs.push(...gate.segments); 
+	                    } 
+	                } 
+	                // Closed doors add barrier segments. 
+	                for (let d = 0; d < this.doors.length; d++) { 
+	                    const door = this.doors[d]; 
+	                    if (!door || door.open) continue; 
+	                    if (door.segments && door.segments.length) { 
+	                        const yy = (door.segments[0].y0 + door.segments[0].y1) * 0.5; 

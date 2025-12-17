@@ -1,0 +1,180 @@
+﻿                                    if (!b.ignoreShields && base.innerShieldSegments.length > 0 && dist < base.innerShieldRadius + 5 && dist > base.innerShieldRadius - 15) {
+                                        let angle = Math.atan2(b.pos.y - base.pos.y, b.pos.x - base.pos.x) - base.innerShieldRotation;
+                                        while(angle < 0) angle += Math.PI*2;
+                                        const count = base.innerShieldSegments.length;
+                                        const segIndex = Math.floor((angle / (Math.PI*2)) * count) % count;
+                                        if (base.innerShieldSegments[segIndex] > 0) {
+                                            base.innerShieldSegments[segIndex]--;
+                                            hit = true;
+                                            playSound('shield_hit');
+                                            if (base.innerShieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#f0f');
+                                            else spawnParticles(b.pos.x, b.pos.y, 3, '#808');
+                                            base.aggro = true; 
+                                            break;
+                                        }
+                                    }
+
+                                    if (dist < base.radius + b.radius) {
+                                        base.hp -= b.damage;
+                                        hit = true;
+                                        base.aggro = true; 
+                                        playSound('hit');
+                                        spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
+                                        if (base.hp <= 0) {
+                                            base.dead = true;
+                                            playSound('base_explode');
+                                            spawnParticles(base.pos.x, base.pos.y, 50, '#f0f');
+                                            
+                                            // DROP COINS
+                                            for(let i=0; i<6; i++) {
+                                                coins.push(new Coin(base.pos.x + (Math.random()-0.5)*50, base.pos.y + (Math.random()-0.5)*50, 5));
+                                            }
+                                            nuggets.push(new SpaceNugget(base.pos.x, base.pos.y, 1));
+                                            
+                                            basesDestroyed++;
+                                            basesDestroyedTotal++;
+                                            
+                                            // Increase Difficulty every 3 bases
+                                            difficultyTier = 1 + Math.floor(basesDestroyedTotal / 6);
+                                            
+                                            score += 1000;
+                                            document.getElementById('bases-display').innerText = `${basesDestroyedTotal}`;
+                                            
+                                            enemies.forEach(e => { if (e.assignedBase === base) e.type = 'roamer'; });
+                                            
+                                            const delay = 5000 + Math.random() * 5000;
+                                            baseRespawnTimers.push(Date.now() + delay);
+
+                                            // Boss spawns are now handled strictly via the cruiser timer after a boss is destroyed
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (hit) bullets.splice(i, 1); 
+            } 
+             
+	            // Draw cave boundaries on top. 
+	            if (caveActive) { 
+	                caveLevel.draw(ctx, camX, camY, height, zoom); 
+	            } 
+             
+            ctx.restore(); 
+            drawStationIndicator(); 
+            drawMinimap(); 
+            drawContractIndicator(); 
+            drawMiniEventIndicator();
+            updateMiniEventUI();
+            updateKeysUI();
+            if (bossActive && boss && typeof boss.drawBossHud === 'function') boss.drawBossHud(ctx);
+        }
+
+        function drawStationIndicator() {
+            if (!spaceStation || !player) return;
+
+            const screenW = canvas.width;
+            const screenH = canvas.height;
+            
+            // Check if on screen (approximate bounds)
+            const z = currentZoom || ZOOM_LEVEL;
+            const camX = player.pos.x - screenW / (2 * z);
+            const camY = player.pos.y - screenH / (2 * z);
+            const viewW = screenW / z;
+            const viewH = screenH / z;
+            
+            // If center of station is within view (plus a bit of margin), don't draw arrow
+            if (spaceStation.pos.x > camX && spaceStation.pos.x < camX + viewW &&
+                spaceStation.pos.y > camY && spaceStation.pos.y < camY + viewH) {
+                return; 
+            }
+
+            const dx = spaceStation.pos.x - player.pos.x;
+            const dy = spaceStation.pos.y - player.pos.y;
+            const angle = Math.atan2(dy, dx);
+            
+            const margin = 60; 
+            const cx = screenW / 2;
+            const cy = screenH / 2;
+            
+            const vx = Math.cos(angle);
+            const vy = Math.sin(angle);
+            
+            // Intersect ray from center with screen bounding box inset by margin
+            const bx = cx - margin;
+            const by = cy - margin;
+            
+            const tx = Math.abs(vx) > 0.001 ? bx / Math.abs(vx) : Infinity;
+            const ty = Math.abs(vy) > 0.001 ? by / Math.abs(vy) : Infinity;
+            const t = Math.min(tx, ty);
+            
+            const arrowX = cx + vx * t;
+            const arrowY = cy + vy * t;
+            
+            ctx.save();
+            ctx.translate(arrowX, arrowY);
+            ctx.rotate(angle);
+            
+            const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
+            ctx.scale(pulse, pulse);
+            
+            ctx.fillStyle = '#0ff';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            
+            ctx.beginPath();
+            ctx.moveTo(15, 0);
+            ctx.lineTo(-15, 12);
+            ctx.lineTo(-15, -12);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            
+            // Distance Text
+            ctx.rotate(-angle);
+            ctx.fillStyle = '#0ff';
+            ctx.font = 'bold 14px Courier New';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = '#000';
+            const dist = Math.hypot(dx, dy);
+            ctx.fillText((dist/1000).toFixed(1) + 'km', 0, 25);
+            ctx.shadowBlur = 0;
+            
+            ctx.restore();
+        }
+
+        function drawContractIndicator() {
+            if (!activeContract || !player || player.dead) return;
+            let tx = null, ty = null;
+            if (activeContract.type === 'gate_run' && contractEntities.gates.length > 0) {
+                const idx = activeContract.gateIndex || 0;
+                const g = contractEntities.gates[idx];
+                if (g && !g.dead) { tx = g.pos.x; ty = g.pos.y; }
+            } else if (activeContract.target) {
+                tx = activeContract.target.x; ty = activeContract.target.y;
+            } else if (contractEntities.beacons.length > 0) {
+                tx = contractEntities.beacons[0].pos.x; ty = contractEntities.beacons[0].pos.y;
+            }
+            if (tx === null || ty === null) return;
+
+            const screenW = canvas.width;
+            const screenH = canvas.height;
+            const z = currentZoom || ZOOM_LEVEL;
+            const camX = player.pos.x - screenW / (2 * z);
+            const camY = player.pos.y - screenH / (2 * z);
+            const viewW = screenW / z;
+            const viewH = screenH / z;
+
+            if (tx > camX && tx < camX + viewW && ty > camY && ty < camY + viewH) return;
+
+            const dx = tx - player.pos.x;
+            const dy = ty - player.pos.y;
+            const angle = Math.atan2(dy, dx);
+            
+            // Match the space-station indicator style/position (edge, pulsing, distance readout).
+            const margin = 60;
+            const cx = screenW / 2;

@@ -1,0 +1,420 @@
+﻿	            } 
+	        } 
+	         
+	        class CaveCritter extends Entity { 
+	            constructor(x, y) { 
+	                super(x, y); 
+	                this.radius = 14; 
+	                this.t = 0; 
+	                this.vel.x = (Math.random() - 0.5) * 2.2; 
+	                this.vel.y = (Math.random() - 0.5) * 2.2; 
+	            } 
+	            scatter(fromX, fromY) { 
+	                const a = Math.atan2(this.pos.y - fromY, this.pos.x - fromX); 
+	                this.vel.x += Math.cos(a) * 4.2; 
+	                this.vel.y += Math.sin(a) * 4.2; 
+	            } 
+	            update() { 
+	                if (this.dead) return; 
+	                this.t++; 
+	                if (player && !player.dead) { 
+	                    const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y); 
+	                    if (d < 520) this.scatter(player.pos.x, player.pos.y); 
+	                } 
+	                this.vel.x *= 0.98; 
+	                this.vel.y *= 0.98; 
+	                this.pos.add(this.vel); 
+	                checkWallCollision(this, 0.35); 
+	            } 
+	            draw(ctx) { 
+	                if (this.dead) return; 
+	                const z = currentZoom || ZOOM_LEVEL; 
+	                ctx.save(); 
+	                ctx.translate(this.pos.x, this.pos.y); 
+	                ctx.shadowBlur = 10; 
+	                ctx.shadowColor = '#6f6'; 
+	                ctx.fillStyle = '#3c3'; 
+	                ctx.strokeStyle = '#0a0'; 
+	                ctx.lineWidth = 2 / z; 
+	                ctx.beginPath(); 
+	                ctx.arc(0, 0, this.radius, 0, Math.PI * 2); 
+	                ctx.fill(); 
+	                ctx.stroke(); 
+	                ctx.shadowBlur = 0; 
+	                ctx.restore(); 
+	            } 
+	        } 
+
+	        class CaveGateBoss extends Entity {
+	            constructor(x, y, gateIndex = 0) {
+	                super(x, y);
+	                this.gateIndex = gateIndex;
+	                this.name = `GATE SENTINEL ${gateIndex + 1}`;
+	                this.radius = 128;
+	                this.maxHp = 140 + gateIndex * 70;
+	                this.hp = this.maxHp;
+	                this.t = 0;
+	                this.anchorY = y;
+	                this.despawnImmune = true;
+
+	                this.reload = 18;
+	                this.missileCooldown = 200;
+	                this.summonCooldown = 320;
+
+	                this.beamCooldown = 240;
+	                this.beamCharge = 0;
+	                this.beamChargeTotal = 70;
+	                this.beamFire = 0;
+	                this.beamFireTotal = 18;
+	                this.beamAngle = 0;
+	                this.beamLen = 5200;
+	                this.beamWidth = 32;
+	                this.beamSweep = 1.1;
+	                this.beamHitThisShot = false;
+	            }
+
+	            phase2() {
+	                return this.hp <= this.maxHp * 0.5;
+	            }
+
+	            applyDamageToPlayer(amount) {
+	                if (!player || player.dead) return;
+	                if (player.invulnerable > 0) return;
+	                let remaining = Math.max(0, Math.ceil(amount));
+
+	                if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
+	                    for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
+	                        if (player.outerShieldSegments[i] > 0) {
+	                            player.outerShieldSegments[i] = 0;
+	                            remaining -= 1;
+	                        }
+	                    }
+	                }
+
+	                if (player.shieldSegments && player.shieldSegments.length > 0) {
+	                    for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
+	                        const absorb = Math.min(remaining, player.shieldSegments[i]);
+	                        player.shieldSegments[i] -= absorb;
+	                        remaining -= absorb;
+	                    }
+	                }
+
+	                if (remaining > 0) {
+	                    player.hp -= remaining;
+	                    spawnParticles(player.pos.x, player.pos.y, 14, '#f00');
+	                    playSound('hit');
+	                    updateHealthUI();
+	                    if (player.hp <= 0) killPlayer();
+	                } else {
+	                    playSound('shield_hit');
+	                    spawnParticles(player.pos.x, player.pos.y, 10, '#ff0');
+	                }
+	                player.invulnerable = 45;
+	            }
+
+	            applyPlayerBulletHit(b) {
+	                if (this.dead) return false;
+	                const dist = Math.hypot(b.pos.x - this.pos.x, b.pos.y - this.pos.y);
+	                if (dist >= this.radius + b.radius) return false;
+
+	                this.hp -= b.damage;
+	                playSound('hit');
+	                spawnParticles(b.pos.x, b.pos.y, 10, '#f0f');
+	                if (this.hp <= 0) this.kill();
+	                return true;
+	            }
+
+	            kill() {
+	                if (this.dead) return;
+	                this.dead = true;
+	                playSound('base_explode');
+	                spawnParticles(this.pos.x, this.pos.y, 120, '#f0f');
+	                awardCoinsInstant(18 * 6, { noSound: false, sound: 'coin', color: '#ff0' });
+	                for (let i = 0; i < 4; i++) nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 160, this.pos.y + (Math.random() - 0.5) * 160, 1));
+	                powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+	                try { if (caveLevel && caveLevel.active) caveLevel.openGate(this.gateIndex); } catch (e) {}
+	                bossActive = false;
+	                boss = null;
+	                showOverlayMessage(`${this.name} DESTROYED`, '#0f0', 2600, 3);
+	                if (musicEnabled && gameActive && !gamePaused) { stopMusic(); startMusic('normal'); }
+	            }
+
+	            update() {
+	                if (this.dead) return;
+	                if (!player || player.dead) return;
+	                if (!caveMode || !caveLevel || !caveLevel.active) return;
+	                this.t++;
+
+	                const phase2 = this.phase2();
+	                const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+
+	                // Keep the boss near its checkpoint with slight weaving.
+	                const bounds = caveLevel.boundsAt(this.pos.y);
+	                let tx = caveLevel.centerXAt(this.pos.y) + Math.sin(this.t * 0.01 + this.gateIndex) * (phase2 ? 520 : 360);
+	                const pad = this.radius + 140;
+	                tx = Math.max(bounds.left + pad, Math.min(bounds.right - pad, tx));
+	                const ty = this.anchorY + Math.sin(this.t * 0.008 + this.gateIndex) * (phase2 ? 210 : 140);
+
+	                const ax = (tx - this.pos.x) * 0.006;
+	                const ay = (ty - this.pos.y) * 0.006;
+	                this.vel.x = (this.vel.x + ax) * 0.92;
+	                this.vel.y = (this.vel.y + ay) * 0.92;
+	                const vmax = phase2 ? 6.2 : 4.6;
+	                const v = Math.hypot(this.vel.x, this.vel.y);
+	                if (v > vmax) { this.vel.x = (this.vel.x / v) * vmax; this.vel.y = (this.vel.y / v) * vmax; }
+	                this.pos.add(this.vel);
+
+	                // Beam sweep (telegraphed, heavy damage).
+	                if (this.beamFire > 0) {
+	                    this.beamFire--;
+	                    const t = 1 - (this.beamFire / Math.max(1, this.beamFireTotal));
+	                    const a0 = this.beamAngle - this.beamSweep * 0.5;
+	                    const a = a0 + this.beamSweep * t;
+	                    if (!this.beamHitThisShot) {
+	                        const ex = this.pos.x + Math.cos(a) * this.beamLen;
+	                        const ey = this.pos.y + Math.sin(a) * this.beamLen;
+	                        const cp = closestPointOnSegment(player.pos.x, player.pos.y, this.pos.x, this.pos.y, ex, ey);
+	                        const d = Math.hypot(player.pos.x - cp.x, player.pos.y - cp.y);
+	                        const hitDist = (this.beamWidth * 0.5) + (player.radius * 0.55);
+	                        if (d <= hitDist) {
+	                            this.beamHitThisShot = true;
+	                            this.applyDamageToPlayer(phase2 ? 5 : 4);
+	                            shakeMagnitude = Math.max(shakeMagnitude, 10);
+	                            shakeTimer = Math.max(shakeTimer, 10);
+	                        }
+	                    }
+	                } else if (this.beamCharge > 0) {
+	                    this.beamCharge--;
+	                    if (this.beamCharge === 0) {
+	                        this.beamFire = this.beamFireTotal;
+	                        this.beamHitThisShot = false;
+	                        playSound('heavy_shoot');
+	                    }
+	                } else {
+	                    this.beamCooldown--;
+	                    if (this.beamCooldown <= 0) {
+	                        this.beamAngle = aim;
+	                        this.beamSweep = phase2 ? 1.6 : 1.15;
+	                        this.beamCharge = this.beamChargeTotal;
+	                        this.beamFire = 0;
+	                        this.beamCooldown = (phase2 ? 220 : 300) + Math.floor(Math.random() * 160);
+	                        this.beamHitThisShot = false;
+	                    }
+	                }
+
+	                // Missile pressure.
+	                this.missileCooldown--;
+	                if (this.missileCooldown <= 0) {
+	                    const count = 1;
+	                    for (let k = 0; k < count; k++) {
+	                        guidedMissiles.push(new CaveGuidedMissile(this, { hp: phase2 ? 7 : 5, radius: phase2 ? 22 : 20, speed: phase2 ? 8.7 : 8.2, turnRate: phase2 ? 0.14 : 0.12 }));
+	                    }
+	                    spawnParticles(this.pos.x, this.pos.y, 10, '#fa0');
+	                    playSound('heavy_shoot');
+	                    this.missileCooldown = (phase2 ? 320 : 460) + Math.floor(Math.random() * 180);
+	                }
+
+	                // Rapid bullets to force dodging in the tunnel.
+	                this.reload--;
+	                if (this.reload <= 0) {
+	                    const muzzleX = this.pos.x + Math.cos(aim) * (this.radius + 10);
+	                    const muzzleY = this.pos.y + Math.sin(aim) * (this.radius + 10);
+	                    bullets.push(new Bullet(muzzleX, muzzleY, aim, true, 2, 16, 4, '#f0f'));
+	                    if (phase2) {
+	                        bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.12, true, 1, 15, 4, '#f0f'));
+	                        bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.12, true, 1, 15, 4, '#f0f'));
+	                    }
+	                    this.reload = (phase2 ? 12 : 18) + Math.floor(Math.random() * 8);
+	                }
+
+	                // Summon defenders to make each checkpoint feel guarded.
+	                this.summonCooldown--;
+	                if (this.summonCooldown <= 0) {
+	                    const spawnY = this.pos.y + 420 + Math.random() * 480;
+	                    const b = caveLevel.boundsAt(spawnY);
+	                    const sx = (b.left + b.right) * 0.5 + (Math.random() - 0.5) * (phase2 ? 900 : 700);
+	                const types = phase2 ? ['defender', 'hunter', 'defender'] : ['defender', 'defender'];
+	                for (let i = 0; i < types.length; i++) {
+	                    enemies.push(new Enemy(types[i], { x: sx + (Math.random() - 0.5) * 240, y: spawnY + i * 80 }, null));
+	                }
+	                    showOverlayMessage("REINFORCEMENTS", '#f0f', 1000, 2);
+	                    this.summonCooldown = (phase2 ? 300 : 420) + Math.floor(Math.random() * 260);
+	                }
+	            }
+
+	            drawBossHud(ctx) {
+	                if (!bossActive || this.dead) return;
+	                const w = canvas.width;
+	                const barW = Math.min(560, w - 40);
+	                const x = (w - barW) / 2;
+	                const y = 14;
+	                const pct = Math.max(0, this.hp / this.maxHp);
+	                const phase = this.phase2() ? 'PHASE 2' : 'PHASE 1';
+
+	                ctx.save();
+	                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+	                ctx.fillRect(x - 4, y - 4, barW + 8, 20);
+	                ctx.strokeStyle = '#f0f';
+	                ctx.lineWidth = 2;
+	                ctx.strokeRect(x - 4, y - 4, barW + 8, 20);
+	                ctx.fillStyle = '#f0f';
+	                ctx.fillRect(x, y, barW * pct, 12);
+	                ctx.fillStyle = '#fff';
+	                ctx.font = 'bold 12px Courier New';
+	                ctx.textAlign = 'center';
+	                ctx.textBaseline = 'top';
+	                ctx.fillText(`${this.name}  (${phase})`, w / 2, y + 12);
+	                ctx.restore();
+	            }
+
+	            draw(ctx) {
+	                if (this.dead) return;
+	                const z = currentZoom || ZOOM_LEVEL;
+	                const phase2 = this.phase2();
+	                const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
+
+	                ctx.save();
+	                ctx.translate(this.pos.x, this.pos.y);
+	                ctx.rotate(aim);
+	                ctx.fillStyle = '#120018';
+	                ctx.strokeStyle = phase2 ? '#ff0' : '#f0f';
+	                ctx.lineWidth = 3 / z;
+	                ctx.shadowBlur = 18;
+	                ctx.shadowColor = ctx.strokeStyle;
+	                ctx.beginPath();
+	                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+	                ctx.fill();
+	                ctx.stroke();
+	                ctx.shadowBlur = 0;
+
+	                // Cannon
+	                ctx.fillStyle = ctx.strokeStyle;
+	                ctx.fillRect(this.radius * 0.25, -6 / z, this.radius * 1.55, 12 / z);
+
+	                // Beam charge telegraph
+	                if (this.beamCharge > 0) {
+	                    ctx.save();
+	                    ctx.rotate(this.beamAngle - aim);
+	                    ctx.globalAlpha = 0.35;
+	                    ctx.strokeStyle = '#ff0';
+	                    ctx.lineWidth = 2 / z;
+	                    ctx.setLineDash([8 / z, 12 / z]);
+	                    ctx.beginPath();
+	                    ctx.moveTo(0, 0);
+	                    ctx.lineTo(2800, 0);
+	                    ctx.stroke();
+	                    ctx.setLineDash([]);
+	                    ctx.globalAlpha = 1;
+	                    ctx.restore();
+	                }
+
+	                // HP ring
+	                const pct = this.maxHp > 0 ? Math.max(0, this.hp / this.maxHp) : 0;
+	                ctx.globalAlpha = 0.75;
+	                ctx.strokeStyle = '#0ff';
+	                ctx.lineWidth = 4 / z;
+	                ctx.beginPath();
+	                ctx.arc(0, 0, this.radius + (14 / z), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
+	                ctx.stroke();
+	                ctx.globalAlpha = 1;
+
+	                ctx.restore();
+	            }
+	        }
+	         
+	        class CaveLevel { 
+	            constructor() { 
+	                this.active = true; 
+	                this.startX = 0; 
+	                this.startY = 0; 
+	                this.endY = -220000; // ~10 minutes of flight at stock speeds 
+	                this.stepY = 240; 
+	                this.baseWidth = 3000; 
+	                this.buckets = []; 
+	                this.leftPts = []; 
+	                this.rightPts = []; 
+	                this.innerSegments = []; 
+	                this.wallTurrets = []; 
+	                this.switches = []; 
+	                this.doors = []; // { id, open, segments } 
+	                this.rewards = []; 
+	                this.relays = []; 
+	                this.gasVents = []; 
+	                this.draftZones = []; 
+	                this.critters = []; 
+	                this.rockfalls = []; 
+	                this.arenaSegments = []; 
+	                this.entranceSeal = null; 
+	                this.gates = []; // { y, open, segments } 
+	                this.bossesDefeated = 0; 
+	                this.finalSpawned = false; 
+	                this.enemySpawnCooldown = 0; 
+	                this.critterSpawnCooldown = 0; 
+	            } 
+	            
+	            generate() { 
+	                const length = Math.abs(this.endY - this.startY);
+	                const count = Math.max(1, Math.ceil(length / this.stepY));
+	                this.buckets = new Array(count);
+	                for (let i = 0; i < count; i++) this.buckets[i] = [];
+	                
+	                let cx = this.startX;
+	                const leftPts = [];
+	                const rightPts = [];
+	                for (let i = 0; i <= count; i++) {
+	                    const y = this.startY - i * this.stepY;
+	                    cx += (Math.random() - 0.5) * 140;
+	                    cx = Math.max(-1600, Math.min(1600, cx));
+	                    
+	                    const endBoost = (y < this.endY + 22000) ? 1 : 0;
+	                    let width = this.baseWidth + ((i % 70 < 14) ? (900 + Math.random() * 900) : 0) + endBoost * 1400;
+	                    width += (Math.random() - 0.5) * 220;
+	                    width = Math.max(2400, Math.min(6200, width));
+	                    
+	                    leftPts.push({ x: cx - width * 0.5 + (Math.random() - 0.5) * 220, y });
+	                    rightPts.push({ x: cx + width * 0.5 + (Math.random() - 0.5) * 220, y });
+	                }
+	                
+	                this.leftPts = leftPts;
+	                this.rightPts = rightPts;
+	                
+	                for (let i = 0; i < leftPts.length - 1; i++) { 
+	                    const l0 = leftPts[i], l1 = leftPts[i + 1]; 
+	                    const r0 = rightPts[i], r1 = rightPts[i + 1]; 
+	                    const sL = { x0: l0.x, y0: l0.y, x1: l1.x, y1: l1.y, kind: 'outer' }; 
+	                    const sR = { x0: r0.x, y0: r0.y, x1: r1.x, y1: r1.y, kind: 'outer' }; 
+	                    if (this.buckets[i]) this.buckets[i].push(sL, sR); 
+	                } 
+	                
+	                // Branching pillars: create alternate routes around central obstructions.
+	                this.innerSegments = [];
+	                const pillarCount = 6;
+	                for (let p = 0; p < pillarCount; p++) {
+	                    const at = Math.floor((count * (p + 1)) / (pillarCount + 1));
+	                    const span = 18 + Math.floor(Math.random() * 14);
+	                    const yTop = this.startY - (at + span) * this.stepY;
+	                    const yBot = this.startY - at * this.stepY;
+	                    const xMid = (Math.random() - 0.5) * 500;
+	                    const w = 520 + Math.random() * 520;
+	                    const n = span * 2;
+	                    const pts = [];
+	                    for (let i = 0; i <= n; i++) {
+	                        const t = i / n;
+	                        const y = yBot + (yTop - yBot) * t;
+	                        const jx = (Math.random() - 0.5) * 110;
+	                        pts.push({ x: xMid + jx, y });
+	                    }
+	                    for (let i = 0; i < pts.length - 1; i++) { 
+	                        const a = pts[i], b = pts[i + 1]; 
+	                        const s1 = { x0: a.x - w * 0.5, y0: a.y, x1: b.x - w * 0.5, y1: b.y, kind: 'inner' }; 
+	                        const s2 = { x0: a.x + w * 0.5, y0: a.y, x1: b.x + w * 0.5, y1: b.y, kind: 'inner' }; 
+	                        this.innerSegments.push(s1, s2); 
+	                        const bi = this.bucketIndexForY(a.y); 
+	                        if (this.buckets[bi]) this.buckets[bi].push(s1, s2); 
+	                    } 
+	                }
+	                
+	                // Gates (boss checkpoints): closed barriers across the tunnel. 
+	                const gateYs = [-52000, -118000, -182000]; 
+	                this.gates = gateYs.map((y, i) => ({ 
+	                    y, 

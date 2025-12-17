@@ -1,0 +1,60 @@
+﻿	                while (environmentAsteroids.length < 40 && tries < 300) {
+	                    spawnOneAsteroidRelative(false);
+	                    tries++;
+	                }
+	            } else if (warpZone && warpZone.active && !bossActive) {
+	                let tries = 0;
+	                while (environmentAsteroids.length < 50 && tries < 300) {
+	                    if (!spawnOneWarpAsteroidRelative(false)) break;
+	                    tries++;
+	                }
+	            }
+            
+            // Build Spatial Grid for this frame
+            asteroidGrid.clear();
+            for (let i = 0; i < environmentAsteroids.length; i++) asteroidGrid.insert(environmentAsteroids[i]);
+
+	            if (!warpActive && !caveMode && !bossActive && !sectorTransitionActive && initialSpawnDone) {
+	                if (bases.length < 3) {
+	                    if (baseRespawnTimers.length === 0) spawnNewBaseRelative();
+	                }
+                
+                for(let i = baseRespawnTimers.length - 1; i >= 0; i--) {
+                    if (now > baseRespawnTimers[i]) {
+                        spawnNewBaseRelative();
+                        baseRespawnTimers.splice(i, 1);
+                    }
+                }
+            }
+            
+            // Arena ring is now static; no shrinking/growing
+            
+            // Dynamic zoom: zoom out during Cruiser arena fights
+            const cruiserFight = !!(bossActive && boss && boss.isCruiser);
+            // Keep the dynamic zoom system in place, but make the default behavior "no change"
+            // (both normal gameplay and Cruiser fights use the same base zoom for now).
+            const CRUISER_ZOOM_OUT_FACTOR = 1.0;
+            const targetZoom = cruiserFight ? (ZOOM_LEVEL / CRUISER_ZOOM_OUT_FACTOR) : ZOOM_LEVEL;
+            currentZoom += (targetZoom - currentZoom) * 0.08;
+            if (Math.abs(currentZoom - targetZoom) < 0.001) currentZoom = targetZoom;
+            const zoom = currentZoom;
+
+            let camX = player.pos.x - width / (2 * zoom);
+            let camY = player.pos.y - height / (2 * zoom);
+            if (shakeTimer > 0) {
+                shakeTimer--;
+                const rx = (Math.random() - 0.5) * shakeMagnitude * 2;
+                const ry = (Math.random() - 0.5) * shakeMagnitude * 2;
+                camX += rx;
+                camY += ry;
+            }
+            
+            if (isNaN(camX)) camX = 0;
+            if (isNaN(camY)) camY = 0;
+
+            // Defensive reset: ensure no draw routine can permanently corrupt the main canvas state
+            // (e.g. mismatched save/restore). This prevents "invisible world" after warp transitions.
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.shadowBlur = 0;

@@ -1,0 +1,50 @@
+﻿	                    d.draw(ctx); 
+	                } 
+	                for (let i = 0; i < this.rockfalls.length; i++) { 
+	                    const r = this.rockfalls[i]; 
+	                    if (!r || r.dead) continue; 
+	                    if (r.pos.y < y0 - 2600 || r.pos.y > y1 + 2600) continue; 
+	                    r.draw(ctx); 
+	                } 
+	                for (let i = 0; i < this.critters.length; i++) { 
+	                    const c = this.critters[i]; 
+	                    if (!c || c.dead) continue; 
+	                    if (c.pos.y < y0 - 1600 || c.pos.y > y1 + 1600) continue; 
+	                    c.draw(ctx); 
+	                } 
+	            }  
+	        } 
+	        
+	        function startCaveSector2() { 
+	            // Ensure no world-mode carryover. 
+	            resetWarpState(); 
+	            caveMode = true; 
+	            caveLevel = new CaveLevel(); 
+	            caveLevel.generate(); 
+	            coins = [];
+	            
+	            // Disable contracts/events for the cave run.
+	            activeContract = null;
+	            contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+	            nextContractAt = Date.now() + 999999999;
+	            radiationStorm = null;
+	            nextRadiationStormAt = Date.now() + 999999999;
+	            miniEvent = null;
+	            nextMiniEventAt = Date.now() + 999999999;
+	            nextShootingStarTime = Date.now() + 999999999;
+	            intensityBreakActive = false;
+	            nextIntensityBreakAt = Date.now() + 999999999;
+	            
+	            // No bases/stations in the cave. 
+	            bases = []; 
+	            baseRespawnTimers = []; 
+	            roamerRespawnQueue = []; 
+	            maxRoamers = 0; 
+	            initialSpawnDone = true; 
+	            initialSpawnDelayAt = null; 
+	            pendingStations = 0; 
+	            spaceStation = null; 
+	            nextSpaceStationTime = null; 
+	            
+	            // Place player at the cave start (bottom), facing upward.
+	            player.pos.x = caveLevel.startX;

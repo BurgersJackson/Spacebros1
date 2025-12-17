@@ -1,0 +1,60 @@
+﻿            // Arena ring is now static; no shrinking/growing
+            
+            // Dynamic zoom: zoom out during Cruiser arena fights
+            const cruiserFight = !!(bossActive && boss && boss.isCruiser);
+            // Keep the dynamic zoom system in place, but make the default behavior "no change"
+            // (both normal gameplay and Cruiser fights use the same base zoom for now).
+            const CRUISER_ZOOM_OUT_FACTOR = 1.0;
+            const targetZoom = cruiserFight ? (ZOOM_LEVEL / CRUISER_ZOOM_OUT_FACTOR) : ZOOM_LEVEL;
+            currentZoom += (targetZoom - currentZoom) * 0.08;
+            if (Math.abs(currentZoom - targetZoom) < 0.001) currentZoom = targetZoom;
+            const zoom = currentZoom;
+
+            let camX = player.pos.x - width / (2 * zoom);
+            let camY = player.pos.y - height / (2 * zoom);
+            if (shakeTimer > 0) {
+                shakeTimer--;
+                const rx = (Math.random() - 0.5) * shakeMagnitude * 2;
+                const ry = (Math.random() - 0.5) * shakeMagnitude * 2;
+                camX += rx;
+                camY += ry;
+            }
+            
+            if (isNaN(camX)) camX = 0;
+            if (isNaN(camY)) camY = 0;
+
+            // Defensive reset: ensure no draw routine can permanently corrupt the main canvas state
+            // (e.g. mismatched save/restore). This prevents "invisible world" after warp transitions.
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+            ctx.filter = 'none';
+            try { ctx.setLineDash([]); } catch (e) {}
+
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw Nebulas / Stars (disabled in cave mode) 
+            if (!caveMode) { 
+                for (let n of nebulas) { 
+                    let bx = (n.x - camX * n.parallax) % width; 
+                    let by = (n.y - camY * n.parallax) % height; 
+                    if (bx < 0) bx += width; 
+                    if (by < 0) by += height; 
+     
+                    const drawNebula = (x, y) => { 
+                        if (x + n.radius < 0 || x - n.radius > width || y + n.radius < 0 || y - n.radius > height) return; 
+                        const g = ctx.createRadialGradient(x, y, 0, x, y, n.radius); 
+                        g.addColorStop(0, n.colorStart); 
+                        g.addColorStop(1, n.colorEnd); 
+                        ctx.fillStyle = g; 
+                        ctx.beginPath(); 
+                        ctx.arc(x, y, n.radius, 0, Math.PI*2); 
+                        ctx.fill(); 
+                    }; 
+     
+                    drawNebula(bx, by); 
+                    // Wrap X 
+                    if (bx < n.radius) drawNebula(bx + width, by); 

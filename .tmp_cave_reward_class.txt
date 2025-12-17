@@ -1,0 +1,220 @@
+﻿	            constructor(x, y, rewardType = 'coins', value = 0) { 
+	                super(x, y); 
+	                this.rewardType = rewardType; 
+	                this.value = value; 
+	                this.radius = 26; 
+	                this.t = 0; 
+	            } 
+	            update() { this.t++; } 
+	            draw(ctx) { 
+	                if (this.dead) return; 
+	                const z = currentZoom || ZOOM_LEVEL; 
+	                const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.035)) * 0.35; 
+	                ctx.save(); 
+	                ctx.translate(this.pos.x, this.pos.y); 
+	                ctx.lineWidth = 4 / z; 
+	                ctx.shadowBlur = 18; 
+	                const color = this.rewardType === 'upgrade' ? '#f0f' : (this.rewardType === 'shield' ? '#0ff' : (this.rewardType === 'fragment' ? '#ff0' : '#0f0')); 
+	                ctx.shadowColor = color; 
+	                ctx.strokeStyle = `rgba(255,255,255,${0.15 + pulse})`; 
+	                ctx.beginPath(); 
+	                ctx.arc(0, 0, this.radius, 0, Math.PI * 2); 
+	                ctx.stroke(); 
+	                ctx.shadowBlur = 0; 
+	                ctx.fillStyle = color; 
+	                ctx.font = `bold ${Math.round(14 / z)}px Courier New`; 
+	                ctx.textAlign = 'center'; 
+	                ctx.textBaseline = 'middle'; 
+	                const label = this.rewardType === 'upgrade' ? 'UP' : (this.rewardType === 'shield' ? 'SH' : (this.rewardType === 'fragment' ? 'KF' : '$')); 
+	                ctx.fillText(label, 0, 0); 
+	                ctx.restore(); 
+	            } 
+	        } 
+	         
+	        class CaveGasVent extends Entity { 
+	            constructor(x, y) { 
+	                super(x, y); 
+	                this.radius = 420; 
+	                this.t = 0; 
+	                this.state = 'off'; // off | warn | on 
+	                this.timer = 180 + Math.floor(Math.random() * 120); 
+	                this.damageCd = 0; 
+	            } 
+	            update() { 
+	                if (this.dead) return; 
+	                this.t++; 
+	                this.timer--; 
+	                if (this.timer <= 0) { 
+	                    if (this.state === 'off') { this.state = 'warn'; this.timer = 60; } 
+	                    else if (this.state === 'warn') { this.state = 'on'; this.timer = 140; } 
+	                    else { this.state = 'off'; this.timer = 220 + Math.floor(Math.random() * 160); } 
+	                } 
+	                if (this.damageCd > 0) this.damageCd--; 
+	                if (!player || player.dead) return; 
+	                if (this.state !== 'on') return; 
+	                const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y); 
+	                if (d > this.radius + player.radius) return; 
+	                // Slow the ship and tick damage (forces movement). 
+	                player.caveSlowFrames = Math.max(player.caveSlowFrames || 0, 18); 
+	                player.caveSlowMult = 0.62; 
+	                if (this.damageCd <= 0 && player.invulnerable <= 0) { 
+	                    player.hp -= 1; 
+	                    this.damageCd = 40; 
+	                    spawnParticles(player.pos.x, player.pos.y, 10, '#6f6'); 
+	                    playSound('hit'); 
+	                    updateHealthUI(); 
+	                    if (player.hp <= 0) killPlayer(); 
+	                } 
+	            } 
+	            draw(ctx) { 
+	                if (this.dead) return; 
+	                const z = currentZoom || ZOOM_LEVEL; 
+	                ctx.save(); 
+	                ctx.translate(this.pos.x, this.pos.y); 
+	                const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.35; 
+	                if (this.state === 'warn') { 
+	                    ctx.strokeStyle = 'rgba(120,255,120,0.35)'; 
+	                    ctx.lineWidth = 3 / z; 
+	                    ctx.setLineDash([10 / z, 12 / z]); 
+	                    ctx.beginPath(); 
+	                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2); 
+	                    ctx.stroke(); 
+	                    ctx.setLineDash([]); 
+	                } else if (this.state === 'on') { 
+	                    ctx.fillStyle = `rgba(80,255,80,${0.08 + pulse * 0.10})`; 
+	                    ctx.beginPath(); 
+	                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2); 
+	                    ctx.fill(); 
+	                } 
+	                ctx.restore(); 
+	            } 
+	        } 
+	         
+	        class CaveRockfall extends Entity { 
+	            constructor(x, y, width = 1600, closeSide = 'left') { 
+	                super(x, y); 
+	                this.width = width; 
+	                this.closeSide = closeSide; // left | right | center 
+	                this.radius = 1; 
+	                this.state = 'idle'; // idle | warn | fallen 
+	                this.t = 0; 
+	                this.timer = 0; 
+	                this.segments = []; 
+	            } 
+	            trigger() { 
+	                if (this.state !== 'idle') return; 
+	                this.state = 'warn'; 
+	                this.timer = 90; 
+	                showOverlayMessage("ROCKFALL INCOMING", '#ff0', 900, 1); 
+	            } 
+	            fall() { 
+	                if (this.state === 'fallen') return; 
+	                this.state = 'fallen'; 
+	                this.timer = 0; 
+	                this.segments = []; 
+	                if (!caveLevel) return; 
+	                const b = caveLevel.boundsAt(this.pos.y); 
+	                const cx = (b.left + b.right) * 0.5; 
+	                let left = b.left + 60; 
+	                let right = b.right - 60; 
+	                if (this.closeSide === 'left') right = Math.min(right, cx - 260); 
+	                else if (this.closeSide === 'right') left = Math.max(left, cx + 260); 
+	                else { left = cx - this.width * 0.5; right = cx + this.width * 0.5; } 
+	                left = Math.max(b.left + 60, left); 
+	                right = Math.min(b.right - 60, right); 
+	                const n = 18; 
+	                const step = (right - left) / n; 
+	                for (let i = 0; i < n; i++) { 
+	                    const x0 = left + i * step; 
+	                    const x1 = left + (i + 1) * step; 
+	                    const j0 = (Math.random() - 0.5) * 70; 
+	                    const j1 = (Math.random() - 0.5) * 70; 
+	                    this.segments.push({ x0, y0: this.pos.y + j0, x1, y1: this.pos.y + j1, kind: 'rockfall' }); 
+	                } 
+	                spawnParticles(cx, this.pos.y, 50, '#888'); 
+	                playSound('explode'); 
+	            } 
+	            update() { 
+	                if (this.dead) return; 
+	                this.t++; 
+	                if (!player || player.dead) return; 
+	                if (this.state === 'idle') { 
+	                    const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y); 
+	                    if (d < 2200) this.trigger(); 
+	                } else if (this.state === 'warn') { 
+	                    this.timer--; 
+	                    if (this.timer <= 0) this.fall(); 
+	                    // Falling debris visuals 
+	                    if (this.t % 3 === 0) { 
+	                        particles.push(new Particle(this.pos.x + (Math.random() - 0.5) * 700, this.pos.y - 800 + Math.random() * 400, (Math.random() - 0.5) * 0.8, 3 + Math.random() * 2, '#888', 50)); 
+	                    } 
+	                } 
+	            } 
+	            draw(ctx) { 
+	                const z = currentZoom || ZOOM_LEVEL; 
+	                if (this.state === 'warn') { 
+	                    ctx.save(); 
+	                    ctx.translate(this.pos.x, this.pos.y); 
+	                    ctx.globalAlpha = 0.25 + Math.abs(Math.sin(this.t * 0.2)) * 0.25; 
+	                    ctx.strokeStyle = '#ff0'; 
+	                    ctx.lineWidth = 3 / z; 
+	                    ctx.setLineDash([10 / z, 10 / z]); 
+	                    ctx.beginPath(); 
+	                    ctx.moveTo(-900, 0); 
+	                    ctx.lineTo(900, 0); 
+	                    ctx.stroke(); 
+	                    ctx.setLineDash([]); 
+	                    ctx.restore(); 
+	                } 
+	                if (this.state === 'fallen' && this.segments && this.segments.length) { 
+	                    ctx.save(); 
+	                    ctx.lineWidth = 16 / z; 
+	                    ctx.strokeStyle = 'rgba(0, 55, 100, 0.90)'; 
+	                    ctx.shadowBlur = 0; 
+	                    ctx.beginPath(); 
+	                    for (let i = 0; i < this.segments.length; i++) { 
+	                        const s = this.segments[i]; 
+	                        ctx.moveTo(s.x0, s.y0); 
+	                        ctx.lineTo(s.x1, s.y1); 
+	                    } 
+	                    ctx.stroke(); 
+	                    ctx.shadowBlur = 18; 
+	                    ctx.shadowColor = '#0ff'; 
+	                    ctx.lineWidth = 3 / z; 
+	                    ctx.strokeStyle = 'rgba(140, 240, 255, 0.75)'; 
+	                    ctx.stroke(); 
+	                    ctx.restore(); 
+	                } 
+	            } 
+	        } 
+	         
+	        class CaveDraftZone extends Entity { 
+	            constructor(x, y, w, h, forceY = -0.08) { 
+	                super(x, y); 
+	                this.w = w; 
+	                this.h = h; 
+	                this.forceY = forceY; 
+	                this.t = 0; 
+	            } 
+	            contains(entity) { 
+	                if (!entity || entity.dead) return false; 
+	                return (entity.pos.x > this.pos.x - this.w/2 && entity.pos.x < this.pos.x + this.w/2 && entity.pos.y > this.pos.y - this.h/2 && entity.pos.y < this.pos.y + this.h/2); 
+	            } 
+	            update() { 
+	                this.t++; 
+	                const apply = (e) => { 
+	                    if (!this.contains(e)) return; 
+	                    e.vel.y += this.forceY; 
+	                    // Slight stabilization so it feels like a current. 
+	                    e.vel.x *= 0.995; 
+	                }; 
+	                apply(player); 
+	                for (let i = 0; i < enemies.length; i++) apply(enemies[i]); 
+	            } 
+	            draw(ctx) { 
+	                const z = currentZoom || ZOOM_LEVEL; 
+	                const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.35; 
+	                ctx.save(); 
+	                ctx.translate(this.pos.x, this.pos.y); 
+	                ctx.globalAlpha = 0.35; 
+	                ctx.strokeStyle = `rgba(0,255,255,${0.08 + pulse * 0.08})`; 

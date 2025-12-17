@@ -1,0 +1,70 @@
+﻿	                    const b = this.boundsAt(y); 
+	                    const cx = (b.left + b.right) * 0.5; 
+	                    this.draftZones.push(new CaveDraftZone(cx, y, 1200, 3200, (Math.random() < 0.5) ? -0.10 : 0.10)); 
+	                } 
+	                for (let i = 0; i < 6; i++) { 
+	                    const y = this.startY - (i + 1) * 30000 - Math.random() * 9000; 
+	                    if (y < this.endY + 16000) break; 
+	                    if (isNearGate(y)) continue; 
+	                    const b = this.boundsAt(y); 
+	                    const cx = (b.left + b.right) * 0.5; 
+	                    const closeSide = (Math.random() < 0.5) ? 'left' : 'right'; 
+	                    this.rockfalls.push(new CaveRockfall(cx, y, 1600, closeSide)); 
+	                } 
+	                 
+	                // Seal the entrance behind the player so there's no way back out of the cave. 
+	                const sealY = this.startY + 1400; 
+	                const b0 = this.boundsAt(this.startY); 
+	                const entranceLeftX = b0.left; 
+	                const entranceRightX = b0.right; 
+	                const sealLeft = entranceLeftX; 
+	                const sealRight = entranceRightX; 
+	                const sealSegs = []; 
+	                const n = 34; 
+	                const step = (sealRight - sealLeft) / n; 
+	                const jitter = 60; 
+	                const pts = []; 
+	                for (let i = 0; i <= n; i++) { 
+	                    const x = sealLeft + i * step; 
+	                    let y = sealY + (Math.random() - 0.5) * jitter; 
+	                    if (i === 0 || i === n) y = sealY; 
+	                    pts.push({ x, y }); 
+	                } 
+	                for (let i = 0; i < n; i++) { 
+	                    sealSegs.push({ x0: pts[i].x, y0: pts[i].y, x1: pts[i + 1].x, y1: pts[i + 1].y, kind: 'seal' }); 
+	                } 
+	                // Connect the seal to the cave boundary with side walls. 
+	                const sideSegs = []; 
+	                const sideStep = 220; 
+	                for (let y = this.startY; y < sealY; y += sideStep) { 
+	                    const y1 = Math.min(sealY, y + sideStep); 
+	                    sideSegs.push({ x0: entranceLeftX, y0: y, x1: entranceLeftX, y1, kind: 'seal' }); 
+	                    sideSegs.push({ x0: entranceRightX, y0: y, x1: entranceRightX, y1, kind: 'seal' }); 
+	                } 
+	                this.entranceSeal = { y: sealY, segments: sealSegs, sideSegments: sideSegs, leftX: entranceLeftX, rightX: entranceRightX }; 
+	            } 
+	            
+	            bucketIndexForY(y) {
+	                const idx = Math.floor((this.startY - y) / this.stepY);
+	                return Math.max(0, Math.min(this.buckets.length - 1, idx));
+	            }
+	            
+	            boundsAt(y) {
+	                if (!this.leftPts || this.leftPts.length < 2) return { left: -1500, right: 1500 };
+	                const idx = Math.max(0, Math.min(this.leftPts.length - 1, Math.floor((this.startY - y) / this.stepY)));
+	                const l = this.leftPts[idx];
+	                const r = this.rightPts[idx];
+	                return { left: l ? l.x : -1500, right: r ? r.x : 1500 };
+	            }
+	            
+	            centerXAt(y) {
+	                const b = this.boundsAt(y);
+	                return (b.left + b.right) * 0.5;
+	            }
+	            
+	            segmentsNearY(y, spanBuckets = 3) { 
+	                if (!this.buckets || this.buckets.length === 0) return [];
+	                const idx = this.bucketIndexForY(y);
+	                const segs = [];
+	                for (let i = Math.max(0, idx - spanBuckets); i <= Math.min(this.buckets.length - 1, idx + spanBuckets); i++) {
+	                    const b = this.buckets[i];

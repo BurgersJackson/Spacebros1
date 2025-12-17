@@ -1,0 +1,80 @@
+﻿                        }
+                    }
+                }
+
+                for (let c of coins) {
+                    if (c.dead) continue;
+                    const dist = Math.hypot(player.pos.x - c.pos.x, player.pos.y - c.pos.y);
+                    if (dist < player.radius + c.radius) {
+                        // Collect
+                        playSound('coin');
+                        score += c.value;
+                        player.addXp(c.value);
+                        addPickupFloatingText('gold', c.value, '#ff0');
+                        c.dead = true;
+                    }
+                }
+                
+                for (let n of nuggets) {
+                    if (n.dead) continue;
+                    const dist = Math.hypot(player.pos.x - n.pos.x, player.pos.y - n.pos.y);
+                    if (dist < player.radius + n.radius) {
+                        playSound('coin');
+                        spaceNuggets += n.value;
+                        updateNuggetUI();
+                        addPickupFloatingText('nugs', n.value, '#ff0');
+                        n.dead = true;
+                    }
+                }
+                
+                for (let p of powerups) {
+                    if (p.dead) continue;
+                    const dist = Math.hypot(player.pos.x - p.pos.x, player.pos.y - p.pos.y);
+                    if (dist < player.radius + p.radius) {
+                        playSound('powerup');
+                        player.hp = Math.min(player.hp + 10, player.maxHp);
+                        updateHealthUI();
+                        showOverlayMessage("HEALTH RESTORED", '#0f0', 1000);
+                        p.dead = true;
+                    }
+                }
+                
+                for (let c of caches) {
+                    if (c.dead) continue;
+                    const dist = Math.hypot(player.pos.x - c.pos.x, player.pos.y - c.pos.y);
+                     if (dist < player.radius + c.radius) {
+                         playSound('coin');
+                         spaceNuggets += c.value;
+                         updateNuggetUI();
+                         addPickupFloatingText('nugs', c.value, '#ff0');
+                         showOverlayMessage(`CACHE +${c.value} NUGS`, '#ff0', 800);
+                         
+                         // Anomaly contract: picking up the cache is step 1; you must escape the ring to finish.
+                         if (activeContract && activeContract.type === 'anomaly' && activeContract.id && c.contractId === activeContract.id) {
+                             if (!activeContract.coreCollected) {
+                                 activeContract.coreCollected = true;
+                                 showOverlayMessage("CORE ACQUIRED - ESCAPE ANOMALY", '#0f0', 2000);
+                                 updateContractUI();
+                             }
+                         }
+                         c.dead = true;
+                     }
+                 }
+            }
+            
+             // Shooting Star Collisions
+             for (let s of shootingStars) {
+                 if (s.dead) continue;
+                 
+                 // Vs Player
+                 if (player && !player.dead && !player.invulnerable) {
+                     const dist = Math.hypot(s.pos.x - player.pos.x, s.pos.y - player.pos.y);
+                     if (dist < s.radius + player.radius) {
+                         player.hp -= s.damage;
+                         updateHealthUI();
+                         playSound('explode');
+                         spawnParticles(player.pos.x, player.pos.y, 20, '#f00');
+                         showOverlayMessage("HIT BY SHOOTING STAR!", '#f00', 2000);
+                         s.dead = true;
+                         if (player.hp <= 0) killPlayer();
+                         continue;

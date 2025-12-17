@@ -1,0 +1,120 @@
+﻿	                    const gate = this.gates[i]; 
+	                    if (!gate || gate.open || gate.relaysCleared || !gate.relaysEnabled) continue; 
+	                    const dY = player.pos.y - gate.y; 
+	                    if (!gate.relaysSpawned && dY < 12000 && dY > 4200) { 
+	                        this.spawnGateRelays(i); 
+	                    } 
+	                    if (gate.relaysSpawned && !gate.relaysCleared) { 
+	                        gate.defendCd = Math.max(0, (gate.defendCd || 0) - 1); 
+	                        if ((gate.defendCd || 0) <= 0) { 
+	                            const spawnY = gate.y + 1700 + Math.random() * 800; 
+	                            const b = this.boundsAt(spawnY); 
+	                            const sx = (b.left + b.right) * 0.5 + (Math.random() - 0.5) * 900; 
+	                            enemies.push(new Enemy('defender', { x: sx, y: spawnY }, null)); 
+	                            if (Math.random() < 0.35) enemies.push(new Enemy('roamer', { x: sx + (Math.random() - 0.5) * 260, y: spawnY + 80 }, null)); 
+	                            gate.defendCd = 140 + Math.floor(Math.random() * 120); 
+	                        } 
+	                    } 
+	                } 
+	                 
+                // Activate gate bosses when the player reaches a closed gate. 
+                for (let i = 0; i < this.gates.length; i++) { 
+                    const gate = this.gates[i]; 
+                    if (!gate || gate.open) continue; 
+                    if (gate.bossEnabled === false) { 
+                        if (!gate.relaysEnabled || gate.relaysCleared) this.openGate(i); 
+                        continue; 
+                    } 
+                    const dY = player.pos.y - gate.y; 
+                    if (dY < 5200 && dY > -3800) { 
+                        if (gate.relaysEnabled && !gate.relaysCleared) break; 
+                        if (!bossActive || !boss || boss.dead) { 
+                            const bx = this.centerXAt(gate.y + 900); 
+                            const by = gate.y + 900; 
+	                            boss = new CaveGateBoss(bx, by, i); 
+	                            bossActive = true; 
+	                            showOverlayMessage(`CAVE BOSS ${i + 1}/3 ENGAGED`, '#f0f', 2400, 2);
+	                            playSound('boss_spawn');
+	                        }
+	                        break;
+	                    }
+	                }
+	                
+	                // Spawn the super flagship near the end after 3 bosses.
+	                if (!this.finalSpawned && this.bossesDefeated >= 3 && player.pos.y < this.endY + 14000) {
+	                    this.finalSpawned = true;
+	                    const cx = this.centerXAt(this.endY + 5600);
+	                    boss = new SuperFlagshipBoss({ x: cx, y: this.endY + 5600 });
+	                    bossActive = true;
+	                    showOverlayMessage("SUPER FLAGSHIP DETECTED", '#0ff', 3500, 3);
+	                    playSound('boss_spawn');
+	                    if (musicEnabled) { stopMusic(); startMusic('cruiser'); }
+	                }
+	                
+	                // Update cave wall turrets. 
+	                for (let i = 0; i < this.wallTurrets.length; i++) { 
+	                    const t = this.wallTurrets[i]; 
+	                    if (t && !t.dead) t.update(); 
+	                } 
+	                compactArray(this.wallTurrets); 
+	                 
+	                // Boss arena reshaping: add temporary narrowing + moving blockers. 
+	                this.arenaSegments = []; 
+	                if (bossActive && boss && !boss.dead && (boss instanceof CaveGateBoss || boss instanceof SuperFlagshipBoss)) { 
+	                    const arenaY = boss.pos.y; 
+	                    if (!isFinite(arenaY) || !isFinite(boss.pos.x)) { 
+	                        this.arenaSegments = []; 
+	                    } else { 
+	                    const span = boss instanceof SuperFlagshipBoss ? 2200 : 1600; 
+	                    const b = this.boundsAt(arenaY); 
+	                    const cx = (b.left + b.right) * 0.5; 
+	                    const t = Date.now() * 0.001; 
+	                    const baseW = boss instanceof SuperFlagshipBoss ? 2600 : 2200; 
+	                    const wobble = boss instanceof SuperFlagshipBoss ? 500 : 380; 
+	                    const w = baseW + Math.sin(t * 1.2) * wobble; 
+	                    const leftX = cx - w * 0.5; 
+	                    const rightX = cx + w * 0.5; 
+	                    this.arenaSegments.push({ x0: leftX, y0: arenaY - span, x1: leftX, y1: arenaY + span, kind: 'arena' }); 
+	                    this.arenaSegments.push({ x0: rightX, y0: arenaY - span, x1: rightX, y1: arenaY + span, kind: 'arena' }); 
+	                     
+	                    // Moving blocker bar with a gap 
+	                    const gap = boss instanceof SuperFlagshipBoss ? 720 : 560; 
+	                    const barY = arenaY + Math.sin(t * 1.8) * (span * 0.55); 
+	                    const gx = cx + Math.sin(t * 1.1) * 320; 
+	                    this.arenaSegments.push({ x0: leftX + 60, y0: barY, x1: gx - gap * 0.5, y1: barY, kind: 'arena' }); 
+	                    this.arenaSegments.push({ x0: gx + gap * 0.5, y0: barY, x1: rightX - 60, y1: barY, kind: 'arena' }); 
+	                    } 
+	                } 
+	                 
+	                // Maintain ambient Level-1 enemies in the cave (no bases/stations here). 
+	                this.enemySpawnCooldown--; 
+	                if (this.enemySpawnCooldown <= 0) { 
+	                    const living = enemies.filter(e => e && !e.dead && (e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter' || e.type === 'defender')).length; 
+	                    const cap = (bossActive ? 10 : 14) + Math.min(6, this.bossesDefeated * 2); 
+	                    if (living < cap) { 
+	                        const toSpawn = Math.min(2, cap - living); 
+	                        let gateLimitY = -Infinity; 
+	                        for (let i = 0; i < this.gates.length; i++) { 
+	                            const g = this.gates[i]; 
+	                            if (!g || g.open) continue; 
+	                            if (g.y < player.pos.y) gateLimitY = Math.max(gateLimitY, g.y); 
+	                        } 
+	                        for (let i = 0; i < toSpawn; i++) { 
+	                            let y = player.pos.y - (1400 + Math.random() * 2800); 
+	                            if (gateLimitY > -Infinity) y = Math.max(y, gateLimitY + 1100); 
+	                            y = Math.min(y, player.pos.y - 900); 
+	                            const b = this.boundsAt(y); 
+	                            const x = b.left + 260 + Math.random() * Math.max(200, (b.right - b.left - 520)); 
+	                    const r = Math.random(); 
+	                    // Hunters should be rare in the cave; keep variety with defenders + occasional elites. 
+	                    const type = r < 0.30 ? 'roamer' : (r < 0.78 ? 'defender' : (r < 0.93 ? 'elite_roamer' : 'hunter')); 
+	                    enemies.push(new Enemy(type, { x, y }, null)); 
+	                } 
+	                    } 
+	                    this.enemySpawnCooldown = 160 + Math.floor(Math.random() * 140); 
+	                } 
+	            } 
+	            
+	            draw(ctx, camX, camY, height, zoom) {  
+	                if (!this.active) return;  
+	                let z = zoom || (currentZoom || ZOOM_LEVEL);  

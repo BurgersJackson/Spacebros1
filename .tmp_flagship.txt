@@ -1,0 +1,240 @@
+﻿                ctx.fillStyle = this.vulnerableTimer > 0 ? '#ff0' : '#f00';
+                ctx.fillRect(x, y, barW * pct, 12);
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 12px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                const phaseText = this.vulnerableTimer > 0 ? `${this.phaseName} (CORE EXPOSED)` : this.phaseName;
+                const bossName = this.isFlagship ? 'FLAGSHIP' : 'CRUISER';
+                ctx.fillText(`${bossName}  (PHASE: ${phaseText})`, w / 2, y + 12);
+                
+                // Hardpoint status line
+                ctx.font = 'bold 11px Courier New';
+                ctx.fillStyle = '#ff0';
+                const hpStr = this.hardpoints.map(h => `${h.id}:${h.hp > 0 ? 'ON' : 'OFF'}`).join('  ');
+                ctx.fillText(hpStr, w / 2, y + 26);
+                ctx.restore();
+            }
+            
+            draw(ctx) {
+                super.draw(ctx);
+                if (this.dead) return;
+                // Hardpoints overlay
+                ctx.save();
+                for (let i = 0; i < this.hardpoints.length; i++) {
+                    const hp = this.hardpoints[i];
+                    const p = this.hardpointWorld(hp);
+                    const alive = hp.hp > 0;
+                    ctx.globalAlpha = alive ? 1 : 0.35;
+                    ctx.strokeStyle = alive ? '#ff0' : '#0f0';
+                    ctx.fillStyle = alive ? '#222' : '#040';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, hp.r, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                }
+                
+                if (this.vulnerableTimer > 0) {
+                    ctx.globalAlpha = 0.25 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.25;
+                    ctx.strokeStyle = '#ff0';
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.arc(this.pos.x, this.pos.y, this.radius + 18, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+        }
+
+	        class Flagship extends Cruiser { 
+            constructor(spawnAt = null) {
+                super(Math.max(4, cruiserEncounterCount));
+                this.type = 'flagship';
+                this.isFlagship = true;
+                this.despawnImmune = true;
+
+                // Bigger, slower, higher-stakes fight
+                this.cruiserHullScale = 8.8;
+                this.gunboatScale = this.cruiserHullScale;
+                this.radius = Math.round(22 * this.cruiserHullScale);
+                this.shieldRadius = Math.round(34 * this.cruiserHullScale);
+                this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+
+                // Spawn above a target point (defaults to the player).
+                if (spawnAt && typeof spawnAt.x === 'number' && typeof spawnAt.y === 'number') {
+                    this.pos.x = spawnAt.x;
+                    this.pos.y = spawnAt.y;
+                } else if (player && !player.dead) {
+                    // Arcade "top of screen" vibe
+                    this.pos.x = player.pos.x;
+                    this.pos.y = player.pos.y - 2200;
+                }
+
+                const bonus = Math.max(0, cruiserEncounterCount - 1);
+                const baseHp = 260 + bonus * 35;
+                this.hp = Math.round(baseHp);
+                this.maxHp = this.hp;
+
+                this.shieldStrength = Math.max(3, this.shieldStrength + 1);
+                this.shieldSegments = new Array(14).fill(this.shieldStrength);
+                this.innerShieldSegments = new Array(22).fill(this.shieldStrength);
+
+                this.thrustPower = 0.09;
+                this.maxSpeed = 2.7;
+                this.baseGunboatRange = this.baseGunboatRange * 1.15;
+                this.gunboatRange = this.baseGunboatRange;
+                this.cruiserBaseDamage = Math.max(this.cruiserBaseDamage, 2 + Math.floor(bonus / 2));
+
+                // Less clutter: only a few helpers, ever
+                this.helperScale = 0.35;
+                this.helperMax = 3;
+
+                // Tighten phases to keep it frantic
+                this.phaseSeq = [
+                    { name: 'SALVO', duration: 140 },
+                    { name: 'CURTAIN', duration: 170 },
+                    { name: 'MINEFIELD', duration: 200 },
+                    { name: 'SWEEP', duration: 160 },
+                    { name: 'CHARGE', duration: 120 }
+                ];
+                this.phaseIndex = 0;
+                this.phaseName = 'INTRO';
+                this.phaseTimer = 90;
+                this.phaseTick = 0;
+                
+                this.guidedMissileCd = 210;
+                this.guidedMissileInterval = 210; // ~3.5s
+                this.guidedMissileCap = 4;
+            }
+            
+	            update() {
+	                super.update();
+	                if (this.dead) return;
+	                if (!bossActive || boss !== this) return;
+	                if (!player || player.dead) return;
+	                
+	                if (this.phaseName === 'INTRO') return;
+	                
+	                this.guidedMissileCd--;
+	                if (this.guidedMissileCd > 0) return;
+	                
+	                const alive = guidedMissiles.filter(m => m && !m.dead).length;
+	                if (alive >= this.guidedMissileCap) {
+	                    this.guidedMissileCd = Math.max(30, Math.floor(this.guidedMissileInterval * 0.5));
+	                    return;
+	                }
+	                
+	                guidedMissiles.push(new FlagshipGuidedMissile(this));
+	                spawnParticles(this.pos.x, this.pos.y, 10, '#fa0');
+	                playSound('heavy_shoot');
+	                this.guidedMissileCd = this.guidedMissileInterval;
+	            }
+
+	            kill() {
+                if (this.dead) return;
+                this.dead = true;
+                playSound('base_explode');
+                spawnParticles(this.pos.x, this.pos.y, 200, '#f0f');
+                bossBombs = [];
+                guidedMissiles = [];
+
+                for (let i = 0; i < 40; i++) coins.push(new Coin(this.pos.x + (Math.random()-0.5) * 260, this.pos.y + (Math.random()-0.5) * 260, 10));
+                for (let i = 0; i < 16; i++) nuggets.push(new SpaceNugget(this.pos.x + (Math.random()-0.5) * 320, this.pos.y + (Math.random()-0.5) * 320, 1));
+
+                bossActive = false;
+                bossArena.active = false;
+                bossArena.growing = false;
+                boss = null;
+
+                // Reset gate progression for next sector
+                gateKeys = 0;
+                gateKeyItems = [];
+                flagshipSpawned = false;
+                flagshipSpawnAt = 0;
+
+	                showOverlayMessage("FLAGSHIP DESTROYED - WARP CORE CHARGING", '#0ff', 3500, 2);
+	                if (!sectorTransitionActive) startSectorTransition();
+	            } 
+	        } 
+
+	        class SuperFlagshipBoss extends Flagship {
+	            constructor(spawnAt = null) {
+	                super(spawnAt);
+	                this.type = 'super_flagship';
+	                this.isSuperFlagship = true;
+	                this.despawnImmune = true;
+
+	                this.cruiserHullScale = 10.4;
+	                this.gunboatScale = this.cruiserHullScale;
+	                this.radius = Math.round(22 * this.cruiserHullScale);
+	                this.shieldRadius = Math.round(34 * this.cruiserHullScale);
+	                this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+
+	                this.hp = Math.round(this.hp * 2.1 + 220);
+	                this.maxHp = this.hp;
+
+	                this.shieldStrength = Math.max(4, this.shieldStrength + 2);
+	                this.shieldSegments = new Array(18).fill(this.shieldStrength);
+	                this.innerShieldSegments = new Array(28).fill(this.shieldStrength);
+
+	                // More pressure in the narrow cave.
+	                this.helperScale = 0.55;
+	                this.helperHpMult = 0.9;
+	                this.helperMax = 7;
+	                this.helperBurst = 3;
+	                this.helperCooldownBase = 520;
+	                this.helperCooldown = 200;
+	                this.helperCall70 = 2;
+	                this.helperCall40 = 3;
+	                this.helperStrengthTier = 2;
+
+	                // Guided missiles ramp up.
+	                this.guidedMissileInterval = 340; // ~5.6s (50% fewer)
+	                this.guidedMissileCap = 3;
+
+	                // Cave laser sweep (separate from cruiser phases).
+	                this.caveLaserCooldown = 260;
+	                this.caveLaserCharge = 0;
+	                this.caveLaserChargeTotal = 70;
+	                this.caveLaserFire = 0;
+	                this.caveLaserFireTotal = 22;
+	                this.caveLaserAngle = 0;
+	                this.caveLaserLen = 6000;
+	                this.caveLaserWidth = 44;
+	                this.caveLaserSweep = 1.0;
+	                this.caveLaserHitThisShot = false;
+	                this.caveSummonCooldown = 260;
+	            }
+
+	            cavePhase2() {
+	                return this.hp <= this.maxHp * 0.5;
+	            }
+
+	            applyDamageToPlayer(amount) {
+	                if (!player || player.dead) return;
+	                if (player.invulnerable > 0) return;
+	                let remaining = Math.max(0, Math.ceil(amount));
+
+	                if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
+	                    for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
+	                        if (player.outerShieldSegments[i] > 0) {
+	                            player.outerShieldSegments[i] = 0;
+	                            remaining -= 1;
+	                        }
+	                    }
+	                }
+
+	                if (player.shieldSegments && player.shieldSegments.length > 0) {
+	                    for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
+	                        const absorb = Math.min(remaining, player.shieldSegments[i]);
+	                        player.shieldSegments[i] -= absorb;
+	                        remaining -= absorb;
+	                    }
+	                }
+
+	                if (remaining > 0) {
+	                    player.hp -= remaining;
+	                    spawnParticles(player.pos.x, player.pos.y, 14, '#f00');
+	                    playSound('hit');
+	                    updateHealthUI();

@@ -1,0 +1,140 @@
+﻿                                 playSound('hit');
+                                 updateHealthUI();
+                                 spawnParticles(player.pos.x, player.pos.y, 5, '#f00');
+                                 showOverlayMessage("WARNING: ARENA WALL DAMAGE", '#f00', 1000);
+                                 if (player.hp <= 0) killPlayer();
+                             }
+                             player.lastArenaDamageTime = Date.now();
+                        }
+                    }
+
+                    const angle = Math.atan2(dy, dx);
+                    entity.pos.x = bossArena.x + Math.cos(angle) * bossArena.radius;
+                    entity.pos.y = bossArena.y + Math.sin(angle) * bossArena.radius;
+                    
+                    const nx = Math.cos(angle);
+                    const ny = Math.sin(angle);
+                    const dot = entity.vel.x * nx + entity.vel.y * ny;
+                    
+                    if (dot > 0) {
+                        entity.vel.x -= nx * dot * (1 + elasticity);
+                        entity.vel.y -= ny * dot * (1 + elasticity);
+                    }
+                }
+            }
+        }
+        
+	        function checkBulletWallCollision(bullet) {
+	             // Warp maze 1px line walls (blocks bullets).
+	             if (warpZone && warpZone.active && typeof warpZone.bulletHitsWall === 'function') {
+	                 if (warpZone.bulletHitsWall(bullet)) return { hit: true, kind: 'warp_wall', obj: null };
+	             }
+	             // Cave 1px line walls.
+	             if (caveMode && caveLevel && caveLevel.active && typeof caveLevel.bulletHitsWall === 'function') {
+	                 if (caveLevel.bulletHitsWall(bullet)) return { hit: true, kind: 'cave_wall', obj: null };
+	             }
+	             // Anomaly maze 1px line walls.
+	             if (activeContract && activeContract.type === 'anomaly' && contractEntities && contractEntities.anomalies) {
+	                 const az = contractEntities.anomalies.find(a => a && !a.dead && a.contractId === activeContract.id && typeof a.bulletHitsWall === 'function');
+	                 if (az) {
+	                     const dA = Math.hypot(bullet.pos.x - az.pos.x, bullet.pos.y - az.pos.y);
+	                     if (dA < az.radius + 900 && az.bulletHitsWall(bullet)) return { hit: true, kind: 'anomaly_wall', obj: null };
+	                 }
+	             }
+	             const nearby = asteroidGrid.query(bullet.pos.x, bullet.pos.y);
+	             for(let ast of nearby) {
+	                 if (ast.dead) continue;
+	                 const dx = bullet.pos.x - ast.pos.x;
+	                 const dy = bullet.pos.y - ast.pos.y;
+	                 const distSq = dx*dx + dy*dy;
+	                 const rad = ast.radius + bullet.radius;
+	                 if (distSq < rad * rad) {
+	                     return {hit: true, kind: 'asteroid', obj: ast};
+	                 }
+	             }
+	             return {hit: false, kind: null, obj: null};
+	        }
+
+        function updateHealthUI() {
+            if (!player) return;
+            const pct = (player.hp / player.maxHp) * 100;
+            healthFill.style.width = `${Math.max(0, pct)}%`;
+            if (pct < 30) healthFill.style.backgroundColor = '#f00';
+            else if (pct < 60) healthFill.style.backgroundColor = '#ff0';
+            else healthFill.style.backgroundColor = '#0f0';
+            const ht = document.getElementById('health-text');
+            if (ht) ht.innerText = `${Math.max(0, Math.floor(player.hp))} / ${player.maxHp}`;
+        }
+        
+        function updateXpUI() {
+            if (!player) return;
+            const pct = (player.xp / player.nextLevelXp) * 100;
+            xpFill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+            document.getElementById('level-display').innerText = player.level;
+            document.getElementById('score').innerText = score;
+        }
+        
+        function updateNuggetUI() {
+            const el = document.getElementById('nugget-count');
+            if (el) el.innerText = spaceNuggets;
+        }
+
+        // --- Profile Save / Load (player stats only) ---
+        const SAVE_PREFIX = 'neon_space_profile_v1_';
+        const SAVE_LAST_KEY = 'neon_space_profile_last';
+        let pendingProfile = null;
+
+        function buildProfileData() {
+            if (!player) return null;
+            return {
+                version: 1,
+                timestamp: Date.now(),
+                player: {
+                    hp: player.hp,
+                    maxHp: player.maxHp,
+                    shieldSegments: [...player.shieldSegments],
+                    maxShieldSegments: player.maxShieldSegments,
+                    outerShieldSegments: [...(player.outerShieldSegments || [])],
+                    maxOuterShieldSegments: player.maxOuterShieldSegments || 0,
+                    stats: { ...player.stats },
+                    inventory: { ...player.inventory },
+                    level: player.level,
+                    xp: player.xp,
+                    nextLevelXp: player.nextLevelXp,
+                    magnetRadius: player.magnetRadius,
+                    nukeUnlocked: player.nukeUnlocked,
+                    nukeCooldown: player.nukeCooldown,
+                    nukeMaxCooldown: player.nukeMaxCooldown,
+                    staticWeapons: [...player.staticWeapons],
+                    shieldRotation: player.shieldRotation,
+                    outerShieldRotation: player.outerShieldRotation,
+                    outerShieldRadius: player.outerShieldRadius,
+                    invincibilityCycle: { ...player.invincibilityCycle },
+                    turboBoost: { ...player.turboBoost },
+                    nukeDamage: player.nukeDamage,
+                    nukeRange: player.nukeRange
+                }
+            };
+        }
+
+        function applyProfile(profile) {
+            if (!profile || !profile.player || !player) {
+                pendingProfile = profile || null;
+                return;
+            }
+            const src = profile.player;
+            player.maxHp = src.maxHp || player.maxHp;
+            player.hp = Math.min(src.hp || player.hp, player.maxHp);
+            if (src.shieldSegments) player.shieldSegments = [...src.shieldSegments];
+            player.maxShieldSegments = src.maxShieldSegments || player.shieldSegments.length;
+            if (typeof src.maxOuterShieldSegments === 'number') player.maxOuterShieldSegments = src.maxOuterShieldSegments;
+            if (src.outerShieldSegments) player.outerShieldSegments = [...src.outerShieldSegments];
+            player.stats = { ...player.stats, ...(src.stats || {}) };
+            player.inventory = { ...(src.inventory || {}) };
+            player.level = src.level || player.level;
+            player.xp = src.xp || 0;
+            player.nextLevelXp = src.nextLevelXp || player.nextLevelXp;
+            if (typeof src.magnetRadius === 'number') player.magnetRadius = src.magnetRadius;
+            player.nukeUnlocked = !!src.nukeUnlocked;
+            if (typeof src.nukeCooldown === 'number') player.nukeCooldown = src.nukeCooldown;
+            if (typeof src.nukeMaxCooldown === 'number') player.nukeMaxCooldown = src.nukeMaxCooldown;

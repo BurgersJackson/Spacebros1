@@ -1,0 +1,90 @@
+﻿                         if (boss.hp <= 0) {
+                             boss.kill();
+                             score += 10000;
+                         }
+                         hitEntity = true;
+                     }
+                 }
+                 if (!hitEntity && spaceStation) {
+                     const dist = Math.hypot(s.pos.x - spaceStation.pos.x, s.pos.y - spaceStation.pos.y);
+                     if (dist < s.radius + spaceStation.radius) {
+                         spaceStation.hp -= s.damage;
+                         spawnParticles(spaceStation.pos.x, spaceStation.pos.y, 22, '#fa0');
+                         playSound('explode');
+                         if (spaceStation.hp <= 0) handleSpaceStationDestroyed();
+                         hitEntity = true;
+                     }
+                 }
+                 if (hitEntity) {
+                     s.dead = true;
+                     continue;
+                 }
+                 
+                 // Vs Asteroids
+                 const nearby = asteroidGrid.query(s.pos.x, s.pos.y);
+                 for (let ast of nearby) {
+                     if (ast.dead) continue;
+                    const dist = Math.hypot(s.pos.x - ast.pos.x, s.pos.y - ast.pos.y);
+                    if (dist < s.radius + ast.radius) {
+                        ast.break();
+                        spawnParticles(ast.pos.x, ast.pos.y, 10, '#fa0');
+                        playSound('hit');
+                        // Star keeps going (pierces)
+                    }
+                }
+            }
+        }
+
+        function checkWallCollision(entity, elasticity = 0) {
+            // Arena barrier only affects the player (enemies are exempt)
+            if (bossArena.active && entity instanceof Enemy) return;
+            if (bossArena.active) {
+                const dx = entity.pos.x - bossArena.x;
+                const dy = entity.pos.y - bossArena.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist > bossArena.radius) {
+                    // Player Damage Logic
+                    if (entity === player) {
+                        if (Date.now() - player.lastArenaDamageTime > 1000) {
+                             if (player.invulnerable <= 0) {
+                                 player.hp -= 1;
+                                 playSound('hit');
+                                 updateHealthUI();
+                                 spawnParticles(player.pos.x, player.pos.y, 5, '#f00');
+                                 showOverlayMessage("WARNING: ARENA WALL DAMAGE", '#f00', 1000);
+                                 if (player.hp <= 0) killPlayer();
+                             }
+                             player.lastArenaDamageTime = Date.now();
+                        }
+                    }
+
+                    const angle = Math.atan2(dy, dx);
+                    entity.pos.x = bossArena.x + Math.cos(angle) * bossArena.radius;
+                    entity.pos.y = bossArena.y + Math.sin(angle) * bossArena.radius;
+                    
+                    const nx = Math.cos(angle);
+                    const ny = Math.sin(angle);
+                    const dot = entity.vel.x * nx + entity.vel.y * ny;
+                    
+                    if (dot > 0) {
+                        entity.vel.x -= nx * dot * (1 + elasticity);
+                        entity.vel.y -= ny * dot * (1 + elasticity);
+                    }
+                }
+            }
+        }
+        
+	        function checkBulletWallCollision(bullet) {
+	             // Warp maze 1px line walls (blocks bullets).
+	             if (warpZone && warpZone.active && typeof warpZone.bulletHitsWall === 'function') {
+	                 if (warpZone.bulletHitsWall(bullet)) return { hit: true, kind: 'warp_wall', obj: null };
+	             }
+	             // Cave 1px line walls.
+	             if (caveMode && caveLevel && caveLevel.active && typeof caveLevel.bulletHitsWall === 'function') {
+	                 if (caveLevel.bulletHitsWall(bullet)) return { hit: true, kind: 'cave_wall', obj: null };
+	             }
+	             // Anomaly maze 1px line walls.
+	             if (activeContract && activeContract.type === 'anomaly' && contractEntities && contractEntities.anomalies) {
+	                 const az = contractEntities.anomalies.find(a => a && !a.dead && a.contractId === activeContract.id && typeof a.bulletHitsWall === 'function');
+	                 if (az) {
+	                     const dA = Math.hypot(bullet.pos.x - az.pos.x, bullet.pos.y - az.pos.y);

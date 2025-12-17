@@ -1,0 +1,90 @@
+﻿	            if (flagshipWarpZone && !flagshipWarpZone.dead) { flagshipWarpZone.update(); flagshipWarpZone.draw(ctx); }  
+	              
+	            // Cave: full-screen grid background (no stars). 
+	            if (caveActive) { 
+	                caveLevel.drawGridBackground(ctx, camX, camY, width, height, zoom); 
+	            } 
+ 
+	            coins.forEach(c => { c.update(); c.draw(ctx); }); 
+            nuggets.forEach(n => { n.update(); n.draw(ctx); }); 
+            powerups.forEach(p => { p.update(); p.draw(ctx); }); 
+            gateKeyItems.forEach(k => { k.update(); k.draw(ctx); }); 
+            shootingStars.forEach(s => { s.update(); s.draw(ctx); }); 
+            caches.forEach(c => { c.update(); c.draw(ctx); }); 
+            environmentAsteroids.forEach(a => { a.update(); a.draw(ctx); }); 
+            pois.forEach(p => { p.update(); p.draw(ctx); }); 
+            if (radiationStorm && !radiationStorm.dead) { radiationStorm.update(); radiationStorm.draw(ctx); } 
+            if (miniEvent && !miniEvent.dead) { miniEvent.update(); miniEvent.draw(ctx); } 
+            contractEntities.beacons.forEach(b => { b.update(); b.draw(ctx); }); 
+            contractEntities.gates.forEach(g => { g.update(); g.draw(ctx); }); 
+            contractEntities.anomalies.forEach(a => { a.update(); a.draw(ctx); }); 
+            contractEntities.fortresses.forEach(f => { f.update(); f.draw(ctx); }); 
+            contractEntities.wallTurrets.forEach(t => { t.update(); t.draw(ctx); }); 
+	              
+	            // NOTE: we intentionally do not clip in cave mode; walls indicate the bounds. 
+            
+            if (bossArena.active) {
+                ctx.save();
+                ctx.translate(bossArena.x, bossArena.y);
+                const pulse = 0.5 + Math.sin(now * 0.005) * 0.2;
+                if (bossArena.growing) ctx.strokeStyle = `rgba(0, 255, 255, ${pulse})`; 
+                else ctx.strokeStyle = `rgba(255, 0, 0, ${pulse})`; 
+                
+                ctx.lineWidth = 10;
+                ctx.shadowBlur = 20;
+                // ctx.shadowColor = bossArena.growing ? '#0ff' : '#f00';
+                ctx.beginPath();
+                ctx.arc(0, 0, bossArena.radius, 0, Math.PI*2);
+                ctx.stroke();
+                ctx.globalAlpha = 0.1;
+                // ctx.fillStyle = bossArena.growing ? '#055' : '#500';
+                // ctx.fill();
+                ctx.restore();
+            }
+
+            player.update();
+            player.drawLaser(ctx);
+            player.draw(ctx);
+            floatingTexts.forEach(t => { t.update(); t.draw(ctx); });
+            drones.forEach(d => { d.update(); d.draw(ctx); });
+
+            bases.forEach(b => { b.update(); b.draw(ctx); });
+            enemies.forEach(e => { e.update(); e.draw(ctx); });
+            
+            if (bossActive && boss) {
+                boss.update();
+                boss.draw(ctx);
+            }
+            
+            if (spaceStation) {
+                spaceStation.update();
+                spaceStation.draw(ctx);
+                
+                // Update Station Health Bar
+                const sContainer = document.getElementById('station-health-container');
+                const sFill = document.getElementById('station-health-fill');
+                if (sContainer && sFill) {
+                    sContainer.style.display = 'flex';
+                    const pct = Math.max(0, (spaceStation.hp / spaceStation.maxHp) * 100);
+                    sFill.style.width = `${pct}%`;
+                }
+            } else {
+                const sContainer = document.getElementById('station-health-container');
+                if (sContainer) sContainer.style.display = 'none';
+            }
+
+            bullets.forEach(b => { b.update(); b.draw(ctx); });
+            bossBombs.forEach(b => { b.update(); b.draw(ctx); });
+            guidedMissiles.forEach(m => { m.update(); m.draw(ctx); });
+            particles.forEach(p => { p.update(); p.draw(ctx); });
+            drones.forEach(d => { d.update(); d.draw(ctx); });
+
+            warpParticles.forEach(p => { p.update(); p.draw(ctx); });
+            warpParticles = warpParticles.filter(p => !p.dead);
+
+            shockwaves.forEach(s => { s.update(); s.draw(ctx); });
+            shockwaves = shockwaves.filter(s => !s.dead);
+
+            compactArray(bullets);
+            compactArray(bossBombs);
+            compactArray(guidedMissiles);
