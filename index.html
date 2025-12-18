@@ -1025,6 +1025,8 @@
         let musicEnabled = true;
         let musicNodes = [];
         let musicMode = 'normal'; // 'normal' or 'cruiser'
+        const BACKGROUND_MUSIC_URL = 'assets/sfx/background1.mp3';
+        let backgroundMusicAudio = null;
 
         function initAudio() {
             try {
@@ -1035,85 +1037,50 @@
             }
         }
 
-        function startMusic(mode = null) {
-            if (!musicEnabled || !audioCtx) return;
-            if (mode) musicMode = mode;
-            if (!musicMode) musicMode = 'normal';
-            // Restart if mode changed
-            if (musicNodes.length > 0) {
-                stopMusic();
-            }
-            const t = audioCtx.currentTime;
-
-            const osc1 = audioCtx.createOscillator();
-            const filter1 = audioCtx.createBiquadFilter();
-            const lfo1 = audioCtx.createOscillator();
-            const lfoGain1 = audioCtx.createGain();
-            const gain1 = audioCtx.createGain();
-
-            const osc2 = audioCtx.createOscillator();
-            const gain2 = audioCtx.createGain();
-            const lfo2 = audioCtx.createOscillator();
-            const lfoGain2 = audioCtx.createGain();
-
-            if (musicMode === 'cruiser') {
-                // Tense/ominous: slower, darker, with tremolo
-                osc1.type = 'sawtooth';
-                osc1.frequency.setValueAtTime(42, t);
-                filter1.type = 'lowpass';
-                filter1.frequency.setValueAtTime(220, t);
-                lfo1.type = 'triangle';
-                lfo1.frequency.value = 0.12;
-                lfoGain1.gain.value = 140;
-                gain1.gain.setValueAtTime(0.12, t);
-
-                osc2.type = 'square';
-                osc2.frequency.setValueAtTime(21, t);
-                gain2.gain.setValueAtTime(0.06, t);
-                lfo2.type = 'sine';
-                lfo2.frequency.value = 0.35;
-                lfoGain2.gain.value = 0.05;
-            } else {
-                // Default dark sci-fi drone
-                osc1.type = 'sawtooth';
-                osc1.frequency.setValueAtTime(55, t); 
-                filter1.type = 'lowpass';
-                filter1.frequency.setValueAtTime(300, t);
-                lfo1.type = 'sine';
-                lfo1.frequency.value = 0.2; 
-                lfoGain1.gain.value = 200; 
-                gain1.gain.setValueAtTime(0.1, t);
-
-                osc2.type = 'triangle';
-                osc2.frequency.setValueAtTime(112, t); 
-                gain2.gain.setValueAtTime(0.05, t);
-                lfo2.type = 'sine';
-                lfo2.frequency.value = 0.15;
-                lfoGain2.gain.value = 0.02;
-            }
-            
-            lfo1.connect(lfoGain1);
-            lfoGain1.connect(filter1.frequency);
-            osc1.connect(filter1);
-            filter1.connect(gain1);
-            gain1.connect(audioCtx.destination);
-
-            lfo2.connect(lfoGain2);
-            lfoGain2.connect(gain2.gain);
-            osc2.connect(gain2);
-            gain2.connect(audioCtx.destination);
-
-            osc1.start(); lfo1.start(); osc2.start(); lfo2.start();
-            musicNodes = [osc1, filter1, lfo1, lfoGain1, gain1, osc2, gain2, lfo2, lfoGain2];
-        }
-
-        function stopMusic() {
+        function stopLegacyMusicNodes() {
             musicNodes.forEach(n => {
                 try { n.stop(); } catch(e){}
                 try { n.disconnect(); } catch(e){}
             });
             musicNodes = [];
+        }
+
+        function setMusicMode(mode = null) {
+            if (mode) musicMode = mode;
+            if (!musicMode) musicMode = 'normal';
+            if (!musicEnabled) return;
+
+            // Ensure any legacy synth nodes are not running.
+            if (musicNodes.length > 0) stopLegacyMusicNodes();
+
+            if (!backgroundMusicAudio) {
+                backgroundMusicAudio = new Audio(BACKGROUND_MUSIC_URL);
+                backgroundMusicAudio.loop = true;
+                backgroundMusicAudio.preload = 'auto';
+            }
+
+            backgroundMusicAudio.volume = (musicMode === 'cruiser') ? 0.22 : 0.25;
+            try {
+                const p = backgroundMusicAudio.play();
+                if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch (e) {}
+        }
+
+        function startMusic(mode = null) {
+            if (mode) musicMode = mode;
+            if (!musicMode) musicMode = 'normal';
+            if (!musicEnabled) return;
+
+            setMusicMode(musicMode);
+        }
+
+        function stopMusic() {
+            stopLegacyMusicNodes();
             musicMode = musicMode || 'normal';
+            if (backgroundMusicAudio) {
+                try { backgroundMusicAudio.pause(); } catch (e) {}
+                try { backgroundMusicAudio.currentTime = 0; } catch (e) {}
+            }
         }
 
         function toggleMusic() {
@@ -1129,8 +1096,14 @@
             }
         }
 
-        function playSound(type) {
+        // Toggle: impact sounds when projectiles hit shields/hulls/walls.
+        const ENABLE_PROJECTILE_IMPACT_SOUNDS = false;
+        let inProjectileImpactSoundContext = false;
+
+        function playSound(type, volumeMult = 1) {
             if (!audioCtx || audioCtx.state === 'suspended') return;
+            if (!ENABLE_PROJECTILE_IMPACT_SOUNDS && inProjectileImpactSoundContext && (type === 'hit' || type === 'shield_hit')) return;
+            if (!(volumeMult > 0)) return;
             try {
                 const now = audioCtx.currentTime;
                 
@@ -1141,7 +1114,7 @@
                     osc.frequency.setValueAtTime(freq, now);
                     osc.connect(gain);
                     gain.connect(audioCtx.destination);
-                    gain.gain.setValueAtTime(vol, now);
+                    gain.gain.setValueAtTime(vol * volumeMult, now);
                     return { osc, gain };
                 };
 
@@ -1331,6 +1304,39 @@
             } catch(e) {}
         }
 
+        const mp3SfxPools = Object.create(null);
+        function playMp3Sfx(url, opts = {}) {
+            const volume = (typeof opts.volume === 'number') ? opts.volume : 1;
+            if (!(volume > 0)) return;
+
+            const key = opts.key || url;
+            const now = Date.now();
+            const entry = mp3SfxPools[key] || (mp3SfxPools[key] = { pool: [], idx: 0, lastAt: 0, url });
+
+            const rateLimitMs = (typeof opts.rateLimitMs === 'number') ? opts.rateLimitMs : 0;
+            if (rateLimitMs > 0 && (now - (entry.lastAt || 0)) < rateLimitMs) return;
+            entry.lastAt = now;
+
+            if (entry.pool.length === 0) {
+                const poolSize = (typeof opts.poolSize === 'number') ? opts.poolSize : 4;
+                for (let i = 0; i < Math.max(1, poolSize); i++) {
+                    const a = new Audio(url);
+                    a.preload = 'auto';
+                    a.volume = volume;
+                    entry.pool.push(a);
+                }
+            }
+
+            const a = entry.pool[entry.idx % entry.pool.length];
+            entry.idx = (entry.idx + 1) % entry.pool.length;
+            try {
+                a.volume = volume;
+                a.currentTime = 0;
+                const p = a.play();
+                if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch (e) {}
+        }
+
         // --- Game Setup ---
         const canvas = document.getElementById('gameCanvas');
         const ctx = (() => {
@@ -1360,6 +1366,7 @@
 	        let pixiStarTilingLayer = null; // preferred starfield (1-2 tiling sprites)
 	        let pixiStarTiles = null;
 	        let pixiNebulaTiles = null;
+	        let pixiNebulaPaletteIdx = null;
 
 	        // World-space layers
 	        let pixiAsteroidLayer = null;
@@ -1385,7 +1392,7 @@
         const pixiStarSpritePool = [];
 
         const pixiBulletTextures = { glow: null, laser: null, square: null };
-	        const pixiTextures = {
+ 	        const pixiTextures = {
             // Pickups / collectibles
             coin1: null,
             coin5: null,
@@ -1422,11 +1429,197 @@
 
 	            // Asteroids
 	            asteroids: []
-	        };
+ 	        };
         const pixiTextureAnchors = {};
+        const pixiTextureRotOffsets = {};
+        const pixiTextureBaseScales = {};
+        const pixiTextureScaleToRadius = {};
 
-	        if (USE_PIXI_OVERLAY && window.PIXI) {
-	            try { PIXI.settings.ROUND_PIXELS = true; } catch (e) {}
+        // Optional external sprite override for gunboats (falls back to procedural silhouette if missing)
+        const GUNBOAT_STARSHIP_URL = 'assets/starship.png';
+        const gunboatStarshipImage = new Image();
+        gunboatStarshipImage.decoding = 'async';
+        gunboatStarshipImage.src = GUNBOAT_STARSHIP_URL;
+        let gunboatStarshipTexture = null;
+        let gunboatStarshipLoaded = false;
+
+        const applyGunboatStarshipTexture = () => {
+            if (!gunboatStarshipLoaded || gunboatStarshipTexture || !window.PIXI) return;
+            try {
+                const tex = PIXI.Texture.from(gunboatStarshipImage);
+                // Smooth scaling for a large source image.
+                try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) {}
+                try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) {}
+
+                // Replace both gunboat variants with the same external sprite.
+                gunboatStarshipTexture = tex;
+                pixiTextures.enemy_gunboat_1 = tex;
+                pixiTextures.enemy_gunboat_2 = tex;
+                pixiTextureAnchors.enemy_gunboat_1 = 0.5;
+                pixiTextureAnchors.enemy_gunboat_2 = 0.5;
+
+                // The provided starship art faces "up"; game model faces +X, so rotate by +90deg.
+                pixiTextureRotOffsets.enemy_gunboat_1 = Math.PI / 2;
+                pixiTextureRotOffsets.enemy_gunboat_2 = Math.PI / 2;
+
+                // Scale image down to roughly match the procedural gunboat silhouette size.
+                // (User tweak) 2.5x bigger vs previous.
+                pixiTextureBaseScales.enemy_gunboat_1 = 0.06 * 2.5;
+                pixiTextureBaseScales.enemy_gunboat_2 = 0.06 * 2.5;
+            } catch (e) {
+                // Keep procedural gunboat textures.
+            }
+        };
+
+        gunboatStarshipImage.addEventListener('load', () => {
+            gunboatStarshipLoaded = true;
+            applyGunboatStarshipTexture();
+        });
+        gunboatStarshipImage.addEventListener('error', () => {
+            gunboatStarshipLoaded = false;
+        });
+
+        // Optional external sprite override for the standard base.
+        const BASE1_URL = 'assets/base1.png';
+        const base1Image = new Image();
+        base1Image.decoding = 'async';
+        base1Image.src = BASE1_URL;
+        let base1Texture = null;
+        let base1Loaded = false;
+
+        const applyBase1Texture = () => {
+            if (!base1Loaded || base1Texture || !window.PIXI) return;
+            try {
+                const tex = PIXI.Texture.from(base1Image);
+                try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) {}
+                try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) {}
+
+                base1Texture = tex;
+                pixiTextures.base_standard = tex;
+                pixiTextureAnchors.base_standard = 0.5;
+
+                // Match the existing base's visual diameter (~2*radius = 140px).
+                const desired = 140;
+                const denom = Math.max(1, Math.max(base1Image.naturalWidth || 1, base1Image.naturalHeight || 1));
+                pixiTextureBaseScales.base_standard = desired / denom;
+            } catch (e) {
+                // Keep procedural base textures.
+            }
+        };
+
+        base1Image.addEventListener('load', () => {
+            base1Loaded = true;
+            applyBase1Texture();
+        });
+        base1Image.addEventListener('error', () => {
+            base1Loaded = false;
+        });
+
+        // Optional external sprite override for the heavy base.
+        const BASE2_URL = 'assets/base2.png';
+        const base2Image = new Image();
+        base2Image.decoding = 'async';
+        base2Image.src = BASE2_URL;
+        let base2Texture = null;
+        let base2Loaded = false;
+
+        const applyBase2Texture = () => {
+            if (!base2Loaded || base2Texture || !window.PIXI) return;
+            try {
+                const tex = PIXI.Texture.from(base2Image);
+                try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) {}
+                try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) {}
+
+                base2Texture = tex;
+                pixiTextures.base_heavy = tex;
+                pixiTextureAnchors.base_heavy = 0.5;
+
+                const desired = 140;
+                const denom = Math.max(1, Math.max(base2Image.naturalWidth || 1, base2Image.naturalHeight || 1));
+                pixiTextureBaseScales.base_heavy = desired / denom;
+            } catch (e) {}
+        };
+
+        base2Image.addEventListener('load', () => {
+            base2Loaded = true;
+            applyBase2Texture();
+        });
+        base2Image.addEventListener('error', () => {
+            base2Loaded = false;
+        });
+
+        // Optional external sprite override for the rapid base.
+        const BASE3_URL = 'assets/base3.png';
+        const base3Image = new Image();
+        base3Image.decoding = 'async';
+        base3Image.src = BASE3_URL;
+        let base3Texture = null;
+        let base3Loaded = false;
+
+        const applyBase3Texture = () => {
+            if (!base3Loaded || base3Texture || !window.PIXI) return;
+            try {
+                const tex = PIXI.Texture.from(base3Image);
+                try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) {}
+                try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) {}
+
+                base3Texture = tex;
+                pixiTextures.base_rapid = tex;
+                pixiTextureAnchors.base_rapid = 0.5;
+
+                const desired = 140;
+                const denom = Math.max(1, Math.max(base3Image.naturalWidth || 1, base3Image.naturalHeight || 1));
+                pixiTextureBaseScales.base_rapid = desired / denom;
+            } catch (e) {}
+        };
+
+        base3Image.addEventListener('load', () => {
+            base3Loaded = true;
+            applyBase3Texture();
+        });
+        base3Image.addEventListener('error', () => {
+            base3Loaded = false;
+        });
+
+        // Optional external sprite override for the cruiser.
+        const CRUISER_URL = 'assets/cruiser.png';
+        const cruiserImage = new Image();
+        cruiserImage.decoding = 'async';
+        cruiserImage.src = CRUISER_URL;
+        let cruiserTexture = null;
+        let cruiserLoaded = false;
+
+        const applyCruiserTexture = () => {
+            if (!cruiserLoaded || cruiserTexture || !window.PIXI) return;
+            try {
+                const tex = PIXI.Texture.from(cruiserImage);
+                try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) {}
+                try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) {}
+
+                cruiserTexture = tex;
+                pixiTextures.enemy_cruiser = tex;
+                pixiTextureAnchors.enemy_cruiser = 0.5;
+
+                // Auto-rotate if the asset is portrait (common for "nose up" sprites).
+                const w = cruiserImage.naturalWidth || 0;
+                const h = cruiserImage.naturalHeight || 0;
+                pixiTextureRotOffsets.enemy_cruiser = (h > w) ? (Math.PI / 2) : 0;
+
+                // For cruisers, scale by in-world radius (better match for boss scaling).
+                pixiTextureScaleToRadius.enemy_cruiser = true;
+            } catch (e) {}
+        };
+
+        cruiserImage.addEventListener('load', () => {
+            cruiserLoaded = true;
+            applyCruiserTexture();
+        });
+        cruiserImage.addEventListener('error', () => {
+            cruiserLoaded = false;
+        });
+ 
+ 	        if (USE_PIXI_OVERLAY && window.PIXI) {
+ 	            try { PIXI.settings.ROUND_PIXELS = true; } catch (e) {}
 	            pixiApp = new PIXI.Application({
 	                resizeTo: window,
 	                backgroundAlpha: 0,
@@ -1508,7 +1701,9 @@
 	            pixiPickupLayer = new PIXI.ParticleContainer(6000, { position: true, rotation: true, tint: true, scale: true, alpha: true });
 	            pixiPlayerLayer = new PIXI.Container();
 	            pixiBaseLayer = new PIXI.Container();
-	            pixiEnemyLayer = new PIXI.ParticleContainer(6000, { position: true, rotation: true, tint: true, scale: true, alpha: true });
+	            // NOTE: ParticleContainer effectively assumes a single texture; enemies use multiple textures (and can now include external images),
+	            // so use a regular Container to avoid "all enemies show the same sprite" issues.
+	            pixiEnemyLayer = new PIXI.Container();
 	            pixiBossLayer = new PIXI.Container();
 	            pixiVectorLayer = new PIXI.Container();
 	            pixiBulletLayer = new PIXI.ParticleContainer(15000, { position: true, rotation: true, tint: true, scale: true, alpha: true });
@@ -1728,6 +1923,9 @@
                 pixiTextures.enemy_gunboat_2 = gb2.tex;
                 pixiTextureAnchors.enemy_gunboat_2 = gb2.anchor;
 
+                // If the external image is available, swap it in (non-fatal if missing).
+                applyGunboatStarshipTexture();
+
                 const makeCruiser = () => {
                     const s = 1.4;
                     const g = new PIXI.Graphics();
@@ -1791,6 +1989,9 @@
                 const cr = makeCruiser();
                 pixiTextures.enemy_cruiser = cr.tex;
                 pixiTextureAnchors.enemy_cruiser = cr.anchor;
+
+                // If the external image is available, swap it in (non-fatal if missing).
+                applyCruiserTexture();
             }
 
 	            // Asteroids (few shared variants; tinted per asteroid)
@@ -1993,6 +2194,11 @@
 	                const br = makeBase(0x0088ff, 0x111111);
 	                pixiTextures.base_rapid = br.tex;
 	                pixiTextureAnchors.base_rapid = br.anchor;
+
+	                // If the external image is available, swap it in (non-fatal if missing).
+	                applyBase1Texture();
+	                applyBase2Texture();
+	                applyBase3Texture();
 
 	                // Station hull
 	                const makeStationHull = () => {
@@ -2370,44 +2576,11 @@
 	            // If Pixi is enabled, build/rebuild background sprites once (positions update per-frame).
 	            if (pixiScreenRoot && pixiApp && pixiApp.renderer) {
 	                try {
-	                    // Clear legacy star sprites
-	                    if (pixiStarLayer) {
-	                        const oldStars = pixiStarLayer.removeChildren();
-	                        for (const spr of oldStars) releasePixiSprite(pixiStarSpritePool, spr);
-	                        pixiStarLayer.visible = false; // prefer tiling stars for performance
-	                    }
+	                    // Legacy per-star sprites: keep disabled (tiling is faster).
+	                    if (pixiStarLayer) pixiStarLayer.visible = false;
 	
-	                    // Clear any old tiling stars
-	                    if (pixiStarTilingLayer) {
-	                        const old = pixiStarTilingLayer.removeChildren();
-	                        for (const spr of old) {
-	                            try { spr.destroy({ children: true, texture: false, baseTexture: false }); } catch (e) {}
-	                        }
-	                        if (pixiStarTiles && pixiStarTiles.length) {
-	                            for (const t of pixiStarTiles) {
-	                                if (t && t.tex) {
-	                                    try { t.tex.destroy(true); } catch (e) {}
-	                                }
-	                            }
-	                        }
-	                        pixiStarTiles = [];
-	                    }
-	
-	                    // Clear/rebuild nebula tiling sprites
-	                    if (pixiNebulaLayer) {
-	                        const oldNebs = pixiNebulaLayer.removeChildren();
-	                        for (const spr of oldNebs) {
-	                            try { spr.destroy({ children: true, texture: false, baseTexture: false }); } catch (e) {}
-	                        }
-	                    }
-	                    if (pixiNebulaTiles && pixiNebulaTiles.length) {
-	                        for (const t of pixiNebulaTiles) {
-	                            if (t && t.tex) {
-	                                try { t.tex.destroy(true); } catch (e) {}
-	                            }
-	                        }
-	                    }
-	                    pixiNebulaTiles = [];
+	                    if (!Array.isArray(pixiStarTiles)) pixiStarTiles = [];
+	                    if (!Array.isArray(pixiNebulaTiles)) pixiNebulaTiles = [];
 	
 	                    if (ENABLE_NEBULA && pixiNebulaLayer) {
 	                        const hexToRgb = (hex) => {
@@ -2465,21 +2638,39 @@
 	                            [0x0b1020, 0x3b1366, 0x6a2cff, 0x1c7cff, 0x00b6ff]
 	                        ];
 	                        const idxBase = (typeof sectorIndex === 'number' && isFinite(sectorIndex)) ? (Math.abs(sectorIndex) | 0) : 0;
-	                        const palette = palettes[idxBase % palettes.length];
+	                        const paletteIdx = idxBase % palettes.length;
+	                        const palette = palettes[paletteIdx];
 	
 	                        const nebulaLayers = [
 	                            { tileSize: 1024, blobs: 9, alphaMult: 1.00, parallax: 0.010 },
 	                            { tileSize: 768, blobs: 7, alphaMult: 0.66, parallax: 0.018 }
 	                        ];
-	                        for (const L of nebulaLayers) {
-	                            const tex = makeNebulaTileTexture(L.tileSize, L.blobs, palette);
-	                            const spr = new PIXI.TilingSprite(tex, (typeof width === 'number' && width > 0) ? width : 1, (typeof height === 'number' && height > 0) ? height : 1);
-	                            const mult = (typeof L.alphaMult === 'number' && isFinite(L.alphaMult)) ? L.alphaMult : 1;
-	                            spr.alpha = (typeof NEBULA_ALPHA === 'number' && isFinite(NEBULA_ALPHA)) ? (NEBULA_ALPHA * mult) : (0.12 * mult);
-	                            spr.tint = 0xffffff;
-	                            spr.blendMode = PIXI.BLEND_MODES.NORMAL;
-	                            pixiNebulaLayer.addChild(spr);
-	                            pixiNebulaTiles.push({ spr, tex, parallax: L.parallax });
+	
+	                        const needsNebulaRebuild = (pixiNebulaPaletteIdx !== paletteIdx) || (pixiNebulaTiles.length === 0);
+	                        if (needsNebulaRebuild) {
+	                            // Rebuild nebula only when the palette changes (sector change) or on first init.
+	                            const oldNebs = pixiNebulaLayer.removeChildren();
+	                            for (const spr of oldNebs) {
+	                                try { spr.destroy({ children: true, texture: false, baseTexture: false }); } catch (e) {}
+	                            }
+	                            for (const t of pixiNebulaTiles) {
+	                                if (t && t.tex) {
+	                                    try { t.tex.destroy(true); } catch (e) {}
+	                                }
+	                            }
+	                            pixiNebulaTiles = [];
+	
+	                            for (const L of nebulaLayers) {
+	                                const tex = makeNebulaTileTexture(L.tileSize, L.blobs, palette);
+	                                const spr = new PIXI.TilingSprite(tex, (typeof width === 'number' && width > 0) ? width : 1, (typeof height === 'number' && height > 0) ? height : 1);
+	                                const mult = (typeof L.alphaMult === 'number' && isFinite(L.alphaMult)) ? L.alphaMult : 1;
+	                                spr.alpha = (typeof NEBULA_ALPHA === 'number' && isFinite(NEBULA_ALPHA)) ? (NEBULA_ALPHA * mult) : (0.12 * mult);
+	                                spr.tint = 0xffffff;
+	                                spr.blendMode = PIXI.BLEND_MODES.NORMAL;
+	                                pixiNebulaLayer.addChild(spr);
+	                                pixiNebulaTiles.push({ spr, tex, parallax: L.parallax });
+	                            }
+	                            pixiNebulaPaletteIdx = paletteIdx;
 	                        }
 	                    }
 	
@@ -2508,19 +2699,21 @@
 		                            return tex;
 		                        };
 	
-		                        const tileSize = 512;
-		                        const layers = [
-		                            { count: 260, minSize: 1, maxSize: 2, minAlpha: 0.05, maxAlpha: 0.25, parallax: 0.06 },
-		                            { count: 70, minSize: 2, maxSize: 3, minAlpha: 0.08, maxAlpha: 0.40, parallax: 0.12 }
-		                        ];
-		                        for (const L of layers) {
-		                            const tex = makeStarTileTexture(tileSize, L.count, L.minSize, L.maxSize, L.minAlpha, L.maxAlpha);
-		                            const spr = new PIXI.TilingSprite(tex, width, height);
-		                            spr.alpha = 0.5;
-		                            spr.tint = 0xffffff;
-		                            spr.blendMode = PIXI.BLEND_MODES.NORMAL;
-		                            pixiStarTilingLayer.addChild(spr);
-		                            pixiStarTiles.push({ spr, tex, parallax: L.parallax });
+		                        if (pixiStarTiles.length === 0) {
+		                            const tileSize = 512;
+		                            const layers = [
+		                                { count: 260, minSize: 1, maxSize: 2, minAlpha: 0.05, maxAlpha: 0.25, parallax: 0.06 },
+		                                { count: 70, minSize: 2, maxSize: 3, minAlpha: 0.08, maxAlpha: 0.40, parallax: 0.12 }
+		                            ];
+		                            for (const L of layers) {
+		                                const tex = makeStarTileTexture(tileSize, L.count, L.minSize, L.maxSize, L.minAlpha, L.maxAlpha);
+		                                const spr = new PIXI.TilingSprite(tex, width, height);
+		                                spr.alpha = 0.5;
+		                                spr.tint = 0xffffff;
+		                                spr.blendMode = PIXI.BLEND_MODES.NORMAL;
+		                                pixiStarTilingLayer.addChild(spr);
+		                                pixiStarTiles.push({ spr, tex, parallax: L.parallax });
+		                            }
 		                        }
 	                    } else if (pixiStarLayer && pixiTextureWhite) {
 	                        // Fallback: per-star sprites
@@ -2657,8 +2850,9 @@
                 flagshipSpawned = false;
                 flagshipSpawnAt = 0;
             
-            initStars(); // update nebula palette
-            
+            // Avoid rebuilding stars/nebula when entering Sector 2 cave (background is hidden there).
+            if (sectorIndex !== 2) initStars(); // update nebula palette
+             
             // Sector 2: long cave run instead of open space.
             if (sectorIndex === 2) {
                 startCaveSector2();
@@ -3457,6 +3651,12 @@
                     
                     bullets.push(new Bullet(bx, by, this.turretAngle, false, damage, bulletSpeed, 4, null, 0));
                     spawnBarrelSmoke(bx, by, this.turretAngle);
+                }
+                // Player shooting SFX (MP3), rate-limited.
+                const now = Date.now();
+                if (!this._lastShootSfxAt || (now - this._lastShootSfxAt) >= 200) {
+                    playSound('shoot', 0.5);
+                    this._lastShootSfxAt = now;
                 }
                 
                 // Shotgun Logic
@@ -5236,20 +5436,26 @@
                             if (spr) spr._pixiKey = key;
                             this.sprite = spr;
                         }
-                        if (spr) {
-                            spr.texture = tex;
-                            if (!spr.parent) pixiEnemyLayer.addChild(spr);
-                            if (typeof anchor === 'number') spr.anchor.set(anchor);
-                            else if (anchor && typeof anchor.x === 'number' && typeof anchor.y === 'number') spr.anchor.set(anchor.x, anchor.y);
-                            spr.visible = true;
-                            spr.position.set(this.pos.x, this.pos.y);
-                            spr.rotation = this.angle;
-                            spr.scale.set(modelScale);
-                            spr.alpha = stealthAlpha;
-                            spr.tint = (this.freezeTimer > 0) ? 0x00ffff : 0xffffff;
-                            spr.blendMode = PIXI.BLEND_MODES.NORMAL;
-                        }
-                    }
+                         if (spr) {
+                             spr.texture = tex;
+                             if (!spr.parent) pixiEnemyLayer.addChild(spr);
+                             if (typeof anchor === 'number') spr.anchor.set(anchor);
+                             else if (anchor && typeof anchor.x === 'number' && typeof anchor.y === 'number') spr.anchor.set(anchor.x, anchor.y);
+                             spr.visible = true;
+                             spr.position.set(this.pos.x, this.pos.y);
+                             spr.rotation = (this.angle || 0) + (pixiTextureRotOffsets[key] || 0);
+                             let effectiveScale = modelScale;
+                             if (pixiTextureScaleToRadius[key]) {
+                                 const denom = Math.max(1, Math.max(tex.width || 1, tex.height || 1));
+                                 effectiveScale = (this.radius * 2) / denom;
+                             }
+                             effectiveScale *= (pixiTextureBaseScales[key] || 1);
+                             spr.scale.set(effectiveScale);
+                             spr.alpha = stealthAlpha;
+                             spr.tint = (this.freezeTimer > 0) ? 0x00ffff : 0xffffff;
+                             spr.blendMode = PIXI.BLEND_MODES.NORMAL;
+                         }
+                     }
 
                     // Shields + freeze indicator (Graphics)
                     const hasOuter = (this.shieldSegments && this.shieldSegments.length > 0);
@@ -5442,7 +5648,32 @@
                 ctx.shadowBlur = this.isCruiser ? 10 : 5;
                 ctx.shadowColor = this.isCruiser ? '#8899aa' : '#f00';
                 
-                ctx.beginPath();
+                let drewEnemyHullImage = false;
+                if (this.isCruiser && cruiserLoaded && cruiserImage && cruiserImage.naturalWidth > 0) {
+                    const desired = this.radius * 2;
+                    const denom = Math.max(1, Math.max(cruiserImage.naturalWidth || 1, cruiserImage.naturalHeight || 1));
+                    const scale = desired / denom;
+                    const rot = (cruiserImage.naturalHeight > cruiserImage.naturalWidth) ? (Math.PI / 2) : 0;
+                    ctx.save();
+                    ctx.rotate(rot);
+                    ctx.scale(scale, scale);
+                    ctx.drawImage(cruiserImage, -cruiserImage.naturalWidth / 2, -cruiserImage.naturalHeight / 2);
+                    ctx.restore();
+                    drewEnemyHullImage = true;
+                } else if (this.isGunboat && !this.isCruiser && gunboatStarshipLoaded && gunboatStarshipImage && gunboatStarshipImage.naturalWidth > 0) {
+                    const s = this.gunboatScale || 1.4;
+                    const desiredLen = 70 * 2.5 * (s / 1.4);
+                    const scale = desiredLen / Math.max(1, gunboatStarshipImage.naturalHeight || 1);
+                    ctx.save();
+                    // Art faces "up"; model faces +X.
+                    ctx.rotate(Math.PI / 2);
+                    ctx.scale(scale, scale);
+                    ctx.drawImage(gunboatStarshipImage, -gunboatStarshipImage.naturalWidth / 2, -gunboatStarshipImage.naturalHeight / 2);
+                    ctx.restore();
+                    drewEnemyHullImage = true;
+                }
+
+                if (!drewEnemyHullImage) ctx.beginPath();
                 if (this.isGunboat) {
                     const s = this.gunboatScale || 1.4;
                     if (this.isCruiser) {
@@ -5487,9 +5718,11 @@
                     ctx.lineTo(-6, 0);
                     ctx.lineTo(-12, -12);
                 }
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
+                if (!drewEnemyHullImage) {
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                }
 
                 // Cruiser detailing (pods/lines/engines) after base hull fill
                 if (this.isCruiser) {
@@ -5804,67 +6037,57 @@
 	                    return;
 	                }
 
-	                // Pixi fast path (base hull + shields)
-	                if (pixiBaseLayer && pixiTextures) {
-	                    let container = this._pixiContainer;
-	                    if (!container) {
-	                        container = new PIXI.Container();
-	                        this._pixiContainer = container;
-	                        pixiBaseLayer.addChild(container);
+ 	                // Pixi fast path (base hull + shields)
+ 	                if (pixiBaseLayer && pixiTextures) {
+	                    const baseKey = (this.type === 'heavy') ? 'base_heavy' : (this.type === 'rapid' ? 'base_rapid' : 'base_standard');
+ 	                    let container = this._pixiContainer;
+ 	                    if (!container) {
+ 	                        container = new PIXI.Container();
+ 	                        this._pixiContainer = container;
+ 	                        pixiBaseLayer.addChild(container);
 
-	                        const tex = (this.type === 'heavy')
-	                            ? pixiTextures.base_heavy
-	                            : (this.type === 'rapid' ? pixiTextures.base_rapid : pixiTextures.base_standard);
-	                        const a = (this.type === 'heavy')
-	                            ? (pixiTextureAnchors.base_heavy || { x: 0.5, y: 0.5 })
-	                            : (this.type === 'rapid'
-	                                ? (pixiTextureAnchors.base_rapid || { x: 0.5, y: 0.5 })
-	                                : (pixiTextureAnchors.base_standard || { x: 0.5, y: 0.5 }));
+ 	                        const hull = new PIXI.Sprite(pixiTextures[baseKey]);
+ 	                        hull.position.set(0, 0);
+ 	                        container.addChild(hull);
+ 	                        this._pixiHullSpr = hull;
 
-	                        const hull = new PIXI.Sprite(tex);
-	                        hull.anchor.set((a && a.x != null) ? a.x : 0.5, (a && a.y != null) ? a.y : 0.5);
-	                        hull.position.set(0, 0);
-	                        container.addChild(hull);
-	                        this._pixiHullSpr = hull;
+	                        // Base turret visuals removed (still shoots, but no turret graphic).
+	                        this._pixiTurretContainer = null;
+	                        this._pixiTurretBaseSpr = null;
+	                        this._pixiBarrelSpr = null;
+ 	                    } else if (!container.parent) {
+ 	                        pixiBaseLayer.addChild(container);
+ 	                    }
+ 	                    container.visible = true;
 
-	                        const turret = new PIXI.Container();
-	                        turret.position.set(0, 0);
-	                        container.addChild(turret);
-	                        this._pixiTurretContainer = turret;
-
-	                        if (pixiTextures.player_turret_base) {
-	                            const tb = new PIXI.Sprite(pixiTextures.player_turret_base);
-	                            const tbA = pixiTextureAnchors.player_turret_base || { x: 0.5, y: 0.5 };
-	                            tb.anchor.set((tbA && tbA.x != null) ? tbA.x : 0.5, (tbA && tbA.y != null) ? tbA.y : 0.5);
-	                            tb.scale.set(2.0);
-	                            turret.addChild(tb);
-	                            this._pixiTurretBaseSpr = tb;
-	                        }
-	                        if (pixiTextures.player_barrel) {
-	                            const b = new PIXI.Sprite(pixiTextures.player_barrel);
-	                            const bA = pixiTextureAnchors.player_barrel || { x: 0, y: 0.5 };
-	                            b.anchor.set((bA && bA.x != null) ? bA.x : 0, (bA && bA.y != null) ? bA.y : 0.5);
-	                            b.scale.set(3.0, 2.0);
-	                            turret.addChild(b);
-	                            this._pixiBarrelSpr = b;
-	                        }
-	                    } else if (!container.parent) {
-	                        pixiBaseLayer.addChild(container);
+	                    // Clean up any older turret sprites from a previous version.
+	                    if (this._pixiTurretContainer) {
+	                        try { this._pixiTurretContainer.destroy({ children: true }); } catch (e) {}
+	                        this._pixiTurretContainer = null;
 	                    }
-	                    container.visible = true;
+	                    this._pixiTurretBaseSpr = null;
+	                    this._pixiBarrelSpr = null;
 
-	                    const jitter = (this.hp <= 2) ? 2 : 0;
-	                    const jx = jitter ? (Math.random() - 0.5) * jitter * 2 : 0;
-	                    const jy = jitter ? (Math.random() - 0.5) * jitter * 2 : 0;
-	                    container.position.set(this.pos.x + jx, this.pos.y + jy);
+	                    // Keep hull texture/anchor/scale in sync (important for late-loaded external images).
+	                    if (this._pixiHullSpr) {
+	                        const tex = pixiTextures[baseKey];
+	                        const a = pixiTextureAnchors[baseKey] || { x: 0.5, y: 0.5 };
+	                        this._pixiHullSpr.texture = tex;
+	                        this._pixiHullSpr.anchor.set((a && a.x != null) ? a.x : 0.5, (a && a.y != null) ? a.y : 0.5);
+	                        this._pixiHullSpr.scale.set(pixiTextureBaseScales[baseKey] || 1);
+	                    }
 
-	                    if (this._pixiHullSpr) this._pixiHullSpr.rotation = this.angle || 0;
-	                    if (this._pixiTurretContainer) this._pixiTurretContainer.rotation = this.turretAngle || 0;
+ 	                    const jitter = (this.hp <= 2) ? 2 : 0;
+ 	                    const jx = jitter ? (Math.random() - 0.5) * jitter * 2 : 0;
+ 	                    const jy = jitter ? (Math.random() - 0.5) * jitter * 2 : 0;
+ 	                    container.position.set(this.pos.x + jx, this.pos.y + jy);
 
-	                    // Shields (Graphics)
-	                    if (pixiVectorLayer) {
-	                        const shieldColor = (this.type === 'heavy') ? 0xffaa00 : (this.type === 'rapid' ? 0x0088ff : 0x00ffff);
-	                        const innerColor = (this.type === 'heavy') ? 0xff4444 : (this.type === 'rapid' ? 0x8888ff : 0xff00ff);
+ 	                    if (this._pixiHullSpr) this._pixiHullSpr.rotation = this.angle || 0;
+
+ 	                    // Shields (Graphics)
+ 	                    if (pixiVectorLayer) {
+ 	                        const shieldColor = (this.type === 'heavy') ? 0xffaa00 : (this.type === 'rapid' ? 0x0088ff : 0x00ffff);
+ 	                        const innerColor = (this.type === 'heavy') ? 0xff4444 : (this.type === 'rapid' ? 0x8888ff : 0xff00ff);
 	                        const hasOuter = (this.shieldSegments && this.shieldSegments.length > 0);
 	                        const hasInner = (this.innerShieldSegments && this.innerShieldSegments.length > 0);
 	                        const needs = !!(hasOuter || hasInner);
@@ -6095,6 +6318,20 @@
                     // 70s sci-fi monolith style
                     ctx.save();
                     ctx.rotate(this.angle);
+
+                    let drewBaseImage = false;
+                    if (base2Loaded && base2Image && base2Image.naturalWidth > 0) {
+                        const desired = 140;
+                        const denom = Math.max(1, Math.max(base2Image.naturalWidth || 1, base2Image.naturalHeight || 1));
+                        const scale = desired / denom;
+                        ctx.save();
+                        ctx.scale(scale, scale);
+                        ctx.drawImage(base2Image, -base2Image.naturalWidth / 2, -base2Image.naturalHeight / 2);
+                        ctx.restore();
+                        drewBaseImage = true;
+                    }
+
+                    if (!drewBaseImage) {
                     ctx.fillStyle = '#221122';
                     ctx.strokeStyle = '#ff8800';
                     ctx.shadowBlur = 15; ctx.shadowColor = '#ff8800';
@@ -6112,23 +6349,27 @@
                         ctx.lineTo(60, i*20);
                         ctx.stroke();
                     }
-                    ctx.restore();
-
-                    // Cannon pod
-                    ctx.save();
-                    ctx.rotate(this.turretAngle);
-                    ctx.fillStyle = '#331122'; ctx.strokeStyle = '#ffcc66';
-                    ctx.beginPath();
-                    ctx.rect(-20, -15, 40, 30);
-                    ctx.fill(); ctx.stroke();
-                    ctx.fillStyle = '#ffcc66';
-                    ctx.fillRect(20, -6, 35, 12);
+                    }
                     ctx.restore();
                 } 
                 else if (this.type === 'rapid') {
                     // 70s neon satellite
                     ctx.save();
                     ctx.rotate(this.angle);
+
+                    let drewBaseImage = false;
+                    if (base3Loaded && base3Image && base3Image.naturalWidth > 0) {
+                        const desired = 140;
+                        const denom = Math.max(1, Math.max(base3Image.naturalWidth || 1, base3Image.naturalHeight || 1));
+                        const scale = desired / denom;
+                        ctx.save();
+                        ctx.scale(scale, scale);
+                        ctx.drawImage(base3Image, -base3Image.naturalWidth / 2, -base3Image.naturalHeight / 2);
+                        ctx.restore();
+                        drewBaseImage = true;
+                    }
+
+                    if (!drewBaseImage) {
                     ctx.fillStyle = '#112244'; ctx.strokeStyle = '#66ffff';
                     ctx.shadowBlur = 12; ctx.shadowColor = '#66ffff';
 
@@ -6140,43 +6381,48 @@
                     }
                     ctx.closePath();
                     ctx.fill(); ctx.stroke();
-                    ctx.restore();
-                    
-                    // Rapid Turret
-                    ctx.save();
-                    ctx.rotate(this.turretAngle);
-                    ctx.fillStyle = '#113355'; ctx.strokeStyle = '#66ffff';
-                    ctx.beginPath();
-                    ctx.arc(0, 0, 16, 0, Math.PI*2);
-                    ctx.fill(); ctx.stroke();
-                    ctx.fillStyle = '#00ccff';
-                    ctx.fillRect(12, -4, 26, 8);
+                    }
                     ctx.restore();
                 } 
                 else {
                     // Standard retro ringed station
                     ctx.save();
                     ctx.rotate(this.angle);
-                    ctx.fillStyle = '#1a0f2d'; ctx.strokeStyle = '#ff77ff';
-                    ctx.shadowBlur = 12; ctx.shadowColor = '#ff77ff';
-                    ctx.lineWidth = 3;
 
-                    ctx.beginPath();
-                    ctx.arc(0, 0, 75, 0, Math.PI*2);
-                    ctx.fill(); ctx.stroke();
-                    ctx.beginPath();
-                    ctx.arc(0, 0, 40, 0, Math.PI*2);
-                    ctx.strokeStyle = '#ffaaee';
-                    ctx.stroke();
+                    let drewBaseImage = false;
+                    if (base1Loaded && base1Image && base1Image.naturalWidth > 0) {
+                        const desired = 140; // match ~2*radius
+                        const denom = Math.max(1, Math.max(base1Image.naturalWidth || 1, base1Image.naturalHeight || 1));
+                        const scale = desired / denom;
+                        ctx.save();
+                        ctx.scale(scale, scale);
+                        ctx.drawImage(base1Image, -base1Image.naturalWidth / 2, -base1Image.naturalHeight / 2);
+                        ctx.restore();
+                        drewBaseImage = true;
+                    }
 
-                    // fins
-                    for(let i=0; i<4; i++) {
-                        const a = i * Math.PI/2;
+                    if (!drewBaseImage) {
+                        ctx.fillStyle = '#1a0f2d'; ctx.strokeStyle = '#ff77ff';
+                        ctx.shadowBlur = 12; ctx.shadowColor = '#ff77ff';
+                        ctx.lineWidth = 3;
+
                         ctx.beginPath();
-                        ctx.moveTo(Math.cos(a)*40, Math.sin(a)*40);
-                        ctx.lineTo(Math.cos(a)*90, Math.sin(a)*90);
-                        ctx.strokeStyle = '#ffcc88';
+                        ctx.arc(0, 0, 75, 0, Math.PI*2);
+                        ctx.fill(); ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 40, 0, Math.PI*2);
+                        ctx.strokeStyle = '#ffaaee';
                         ctx.stroke();
+
+                        // fins
+                        for(let i=0; i<4; i++) {
+                            const a = i * Math.PI/2;
+                            ctx.beginPath();
+                            ctx.moveTo(Math.cos(a)*40, Math.sin(a)*40);
+                            ctx.lineTo(Math.cos(a)*90, Math.sin(a)*90);
+                            ctx.strokeStyle = '#ffcc88';
+                            ctx.stroke();
+                        }
                     }
 
                     ctx.restore();
@@ -6528,7 +6774,7 @@
 	            
 	            showOverlayMessage("WARNING: FLAGSHIP ENGAGED - ARENA LOCKED", '#f0f', 4500, 2);
 	            playSound('boss_spawn');
-	            if (musicEnabled) { stopMusic(); startMusic('cruiser'); }
+	            if (musicEnabled) setMusicMode('cruiser');
 	        }
 	        
 	        class CaveGuidedMissile extends Entity { 
@@ -7557,7 +7803,7 @@
 		                if (boss) pixiCleanupObject(boss);
 		                boss = null;
 		                showOverlayMessage(`${this.name} DESTROYED`, '#0f0', 2600, 3);
-		                if (musicEnabled && gameActive && !gamePaused) { stopMusic(); startMusic('normal'); }
+		                if (musicEnabled) setMusicMode('normal');
 		            }
 
 	            update() {
@@ -8448,7 +8694,7 @@
 	                    bossActive = true;
 	                    showOverlayMessage("CAVE CRUISER DETECTED", '#0ff', 3500, 3);
 	                    playSound('boss_spawn');
-	                    if (musicEnabled) { stopMusic(); startMusic('cruiser'); }
+	                    if (musicEnabled) setMusicMode('cruiser');
 	                }
 	                
 	                // Update cave wall turrets. 
@@ -8814,7 +9060,7 @@
 		                if (boss) pixiCleanupObject(boss);
 		                boss = null;
 
-	                if (musicEnabled && gameActive && !gamePaused) { stopMusic(); startMusic('normal'); }
+	                if (musicEnabled) setMusicMode('normal');
 	                if (finalBoss) {
 	                    try { if (caveLevel && caveLevel.active) caveLevel.exitUnlocked = true; } catch (e) {}
 	                }
@@ -9978,10 +10224,7 @@
                 bossArena.active = false;
                 bossArena.growing = false;
                 showOverlayMessage("CRUISER DESTROYED - ARENA UNLOCKED", '#0f0', 3000);
-                if (musicEnabled && gameActive && !gamePaused) {
-                    stopMusic();
-                    startMusic('normal');
-                }
+                if (musicEnabled) setMusicMode('normal');
                 try {
                     const delay = dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
                     dreadManager.timerAt = Date.now() + delay;
@@ -13906,7 +14149,7 @@
             });
             
             document.getElementById('levelup-screen').style.display = 'flex';
-            stopMusic(); // Pause music during choice
+            // Keep background music playing during the upgrade choice.
 
             // Restore 3 HP whenever the upgrade/level-up menu appears
             try {
@@ -14522,7 +14765,7 @@
                      dreadManager.firstSpawnDone = true;
                       showOverlayMessage("WARNING: CRUISER APPROACHING - ARENA LOCKED", '#f00', 4000);
                       playSound('boss_spawn');
-                      if (musicEnabled) { stopMusic(); startMusic('cruiser'); }
+                      if (musicEnabled) setMusicMode('cruiser');
                   }
               } catch(e) { console.warn('cruiser spawn check failed', e); }
             
@@ -14934,6 +15177,8 @@
             resolveEntityCollision();
             
             // Bullet Logic Loop
+            inProjectileImpactSoundContext = true;
+            try {
             for (let i = bullets.length - 1; i >= 0; i--) { 
 	                const b = bullets[i]; 
 	                let hit = false;
@@ -15354,9 +15599,12 @@
                     bullets.splice(i, 1);
                 }
             }
+            } finally {
+                inProjectileImpactSoundContext = false;
             }
-             
-		            if (doDraw) {
+            }
+              
+ 		            if (doDraw) {
 		                // Draw cave boundaries on top. 
 		                if (caveActive) { 
 		                    caveLevel.draw(ctx, camX, camY, height, zoom); 
@@ -16150,7 +16398,6 @@
                 }
             }
             if (gamePaused) {
-                stopMusic();
                 setTimeout(() => {
                     document.getElementById('resume-btn').focus();
                     menuSelectionIndex = 0;

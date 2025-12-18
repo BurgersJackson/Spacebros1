@@ -26,6 +26,7 @@
     "files": [
       "package.json",
       "electron/**/*",
+      "assets/**/*",
       "index.html",
       "node_modules/phaser/dist/phaser.min.js"
     ],
