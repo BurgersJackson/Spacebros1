@@ -1616,7 +1616,8 @@
                 pixiTextures.enemy_roamer = r.tex;
                 pixiTextureAnchors.enemy_roamer = r.anchor;
 
-                const er = makeEnemy(elitePts, 0x330033, 0xff00ff);
+                // Elite roamers should stay in the same red family as regular roamers (no purple tinting).
+                const er = makeEnemy(elitePts, 0x441111, 0xff5555);
                 pixiTextures.enemy_elite_roamer = er.tex;
                 pixiTextureAnchors.enemy_elite_roamer = er.anchor;
 
@@ -4513,7 +4514,9 @@
                             const segAngle = (Math.PI * 2) / segCount;
                             const shieldColor = this.isCruiser
                                 ? 0x88ffff
-                                : (this.isGunboat ? (this.gunboatLevel === 1 ? 0xff5555 : 0xffaa00) : 0xff00ff);
+                                : (this.isGunboat
+                                    ? (this.gunboatLevel === 1 ? 0xff5555 : 0xffaa00)
+                                    : (this.type === 'hunter' ? 0xffaa00 : 0xff5555));
                             gfx.lineStyle(2, shieldColor, 1);
                             for (let i = 0; i < segCount; i++) {
                                 if (this.shieldSegments[i] > 0) {
@@ -4532,7 +4535,9 @@
                             const innerRadius = this.innerShieldRadius || Math.max(10, this.shieldRadius - 20);
                             const innerColor = this.isCruiser
                                 ? 0x88ffff
-                                : (this.isGunboat ? (this.gunboatLevel === 1 ? 0xff8888 : 0xffff00) : 0x88ffff);
+                                : (this.isGunboat
+                                    ? (this.gunboatLevel === 1 ? 0xff8888 : 0xffff00)
+                                    : (this.type === 'hunter' ? 0xffdd55 : 0xff8888));
                             gfx.lineStyle(2, innerColor, 1);
                             for (let i = 0; i < innerCount; i++) {
                                 if (this.innerShieldSegments[i] > 0) {
@@ -4599,7 +4604,11 @@
                     ctx.lineWidth = 2;
                     for(let i=0; i<segCount; i++) {
                         if (this.shieldSegments[i] > 0) {
-                            ctx.strokeStyle = this.isCruiser ? '#8ff' : (this.isGunboat ? (this.gunboatLevel === 1 ? '#f55' : '#fa0') : '#f0f');
+                            ctx.strokeStyle = this.isCruiser
+                                ? '#8ff'
+                                : (this.isGunboat
+                                    ? (this.gunboatLevel === 1 ? '#f55' : '#fa0')
+                                    : (this.type === 'hunter' ? '#fa0' : '#f55'));
                             ctx.beginPath();
                             ctx.arc(0, 0, this.shieldRadius, i * segAngle, (i+1) * segAngle - 0.2);
                             ctx.stroke();
@@ -4617,7 +4626,11 @@
                     ctx.lineWidth = 2;
                     for (let i=0; i<innerCount; i++) {
                         if (this.innerShieldSegments[i] > 0) {
-                            ctx.strokeStyle = this.isCruiser ? '#8ff' : (this.isGunboat ? (this.gunboatLevel === 1 ? '#f88' : '#ff0') : '#8ff');
+                            ctx.strokeStyle = this.isCruiser
+                                ? '#8ff'
+                                : (this.isGunboat
+                                    ? (this.gunboatLevel === 1 ? '#f88' : '#ff0')
+                                    : (this.type === 'hunter' ? '#fd5' : '#f88'));
                             ctx.beginPath();
                             ctx.arc(0, 0, innerRadius, i * innerAngle + 0.05, (i+1) * innerAngle - 0.15);
                             ctx.stroke();
