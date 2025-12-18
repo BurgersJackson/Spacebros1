@@ -2243,11 +2243,22 @@
         const turboStatus = document.getElementById('turbo-status');
         const turboFill = document.getElementById('turbo-fill');
         const xpFill = document.getElementById('xp-fill');
-        const fpsCounterEl = document.getElementById('fps-counter');
-        let fpsLastFrameAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-        let fpsSmoothMs = 16.7;
-        let fpsNextUiAt = 0;
-        let fpsUiVisible = null;
+	        const fpsCounterEl = document.getElementById('fps-counter');
+	        let fpsLastFrameAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+	        let fpsSmoothMs = 16.7;
+	        let fpsNextUiAt = 0;
+	        let fpsUiVisible = null;
+
+	        // Fixed-timestep simulation (decouple simulation from render FPS)
+	        // Target feel: tuned for 120 FPS, but runs at any render refresh rate.
+	        const SIM_FPS = 120;
+	        const SIM_STEP_MS = 1000 / SIM_FPS;
+	        const SIM_MAX_STEPS_PER_FRAME = 8; // prevent spiral-of-death
+	        let simAccMs = 0;
+	        let simNowMs = 0;
+	        let simLastPerfAt = 0;
+	        let shakeOffsetX = 0;
+	        let shakeOffsetY = 0;
 
         let width, height;
         let animationId;
@@ -14069,10 +14080,10 @@
             }, 2000);
         }
 
-        function mainLoop() {
-            animationId = requestAnimationFrame(mainLoop);
-            // FPS counter (render-only).
-            if (fpsCounterEl) {
+	        function mainLoop() {
+	            animationId = requestAnimationFrame(mainLoop);
+	            // FPS counter (render-only).
+	            if (fpsCounterEl) {
                 const shouldShow = !!gameActive;
                 if (fpsUiVisible !== shouldShow) {
                     fpsCounterEl.style.display = shouldShow ? 'block' : 'none';
@@ -14089,15 +14100,46 @@
                     fpsCounterEl.textContent = `FPS ${fps.toFixed(0)}  ${fpsSmoothMs.toFixed(1)}ms`;
                     fpsNextUiAt = t + 250;
                 }
-            }
-            updateGamepad();
-            if (gameActive && !gamePaused) {
-                gameLoopLogic();
-            }
-        }
+	            }
+	            updateGamepad();
+	            if (gameActive && !gamePaused) {
+	                // Fixed-step simulation at 120 FPS; render at display refresh rate.
+	                const perfNow = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+	                if (!simLastPerfAt) {
+	                    simLastPerfAt = perfNow;
+	                    simNowMs = Date.now();
+	                    simAccMs = 0;
+	                }
+	                let frameDt = perfNow - simLastPerfAt;
+	                simLastPerfAt = perfNow;
+	                if (!isFinite(frameDt) || frameDt < 0) frameDt = 0;
+	                frameDt = Math.min(250, frameDt);
+	                simAccMs += frameDt;
 
-	        function gameLoopLogic() {
-	            if (!player) return;
+	                const originalDateNow = Date.now;
+	                let stepsToRun = Math.floor(simAccMs / SIM_STEP_MS);
+	                if (!isFinite(stepsToRun) || stepsToRun < 0) stepsToRun = 0;
+	                if (stepsToRun > SIM_MAX_STEPS_PER_FRAME) stepsToRun = SIM_MAX_STEPS_PER_FRAME;
+	                for (let i = 0; i < stepsToRun; i++) {
+	                    simNowMs += SIM_STEP_MS;
+	                    Date.now = () => Math.floor(simNowMs);
+	                    const drawThisTick = (i === stepsToRun - 1);
+	                    gameLoopLogic({ doUpdate: true, doDraw: drawThisTick });
+	                    simAccMs -= SIM_STEP_MS;
+	                }
+	                Date.now = originalDateNow;
+	                // If we hit the cap, drop any remaining accumulated time to avoid spiraling.
+	                if (stepsToRun >= SIM_MAX_STEPS_PER_FRAME) simAccMs = 0;
+	            } else {
+	                // Reset timing so we don't "catch up" a large paused interval on resume.
+	                simLastPerfAt = 0;
+	                simAccMs = 0;
+	            }
+	        }
+
+		        function gameLoopLogic(opts = null) {
+		            const doDraw = !(opts && opts.doDraw === false);
+		            if (!player) return;
 	            
 	            const now = Date.now();
                 frameNow = now;
@@ -14555,103 +14597,107 @@
             if (isNaN(camX)) camX = 0;
             if (isNaN(camY)) camY = 0;
 
-            // Defensive reset: ensure no draw routine can permanently corrupt the main canvas state
-            // (e.g. mismatched save/restore). This prevents "invisible world" after warp transitions.
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.globalAlpha = 1;
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.shadowBlur = 0;
-            ctx.shadowColor = 'transparent';
-            ctx.filter = 'none';
-            try { ctx.setLineDash([]); } catch (e) {}
+	            if (doDraw) {
+	                // Defensive reset: ensure no draw routine can permanently corrupt the main canvas state
+	                // (e.g. mismatched save/restore). This prevents "invisible world" after warp transitions.
+	                ctx.setTransform(1, 0, 0, 1, 0, 0);
+	                ctx.globalAlpha = 1;
+	                ctx.globalCompositeOperation = 'source-over';
+	                ctx.shadowBlur = 0;
+	                ctx.shadowColor = 'transparent';
+	                ctx.filter = 'none';
+	                try { ctx.setLineDash([]); } catch (e) {}
 
-	            ctx.fillStyle = '#000';
-	            ctx.fillRect(0, 0, width, height);
+	                ctx.fillStyle = '#000';
+	                ctx.fillRect(0, 0, width, height);
 
-	            const caveActiveBg = (caveMode && caveLevel && caveLevel.active);
-	            if (pixiApp && pixiApp.renderer) {
-	                if (pixiApp.renderer.width !== width || pixiApp.renderer.height !== height) {
-	                    pixiApp.renderer.resize(width, height);
+	                const caveActiveBg = (caveMode && caveLevel && caveLevel.active);
+	                if (pixiApp && pixiApp.renderer) {
+	                    if (pixiApp.renderer.width !== width || pixiApp.renderer.height !== height) {
+	                        pixiApp.renderer.resize(width, height);
+	                    }
+	                    if (pixiWorldRoot) {
+	                        pixiWorldRoot.scale.set(zoom);
+	                        // Align to pixel grid to reduce shimmer/brightness flicker from subpixel sampling.
+	                        const px = -camX * zoom;
+	                        const py = -camY * zoom;
+	                        pixiWorldRoot.position.set(Math.round(px), Math.round(py));
+	                    }
+	                    if (pixiScreenRoot) {
+	                        pixiScreenRoot.scale.set(1);
+	                        pixiScreenRoot.position.set(0, 0);
+	                        pixiScreenRoot.visible = true;
+	                        if (pixiNebulaLayer) pixiNebulaLayer.visible = false;
+	                        if (pixiStarTilingLayer) pixiStarTilingLayer.visible = !caveActiveBg;
+	                        if (pixiStarLayer) pixiStarLayer.visible = false; // legacy particle stars disabled
+	                        updatePixiCaveGrid(camX, camY, zoom, caveActiveBg);
+	                    }
 	                }
-	                if (pixiWorldRoot) {
-	                    pixiWorldRoot.scale.set(zoom);
-	                    // Align to pixel grid to reduce shimmer/brightness flicker from subpixel sampling.
-	                    const px = -camX * zoom;
-	                    const py = -camY * zoom;
-	                    pixiWorldRoot.position.set(Math.round(px), Math.round(py));
-	                }
-	                if (pixiScreenRoot) {
-	                    pixiScreenRoot.scale.set(1);
-	                    pixiScreenRoot.position.set(0, 0);
-	                    pixiScreenRoot.visible = true;
-	                    if (pixiNebulaLayer) pixiNebulaLayer.visible = false;
-	                    if (pixiStarTilingLayer) pixiStarTilingLayer.visible = !caveActiveBg;
-	                    if (pixiStarLayer) pixiStarLayer.visible = false; // legacy particle stars disabled
-	                    updatePixiCaveGrid(camX, camY, zoom, caveActiveBg);
-	                }
+
+	                // Draw Stars (disabled in cave mode)
+	                if (!caveActiveBg) {
+	                    if (pixiScreenRoot && pixiStarLayer) {
+	                        updatePixiBackground(camX, camY);
+	                    } else {
+	                        for (let s of starfield) { 
+	                            let x = (s.x - camX * s.parallax) % width; 
+	                            let y = (s.y - camY * s.parallax) % height; 
+	                            if (x < 0) x += width; 
+	                            if (y < 0) y += height; 
+	                             
+	                            ctx.fillStyle = s.fillStyle; 
+	                            ctx.fillRect(x, y, s.size, s.size); 
+	                        } 
+	                    }
+	                }  
 	            }
 
-	            // Draw Stars (disabled in cave mode)
-	            if (!caveActiveBg) {
-	                if (pixiScreenRoot && pixiStarLayer) {
-	                    updatePixiBackground(camX, camY);
-	                } else {
-	                    for (let s of starfield) { 
-	                        let x = (s.x - camX * s.parallax) % width; 
-                        let y = (s.y - camY * s.parallax) % height; 
-                        if (x < 0) x += width; 
-                        if (y < 0) y += height; 
-                         
-                        ctx.fillStyle = s.fillStyle; 
-                        ctx.fillRect(x, y, s.size, s.size); 
-                    } 
-                }
-            }  
-
-	            ctx.save();  
-	            ctx.scale(zoom, zoom);  
-	            ctx.translate(-camX, -camY);  
-	              
-	            const caveActive = (caveMode && caveLevel && caveLevel.active);  
-		            // Use local refs in case update() clears the global (prevents null deref on draw()).
-		            const wz = warpZone;
-		            if (wz && wz.active) { wz.update(); wz.draw(ctx); }  
-		            const wg = warpGate;
-		            if (wg && !wg.dead) { wg.update(); wg.draw(ctx); }  
-		            if (caveActive) { caveLevel.update(); }  
-		            const fwz = flagshipWarpZone;
-		            if (fwz && !fwz.dead) { fwz.update(); fwz.draw(ctx); }  
+		            if (doDraw) {
+		                ctx.save();  
+		                ctx.scale(zoom, zoom);  
+		                ctx.translate(-camX, -camY);  
+		            }
+		              
+		            const caveActive = (caveMode && caveLevel && caveLevel.active);  
+			            // Use local refs in case update() clears the global (prevents null deref on draw()).
+			            const wz = warpZone;
+			            if (wz && wz.active) { wz.update(); if (doDraw) wz.draw(ctx); }  
+			            const wg = warpGate;
+			            if (wg && !wg.dead) { wg.update(); if (doDraw) wg.draw(ctx); }  
+			            if (caveActive) { caveLevel.update(); }  
+			            const fwz = flagshipWarpZone;
+			            if (fwz && !fwz.dead) { fwz.update(); if (doDraw) fwz.draw(ctx); }  
 	              
 		            // Cave: full-screen grid background (no stars). 
-		            if (caveActive) { 
-		                // Pixi: cached tiling grid; Canvas fallback only if Pixi is unavailable.
-		                if (!(pixiCaveGridSprite && pixiApp && pixiApp.renderer)) {
-		                    caveLevel.drawGridBackground(ctx, camX, camY, width, height, zoom); 
-		                }
-		            } 
- 
-	            coins.forEach(c => { c.update(); c.draw(ctx); }); 
-            nuggets.forEach(n => { n.update(); n.draw(ctx); }); 
-            powerups.forEach(p => { p.update(); p.draw(ctx); }); 
-            gateKeyItems.forEach(k => { k.update(); k.draw(ctx); }); 
-            shootingStars.forEach(s => { s.update(); s.draw(ctx); }); 
-            caches.forEach(c => { c.update(); c.draw(ctx); }); 
-            environmentAsteroids.forEach(a => { a.update(); a.draw(ctx); }); 
-            pois.forEach(p => { p.update(); p.draw(ctx); }); 
-            if (radiationStorm && !radiationStorm.dead) { radiationStorm.update(); radiationStorm.draw(ctx); } 
-            if (miniEvent && !miniEvent.dead) { miniEvent.update(); miniEvent.draw(ctx); } 
-            contractEntities.beacons.forEach(b => { b.update(); b.draw(ctx); }); 
-            contractEntities.gates.forEach(g => { g.update(); g.draw(ctx); }); 
-            contractEntities.anomalies.forEach(a => { a.update(); a.draw(ctx); }); 
-            contractEntities.fortresses.forEach(f => { f.update(); f.draw(ctx); }); 
-            contractEntities.wallTurrets.forEach(t => { t.update(); t.draw(ctx); }); 
+			            if (doDraw && caveActive) { 
+			                // Pixi: cached tiling grid; Canvas fallback only if Pixi is unavailable.
+			                if (!(pixiCaveGridSprite && pixiApp && pixiApp.renderer)) {
+			                    caveLevel.drawGridBackground(ctx, camX, camY, width, height, zoom); 
+			                }
+			            } 
+	 
+		            coins.forEach(c => { c.update(); if (doDraw) c.draw(ctx); }); 
+	            nuggets.forEach(n => { n.update(); if (doDraw) n.draw(ctx); }); 
+	            powerups.forEach(p => { p.update(); if (doDraw) p.draw(ctx); }); 
+	            gateKeyItems.forEach(k => { k.update(); if (doDraw) k.draw(ctx); }); 
+	            shootingStars.forEach(s => { s.update(); if (doDraw) s.draw(ctx); }); 
+	            caches.forEach(c => { c.update(); if (doDraw) c.draw(ctx); }); 
+	            environmentAsteroids.forEach(a => { a.update(); if (doDraw) a.draw(ctx); }); 
+	            pois.forEach(p => { p.update(); if (doDraw) p.draw(ctx); }); 
+	            if (radiationStorm && !radiationStorm.dead) { radiationStorm.update(); if (doDraw) radiationStorm.draw(ctx); } 
+	            if (miniEvent && !miniEvent.dead) { miniEvent.update(); if (doDraw) miniEvent.draw(ctx); } 
+	            contractEntities.beacons.forEach(b => { b.update(); if (doDraw) b.draw(ctx); }); 
+	            contractEntities.gates.forEach(g => { g.update(); if (doDraw) g.draw(ctx); }); 
+	            contractEntities.anomalies.forEach(a => { a.update(); if (doDraw) a.draw(ctx); }); 
+	            contractEntities.fortresses.forEach(f => { f.update(); if (doDraw) f.draw(ctx); }); 
+	            contractEntities.wallTurrets.forEach(t => { t.update(); if (doDraw) t.draw(ctx); }); 
 	              
 	            // NOTE: we intentionally do not clip in cave mode; walls indicate the bounds. 
             
-            if (bossArena.active) {
-                ctx.save();
-                ctx.translate(bossArena.x, bossArena.y);
-                const pulse = 0.5 + Math.sin(now * 0.005) * 0.2;
+	            if (doDraw && bossArena.active) {
+	                ctx.save();
+	                ctx.translate(bossArena.x, bossArena.y);
+	                const pulse = 0.5 + Math.sin(now * 0.005) * 0.2;
                 if (bossArena.growing) ctx.strokeStyle = `rgba(0, 255, 255, ${pulse})`; 
                 else ctx.strokeStyle = `rgba(255, 0, 0, ${pulse})`; 
                 
@@ -14664,56 +14710,58 @@
                 ctx.globalAlpha = 0.1;
                 // ctx.fillStyle = bossArena.growing ? '#055' : '#500';
                 // ctx.fill();
-                ctx.restore();
-            }
+	                ctx.restore();
+	            }
 
-            player.update();
-            player.drawLaser(ctx);
-            player.draw(ctx);
-            floatingTexts.forEach(t => { t.update(); t.draw(ctx); });
-            drones.forEach(d => { d.update(); d.draw(ctx); });
+	            player.update();
+	            if (doDraw) {
+	                player.drawLaser(ctx);
+	                player.draw(ctx);
+	            }
+	            floatingTexts.forEach(t => { t.update(); if (doDraw) t.draw(ctx); });
+	            drones.forEach(d => { d.update(); if (doDraw) d.draw(ctx); });
 
-            bases.forEach(b => { b.update(); b.draw(ctx); });
-            enemies.forEach(e => { e.update(); e.draw(ctx); });
-            
-            if (bossActive && boss) {
-                boss.update();
-                boss.draw(ctx);
-            }
-            
-            if (spaceStation) {
-                spaceStation.update();
-                spaceStation.draw(ctx);
-                
-                // Update Station Health Bar
-                const sContainer = document.getElementById('station-health-container');
-                const sFill = document.getElementById('station-health-fill');
-                if (sContainer && sFill) {
-                    sContainer.style.display = 'flex';
-                    const pct = Math.max(0, (spaceStation.hp / spaceStation.maxHp) * 100);
-                    sFill.style.width = `${pct}%`;
-                }
-            } else {
-                const sContainer = document.getElementById('station-health-container');
-                if (sContainer) sContainer.style.display = 'none';
-            }
+	            bases.forEach(b => { b.update(); if (doDraw) b.draw(ctx); });
+	            enemies.forEach(e => { e.update(); if (doDraw) e.draw(ctx); });
+	            
+	            if (bossActive && boss) {
+	                boss.update();
+	                if (doDraw) boss.draw(ctx);
+	            }
+	            
+	            if (spaceStation) {
+	                spaceStation.update();
+	                if (doDraw) spaceStation.draw(ctx);
+	                
+	                // Update Station Health Bar
+	                const sContainer = document.getElementById('station-health-container');
+	                const sFill = document.getElementById('station-health-fill');
+	                if (doDraw && sContainer && sFill) {
+	                    sContainer.style.display = 'flex';
+	                    const pct = Math.max(0, (spaceStation.hp / spaceStation.maxHp) * 100);
+	                    sFill.style.width = `${pct}%`;
+	                }
+	            } else {
+	                const sContainer = document.getElementById('station-health-container');
+	                if (doDraw && sContainer) sContainer.style.display = 'none';
+	            }
 
-            bullets.forEach(b => { b.update(); b.draw(ctx); });
-            bossBombs.forEach(b => { b.update(); b.draw(ctx); });
-            guidedMissiles.forEach(m => { m.update(); m.draw(ctx); });
-            for (let i = 0; i < particles.length; i++) { const p = particles[i]; p.update(); p.draw(ctx); }
-            drones.forEach(d => { d.update(); d.draw(ctx); });
+	            bullets.forEach(b => { b.update(); if (doDraw) b.draw(ctx); });
+	            bossBombs.forEach(b => { b.update(); if (doDraw) b.draw(ctx); });
+	            guidedMissiles.forEach(m => { m.update(); if (doDraw) m.draw(ctx); });
+	            for (let i = 0; i < particles.length; i++) { const p = particles[i]; p.update(); if (doDraw) p.draw(ctx); }
+	            drones.forEach(d => { d.update(); if (doDraw) d.draw(ctx); });
 
-            for (let i = 0; i < warpParticles.length; i++) { const p = warpParticles[i]; p.update(); p.draw(ctx); }
-            compactArray(warpParticles);
+	            for (let i = 0; i < warpParticles.length; i++) { const p = warpParticles[i]; p.update(); if (doDraw) p.draw(ctx); }
+	            compactArray(warpParticles);
 
-            for (let i = 0; i < shockwaves.length; i++) { const s = shockwaves[i]; s.update(); s.draw(ctx); }
-            compactArray(shockwaves);
+	            for (let i = 0; i < shockwaves.length; i++) { const s = shockwaves[i]; s.update(); if (doDraw) s.draw(ctx); }
+	            compactArray(shockwaves);
 
-            // Render Pixi overlay once per frame (Pixi ticker is stopped).
-            if (pixiApp && pixiApp.renderer && pixiApp.stage) {
-                try { pixiApp.renderer.render(pixiApp.stage); } catch (e) {}
-            }
+	            // Render Pixi overlay once per frame (Pixi ticker is stopped).
+	            if (doDraw && pixiApp && pixiApp.renderer && pixiApp.stage) {
+	                try { pixiApp.renderer.render(pixiApp.stage); } catch (e) {}
+	            }
 
             compactArray(bullets);
             compactArray(bossBombs);
@@ -15161,22 +15209,24 @@
                 }
             }
              
-	            // Draw cave boundaries on top. 
-	            if (caveActive) { 
-	                caveLevel.draw(ctx, camX, camY, height, zoom); 
-	            } 
-             
-            ctx.restore(); 
-            drawStationIndicator(); 
-            drawWarpGateIndicator();
-            drawFlagshipWarpZoneIndicator();
-            drawMinimap(); 
-            drawContractIndicator(); 
-            drawMiniEventIndicator();
-            updateMiniEventUI();
-            updateKeysUI();
-            if (bossActive && boss && typeof boss.drawBossHud === 'function') boss.drawBossHud(ctx);
-        }
+		            if (doDraw) {
+		                // Draw cave boundaries on top. 
+		                if (caveActive) { 
+		                    caveLevel.draw(ctx, camX, camY, height, zoom); 
+		                } 
+		                
+		                ctx.restore(); 
+		                drawStationIndicator(); 
+		                drawWarpGateIndicator();
+		                drawFlagshipWarpZoneIndicator();
+		                drawMinimap(); 
+		                drawContractIndicator(); 
+		                drawMiniEventIndicator();
+		                updateMiniEventUI();
+		                updateKeysUI();
+		                if (bossActive && boss && typeof boss.drawBossHud === 'function') boss.drawBossHud(ctx);
+		            }
+	        }
 
         function drawStationIndicator() {
             if (!spaceStation || !player) return;
