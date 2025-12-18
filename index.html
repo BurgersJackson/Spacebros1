@@ -1348,6 +1348,8 @@
         // PixiJS overlay (optional; falls back to Canvas if unavailable)
         // Note: Pixi is rendered manually inside our main loop to avoid running a second render/ticker.
         const USE_PIXI_OVERLAY = true; // set to true to use Pixi sprites for high-frequency rendering
+        const ENABLE_NEBULA = true; // subtle Pixi backdrop behind stars (disabled in cave mode)
+        const NEBULA_ALPHA = 0.023; // nebula brightness (primary layer alpha)
         let pixiApp = null;
         let pixiWorldRoot = null;   // camera-transformed world space
         let pixiScreenRoot = null;  // screen space (no camera transform)
@@ -1357,6 +1359,7 @@
 	        let pixiStarLayer = null;
 	        let pixiStarTilingLayer = null; // preferred starfield (1-2 tiling sprites)
 	        let pixiStarTiles = null;
+	        let pixiNebulaTiles = null;
 
 	        // World-space layers
 	        let pixiAsteroidLayer = null;
@@ -1499,7 +1502,9 @@
 	            pixiScreenRoot.addChild(pixiStarLayer);
 
 	            // World-space layers (camera transformed)
-	            pixiAsteroidLayer = new PIXI.ParticleContainer(8000, { position: true, rotation: true, tint: true, scale: true, alpha: true });
+	            // Use a regular Container for asteroids because they use multiple textures; ParticleContainer can
+	            // occasionally show wrong textures under heavy batching, which looks like "shape changing".
+	            pixiAsteroidLayer = new PIXI.Container();
 	            pixiPickupLayer = new PIXI.ParticleContainer(6000, { position: true, rotation: true, tint: true, scale: true, alpha: true });
 	            pixiPlayerLayer = new PIXI.Container();
 	            pixiBaseLayer = new PIXI.Container();
@@ -1793,7 +1798,8 @@
 	                const makeAsteroidVariant = () => {
 	                    const g = new PIXI.Graphics();
 	                    const points = [];
-                    const baseR = 180;
+                    // Higher-res base shape reduces "shape shimmer" while rotating at low zoom.
+                    const baseR = 320;
                     const count = 12 + Math.floor(Math.random() * 7);
 	                    for (let i = 0; i < count; i++) {
 	                        const a = (i / count) * Math.PI * 2;
@@ -1801,7 +1807,7 @@
 	                        points.push(Math.cos(a) * r, Math.sin(a) * r);
 	                    }
 	                    // Hollow asteroids: outline-only (no filled interior).
-	                    g.lineStyle(4, 0xffffff, 0.90);
+	                    g.lineStyle(7, 0xffffff, 0.90);
 	                    g.drawPolygon(points);
 	                    const { tex, anchor } = genTexture(g);
 	                    try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.OFF; } catch (e) {}
@@ -2213,7 +2219,12 @@
         }
 
 	        function resetPixiOverlaySprites() {
-	            if (pixiNebulaLayer) pixiNebulaLayer.removeChildren();
+	            // Nebula is a persistent screen-space backdrop; keep it mounted.
+	            if (pixiNebulaLayer && pixiNebulaTiles && pixiNebulaTiles.length) {
+	                for (const t of pixiNebulaTiles) {
+	                    if (t && t.spr && !t.spr.parent) pixiNebulaLayer.addChild(t.spr);
+	                }
+	            }
 	            // Cave grid is a persistent screen-space layer; keep it mounted.
 	            if (pixiCaveGridLayer && pixiCaveGridSprite && !pixiCaveGridSprite.parent) pixiCaveGridLayer.addChild(pixiCaveGridSprite);
 	            if (pixiStarLayer) pixiStarLayer.removeChildren();
@@ -2327,6 +2338,13 @@
 	                    t.spr.height = height;
 	                }
 	            }
+	            if (pixiNebulaTiles && pixiNebulaTiles.length) {
+	                for (const t of pixiNebulaTiles) {
+	                    if (!t || !t.spr) continue;
+	                    t.spr.width = width;
+	                    t.spr.height = height;
+	                }
+	            }
 	            initStars();
 	        }
         
@@ -2347,7 +2365,7 @@
 	                starfield.push(s);
 	            }
             
-            // Nebulas disabled (background stays black + stars only).
+            // Nebula backdrop is handled by Pixi (optional). Canvas fallback stays black + stars only.
 
 	            // If Pixi is enabled, build/rebuild background sprites once (positions update per-frame).
 	            if (pixiScreenRoot && pixiApp && pixiApp.renderer) {
@@ -2375,11 +2393,93 @@
 	                        pixiStarTiles = [];
 	                    }
 	
-	                    // Nebulas disabled (but keep layer empty)
+	                    // Clear/rebuild nebula tiling sprites
 	                    if (pixiNebulaLayer) {
 	                        const oldNebs = pixiNebulaLayer.removeChildren();
 	                        for (const spr of oldNebs) {
-	                            try { spr.destroy({ children: true }); } catch (e) {}
+	                            try { spr.destroy({ children: true, texture: false, baseTexture: false }); } catch (e) {}
+	                        }
+	                    }
+	                    if (pixiNebulaTiles && pixiNebulaTiles.length) {
+	                        for (const t of pixiNebulaTiles) {
+	                            if (t && t.tex) {
+	                                try { t.tex.destroy(true); } catch (e) {}
+	                            }
+	                        }
+	                    }
+	                    pixiNebulaTiles = [];
+	
+	                    if (ENABLE_NEBULA && pixiNebulaLayer) {
+	                        const hexToRgb = (hex) => {
+	                            const h = (hex >>> 0).toString(16).padStart(6, '0');
+	                            return {
+	                                r: parseInt(h.slice(0, 2), 16),
+	                                g: parseInt(h.slice(2, 4), 16),
+	                                b: parseInt(h.slice(4, 6), 16)
+	                            };
+	                        };
+	                        const makeNebulaTileTexture = (tileSize, blobCount, paletteHex) => {
+	                            const c = document.createElement('canvas');
+	                            c.width = tileSize;
+	                            c.height = tileSize;
+	                            const cctx = c.getContext('2d');
+	                            cctx.clearRect(0, 0, tileSize, tileSize);
+	                            cctx.globalCompositeOperation = 'lighter';
+	                            for (let i = 0; i < blobCount; i++) {
+	                                const col = hexToRgb(paletteHex[i % paletteHex.length]);
+	                                const cx = Math.random() * tileSize;
+	                                const cy = Math.random() * tileSize;
+	                                const r = tileSize * (0.20 + Math.random() * 0.55);
+	                                const a = 0.03 + Math.random() * 0.08;
+	                                for (const ox of [-tileSize, 0, tileSize]) {
+	                                    for (const oy of [-tileSize, 0, tileSize]) {
+	                                        const x = cx + ox;
+	                                        const y = cy + oy;
+	                                        const g = cctx.createRadialGradient(x, y, 0, x, y, r);
+	                                        g.addColorStop(0, `rgba(${col.r},${col.g},${col.b},${a.toFixed(3)})`);
+	                                        g.addColorStop(0.45, `rgba(${col.r},${col.g},${col.b},${(a * 0.35).toFixed(3)})`);
+	                                        g.addColorStop(1, `rgba(${col.r},${col.g},${col.b},0)`);
+	                                        cctx.fillStyle = g;
+	                                        cctx.fillRect(0, 0, tileSize, tileSize);
+	                                    }
+	                                }
+	                            }
+	                            cctx.globalCompositeOperation = 'source-over';
+	                            const vign = cctx.createRadialGradient(tileSize * 0.5, tileSize * 0.5, tileSize * 0.10, tileSize * 0.5, tileSize * 0.5, tileSize * 0.75);
+	                            vign.addColorStop(0, 'rgba(0,0,0,0)');
+	                            vign.addColorStop(1, 'rgba(0,0,0,0.18)');
+	                            cctx.fillStyle = vign;
+	                            cctx.fillRect(0, 0, tileSize, tileSize);
+	
+	                            const tex = PIXI.Texture.from(c);
+	                            try {
+	                                tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+	                                tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.OFF;
+	                            } catch (e) {}
+	                            return tex;
+	                        };
+	
+	                        const palettes = [
+	                            [0x0b1020, 0x2a1a5e, 0x4b2ccf, 0x0a5bd6, 0x00c2ff],
+	                            [0x0b1020, 0x2a2a6e, 0x1c4cff, 0x00d6d6, 0x00aaff],
+	                            [0x0b1020, 0x3b1366, 0x6a2cff, 0x1c7cff, 0x00b6ff]
+	                        ];
+	                        const idxBase = (typeof sectorIndex === 'number' && isFinite(sectorIndex)) ? (Math.abs(sectorIndex) | 0) : 0;
+	                        const palette = palettes[idxBase % palettes.length];
+	
+	                        const nebulaLayers = [
+	                            { tileSize: 1024, blobs: 9, alphaMult: 1.00, parallax: 0.010 },
+	                            { tileSize: 768, blobs: 7, alphaMult: 0.66, parallax: 0.018 }
+	                        ];
+	                        for (const L of nebulaLayers) {
+	                            const tex = makeNebulaTileTexture(L.tileSize, L.blobs, palette);
+	                            const spr = new PIXI.TilingSprite(tex, (typeof width === 'number' && width > 0) ? width : 1, (typeof height === 'number' && height > 0) ? height : 1);
+	                            const mult = (typeof L.alphaMult === 'number' && isFinite(L.alphaMult)) ? L.alphaMult : 1;
+	                            spr.alpha = (typeof NEBULA_ALPHA === 'number' && isFinite(NEBULA_ALPHA)) ? (NEBULA_ALPHA * mult) : (0.12 * mult);
+	                            spr.tint = 0xffffff;
+	                            spr.blendMode = PIXI.BLEND_MODES.NORMAL;
+	                            pixiNebulaLayer.addChild(spr);
+	                            pixiNebulaTiles.push({ spr, tex, parallax: L.parallax });
 	                        }
 	                    }
 	
@@ -2438,6 +2538,16 @@
 	        }
 
 	        function updatePixiBackground(camX, camY) {
+	            if (pixiNebulaTiles && pixiNebulaTiles.length) {
+	                for (const t of pixiNebulaTiles) {
+	                    if (!t || !t.spr) continue;
+	                    if (t.spr.width !== width) t.spr.width = width;
+	                    if (t.spr.height !== height) t.spr.height = height;
+	                    const tx = -camX * (t.parallax || 0.012);
+	                    const ty = -camY * (t.parallax || 0.012);
+	                    t.spr.tilePosition.set(Math.round(tx), Math.round(ty));
+	                }
+	            }
 	            // Preferred: 1-2 tiling sprites (no per-star updates)
 	            if (pixiStarTiles && pixiStarTiles.length) {
 	                for (const t of pixiStarTiles) {
@@ -2704,10 +2814,23 @@
                 if (this.sizeLevel > 1) {
                      const newSize = this.sizeLevel - 1;
                      const newR = this.radius * 0.6;
-                     for(let i=0; i<3; i++) {
+                     // Split into ~50% fewer pieces on average (used to always spawn 3).
+                     const pieces = 3;
+                     const pieceChance = 0.5;
+                     let spawned = 0;
+                     for (let i = 0; i < pieces; i++) {
+                         if (Math.random() > pieceChance) continue;
                          const a = new EnvironmentAsteroid(this.pos.x, this.pos.y, newR, newSize);
-                         a.vel.x = this.vel.x + (Math.random()-0.5)*2;
-                         a.vel.y = this.vel.y + (Math.random()-0.5)*2;
+                         a.vel.x = this.vel.x + (Math.random() - 0.5) * 2;
+                         a.vel.y = this.vel.y + (Math.random() - 0.5) * 2;
+                         environmentAsteroids.push(a);
+                         spawned++;
+                     }
+                     // Ensure at least 1 child when splitting.
+                     if (spawned === 0) {
+                         const a = new EnvironmentAsteroid(this.pos.x, this.pos.y, newR, newSize);
+                         a.vel.x = this.vel.x + (Math.random() - 0.5) * 2;
+                         a.vel.y = this.vel.y + (Math.random() - 0.5) * 2;
                          environmentAsteroids.push(a);
                      }
                 }
@@ -2732,6 +2855,11 @@
                     }
                     if (spr) {
                         spr.texture = tex;
+                        // Re-apply anchor in case pooled sprite was previously used by a different variant.
+                        try {
+                            if (typeof anchor === 'number') spr.anchor.set(anchor);
+                            else if (anchor && typeof anchor.x === 'number' && typeof anchor.y === 'number') spr.anchor.set(anchor.x, anchor.y);
+                        } catch (e) {}
                         if (!spr.parent) pixiAsteroidLayer.addChild(spr);
                         spr.visible = true;
                         spr.position.set(this.pos.x, this.pos.y);
@@ -14127,6 +14255,13 @@
 	                    gameLoopLogic({ doUpdate: true, doDraw: drawThisTick });
 	                    simAccMs -= SIM_STEP_MS;
 	                }
+	                // If no sim steps ran this RAF (common on >120Hz displays), still render a frame so
+	                // the canvases don't get compositor-discarded (prevents intermittent dark frames).
+	                if (stepsToRun === 0) {
+	                    const renderNowMs = simNowMs + simAccMs; // smooth time between sim ticks
+	                    Date.now = () => Math.floor(renderNowMs);
+	                    gameLoopLogic({ doUpdate: false, doDraw: true });
+	                }
 	                Date.now = originalDateNow;
 	                // If we hit the cap, drop any remaining accumulated time to avoid spiraling.
 	                if (stepsToRun >= SIM_MAX_STEPS_PER_FRAME) simAccMs = 0;
@@ -14139,12 +14274,14 @@
 
 		        function gameLoopLogic(opts = null) {
 		            const doDraw = !(opts && opts.doDraw === false);
+		            const doUpdate = !(opts && opts.doUpdate === false);
 		            if (!player) return;
 	            
 	            const now = Date.now();
                 frameNow = now;
             const warpActive = !!(warpZone && warpZone.active);
 
+            if (doUpdate) {
             // Safe clears after a station destruction to avoid mid-loop mutation
             if (pendingTransitionClear) {
                 resetPixiOverlaySprites();
@@ -14573,6 +14710,7 @@
             }
             
             // Arena ring is now static; no shrinking/growing
+            }
             
             // Dynamic zoom: zoom out during Cruiser arena fights
             const cruiserFight = !!(bossActive && boss && boss.isCruiser);
@@ -14580,18 +14718,26 @@
             // (both normal gameplay and Cruiser fights use the same base zoom for now).
             const CRUISER_ZOOM_OUT_FACTOR = 1.0;
             const targetZoom = cruiserFight ? (ZOOM_LEVEL / CRUISER_ZOOM_OUT_FACTOR) : ZOOM_LEVEL;
-            currentZoom += (targetZoom - currentZoom) * 0.08;
-            if (Math.abs(currentZoom - targetZoom) < 0.001) currentZoom = targetZoom;
+            if (doUpdate) {
+                currentZoom += (targetZoom - currentZoom) * 0.08;
+                if (Math.abs(currentZoom - targetZoom) < 0.001) currentZoom = targetZoom;
+            }
             const zoom = currentZoom;
 
             let camX = player.pos.x - width / (2 * zoom);
             let camY = player.pos.y - height / (2 * zoom);
             if (shakeTimer > 0) {
-                shakeTimer--;
-                const rx = (Math.random() - 0.5) * shakeMagnitude * 2;
-                const ry = (Math.random() - 0.5) * shakeMagnitude * 2;
-                camX += rx;
-                camY += ry;
+                if (doUpdate) {
+                    shakeTimer--;
+                    shakeOffsetX = (Math.random() - 0.5) * shakeMagnitude * 2;
+                    shakeOffsetY = (Math.random() - 0.5) * shakeMagnitude * 2;
+                    if (shakeTimer <= 0) { shakeOffsetX = 0; shakeOffsetY = 0; }
+                }
+                camX += shakeOffsetX;
+                camY += shakeOffsetY;
+            } else {
+                shakeOffsetX = 0;
+                shakeOffsetY = 0;
             }
             
             if (isNaN(camX)) camX = 0;
@@ -14623,16 +14769,16 @@
 	                        const py = -camY * zoom;
 	                        pixiWorldRoot.position.set(Math.round(px), Math.round(py));
 	                    }
-	                    if (pixiScreenRoot) {
-	                        pixiScreenRoot.scale.set(1);
-	                        pixiScreenRoot.position.set(0, 0);
-	                        pixiScreenRoot.visible = true;
-	                        if (pixiNebulaLayer) pixiNebulaLayer.visible = false;
-	                        if (pixiStarTilingLayer) pixiStarTilingLayer.visible = !caveActiveBg;
-	                        if (pixiStarLayer) pixiStarLayer.visible = false; // legacy particle stars disabled
-	                        updatePixiCaveGrid(camX, camY, zoom, caveActiveBg);
+	                        if (pixiScreenRoot) {
+	                            pixiScreenRoot.scale.set(1);
+	                            pixiScreenRoot.position.set(0, 0);
+	                            pixiScreenRoot.visible = true;
+	                            if (pixiNebulaLayer) pixiNebulaLayer.visible = !!ENABLE_NEBULA && !caveActiveBg;
+	                            if (pixiStarTilingLayer) pixiStarTilingLayer.visible = !caveActiveBg;
+	                            if (pixiStarLayer) pixiStarLayer.visible = false; // legacy particle stars disabled
+	                            updatePixiCaveGrid(camX, camY, zoom, caveActiveBg);
+	                        }
 	                    }
-	                }
 
 	                // Draw Stars (disabled in cave mode)
 	                if (!caveActiveBg) {
@@ -14658,15 +14804,15 @@
 		                ctx.translate(-camX, -camY);  
 		            }
 		              
-		            const caveActive = (caveMode && caveLevel && caveLevel.active);  
+			            const caveActive = (caveMode && caveLevel && caveLevel.active);  
 			            // Use local refs in case update() clears the global (prevents null deref on draw()).
 			            const wz = warpZone;
-			            if (wz && wz.active) { wz.update(); if (doDraw) wz.draw(ctx); }  
+			            if (wz && wz.active) { if (doUpdate) wz.update(); if (doDraw) wz.draw(ctx); }  
 			            const wg = warpGate;
-			            if (wg && !wg.dead) { wg.update(); if (doDraw) wg.draw(ctx); }  
-			            if (caveActive) { caveLevel.update(); }  
+			            if (wg && !wg.dead) { if (doUpdate) wg.update(); if (doDraw) wg.draw(ctx); }  
+			            if (caveActive) { if (doUpdate) caveLevel.update(); }  
 			            const fwz = flagshipWarpZone;
-			            if (fwz && !fwz.dead) { fwz.update(); if (doDraw) fwz.draw(ctx); }  
+			            if (fwz && !fwz.dead) { if (doUpdate) fwz.update(); if (doDraw) fwz.draw(ctx); }  
 	              
 		            // Cave: full-screen grid background (no stars). 
 			            if (doDraw && caveActive) { 
@@ -14676,21 +14822,21 @@
 			                }
 			            } 
 	 
-		            coins.forEach(c => { c.update(); if (doDraw) c.draw(ctx); }); 
-	            nuggets.forEach(n => { n.update(); if (doDraw) n.draw(ctx); }); 
-	            powerups.forEach(p => { p.update(); if (doDraw) p.draw(ctx); }); 
-	            gateKeyItems.forEach(k => { k.update(); if (doDraw) k.draw(ctx); }); 
-	            shootingStars.forEach(s => { s.update(); if (doDraw) s.draw(ctx); }); 
-	            caches.forEach(c => { c.update(); if (doDraw) c.draw(ctx); }); 
-	            environmentAsteroids.forEach(a => { a.update(); if (doDraw) a.draw(ctx); }); 
-	            pois.forEach(p => { p.update(); if (doDraw) p.draw(ctx); }); 
-	            if (radiationStorm && !radiationStorm.dead) { radiationStorm.update(); if (doDraw) radiationStorm.draw(ctx); } 
-	            if (miniEvent && !miniEvent.dead) { miniEvent.update(); if (doDraw) miniEvent.draw(ctx); } 
-	            contractEntities.beacons.forEach(b => { b.update(); if (doDraw) b.draw(ctx); }); 
-	            contractEntities.gates.forEach(g => { g.update(); if (doDraw) g.draw(ctx); }); 
-	            contractEntities.anomalies.forEach(a => { a.update(); if (doDraw) a.draw(ctx); }); 
-	            contractEntities.fortresses.forEach(f => { f.update(); if (doDraw) f.draw(ctx); }); 
-	            contractEntities.wallTurrets.forEach(t => { t.update(); if (doDraw) t.draw(ctx); }); 
+		            coins.forEach(c => { if (doUpdate) c.update(); if (doDraw) c.draw(ctx); }); 
+	            nuggets.forEach(n => { if (doUpdate) n.update(); if (doDraw) n.draw(ctx); }); 
+	            powerups.forEach(p => { if (doUpdate) p.update(); if (doDraw) p.draw(ctx); }); 
+	            gateKeyItems.forEach(k => { if (doUpdate) k.update(); if (doDraw) k.draw(ctx); }); 
+	            shootingStars.forEach(s => { if (doUpdate) s.update(); if (doDraw) s.draw(ctx); }); 
+	            caches.forEach(c => { if (doUpdate) c.update(); if (doDraw) c.draw(ctx); }); 
+	            environmentAsteroids.forEach(a => { if (doUpdate) a.update(); if (doDraw) a.draw(ctx); }); 
+	            pois.forEach(p => { if (doUpdate) p.update(); if (doDraw) p.draw(ctx); }); 
+	            if (radiationStorm && !radiationStorm.dead) { if (doUpdate) radiationStorm.update(); if (doDraw) radiationStorm.draw(ctx); } 
+	            if (miniEvent && !miniEvent.dead) { if (doUpdate) miniEvent.update(); if (doDraw) miniEvent.draw(ctx); } 
+	            contractEntities.beacons.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); }); 
+	            contractEntities.gates.forEach(g => { if (doUpdate) g.update(); if (doDraw) g.draw(ctx); }); 
+	            contractEntities.anomalies.forEach(a => { if (doUpdate) a.update(); if (doDraw) a.draw(ctx); }); 
+	            contractEntities.fortresses.forEach(f => { if (doUpdate) f.update(); if (doDraw) f.draw(ctx); }); 
+	            contractEntities.wallTurrets.forEach(t => { if (doUpdate) t.update(); if (doDraw) t.draw(ctx); }); 
 	              
 	            // NOTE: we intentionally do not clip in cave mode; walls indicate the bounds. 
             
@@ -14713,24 +14859,24 @@
 	                ctx.restore();
 	            }
 
-	            player.update();
+	            if (doUpdate) player.update();
 	            if (doDraw) {
 	                player.drawLaser(ctx);
 	                player.draw(ctx);
 	            }
-	            floatingTexts.forEach(t => { t.update(); if (doDraw) t.draw(ctx); });
-	            drones.forEach(d => { d.update(); if (doDraw) d.draw(ctx); });
+	            floatingTexts.forEach(t => { if (doUpdate) t.update(); if (doDraw) t.draw(ctx); });
+	            drones.forEach(d => { if (doUpdate) d.update(); if (doDraw) d.draw(ctx); });
 
-	            bases.forEach(b => { b.update(); if (doDraw) b.draw(ctx); });
-	            enemies.forEach(e => { e.update(); if (doDraw) e.draw(ctx); });
+	            bases.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
+	            enemies.forEach(e => { if (doUpdate) e.update(); if (doDraw) e.draw(ctx); });
 	            
 	            if (bossActive && boss) {
-	                boss.update();
+	                if (doUpdate) boss.update();
 	                if (doDraw) boss.draw(ctx);
 	            }
 	            
 	            if (spaceStation) {
-	                spaceStation.update();
+	                if (doUpdate) spaceStation.update();
 	                if (doDraw) spaceStation.draw(ctx);
 	                
 	                // Update Station Health Bar
@@ -14746,23 +14892,23 @@
 	                if (doDraw && sContainer) sContainer.style.display = 'none';
 	            }
 
-	            bullets.forEach(b => { b.update(); if (doDraw) b.draw(ctx); });
-	            bossBombs.forEach(b => { b.update(); if (doDraw) b.draw(ctx); });
-	            guidedMissiles.forEach(m => { m.update(); if (doDraw) m.draw(ctx); });
-	            for (let i = 0; i < particles.length; i++) { const p = particles[i]; p.update(); if (doDraw) p.draw(ctx); }
-	            drones.forEach(d => { d.update(); if (doDraw) d.draw(ctx); });
+	            bullets.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
+	            bossBombs.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
+	            guidedMissiles.forEach(m => { if (doUpdate) m.update(); if (doDraw) m.draw(ctx); });
+	            for (let i = 0; i < particles.length; i++) { const p = particles[i]; if (doUpdate) p.update(); if (doDraw) p.draw(ctx); }
 
-	            for (let i = 0; i < warpParticles.length; i++) { const p = warpParticles[i]; p.update(); if (doDraw) p.draw(ctx); }
-	            compactArray(warpParticles);
+	            for (let i = 0; i < warpParticles.length; i++) { const p = warpParticles[i]; if (doUpdate) p.update(); if (doDraw) p.draw(ctx); }
+	            if (doUpdate) compactArray(warpParticles);
 
-	            for (let i = 0; i < shockwaves.length; i++) { const s = shockwaves[i]; s.update(); if (doDraw) s.draw(ctx); }
-	            compactArray(shockwaves);
+	            for (let i = 0; i < shockwaves.length; i++) { const s = shockwaves[i]; if (doUpdate) s.update(); if (doDraw) s.draw(ctx); }
+	            if (doUpdate) compactArray(shockwaves);
 
 	            // Render Pixi overlay once per frame (Pixi ticker is stopped).
 	            if (doDraw && pixiApp && pixiApp.renderer && pixiApp.stage) {
 	                try { pixiApp.renderer.render(pixiApp.stage); } catch (e) {}
 	            }
 
+            if (doUpdate) {
             compactArray(bullets);
             compactArray(bossBombs);
             compactArray(guidedMissiles);
@@ -15207,6 +15353,7 @@
                     destroyBulletSprite(b);
                     bullets.splice(i, 1);
                 }
+            }
             }
              
 		            if (doDraw) {
