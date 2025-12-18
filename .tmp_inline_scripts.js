@@ -152,6 +152,7 @@
             constructor(x, y, vx, vy, color = '#fff', life = 30) {
                 super(x, y);
                 this._poolType = 'particle';
+                this.sprite = null;
                 this.vel.x = vx || (Math.random() - 0.5) * 3;
                 this.vel.y = vy || (Math.random() - 0.5) * 3;
                 this.life = life + Math.random() * 10;
@@ -167,6 +168,7 @@
                 this.maxLife = this.life;
                 this.color = color;
                 this.dead = false;
+                this.sprite = null;
             }
             update() {
                 super.update();
@@ -174,6 +176,19 @@
                 if (this.life <= 0) this.dead = true;
             }
             draw(ctx) {
+                if (pixiParticleLayer && pixiTextureWhite) {
+                    let spr = this.sprite;
+                    if (!spr) {
+                        spr = allocPixiSprite(pixiParticleSpritePool, pixiParticleLayer, 2);
+                        this.sprite = spr;
+                    }
+                    if (spr) {
+                        spr.position.set(this.pos.x, this.pos.y);
+                        spr.alpha = Math.max(0, this.life / this.maxLife);
+                        spr.tint = colorToPixi(this.color);
+                        return;
+                    }
+                }
                 ctx.globalAlpha = this.life / this.maxLife;
                 ctx.fillStyle = this.color;
                 ctx.fillRect(this.pos.x, this.pos.y, 2, 2);
@@ -727,14 +742,65 @@
         // --- Game Setup ---
         const canvas = document.getElementById('gameCanvas');
         const ctx = (() => {
-            try { return canvas.getContext('2d', { desynchronized: true }); }
+            try { return canvas.getContext('2d', { desynchronized: true, alpha: false }); }
             catch (e) { return canvas.getContext('2d'); }
         })();
         const minimapCanvas = document.getElementById('minimap');
         const minimapCtx = (() => {
-            try { return minimapCanvas.getContext('2d', { desynchronized: true }); }
+            try { return minimapCanvas.getContext('2d', { desynchronized: true, alpha: false }); }
             catch (e) { return minimapCanvas.getContext('2d'); }
         })();
+        if (ctx) ctx.imageSmoothingEnabled = false;
+        if (minimapCtx) minimapCtx.imageSmoothingEnabled = false;
+
+        // PixiJS overlay for bullets/particles (optional; falls back to Canvas if unavailable)
+        const USE_PIXI_OVERLAY = true; // set to true to use Pixi sprites for bullets/particles
+        let pixiApp = null;
+        let pixiBulletLayer = null;
+        let pixiParticleLayer = null;
+        let pixiTextureWhite = null;
+        const pixiBulletSpritePool = [];
+        const pixiParticleSpritePool = [];
+        if (USE_PIXI_OVERLAY && window.PIXI) {
+            pixiApp = new PIXI.Application({
+                resizeTo: window,
+                backgroundAlpha: 0,
+                antialias: false,
+                autoDensity: true
+            });
+            pixiApp.view.style.position = 'absolute';
+            pixiApp.view.style.top = '0';
+            pixiApp.view.style.left = '0';
+            pixiApp.view.style.pointerEvents = 'none';
+            pixiApp.view.style.zIndex = '1';
+            document.body.appendChild(pixiApp.view);
+            pixiTextureWhite = PIXI.Texture.WHITE;
+            pixiBulletLayer = new PIXI.ParticleContainer(15000, { position: true, rotation: true, tint: true, scale: true, alpha: true });
+            pixiParticleLayer = new PIXI.ParticleContainer(20000, { position: true, tint: true, scale: true, alpha: true });
+            pixiApp.stage.addChild(pixiBulletLayer);
+            pixiApp.stage.addChild(pixiParticleLayer);
+        }
+
+        function colorToPixi(c) {
+            if (typeof c === 'number') return c;
+            if (typeof c === 'string') {
+                if (c.startsWith('#')) {
+                    const v = parseInt(c.slice(1), 16);
+                    if (!Number.isNaN(v)) return v;
+                }
+            }
+            return 0xffffff;
+        }
+
+        function allocPixiSprite(pool, layer, size = 2) {
+            if (!pixiTextureWhite || !layer) return null;
+            let spr = pool && pool.length > 0 ? pool.pop() : null;
+            if (!spr) spr = new PIXI.Sprite(pixiTextureWhite);
+            spr.anchor.set(0.5);
+            spr.width = spr.height = size;
+            if (!spr.parent) layer.addChild(spr);
+            return spr;
+        }
         const healthFill = document.getElementById('health-fill');
         const overlayMessage = document.getElementById('overlay-message');
         const warpStatus = document.getElementById('warp-status');
@@ -2440,6 +2506,12 @@
         class Bullet extends Entity {
             constructor(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0, shape = null) {
                 super(x, y);
+                this._poolType = 'bullet';
+                this.sprite = null;
+                this.init(x, y, angle, isEnemy, damage, speed, radius, color, homing, shape);
+            }
+            init(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0, shape = null) {
+                this.pos.x = x; this.pos.y = y;
                 this.speed = speed;
                 this.angle = angle;
                 this.vel.x = Math.cos(angle) * this.speed;
@@ -2453,6 +2525,11 @@
                 this.ignoreShields = false;
                 this.isMissile = false;
                 this.shape = shape;
+                this.dead = false;
+                this.sprite = null;
+            }
+            reset(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0, shape = null) {
+                return this.init(x, y, angle, isEnemy, damage, speed, radius, color, homing, shape);
             }
             update() {
                 // Homing Logic
@@ -2500,6 +2577,25 @@
                 if (this.life <= 0) this.dead = true;
             }
             draw(ctx) {
+                // Pixi path (skip for missile shape to keep glow)
+                if (!this.isMissile && pixiBulletLayer && pixiTextureWhite) {
+                    let spr = this.sprite;
+                    const size = (this.radius || 4) * 2;
+                    if (!spr) {
+                        spr = allocPixiSprite(pixiBulletSpritePool, pixiBulletLayer, size);
+                        this.sprite = spr;
+                    }
+                    if (spr) {
+                        spr.position.set(this.pos.x, this.pos.y);
+                        spr.rotation = this.angle;
+                        spr.width = size;
+                        spr.height = size;
+                        spr.tint = colorToPixi(this.color || (this.isEnemy ? '#f00' : '#0f0'));
+                        spr.alpha = 1;
+                        return;
+                    }
+                }
+
                 ctx.save();
                 ctx.translate(this.pos.x, this.pos.y);
                 
@@ -9440,6 +9536,11 @@
                         continue;
                     }
                     if (!p) continue;
+                    if (p.sprite && pixiParticleSpritePool) {
+                        if (p.sprite.parent) p.sprite.parent.removeChild(p.sprite);
+                        if (pixiParticleSpritePool.length < PARTICLE_POOL_MAX) pixiParticleSpritePool.push(p.sprite);
+                        p.sprite = null;
+                    }
                     if (p._poolType === 'particle') {
                         if (particlePool.length < PARTICLE_POOL_MAX) particlePool.push(p);
                     } else if (p._poolType === 'smoke') {

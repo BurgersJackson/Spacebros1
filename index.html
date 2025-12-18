@@ -522,6 +522,9 @@
         </div>
     </div>
 
+    <!-- PixiJS for high-performance sprite rendering (used for bullets/particles) -->
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@7/dist/pixi.min.js"></script>
+
     <script>
         // Phaser is used for the Electron-packaged build (local `node_modules`), with a CDN fallback for browser runs.
         (function loadPhaser() {
@@ -676,6 +679,7 @@
             constructor(x, y, vx, vy, color = '#fff', life = 30) {
                 super(x, y);
                 this._poolType = 'particle';
+                this.sprite = null;
                 this.vel.x = vx || (Math.random() - 0.5) * 3;
                 this.vel.y = vy || (Math.random() - 0.5) * 3;
                 this.life = life + Math.random() * 10;
@@ -691,6 +695,7 @@
                 this.maxLife = this.life;
                 this.color = color;
                 this.dead = false;
+                this.sprite = null;
             }
             update() {
                 super.update();
@@ -698,6 +703,19 @@
                 if (this.life <= 0) this.dead = true;
             }
             draw(ctx) {
+                if (pixiParticleLayer && pixiTextureWhite) {
+                    let spr = this.sprite;
+                if (!spr) {
+                    spr = allocPixiSprite(pixiParticleSpritePool, pixiParticleLayer, pixiTextureWhite, 2);
+                    this.sprite = spr;
+                }
+                if (spr) {
+                    spr.position.set(this.pos.x, this.pos.y);
+                    spr.alpha = Math.max(0, this.life / this.maxLife);
+                    spr.tint = colorToPixi(this.color);
+                    return;
+                }
+            }
                 ctx.globalAlpha = this.life / this.maxLife;
                 ctx.fillStyle = this.color;
                 ctx.fillRect(this.pos.x, this.pos.y, 2, 2);
@@ -1251,14 +1269,176 @@
         // --- Game Setup ---
         const canvas = document.getElementById('gameCanvas');
         const ctx = (() => {
-            try { return canvas.getContext('2d', { desynchronized: true }); }
+            try { return canvas.getContext('2d', { desynchronized: true, alpha: false }); }
             catch (e) { return canvas.getContext('2d'); }
         })();
         const minimapCanvas = document.getElementById('minimap');
         const minimapCtx = (() => {
-            try { return minimapCanvas.getContext('2d', { desynchronized: true }); }
+            try { return minimapCanvas.getContext('2d', { desynchronized: true, alpha: false }); }
             catch (e) { return minimapCanvas.getContext('2d'); }
         })();
+        if (ctx) ctx.imageSmoothingEnabled = false;
+        if (minimapCtx) minimapCtx.imageSmoothingEnabled = false;
+
+        // PixiJS overlay for bullets/particles (optional; falls back to Canvas if unavailable)
+        const USE_PIXI_OVERLAY = true; // set to true to use Pixi sprites for bullets/particles
+        let pixiApp = null;
+        let pixiBulletLayer = null;
+        let pixiParticleLayer = null;
+        let pixiTextureWhite = null;
+        const PIXI_BULLET_POOL_MAX = 20000;
+        const pixiBulletSpritePool = [];
+        const pixiParticleSpritePool = [];
+        const pixiBulletTextures = { glow: null, laser: null, square: null };
+        if (USE_PIXI_OVERLAY && window.PIXI) {
+            pixiApp = new PIXI.Application({
+                resizeTo: window,
+                backgroundAlpha: 0,
+                antialias: false,
+                autoDensity: true
+            });
+            pixiApp.view.style.position = 'absolute';
+            pixiApp.view.style.top = '0';
+            pixiApp.view.style.left = '0';
+            pixiApp.view.style.pointerEvents = 'none';
+            pixiApp.view.style.zIndex = '1';
+            document.body.appendChild(pixiApp.view);
+            pixiTextureWhite = PIXI.Texture.WHITE;
+
+            const makeGlowTexture = () => {
+                const g = new PIXI.Graphics();
+                g.beginFill(0xffffff, 0.16);
+                g.drawCircle(0, 0, 12);
+                g.beginFill(0xffffff, 0.6);
+                g.drawCircle(0, 0, 7);
+                g.beginFill(0xffffff, 1);
+                g.drawCircle(0, 0, 4);
+                const tex = pixiApp.renderer.generateTexture(g);
+                g.destroy(true);
+                return tex;
+            };
+            const makeLaserTexture = () => {
+                const g = new PIXI.Graphics();
+                g.beginFill(0xffffff, 0.18);
+                g.drawRoundedRect(-20, -4, 40, 8, 4);
+                g.beginFill(0xffffff, 0.65);
+                g.drawRoundedRect(-16, -3, 32, 6, 3);
+                g.beginFill(0xffffff, 1);
+                g.drawRoundedRect(-14, -2, 28, 4, 2);
+                const tex = pixiApp.renderer.generateTexture(g);
+                g.destroy(true);
+                return tex;
+            };
+            const makeSquareTexture = () => {
+                const g = new PIXI.Graphics();
+                g.beginFill(0xffffff, 0.22);
+                g.drawRoundedRect(-6, -6, 12, 12, 2);
+                g.beginFill(0xffffff, 0.6);
+                g.drawRoundedRect(-5, -5, 10, 10, 2);
+                g.beginFill(0xffffff, 1);
+                g.drawRoundedRect(-4, -4, 8, 8, 2);
+                const tex = pixiApp.renderer.generateTexture(g);
+                g.destroy(true);
+                return tex;
+            };
+            pixiBulletTextures.glow = makeGlowTexture();
+            pixiBulletTextures.laser = makeLaserTexture();
+            pixiBulletTextures.square = makeSquareTexture();
+
+            pixiBulletLayer = new PIXI.ParticleContainer(15000, { position: true, rotation: true, tint: true, scale: true, alpha: true });
+            pixiParticleLayer = new PIXI.ParticleContainer(20000, { position: true, tint: true, scale: true, alpha: true });
+            pixiApp.stage.addChild(pixiBulletLayer);
+            pixiApp.stage.addChild(pixiParticleLayer);
+        }
+
+        function colorToPixi(c) {
+            if (typeof c === 'number' && Number.isFinite(c)) return (c >>> 0);
+            if (typeof c !== 'string') return 0xffffff;
+
+            const s = c.trim().toLowerCase();
+            if (!s) return 0xffffff;
+
+            // #rgb / #rgba / #rrggbb / #rrggbbaa
+            if (s.startsWith('#')) {
+                const hex = s.slice(1);
+                if (hex.length === 3 || hex.length === 4) {
+                    const r = parseInt(hex[0] + hex[0], 16);
+                    const g = parseInt(hex[1] + hex[1], 16);
+                    const b = parseInt(hex[2] + hex[2], 16);
+                    if (![r, g, b].some(Number.isNaN)) return (r << 16) | (g << 8) | b;
+                } else if (hex.length === 6 || hex.length === 8) {
+                    const v = parseInt(hex.slice(0, 6), 16);
+                    if (!Number.isNaN(v)) return v;
+                }
+            }
+
+            // 0xrrggbb
+            if (s.startsWith('0x')) {
+                const v = parseInt(s.slice(2), 16);
+                if (!Number.isNaN(v)) return v;
+            }
+
+            // rgb(...) / rgba(...)
+            const m = s.match(/^rgba?\(\s*([0-9.]+%?)\s*,\s*([0-9.]+%?)\s*,\s*([0-9.]+%?)(?:\s*,\s*([0-9.]+)\s*)?\)$/);
+            if (m) {
+                const to255 = (v) => {
+                    if (v.endsWith('%')) return Math.max(0, Math.min(255, Math.round(parseFloat(v) * 2.55)));
+                    return Math.max(0, Math.min(255, Math.round(parseFloat(v))));
+                };
+                const r = to255(m[1]);
+                const g = to255(m[2]);
+                const b = to255(m[3]);
+                return (r << 16) | (g << 8) | b;
+            }
+
+            const named = {
+                white: 0xffffff,
+                black: 0x000000,
+                red: 0xff0000,
+                green: 0x00ff00,
+                blue: 0x0000ff,
+                yellow: 0xffff00,
+                cyan: 0x00ffff,
+                magenta: 0xff00ff,
+                orange: 0xff8800
+            };
+            if (s in named) return named[s];
+
+            return 0xffffff;
+        }
+
+        function allocPixiSprite(pool, layer, texture = pixiTextureWhite, size = 2) {
+            if (!texture || !layer) return null;
+            let spr = pool && pool.length > 0 ? pool.pop() : null;
+            if (!spr) spr = new PIXI.Sprite(texture);
+            spr.texture = texture;
+            spr.anchor.set(0.5);
+            spr.visible = true;
+            spr.width = spr.height = size;
+            if (!spr.parent) layer.addChild(spr);
+            return spr;
+        }
+
+        function releasePixiSprite(pool, spr) {
+            if (!spr) return;
+            if (spr.parent) spr.parent.removeChild(spr);
+            spr.visible = false;
+            if (pool && pool.length < PIXI_BULLET_POOL_MAX) pool.push(spr);
+        }
+
+        function destroyBulletSprite(b) {
+            if (b && b.sprite && pixiBulletSpritePool) {
+                releasePixiSprite(pixiBulletSpritePool, b.sprite);
+                b.sprite = null;
+            }
+        }
+
+        function resetPixiOverlaySprites() {
+            if (pixiBulletLayer) pixiBulletLayer.removeChildren();
+            if (pixiParticleLayer) pixiParticleLayer.removeChildren();
+            pixiBulletSpritePool.length = 0;
+            pixiParticleSpritePool.length = 0;
+        }
         const healthFill = document.getElementById('health-fill');
         const overlayMessage = document.getElementById('overlay-message');
         const warpStatus = document.getElementById('warp-status');
@@ -1325,6 +1505,9 @@
             height = canvas.height = window.innerHeight;
             minimapCanvas.width = 200;
             minimapCanvas.height = 200;
+            if (pixiApp && pixiApp.renderer) {
+                pixiApp.renderer.resize(width, height);
+            }
             initStars();
         }
         
@@ -1417,8 +1600,9 @@
             player.vel.x = 0;
             player.vel.y = 0;
             spawnParticles(player.pos.x, player.pos.y, 40, '#0ff');
-            
+
             // Reset world for new sector
+            resetPixiOverlaySprites();
             bullets = [];
             bossBombs = [];
             guidedMissiles = [];
@@ -2964,6 +3148,12 @@
         class Bullet extends Entity {
             constructor(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0, shape = null) {
                 super(x, y);
+                this._poolType = 'bullet';
+                this.sprite = null;
+                this.init(x, y, angle, isEnemy, damage, speed, radius, color, homing, shape);
+            }
+            init(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0, shape = null) {
+                this.pos.x = x; this.pos.y = y;
                 this.speed = speed;
                 this.angle = angle;
                 this.vel.x = Math.cos(angle) * this.speed;
@@ -2977,6 +3167,11 @@
                 this.ignoreShields = false;
                 this.isMissile = false;
                 this.shape = shape;
+                this.dead = false;
+                this.sprite = null;
+            }
+            reset(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0, shape = null) {
+                return this.init(x, y, angle, isEnemy, damage, speed, radius, color, homing, shape);
             }
             update() {
                 // Homing Logic
@@ -3024,6 +3219,41 @@
                 if (this.life <= 0) this.dead = true;
             }
             draw(ctx) {
+                if (this.dead) {
+                    destroyBulletSprite(this);
+                    return;
+                }
+                // Pixi path (skip for missile shape to keep glow)
+                if (!this.isMissile && pixiBulletLayer && pixiBulletTextures.glow) {
+                    let spr = this.sprite;
+                    const size = (this.radius || 4) * 2;
+                    const isLaser = (!this.isEnemy && this.shape !== 'square');
+                    const texture = this.shape === 'square'
+                        ? pixiBulletTextures.square
+                        : (isLaser ? pixiBulletTextures.laser : pixiBulletTextures.glow);
+                if (!spr) {
+                    spr = allocPixiSprite(pixiBulletSpritePool, pixiBulletLayer, texture, size);
+                    this.sprite = spr;
+                }
+                if (spr) {
+                    spr.texture = texture;
+                    spr.visible = true;
+                    spr.position.set(this.pos.x, this.pos.y);
+                    spr.rotation = this.angle;
+                    spr.blendMode = PIXI.BLEND_MODES.ADD;
+                    if (isLaser) {
+                        spr.width = size * 5;
+                        spr.height = size * 0.9;
+                    } else {
+                        spr.width = size;
+                        spr.height = size;
+                    }
+                    spr.tint = colorToPixi(this.color || (this.isEnemy ? '#f00' : '#ff0'));
+                        spr.alpha = 1;
+                        return;
+                    }
+                }
+
                 ctx.save();
                 ctx.translate(this.pos.x, this.pos.y);
                 
@@ -9678,15 +9908,21 @@
         let pauseStartTime = null;
         let pausedAccumMs = 0; // total paused time to subtract
 
-	        function compactArray(arr) {
-	            let alive = 0;
-	            for (let i = 0; i < arr.length; i++) {
-	                if (!arr[i].dead) {
-	                    arr[alive++] = arr[i];
-	                }
-	            }
-	            arr.length = alive;
-	        }
+        function compactArray(arr) {
+            let alive = 0;
+            for (let i = 0; i < arr.length; i++) {
+                const obj = arr[i];
+                if (!obj) continue;
+                if (!obj.dead) {
+                    arr[alive++] = obj;
+                    continue;
+                }
+                if (obj._poolType === 'bullet' && obj.sprite && pixiBulletSpritePool) {
+                    destroyBulletSprite(obj);
+                }
+            }
+            arr.length = alive;
+        }
 	        
 	        function snapshotWorldForWarp() {
 	            return {
@@ -9746,19 +9982,20 @@
 	        function enterWarpMaze() { 
 	            if (warpZone && warpZone.active) return;
 	            if (warpSnapshot) return;
-	            if (warpCompletedOnce) {
-	                showOverlayMessage("WARP ALREADY USED THIS SECTOR", '#f80', 1200, 2);
-	                return;
-	            }
-	            warpCompletedOnce = true;
-	            warpSnapshot = snapshotWorldForWarp();
-	            
-	            // Clear world to make a controlled encounter space.
-	            bullets = [];
-	            bossBombs = [];
-	            guidedMissiles = [];
-	            enemies = [];
-	            bases = [];
+            if (warpCompletedOnce) {
+                showOverlayMessage("WARP ALREADY USED THIS SECTOR", '#f80', 1200, 2);
+                return;
+            }
+            warpCompletedOnce = true;
+            warpSnapshot = snapshotWorldForWarp();
+
+            // Clear world to make a controlled encounter space.
+            resetPixiOverlaySprites();
+            bullets = [];
+            bossBombs = [];
+            guidedMissiles = [];
+            enemies = [];
+            bases = [];
 	            particles = [];
 	            floatingTexts = [];
 	            coins = [];
@@ -9964,6 +10201,11 @@
                         continue;
                     }
                     if (!p) continue;
+                    if (p.sprite && pixiParticleSpritePool) {
+                        if (p.sprite.parent) p.sprite.parent.removeChild(p.sprite);
+                        if (pixiParticleSpritePool.length < PARTICLE_POOL_MAX) pixiParticleSpritePool.push(p.sprite);
+                        p.sprite = null;
+                    }
                     if (p._poolType === 'particle') {
                         if (particlePool.length < PARTICLE_POOL_MAX) particlePool.push(p);
                     } else if (p._poolType === 'smoke') {
@@ -11595,8 +11837,9 @@
             }
         }
 
-        function setupGameWorld() { 
-            player.respawn(); 
+        function setupGameWorld() {
+            player.respawn();
+            resetPixiOverlaySprites();
             bullets = [];
             bossBombs = [];
             guidedMissiles = [];
@@ -12153,10 +12396,11 @@
 	            
 	            const now = Date.now();
                 frameNow = now;
-	            const warpActive = !!(warpZone && warpZone.active);
-            
+            const warpActive = !!(warpZone && warpZone.active);
+
             // Safe clears after a station destruction to avoid mid-loop mutation
             if (pendingTransitionClear) {
+                resetPixiOverlaySprites();
                 enemies = [];
                 bases = [];
                 bullets = [];
@@ -12618,10 +12862,18 @@
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, width, height);
 
-            // Draw Nebulas / Stars (disabled in cave mode) 
-            if (!caveMode) { 
-                for (let n of nebulas) { 
-                    let bx = (n.x - camX * n.parallax) % width; 
+            if (pixiApp && pixiApp.stage) {
+                if (pixiApp.renderer && (pixiApp.renderer.width !== width || pixiApp.renderer.height !== height)) {
+                    pixiApp.renderer.resize(width, height);
+                }
+                pixiApp.stage.scale.set(zoom);
+                pixiApp.stage.position.set(-camX * zoom, -camY * zoom);
+            }
+
+            // Draw Nebulas / Stars (disabled in cave mode)
+            if (!caveMode) {
+                for (let n of nebulas) {
+                    let bx = (n.x - camX * n.parallax) % width;
                     let by = (n.y - camY * n.parallax) % height; 
                     if (bx < 0) bx += width; 
                     if (by < 0) by += height; 
@@ -13201,8 +13453,11 @@
                         }
                     }
                 }
-                if (hit) bullets.splice(i, 1); 
-            } 
+                if (hit) {
+                    destroyBulletSprite(b);
+                    bullets.splice(i, 1);
+                }
+            }
              
 	            // Draw cave boundaries on top. 
 	            if (caveActive) { 
