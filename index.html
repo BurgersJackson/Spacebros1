@@ -167,7 +167,7 @@
 
         #minimap-container {
             position: absolute;
-            top: 20px;
+            bottom: 20px;
             right: 20px;
             width: 200px;
             height: 200px;
@@ -760,6 +760,38 @@
                 ctx.translate(this.pos.x, this.pos.y);
                 ctx.rotate(this.life * 0.1);
                 ctx.strokeRect(-this.size/2, -this.size/2, this.size, this.size);
+                ctx.restore();
+            }
+        }
+
+        class Explosion extends Entity {
+            constructor(x, y, size = 140) {
+                super(x, y);
+                this.size = size;
+                this.frame = 0;
+                this.frameTimer = 0;
+                this.frameRate = 2;
+            }
+            update() {
+                this.frameTimer++;
+                if (this.frameTimer >= this.frameRate) {
+                    this.frameTimer = 0;
+                    this.frame++;
+                    if (this.frame >= EXPLOSION1_FRAMES) this.dead = true;
+                }
+            }
+            draw(ctx) {
+                if (!explosion1Ready || !explosion1Image) return;
+                const f = Math.min(EXPLOSION1_FRAMES - 1, this.frame);
+                const sx = (f % EXPLOSION1_COLS) * EXPLOSION1_FRAME_W;
+                const sy = Math.floor(f / EXPLOSION1_COLS) * EXPLOSION1_FRAME_H;
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                ctx.drawImage(
+                    explosion1Image,
+                    sx, sy, EXPLOSION1_FRAME_W, EXPLOSION1_FRAME_H,
+                    -this.size / 2, -this.size / 2, this.size, this.size
+                );
                 ctx.restore();
             }
         }
@@ -1438,48 +1470,135 @@
         const pixiTextureScaleToRadius = {};
 
         // Optional external sprite override for gunboats (falls back to procedural silhouette if missing)
-        const GUNBOAT_STARSHIP_URL = 'assets/starship.png';
-        const gunboatStarshipImage = new Image();
-        gunboatStarshipImage.decoding = 'async';
-        gunboatStarshipImage.src = GUNBOAT_STARSHIP_URL;
-        let gunboatStarshipTexture = null;
-        let gunboatStarshipLoaded = false;
+        const GUNBOAT1_URL = 'assets/gunboat1.png';
+        const GUNBOAT2_URL = 'assets/gunboat2.png';
+        const gunboat1Image = new Image();
+        const gunboat2Image = new Image();
+        gunboat1Image.decoding = 'async';
+        gunboat2Image.decoding = 'async';
+        gunboat1Image.src = GUNBOAT1_URL;
+        gunboat2Image.src = GUNBOAT2_URL;
+        let gunboat1Texture = null;
+        let gunboat2Texture = null;
+        let gunboat1Loaded = false;
+        let gunboat2Loaded = false;
 
-        const applyGunboatStarshipTexture = () => {
-            if (!gunboatStarshipLoaded || gunboatStarshipTexture || !window.PIXI) return;
+        const applyGunboatTextures = () => {
+            if (!window.PIXI) return;
             try {
-                const tex = PIXI.Texture.from(gunboatStarshipImage);
-                // Smooth scaling for a large source image.
-                try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) {}
-                try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) {}
+                if (gunboat1Loaded && !gunboat1Texture) {
+                    const tex = PIXI.Texture.from(gunboat1Image);
+                    try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) {}
+                    try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) {}
+                    gunboat1Texture = tex;
+                }
+                if (gunboat2Loaded && !gunboat2Texture) {
+                    const tex = PIXI.Texture.from(gunboat2Image);
+                    try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) {}
+                    try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) {}
+                    gunboat2Texture = tex;
+                }
 
-                // Replace both gunboat variants with the same external sprite.
-                gunboatStarshipTexture = tex;
-                pixiTextures.enemy_gunboat_1 = tex;
-                pixiTextures.enemy_gunboat_2 = tex;
-                pixiTextureAnchors.enemy_gunboat_1 = 0.5;
-                pixiTextureAnchors.enemy_gunboat_2 = 0.5;
+                if (gunboat1Texture) {
+                    pixiTextures.enemy_gunboat_1 = gunboat1Texture;
+                    pixiTextureAnchors.enemy_gunboat_1 = 0.5;
+                    pixiTextureRotOffsets.enemy_gunboat_1 = Math.PI / 2;
+                    pixiTextureScaleToRadius.enemy_gunboat_1 = true;
+                    pixiTextureBaseScales.enemy_gunboat_1 = 1;
+                }
 
-                // The provided starship art faces "up"; game model faces +X, so rotate by +90deg.
-                pixiTextureRotOffsets.enemy_gunboat_1 = Math.PI / 2;
-                pixiTextureRotOffsets.enemy_gunboat_2 = Math.PI / 2;
-
-                // Scale image down to roughly match the procedural gunboat silhouette size.
-                // (User tweak) 2.5x bigger vs previous.
-                pixiTextureBaseScales.enemy_gunboat_1 = 0.06 * 2.5;
-                pixiTextureBaseScales.enemy_gunboat_2 = 0.06 * 2.5;
+                if (gunboat2Texture) {
+                    pixiTextures.enemy_gunboat_2 = gunboat2Texture;
+                    pixiTextureAnchors.enemy_gunboat_2 = 0.5;
+                    pixiTextureRotOffsets.enemy_gunboat_2 = Math.PI / 2;
+                    pixiTextureScaleToRadius.enemy_gunboat_2 = true;
+                    pixiTextureBaseScales.enemy_gunboat_2 = 1;
+                } else if (gunboat1Texture) {
+                    pixiTextures.enemy_gunboat_2 = gunboat1Texture;
+                    pixiTextureAnchors.enemy_gunboat_2 = 0.5;
+                    pixiTextureRotOffsets.enemy_gunboat_2 = Math.PI / 2;
+                    pixiTextureScaleToRadius.enemy_gunboat_2 = true;
+                    pixiTextureBaseScales.enemy_gunboat_2 = 1;
+                }
             } catch (e) {
                 // Keep procedural gunboat textures.
             }
         };
 
-        gunboatStarshipImage.addEventListener('load', () => {
-            gunboatStarshipLoaded = true;
-            applyGunboatStarshipTexture();
+        gunboat1Image.addEventListener('load', () => {
+            gunboat1Loaded = true;
+            applyGunboatTextures();
         });
-        gunboatStarshipImage.addEventListener('error', () => {
-            gunboatStarshipLoaded = false;
+        gunboat1Image.addEventListener('error', () => {
+            gunboat1Loaded = false;
         });
+        gunboat2Image.addEventListener('load', () => {
+            gunboat2Loaded = true;
+            applyGunboatTextures();
+        });
+        gunboat2Image.addEventListener('error', () => {
+            gunboat2Loaded = false;
+        });
+
+        // Optional external sprite overrides for roamers/defenders/hunters.
+        const ROAMER_URL = 'assets/roamer1.png';
+        const ELITE_ROAMER_URL = 'assets/roamer_elite.png';
+        const HUNTER_URL = 'assets/hunter.png';
+        const DEFENDER_URL = 'assets/defender.png';
+        const roamerImage = new Image();
+        const eliteRoamerImage = new Image();
+        const hunterImage = new Image();
+        const defenderImage = new Image();
+        roamerImage.decoding = 'async';
+        eliteRoamerImage.decoding = 'async';
+        hunterImage.decoding = 'async';
+        defenderImage.decoding = 'async';
+        roamerImage.src = ROAMER_URL;
+        eliteRoamerImage.src = ELITE_ROAMER_URL;
+        hunterImage.src = HUNTER_URL;
+        defenderImage.src = DEFENDER_URL;
+        let roamerLoaded = false;
+        let eliteRoamerLoaded = false;
+        let hunterLoaded = false;
+        let defenderLoaded = false;
+
+        const applyEnemyTexture = (img, key) => {
+            if (!img || img.naturalWidth <= 0 || !window.PIXI) return;
+            try {
+                const tex = PIXI.Texture.from(img);
+                try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) {}
+                try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) {}
+                pixiTextures[key] = tex;
+                pixiTextureAnchors[key] = 0.5;
+                pixiTextureScaleToRadius[key] = true;
+                if (key === 'enemy_roamer' || key === 'enemy_elite_roamer' || key === 'enemy_hunter' || key === 'enemy_defender') {
+                    pixiTextureRotOffsets[key] = Math.PI / 2;
+                }
+            } catch (e) {
+                // Keep procedural enemy textures.
+            }
+        };
+
+        roamerImage.addEventListener('load', () => {
+            roamerLoaded = true;
+            applyEnemyTexture(roamerImage, 'enemy_roamer');
+        });
+        eliteRoamerImage.addEventListener('load', () => {
+            eliteRoamerLoaded = true;
+            applyEnemyTexture(eliteRoamerImage, 'enemy_elite_roamer');
+        });
+        hunterImage.addEventListener('load', () => {
+            hunterLoaded = true;
+            applyEnemyTexture(hunterImage, 'enemy_hunter');
+        });
+        defenderImage.addEventListener('load', () => {
+            defenderLoaded = true;
+            applyEnemyTexture(defenderImage, 'enemy_defender');
+        });
+        roamerImage.addEventListener('error', () => { roamerLoaded = false; });
+        eliteRoamerImage.addEventListener('error', () => { eliteRoamerLoaded = false; });
+        hunterImage.addEventListener('error', () => { hunterLoaded = false; });
+        defenderImage.addEventListener('error', () => { defenderLoaded = false; });
 
         // Optional external sprite override for the standard base.
         const BASE1_URL = 'assets/base1.png';
@@ -1702,6 +1821,20 @@
             playerHullExternalReady = false;
             playerHullPixiApplied = false;
         });
+
+        // Explosion sprite sheet (4 columns x 5 rows, 1024x1024).
+        const EXPLOSION1_URL = 'assets/explosion1.png';
+        const explosion1Image = new Image();
+        explosion1Image.decoding = 'async';
+        explosion1Image.src = EXPLOSION1_URL;
+        const EXPLOSION1_COLS = 4;
+        const EXPLOSION1_ROWS = 5;
+        const EXPLOSION1_FRAMES = EXPLOSION1_COLS * EXPLOSION1_ROWS;
+        const EXPLOSION1_FRAME_W = 1024 / EXPLOSION1_COLS;
+        const EXPLOSION1_FRAME_H = 1024 / EXPLOSION1_ROWS;
+        let explosion1Ready = false;
+        explosion1Image.addEventListener('load', () => { explosion1Ready = true; });
+        explosion1Image.addEventListener('error', () => { explosion1Ready = false; });
   
   	        if (USE_PIXI_OVERLAY && window.PIXI) {
   	            try { PIXI.settings.ROUND_PIXELS = true; } catch (e) {}
@@ -2009,7 +2142,7 @@
                 pixiTextureAnchors.enemy_gunboat_2 = gb2.anchor;
 
                 // If the external image is available, swap it in (non-fatal if missing).
-                applyGunboatStarshipTexture();
+            applyGunboatTextures();
 
                 const makeCruiser = () => {
                     const s = 1.4;
@@ -3100,7 +3233,7 @@
                 pixiCleanupObject(this);
                 // previously dropped a coin here; asteroid drops disabled
                 
-                if (this.sizeLevel > 1) {
+                if (this.sizeLevel > 2) {
                      const newSize = this.sizeLevel - 1;
                      const newR = this.radius * 0.6;
                      // Split into ~50% fewer pieces on average (used to always spawn 3).
@@ -3783,13 +3916,14 @@
                     const count = shotgunTier === 1 ? 5 : (shotgunTier === 2 ? 8 : 12);
                     const dmg = this.stats.damageMult * 0.7;
                     const spread = 0.5; 
-                    const lifeByTier = [0, 23, 25, 28];
+                    const baseShotgunLife = 23;
+                    const tierRangeMult = 1 + (0.1 * Math.max(0, shotgunTier - 1));
                     
                     for(let i=0; i<count; i++) {
                         const a = this.turretAngle + (Math.random() - 0.5) * spread;
                         const s = 12 + (Math.random() - 0.5) * 4;
                         const b = new Bullet(this.pos.x, this.pos.y, a, false, dmg, s, 3, '#ff0', 0, 'square');
-                        b.life = (lifeByTier[shotgunTier] || 23) * this.stats.rangeMult;
+                        b.life = (baseShotgunLife * tierRangeMult) * this.stats.rangeMult;
                         bullets.push(b);
                     }
                     // Shotgun uses a soft visual only (no sound)
@@ -4023,13 +4157,10 @@
 	                                gfx.drawCircle(0, 0, r);
 	                            }
 
-	                            if (this.stats && this.stats.slowField > 0) {
-	                                gfx.beginFill(0x00c8ff, 0.10);
-	                                gfx.drawCircle(0, 0, this.stats.slowField);
-	                                gfx.endFill();
-	                                gfx.lineStyle(2, 0x00c8ff, 0.30);
-	                                gfx.drawCircle(0, 0, this.stats.slowField);
-	                            }
+                            if (this.stats && this.stats.slowField > 0) {
+                                gfx.lineStyle(2, 0x00c8ff, 0.30);
+                                gfx.drawCircle(0, 0, this.stats.slowField);
+                            }
 
 	                            if (hasOuter) {
 	                                const outerCount = this.outerShieldSegments.length;
@@ -4130,10 +4261,8 @@
                 
                 // Slow Field Visual
                 if (this.stats.slowField > 0) {
-                    ctx.fillStyle = 'rgba(0, 200, 255, 0.1)';
                     ctx.beginPath();
                     ctx.arc(0, 0, this.stats.slowField, 0, Math.PI*2);
-                    ctx.fill();
                     ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
                     ctx.stroke();
                 }
@@ -5000,6 +5129,12 @@
                         this.hp += 2; // slight buff for named elites
                     }
                 }
+
+                if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter' || this.type === 'defender') {
+                    const sizeMult = 3;
+                    this.radius = Math.round(this.radius * sizeMult);
+                    if (this.shieldRadius) this.shieldRadius = Math.round(this.shieldRadius * sizeMult);
+                }
                 
                 this.turnSpeed = (Math.PI * 2) / (8 * 60); 
                 this.smoothDir = new Vector(Math.random(), Math.random());
@@ -5022,6 +5157,9 @@
                 this.shieldSegments = new Array(10).fill(2);
                 this.shieldRadius = 45;
                     this.gunboatShieldRecharge = 180; // frames between shield regen (~3s at 60fps)
+                    const gunboatSizeMult = 3;
+                    this.radius = Math.round(this.radius * gunboatSizeMult);
+                    this.shieldRadius = Math.round(this.shieldRadius * gunboatSizeMult);
                 }
                 
                 // Default bounce; bosses can override
@@ -5051,7 +5189,8 @@
                 pixiCleanupObject(this);
                 if (this.isGunboat) playSound('base_explode');
                 else playSound('explode');
-                spawnParticles(this.pos.x, this.pos.y, 15, '#f00');
+                const boomScale = Math.max(0.9, Math.min(2.6, (this.radius || 30) / 40));
+                spawnFieryExplosion(this.pos.x, this.pos.y, boomScale);
                 
                 // DROP COINS
                 let val = 2;
@@ -5369,8 +5508,19 @@
                 if (player && !player.dead) distToPlayer = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
                 const attackRange = (this.type === 'elite_roamer' || this.type === 'hunter') ? 800 : 600;
 
-                 const gunboatRange = this.isGunboat ? (this.gunboatRange || 900) : attackRange;
-                if (!this.disableAutoFire && distToPlayer < gunboatRange && !player.dead && this.freezeTimer <= 0) {
+                const gunboatRange = this.isGunboat ? (this.gunboatRange || 900) : attackRange;
+                let roamerAsteroidBlocked = false;
+                if (!this.isGunboat && (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter' || this.type === 'defender') && player && !player.dead && this.freezeTimer <= 0) {
+                    const angleToPlayer = this.getAimAngle();
+                    const hit = rayCast(this.pos.x, this.pos.y, angleToPlayer, distToPlayer);
+                    if (hit && hit.hit && hit.obj) {
+                        const buffer = (player.radius || 0) + 10;
+                        if (hit.dist < distToPlayer - buffer) roamerAsteroidBlocked = true;
+                    }
+                }
+
+                const shouldRoamerClear = roamerAsteroidBlocked && distToPlayer < (attackRange * 1.8);
+                if (!this.disableAutoFire && (distToPlayer < gunboatRange || shouldRoamerClear) && !player.dead && this.freezeTimer <= 0) {
                     this.shootTimer--;
                     if (this.shootTimer <= 0) {
                         const angle = this.getAimAngle();
@@ -9638,17 +9788,34 @@
 	                ctx.stroke();
 	                ctx.shadowBlur = 0;
 	                
-	                // Arena outline glow for readability.
-	                ctx.save();
-	                ctx.translate(this.pos.x, this.pos.y);
-	                ctx.lineWidth = 3 / z;
-	                ctx.shadowBlur = 18;
-	                ctx.shadowColor = '#f0f';
-	                ctx.strokeStyle = 'rgba(255,0,255,0.35)';
-	                ctx.beginPath();
-	                ctx.arc(0, 0, this.arenaRadius, 0, Math.PI * 2);
-	                ctx.stroke();
-	                ctx.restore();
+                // Arena outline glow for readability.
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                ctx.lineWidth = 3 / z;
+                ctx.shadowBlur = 18;
+                ctx.shadowColor = '#f0f';
+                ctx.strokeStyle = 'rgba(255,0,255,0.35)';
+                const arenaRing = this.rings.find(r => r.isArena);
+                const arenaGaps = arenaRing ? (arenaRing.gaps || [arenaRing.gap]) : [];
+                const arenaGapWidth = arenaRing ? arenaRing.width : 0.65;
+                const ringStep = 0.12;
+                ctx.beginPath();
+                for (let ang = 0; ang < Math.PI * 2; ang += ringStep) {
+                    const a0 = ang;
+                    const a1 = Math.min(Math.PI * 2, ang + ringStep);
+                    let inGap = false;
+                    for (const g of arenaGaps) {
+                        let d = a0 - g;
+                        while (d > Math.PI) d -= Math.PI * 2;
+                        while (d < -Math.PI) d += Math.PI * 2;
+                        if (Math.abs(d) < arenaGapWidth) { inGap = true; break; }
+                    }
+                    if (inGap) continue;
+                    ctx.moveTo(Math.cos(a0) * this.arenaRadius, Math.sin(a0) * this.arenaRadius);
+                    ctx.arc(0, 0, this.arenaRadius, a0, a1);
+                }
+                ctx.stroke();
+                ctx.restore();
 	                
 		                ctx.restore();
 		                
@@ -12033,6 +12200,7 @@
         let enemies = [];
         let bases = [];
         let particles = [];
+        let explosions = [];
         let floatingTexts = [];
         let coins = []; // New currency entity
         let nuggets = [];
@@ -12139,8 +12307,9 @@
 	                guidedMissiles,
 	                enemies,
 	                bases,
-	                particles,
-	                floatingTexts,
+                particles,
+                explosions,
+                floatingTexts,
 	                coins,
 	                nuggets,
 	                powerups,
@@ -12205,6 +12374,7 @@
             detach(enemies);
             detach(bases);
 	            detach(particles);
+            detach(explosions);
 	            detach(floatingTexts);
 	            detach(coins);
 	            detach(nuggets);
@@ -12222,6 +12392,7 @@
             enemies = [];
             bases = [];
             particles = [];
+            explosions = [];
             floatingTexts = [];
             coins = [];
             nuggets = [];
@@ -12301,13 +12472,14 @@
                 resetPixiOverlaySprites();
 	            
 	            // Restore world.
-	            bullets = warpSnapshot.bullets;
-	            bossBombs = warpSnapshot.bossBombs;
-	            guidedMissiles = warpSnapshot.guidedMissiles;
-	            enemies = warpSnapshot.enemies;
-	            bases = warpSnapshot.bases;
-	            particles = warpSnapshot.particles;
-	            floatingTexts = warpSnapshot.floatingTexts;
+            bullets = warpSnapshot.bullets;
+            bossBombs = warpSnapshot.bossBombs;
+            guidedMissiles = warpSnapshot.guidedMissiles;
+            enemies = warpSnapshot.enemies;
+            bases = warpSnapshot.bases;
+            particles = warpSnapshot.particles;
+            explosions = warpSnapshot.explosions || [];
+            floatingTexts = warpSnapshot.floatingTexts;
 	            coins = warpSnapshot.coins;
 	            nuggets = warpSnapshot.nuggets;
 	            powerups = warpSnapshot.powerups;
@@ -12446,6 +12618,25 @@
 	        function spawnParticles(x, y, count = 10, color = '#fff') {
 	            for(let i=0; i<count; i++) emitParticle(x, y, null, null, color, 30);
 	        }
+
+        function spawnFieryExplosion(x, y, scale = 1) {
+            const s = Math.max(0.6, Math.min(3, scale || 1));
+            const spriteSize = Math.max(90, Math.round(140 * s));
+            explosions.push(new Explosion(x, y, spriteSize));
+
+            const count = Math.max(10, Math.round(12 * s));
+            const colors = ['#ff6', '#fa0', '#f80', '#f00'];
+            for (let i = 0; i < count; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const speed = (0.8 + Math.random() * 1.8) * s;
+                const vx = Math.cos(a) * speed;
+                const vy = Math.sin(a) * speed;
+                const color = colors[(Math.random() * colors.length) | 0];
+                const life = 20 + Math.floor(Math.random() * 16);
+                emitParticle(x, y, vx, vy, color, life);
+            }
+            spawnSmoke(x, y, Math.max(1, Math.round(2 * s)));
+        }
 
         function spawnSmoke(x, y, count = 1) {
             for(let i=0; i<count; i++) emitSmokeParticle(x, y, null, null);
@@ -14074,6 +14265,7 @@
             clearArrayWithPixiCleanup(enemies);
             clearArrayWithPixiCleanup(bases);
             clearArrayWithPixiCleanup(particles);
+            clearArrayWithPixiCleanup(explosions);
             clearArrayWithPixiCleanup(floatingTexts);
             clearArrayWithPixiCleanup(coins);
             clearArrayWithPixiCleanup(nuggets);
@@ -15279,10 +15471,11 @@
 	                if (doDraw && sContainer) sContainer.style.display = 'none';
 	            }
 
-	            bullets.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
-	            bossBombs.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
-	            guidedMissiles.forEach(m => { if (doUpdate) m.update(); if (doDraw) m.draw(ctx); });
-	            for (let i = 0; i < particles.length; i++) { const p = particles[i]; if (doUpdate) p.update(); if (doDraw) p.draw(ctx); }
+            bullets.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
+            bossBombs.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
+            guidedMissiles.forEach(m => { if (doUpdate) m.update(); if (doDraw) m.draw(ctx); });
+            for (let i = 0; i < particles.length; i++) { const p = particles[i]; if (doUpdate) p.update(); if (doDraw) p.draw(ctx); }
+            for (let i = 0; i < explosions.length; i++) { const ex = explosions[i]; if (doUpdate) ex.update(); if (doDraw) ex.draw(ctx); }
 
 	            for (let i = 0; i < warpParticles.length; i++) { const p = warpParticles[i]; if (doUpdate) p.update(); if (doDraw) p.draw(ctx); }
 	            if (doUpdate) compactArray(warpParticles);
@@ -15303,6 +15496,7 @@
             compactArray(bases);
             compactArray(environmentAsteroids);
             compactParticles(particles);
+            compactArray(explosions);
             compactArray(floatingTexts);
             compactArray(coins);
             compactArray(nuggets);
@@ -16527,6 +16721,52 @@
             }
         }
 
+        function shiftPausedTimers(pauseMs) {
+            if (!pauseMs || pauseMs <= 0) return;
+            const shiftIfNumber = (val) => (typeof val === 'number' && isFinite(val) && val > 0) ? (val + pauseMs) : val;
+            const shiftArrayNumbers = (arr) => {
+                if (!Array.isArray(arr)) return arr;
+                for (let i = 0; i < arr.length; i++) {
+                    if (typeof arr[i] === 'number' && isFinite(arr[i]) && arr[i] > 0) arr[i] += pauseMs;
+                }
+                return arr;
+            };
+
+            warpCountdownAt = shiftIfNumber(warpCountdownAt);
+            nextContractAt = shiftIfNumber(nextContractAt);
+            nextSpaceStationTime = shiftIfNumber(nextSpaceStationTime);
+            gunboatRespawnAt = shiftIfNumber(gunboatRespawnAt);
+            nextShootingStarTime = shiftIfNumber(nextShootingStarTime);
+            nextRadiationStormAt = shiftIfNumber(nextRadiationStormAt);
+            nextMiniEventAt = shiftIfNumber(nextMiniEventAt);
+            nextIntensityBreakAt = shiftIfNumber(nextIntensityBreakAt);
+            initialSpawnDelayAt = shiftIfNumber(initialSpawnDelayAt);
+
+            asteroidRespawnTimers = shiftArrayNumbers(asteroidRespawnTimers);
+            baseRespawnTimers = shiftArrayNumbers(baseRespawnTimers);
+
+            if (dreadManager && dreadManager.timerActive && typeof dreadManager.timerAt === 'number') {
+                dreadManager.timerAt += pauseMs;
+            }
+            if (cruiserTimerPausedAt !== null && typeof cruiserTimerPausedAt === 'number') {
+                cruiserTimerPausedAt += pauseMs;
+            }
+            if (radiationStorm && typeof radiationStorm.endsAt === 'number') {
+                radiationStorm.endsAt += pauseMs;
+            }
+            if (miniEvent) {
+                if (typeof miniEvent.expiresAt === 'number') miniEvent.expiresAt += pauseMs;
+                if (typeof miniEvent.nextWaveAt === 'number') miniEvent.nextWaveAt += pauseMs;
+                if (typeof miniEvent.lastUpdateAt === 'number') miniEvent.lastUpdateAt += pauseMs;
+            }
+            if (activeContract && typeof activeContract.endsAt === 'number') {
+                activeContract.endsAt += pauseMs;
+            }
+            if (warpSnapshot && typeof warpSnapshot.warpEnteredAt === 'number') {
+                warpSnapshot.warpEnteredAt += pauseMs;
+            }
+        }
+
         function togglePause() {
             if (!gameActive) return;
             const wasPaused = gamePaused;
@@ -16537,7 +16777,9 @@
                 pauseStartTime = Date.now();
             } else {
                 if (pauseStartTime) {
-                    pausedAccumMs += Date.now() - pauseStartTime;
+                    const pauseMs = Date.now() - pauseStartTime;
+                    pausedAccumMs += pauseMs;
+                    shiftPausedTimers(pauseMs);
                     pauseStartTime = null;
                 }
             }
