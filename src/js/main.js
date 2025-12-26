@@ -10,7 +10,8 @@ import {
 import { SmokeParticle, Explosion, WarpParticle } from './entities/particles/Particle.js';
 import {
     initAudio, startMusic, stopMusic, setMusicMode, playSound, playMp3Sfx,
-    toggleMusic as audioToggleMusic, isMusicEnabled, setProjectileImpactSoundContext
+    toggleMusic as audioToggleMusic, isMusicEnabled, setProjectileImpactSoundContext,
+    musicEnabled
 } from './audio/audio-manager.js';
 
 // --- Upgrade Data ---
@@ -362,315 +363,16 @@ class HealthPowerUp extends Entity {
 }
 
 // --- Audio System ---
-const AudioCtx = window.AudioContext || window.webkitAudioContext;
-let audioCtx;
-let musicEnabled = true;
-let musicNodes = [];
-let musicMode = 'normal'; // 'normal' or 'cruiser'
-// BACKGROUND_MUSIC_URL imported from ./core/constants.js
-let backgroundMusicAudio = null;
+// Audio functions imported from ./audio/audio-manager.js
+// initAudio, startMusic, stopMusic, setMusicMode, playSound, playMp3Sfx,
+// audioToggleMusic, isMusicEnabled, setProjectileImpactSoundContext
 
-function _INLINE_initAudio() {
-    try {
-        if (!audioCtx) audioCtx = new AudioCtx();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-    } catch (e) {
-        console.error("Audio init failed", e);
-    }
-}
-
-function stopLegacyMusicNodes() {
-    musicNodes.forEach(n => {
-        try { n.stop(); } catch (e) { }
-        try { n.disconnect(); } catch (e) { }
-    });
-    musicNodes = [];
-}
-
-function _INLINE_setMusicMode(mode = null) {
-    if (mode) musicMode = mode;
-    if (!musicMode) musicMode = 'normal';
-    if (!musicEnabled) return;
-
-    // Ensure any legacy synth nodes are not running.
-    if (musicNodes.length > 0) stopLegacyMusicNodes();
-
-    if (!backgroundMusicAudio) {
-        backgroundMusicAudio = new Audio(BACKGROUND_MUSIC_URL);
-        backgroundMusicAudio.loop = true;
-        backgroundMusicAudio.preload = 'auto';
-    }
-
-    backgroundMusicAudio.volume = (musicMode === 'cruiser') ? 0.22 : 0.25;
-    try {
-        const p = backgroundMusicAudio.play();
-        if (p && typeof p.catch === 'function') p.catch(() => { });
-    } catch (e) { }
-}
-
-function _INLINE_startMusic(mode = null) {
-    if (mode) musicMode = mode;
-    if (!musicMode) musicMode = 'normal';
-    if (!musicEnabled) return;
-
-    setMusicMode(musicMode);
-}
-
-function _INLINE_stopMusic() {
-    stopLegacyMusicNodes();
-    musicMode = musicMode || 'normal';
-    if (backgroundMusicAudio) {
-        try { backgroundMusicAudio.pause(); } catch (e) { }
-        try { backgroundMusicAudio.currentTime = 0; } catch (e) { }
-    }
-}
-
+// toggleMusic wrapper that updates DOM button
 function toggleMusic() {
     // Uses audioToggleMusic from module (imported as audioToggleMusic)
     const enabled = audioToggleMusic(gameActive, gamePaused);
     const btn = document.getElementById('music-btn');
     if (btn) btn.innerText = enabled ? "MUSIC: ON" : "MUSIC: OFF";
-}
-
-// Toggle: impact sounds when projectiles hit shields/hulls/walls.
-// ENABLE_PROJECTILE_IMPACT_SOUNDS imported from ./core/constants.js
-let inProjectileImpactSoundContext = false;
-
-function _INLINE_playSound(type, volumeMult = 1) {
-    if (!audioCtx || audioCtx.state === 'suspended') return;
-    if (!ENABLE_PROJECTILE_IMPACT_SOUNDS && inProjectileImpactSoundContext && (type === 'hit' || type === 'shield_hit')) return;
-    if (!(volumeMult > 0)) return;
-    try {
-        const now = audioCtx.currentTime;
-
-        const createOsc = (type, freq, dur, vol) => {
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = type;
-            osc.frequency.setValueAtTime(freq, now);
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            gain.gain.setValueAtTime(vol * volumeMult, now);
-            return { osc, gain };
-        };
-
-        if (type === 'shoot') {
-            // Laser sound
-            const { osc, gain } = createOsc('sawtooth', 880, 0.15, 0.1);
-            osc.frequency.exponentialRampToValueAtTime(110, now + 0.15);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-            osc.start(now);
-            osc.stop(now + 0.15);
-        } else if (type === 'coin') {
-            const { osc, gain } = createOsc('sine', 1200, 0.1, 0.1);
-            osc.frequency.exponentialRampToValueAtTime(2000, now + 0.1);
-            gain.gain.linearRampToValueAtTime(0, now + 0.1);
-            osc.start(now);
-            osc.stop(now + 0.1);
-        } else if (type === 'hit') {
-            const { osc, gain } = createOsc('square', 200, 0.1, 0.15);
-            osc.frequency.exponentialRampToValueAtTime(50, now + 0.1);
-            gain.gain.linearRampToValueAtTime(0, now + 0.1);
-            osc.start(now);
-            osc.stop(now + 0.1);
-        } else if (type === 'shield_hit') {
-            const { osc, gain } = createOsc('triangle', 600, 0.1, 0.15);
-            osc.frequency.linearRampToValueAtTime(300, now + 0.1);
-            gain.gain.linearRampToValueAtTime(0, now + 0.1);
-            osc.start(now);
-            osc.stop(now + 0.1);
-        } else if (type === 'explode') {
-            const { osc, gain } = createOsc('sawtooth', 100, 0.3, 0.2);
-            osc.frequency.exponentialRampToValueAtTime(10, now + 0.3);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-            osc.start(now);
-            osc.stop(now + 0.3);
-        } else if (type === 'base_explode') {
-            // Ominous explosion (shorter version of boss_spawn)
-            const osc1 = audioCtx.createOscillator();
-            const osc2 = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-
-            osc1.type = 'sawtooth';
-            osc1.frequency.setValueAtTime(80, now);
-            osc1.frequency.linearRampToValueAtTime(10, now + 0.8);
-
-            osc2.type = 'sine';
-            osc2.frequency.setValueAtTime(120, now);
-            osc2.frequency.linearRampToValueAtTime(20, now + 0.8);
-
-            osc1.connect(gain);
-            osc2.connect(gain);
-            gain.connect(audioCtx.destination);
-
-            gain.gain.setValueAtTime(0.5, now);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
-
-            osc1.start(now);
-            osc2.start(now);
-            osc1.stop(now + 0.8);
-            osc2.stop(now + 0.8);
-        } else if (type === 'boss_spawn') {
-            // Ominous sound
-            const osc1 = audioCtx.createOscillator();
-            const osc2 = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-
-            osc1.type = 'sawtooth';
-            osc1.frequency.setValueAtTime(60, now);
-            osc1.frequency.linearRampToValueAtTime(40, now + 3);
-
-            osc2.type = 'sine';
-            osc2.frequency.setValueAtTime(90, now);
-            osc2.frequency.linearRampToValueAtTime(60, now + 3);
-
-            osc1.connect(gain);
-            osc2.connect(gain);
-            gain.connect(audioCtx.destination);
-
-            gain.gain.setValueAtTime(0, now);
-            gain.gain.linearRampToValueAtTime(0.4, now + 0.5);
-            gain.gain.linearRampToValueAtTime(0, now + 3);
-
-            osc1.start(now);
-            osc2.start(now);
-            osc1.stop(now + 3);
-            osc2.stop(now + 3);
-        } else if (type === 'station_spawn') {
-            // Longer ominous sound for station
-            const osc1 = audioCtx.createOscillator();
-            const osc2 = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-
-            osc1.type = 'sawtooth';
-            osc1.frequency.setValueAtTime(55, now);
-            osc1.frequency.linearRampToValueAtTime(30, now + 6);
-
-            osc2.type = 'sine';
-            osc2.frequency.setValueAtTime(80, now);
-            osc2.frequency.linearRampToValueAtTime(50, now + 6);
-
-            osc1.connect(gain);
-            osc2.connect(gain);
-            gain.connect(audioCtx.destination);
-
-            gain.gain.setValueAtTime(0, now);
-            gain.gain.linearRampToValueAtTime(0.4, now + 1);
-            gain.gain.linearRampToValueAtTime(0, now + 6);
-
-            osc1.start(now);
-            osc2.start(now);
-            osc1.stop(now + 6);
-            osc2.stop(now + 6);
-        } else if (type === 'contract') {
-            // Longer, more prominent contract stinger (3-note arcade chirp)
-            const oscA = audioCtx.createOscillator();
-            const oscB = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-
-            oscA.type = 'square';
-            oscB.type = 'triangle';
-
-            // Envelope
-            gain.gain.setValueAtTime(0.0001, now);
-            gain.gain.exponentialRampToValueAtTime(0.22, now + 0.03);
-            gain.gain.exponentialRampToValueAtTime(0.14, now + 0.45);
-            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.95);
-
-            const seq = [
-                { t: 0.00, f: 880 },
-                { t: 0.28, f: 1320 },
-                { t: 0.56, f: 1760 }
-            ];
-            for (const n of seq) {
-                oscA.frequency.setValueAtTime(n.f, now + n.t);
-                oscA.frequency.exponentialRampToValueAtTime(n.f * 1.06, now + n.t + 0.18);
-                oscB.frequency.setValueAtTime(n.f * 0.5, now + n.t);
-                oscB.frequency.exponentialRampToValueAtTime(n.f * 0.5 * 1.04, now + n.t + 0.18);
-            }
-
-            oscA.connect(gain);
-            oscB.connect(gain);
-            gain.connect(audioCtx.destination);
-
-            oscA.start(now);
-            oscB.start(now);
-            oscA.stop(now + 0.95);
-            oscB.stop(now + 0.95);
-        } else if (type === 'levelup') {
-            const { osc, gain } = createOsc('square', 440, 0.6, 0.2);
-            osc.frequency.setValueAtTime(440, now);
-            osc.frequency.setValueAtTime(554, now + 0.1);
-            osc.frequency.setValueAtTime(659, now + 0.2);
-            osc.frequency.setValueAtTime(880, now + 0.3);
-            gain.gain.linearRampToValueAtTime(0, now + 0.6);
-            osc.start(now);
-            osc.stop(now + 0.6);
-        } else if (type === 'warp') {
-            const { osc, gain } = createOsc('sine', 200, 0.3, 0.3);
-            osc.frequency.exponentialRampToValueAtTime(2000, now + 0.2);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-            osc.start(now);
-            osc.stop(now + 0.3);
-        } else if (type === 'heavy_shoot') {
-            const { osc, gain } = createOsc('square', 150, 0.2, 0.15);
-            osc.frequency.exponentialRampToValueAtTime(50, now + 0.2);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-            osc.start(now);
-            osc.stop(now + 0.2);
-        } else if (type === 'rapid_shoot') {
-            const { osc, gain } = createOsc('triangle', 600, 0.1, 0.05);
-            osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-            osc.start(now);
-            osc.stop(now + 0.1);
-        } else if (type === 'powerup') {
-            const { osc, gain } = createOsc('sine', 400, 0.3, 0.2);
-            osc.frequency.linearRampToValueAtTime(800, now + 0.3);
-            gain.gain.linearRampToValueAtTime(0, now + 0.3);
-            osc.start(now);
-            osc.stop(now + 0.3);
-        } else if (type === 'shotgun') {
-            const { osc, gain } = createOsc('square', 120, 0.1, 0.2);
-            osc.frequency.exponentialRampToValueAtTime(40, now + 0.15);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-            osc.start(now);
-            osc.stop(now + 0.15);
-        }
-    } catch (e) { }
-}
-
-const mp3SfxPools = Object.create(null);
-function _INLINE_playMp3Sfx(url, opts = {}) {
-    const volume = (typeof opts.volume === 'number') ? opts.volume : 1;
-    if (!(volume > 0)) return;
-
-    const key = opts.key || url;
-    const now = Date.now();
-    const entry = mp3SfxPools[key] || (mp3SfxPools[key] = { pool: [], idx: 0, lastAt: 0, url });
-
-    const rateLimitMs = (typeof opts.rateLimitMs === 'number') ? opts.rateLimitMs : 0;
-    if (rateLimitMs > 0 && (now - (entry.lastAt || 0)) < rateLimitMs) return;
-    entry.lastAt = now;
-
-    if (entry.pool.length === 0) {
-        const poolSize = (typeof opts.poolSize === 'number') ? opts.poolSize : 4;
-        for (let i = 0; i < Math.max(1, poolSize); i++) {
-            const a = new Audio(url);
-            a.preload = 'auto';
-            a.volume = volume;
-            entry.pool.push(a);
-        }
-    }
-
-    const a = entry.pool[entry.idx % entry.pool.length];
-    entry.idx = (entry.idx + 1) % entry.pool.length;
-    try {
-        a.volume = volume;
-        a.currentTime = 0;
-        const p = a.play();
-        if (p && typeof p.catch === 'function') p.catch(() => { });
-    } catch (e) { }
 }
 
 // --- Game Setup ---
@@ -15846,7 +15548,7 @@ function startGame() {
     resetCaveState();
     warpCompletedOnce = false;
     // Always reset audio state to normal before a new run 
-    musicMode = 'normal';
+    setMusicMode('normal');
     gameMode = 'normal';
     arcadeBoss = null;
     arcadeWave = 0;
