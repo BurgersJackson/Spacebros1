@@ -219,6 +219,117 @@ export function playSound(type, volumeMult = 1) {
                 osc.stop(now + 0.15);
                 break;
             }
+            case 'heavy_shoot': {
+                const { osc, gain } = createOsc('square', 150, 0.2, 0.15);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 0.2);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+                break;
+            }
+            case 'rapid_shoot': {
+                const { osc, gain } = createOsc('triangle', 600, 0.1, 0.05);
+                osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+                break;
+            }
+            case 'base_explode': {
+                // Ominous explosion (shorter version of boss_spawn)
+                const osc1 = audioCtx.createOscillator();
+                const osc2 = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc1.type = 'sawtooth';
+                osc1.frequency.setValueAtTime(80, now);
+                osc1.frequency.linearRampToValueAtTime(10, now + 0.8);
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(120, now);
+                osc2.frequency.linearRampToValueAtTime(20, now + 0.8);
+                osc1.connect(g);
+                osc2.connect(g);
+                g.connect(audioCtx.destination);
+                g.gain.setValueAtTime(0.5, now);
+                g.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+                osc1.start(now);
+                osc2.start(now);
+                osc1.stop(now + 0.8);
+                osc2.stop(now + 0.8);
+                break;
+            }
+            case 'boss_spawn': {
+                // Ominous sound
+                const osc1 = audioCtx.createOscillator();
+                const osc2 = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc1.type = 'sawtooth';
+                osc1.frequency.setValueAtTime(60, now);
+                osc1.frequency.linearRampToValueAtTime(40, now + 3);
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(90, now);
+                osc2.frequency.linearRampToValueAtTime(60, now + 3);
+                osc1.connect(g);
+                osc2.connect(g);
+                g.connect(audioCtx.destination);
+                g.gain.setValueAtTime(0, now);
+                g.gain.linearRampToValueAtTime(0.4, now + 0.5);
+                g.gain.linearRampToValueAtTime(0, now + 3);
+                osc1.start(now);
+                osc2.start(now);
+                osc1.stop(now + 3);
+                osc2.stop(now + 3);
+                break;
+            }
+            case 'station_spawn': {
+                // Longer ominous sound for station
+                const osc1 = audioCtx.createOscillator();
+                const osc2 = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc1.type = 'sawtooth';
+                osc1.frequency.setValueAtTime(55, now);
+                osc1.frequency.linearRampToValueAtTime(30, now + 6);
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(80, now);
+                osc2.frequency.linearRampToValueAtTime(50, now + 6);
+                osc1.connect(g);
+                osc2.connect(g);
+                g.connect(audioCtx.destination);
+                g.gain.setValueAtTime(0, now);
+                g.gain.linearRampToValueAtTime(0.4, now + 1);
+                g.gain.linearRampToValueAtTime(0, now + 6);
+                osc1.start(now);
+                osc2.start(now);
+                osc1.stop(now + 6);
+                osc2.stop(now + 6);
+                break;
+            }
+            case 'contract': {
+                // 3-note arcade chirp
+                const oscA = audioCtx.createOscillator();
+                const oscB = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                oscA.type = 'square';
+                oscB.type = 'triangle';
+                g.gain.setValueAtTime(0.0001, now);
+                g.gain.exponentialRampToValueAtTime(0.22, now + 0.03);
+                g.gain.exponentialRampToValueAtTime(0.14, now + 0.45);
+                g.gain.exponentialRampToValueAtTime(0.0001, now + 0.95);
+                const seq = [{ t: 0.00, f: 880 }, { t: 0.28, f: 1320 }, { t: 0.56, f: 1760 }];
+                for (const n of seq) {
+                    oscA.frequency.setValueAtTime(n.f, now + n.t);
+                    oscA.frequency.exponentialRampToValueAtTime(n.f * 1.06, now + n.t + 0.18);
+                    oscB.frequency.setValueAtTime(n.f * 0.5, now + n.t);
+                    oscB.frequency.exponentialRampToValueAtTime(n.f * 0.5 * 1.04, now + n.t + 0.18);
+                }
+                oscA.connect(g);
+                oscB.connect(g);
+                g.connect(audioCtx.destination);
+                oscA.start(now);
+                oscB.start(now);
+                oscA.stop(now + 0.95);
+                oscB.stop(now + 0.95);
+                break;
+            }
         }
     } catch (e) { }
 }

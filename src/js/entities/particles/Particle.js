@@ -1,72 +1,16 @@
 /**
  * Particle Systems
  * Visual effect particles for explosions, smoke, and warp effects.
+ * 
+ * NOTE: The basic Particle class with PixiJS dependencies remains in main.js
+ * Only canvas-based particle classes are exported from this module.
  */
 
 import { Entity } from '../Entity.js';
-import { colorToPixi } from '../../rendering/colors.js';
-import { allocPixiSprite, releasePixiSprite } from '../../rendering/sprite-pools.js';
-import { pixiParticleLayer, pixiParticleSpritePool, pixiTextureWhite } from '../../rendering/pixi-setup.js';
-
-/**
- * Basic particle for explosions and visual effects.
- */
-export class Particle extends Entity {
-    constructor(x, y, vx, vy, color = '#fff', life = 30) {
-        super(x, y);
-        this._poolType = 'particle';
-        this.sprite = null;
-        this.vel.x = vx || (Math.random() - 0.5) * 3;
-        this.vel.y = vy || (Math.random() - 0.5) * 3;
-        this.life = life + Math.random() * 10;
-        this.maxLife = this.life;
-        this.color = color;
-    }
-
-    reset(x, y, vx, vy, color = '#fff', life = 30) {
-        this.pos.x = x;
-        this.pos.y = y;
-        this.vel.x = vx || (Math.random() - 0.5) * 3;
-        this.vel.y = vy || (Math.random() - 0.5) * 3;
-        this.life = life + Math.random() * 10;
-        this.maxLife = this.life;
-        this.color = color;
-        this.dead = false;
-        this.sprite = null;
-    }
-
-    update() {
-        super.update();
-        this.life--;
-        if (this.life <= 0) this.dead = true;
-    }
-
-    draw(ctx) {
-        if (pixiParticleLayer && pixiTextureWhite) {
-            let spr = this.sprite;
-            if (!spr) {
-                spr = allocPixiSprite(pixiParticleSpritePool, pixiParticleLayer, pixiTextureWhite, 2);
-                this.sprite = spr;
-            }
-            if (spr) {
-                if (!spr.parent) pixiParticleLayer.addChild(spr);
-                spr.position.set(this.pos.x, this.pos.y);
-                spr.alpha = Math.max(0, this.life / this.maxLife);
-                spr.tint = colorToPixi(this.color);
-                return;
-            }
-        }
-
-        // Canvas fallback
-        ctx.globalAlpha = this.life / this.maxLife;
-        ctx.fillStyle = this.color;
-        ctx.fillRect(this.pos.x, this.pos.y, 2, 2);
-        ctx.globalAlpha = 1.0;
-    }
-}
 
 /**
  * Smoke particle with rotation and size growth.
+ * Canvas-only rendering - no PixiJS dependencies.
  */
 export class SmokeParticle extends Entity {
     constructor(x, y, vx, vy) {
@@ -110,7 +54,90 @@ export class SmokeParticle extends Entity {
 }
 
 /**
+ * Explosion effect with multiple internal particles.
+ * Canvas-only rendering - no PixiJS dependencies.
+ */
+export class Explosion extends Entity {
+    constructor(x, y, size = 140) {
+        super(x, y);
+        this.size = size;
+        this.particles = [];
+        this.life = 30; // frames duration
+        this.maxLife = 30;
+        this.createParticles();
+    }
+
+    createParticles() {
+        const particleCount = Math.max(15, Math.floor(this.size / 3));
+        const colors = ['#ff6', '#fa0', '#f80', '#f00', '#ff8'];
+
+        for (let i = 0; i < particleCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = (0.5 + Math.random() * 2.5) * (this.size / 100);
+            const vx = Math.cos(angle) * speed;
+            const vy = Math.sin(angle) * speed;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            const life = 20 + Math.floor(Math.random() * 20);
+
+            this.particles.push({
+                x: 0,
+                y: 0,
+                vx: vx,
+                vy: vy,
+                life: life,
+                maxLife: life,
+                color: color,
+                size: 2 + Math.random() * (this.size / 30)
+            });
+        }
+    }
+
+    update() {
+        this.life--;
+        if (this.life <= 0) {
+            this.dead = true;
+            return;
+        }
+
+        // Update particles
+        for (let i = 0; i < this.particles.length; i++) {
+            const p = this.particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vx *= 0.96; // friction
+            p.vy *= 0.96;
+            p.life--;
+
+            // Add gravity effect
+            p.vy += 0.05;
+        }
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+
+        // Draw particles
+        for (let i = 0; i < this.particles.length; i++) {
+            const p = this.particles[i];
+            if (p.life <= 0) continue;
+
+            const alpha = Math.max(0, p.life / p.maxLife);
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.restore();
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+/**
  * Warp effect particle with trailing line.
+ * Canvas-only rendering - no PixiJS dependencies.
  */
 export class WarpParticle extends Entity {
     constructor(x, y, angle, speed) {
