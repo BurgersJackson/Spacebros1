@@ -106,4 +106,8 @@ export class HealthPowerUp extends Entity {
         ctx.shadowBlur = 0;
         ctx.restore();
     }
+
+    cull() {
+        if (this.sprite) this.sprite.visible = false;
+    }
 }

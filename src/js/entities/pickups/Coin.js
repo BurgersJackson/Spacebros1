@@ -116,4 +116,8 @@ export class Coin extends Entity {
         if (this.value >= 5) return textures.coin5 || textures.coin1;
         return textures.coin1;
     }
+
+    cull() {
+        if (this.sprite) this.sprite.visible = false;
+    }
 }

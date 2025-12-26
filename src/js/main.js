@@ -1,5 +1,6 @@
 // --- Module Imports ---
 import { Vector, SpatialHash, _tempVec1, _tempVec2 } from './core/math.js';
+import { globalProfiler } from './core/profiler.js';
 import {
     updateViewBounds, viewBounds, isInView, entityInView,
     bulletGrid, rebuildBulletGrid, distSq, distLessThan
@@ -12646,18 +12647,18 @@ function checkWallCollision(entity, elasticity = 0) {
 function checkBulletWallCollision(bullet) {
     // Warp maze 1px line walls (blocks bullets).
     if (warpZone && warpZone.active && typeof warpZone.bulletHitsWall === 'function') {
-        if (warpZone.bulletHitsWall(bullet)) return { hit: true, kind: 'warp_wall', obj: null };
+        if (warpZone.bulletHitsWall(bullet)) return { kind: 'warp_wall', obj: null };
     }
     // Cave 1px line walls.
     if (caveMode && caveLevel && caveLevel.active && typeof caveLevel.bulletHitsWall === 'function') {
-        if (caveLevel.bulletHitsWall(bullet)) return { hit: true, kind: 'cave_wall', obj: null };
+        if (caveLevel.bulletHitsWall(bullet)) return { kind: 'cave_wall', obj: null };
     }
     // Anomaly maze 1px line walls.
     if (activeContract && activeContract.type === 'anomaly' && contractEntities && contractEntities.anomalies) {
         const az = contractEntities.anomalies.find(a => a && !a.dead && a.contractId === activeContract.id && typeof a.bulletHitsWall === 'function');
         if (az) {
             const dA = Math.hypot(bullet.pos.x - az.pos.x, bullet.pos.y - az.pos.y);
-            if (dA < az.radius + 900 && az.bulletHitsWall(bullet)) return { hit: true, kind: 'anomaly_wall', obj: null };
+            if (dA < az.radius + 900 && az.bulletHitsWall(bullet)) return { kind: 'anomaly_wall', obj: null };
         }
     }
     const nearby = asteroidGrid.query(bullet.pos.x, bullet.pos.y);
@@ -12668,10 +12669,10 @@ function checkBulletWallCollision(bullet) {
         const distSq = dx * dx + dy * dy;
         const rad = ast.radius + bullet.radius;
         if (distSq < rad * rad) {
-            return { hit: true, kind: 'asteroid', obj: ast };
+            return { kind: 'asteroid', obj: ast };
         }
     }
-    return { hit: false, kind: null, obj: null };
+    return null;
 }
 
 function updateHealthUI() {
@@ -13438,6 +13439,7 @@ function killPlayer() {
 }
 
 function mainLoop() {
+    globalProfiler.update();
     animationId = requestAnimationFrame(mainLoop);
     // FPS counter (render-only).
     if (fpsCounterEl) {
@@ -13502,6 +13504,7 @@ function mainLoop() {
 }
 
 function gameLoopLogic(opts = null) {
+    globalProfiler.start('GameLoopLogic');
     const doDraw = !(opts && opts.doDraw === false);
     const doUpdate = !(opts && opts.doUpdate === false);
     if (!player) return;
@@ -13511,6 +13514,8 @@ function gameLoopLogic(opts = null) {
     const warpActive = !!(warpZone && warpZone.active);
 
     if (doUpdate) {
+        globalProfiler.start('Update');
+        globalProfiler.start('GameLogic');
         // Safe clears after a station destruction to avoid mid-loop mutation
         if (pendingTransitionClear) {
             resetPixiOverlaySprites();
@@ -13904,6 +13909,8 @@ function gameLoopLogic(opts = null) {
         }
 
         // Build Spatial Grid for this frame
+        globalProfiler.end('GameLogic');
+        globalProfiler.start('SpatialHash');
         asteroidGrid.clear();
         for (let i = 0; i < environmentAsteroids.length; i++) asteroidGrid.insert(environmentAsteroids[i]);
 
@@ -13924,6 +13931,8 @@ function gameLoopLogic(opts = null) {
 
         // Build bullet spatial hash for efficient collision detection
         rebuildBulletGrid(bullets);
+        globalProfiler.end('SpatialHash');
+        globalProfiler.start('LevelLogic');
 
         if (!warpActive && !bossActive && !sectorTransitionActive && initialSpawnDone) {
             // Ramp base count up over the first few minutes (start easier).
@@ -13981,8 +13990,8 @@ function gameLoopLogic(opts = null) {
             shakeOffsetY = (Math.random() - 0.5) * shakeMagnitude * 2;
             if (shakeTimer <= 0) { shakeOffsetX = 0; shakeOffsetY = 0; }
         }
-        camX += shakeOffsetX;
-        camY += shakeOffsetY;
+        // camX += shakeOffsetX;
+        // camY += shakeOffsetY;
     } else {
         shakeOffsetX = 0;
         shakeOffsetY = 0;
@@ -14058,8 +14067,13 @@ function gameLoopLogic(opts = null) {
     }
 
     // Hoisted resource objects to prevent GC
-    const pickupRes = { layer: pixiPickupLayer, textures: pixiTextures, pool: pixiPickupSpritePool };
-    const particleRes = { layer: pixiParticleLayer, whiteTexture: pixiTextureWhite, pool: pixiParticleSpritePool };
+    if (!window.cachedPickupRes) window.cachedPickupRes = { layer: null, textures: null, pool: null };
+    window.cachedPickupRes.layer = pixiPickupLayer; window.cachedPickupRes.textures = pixiTextures; window.cachedPickupRes.pool = pixiPickupSpritePool;
+    const pickupRes = window.cachedPickupRes;
+
+    if (!window.cachedParticleRes) window.cachedParticleRes = { layer: null, whiteTexture: null, pool: null };
+    window.cachedParticleRes.layer = pixiParticleLayer; window.cachedParticleRes.whiteTexture = pixiTextureWhite; window.cachedParticleRes.pool = pixiParticleSpritePool;
+    const particleRes = window.cachedParticleRes;
 
     const caveActive = (caveMode && caveLevel && caveLevel.active);
     // Use local refs in case update() clears the global (prevents null deref on draw()).
@@ -14079,12 +14093,32 @@ function gameLoopLogic(opts = null) {
         }
     }
 
+    if (doUpdate) globalProfiler.end('LevelLogic');
     // Asteroids should render behind everything else (drops, ships, UI).
+    globalProfiler.start('Entities');
     environmentAsteroids.forEach(a => { if (doUpdate) a.update(); if (doDraw) a.draw(ctx); });
 
-    coins.forEach(c => { if (doUpdate) c.update(player); if (doDraw) c.draw(ctx, pickupRes); });
-    nuggets.forEach(n => { if (doUpdate) n.update(player); if (doDraw) n.draw(ctx, pickupRes); });
-    powerups.forEach(p => { if (doUpdate) p.update(player); if (doDraw) p.draw(ctx, pickupRes); });
+    coins.forEach(c => {
+        if (doUpdate) c.update(player);
+        if (doDraw) {
+            if (isInView(c.pos.x, c.pos.y, 50)) c.draw(ctx, pickupRes);
+            else if (typeof c.cull === 'function') c.cull();
+        }
+    });
+    nuggets.forEach(n => {
+        if (doUpdate) n.update(player);
+        if (doDraw) {
+            if (isInView(n.pos.x, n.pos.y, 50)) n.draw(ctx, pickupRes);
+            else if (typeof n.cull === 'function') n.cull();
+        }
+    });
+    powerups.forEach(p => {
+        if (doUpdate) p.update(player);
+        if (doDraw) {
+            if (isInView(p.pos.x, p.pos.y, 60)) p.draw(ctx, pickupRes);
+            else if (typeof p.cull === 'function') p.cull();
+        }
+    });
     gateKeyItems.forEach(k => { if (doUpdate) k.update(); if (doDraw) k.draw(ctx); });
     shootingStars.forEach(s => { if (doUpdate) s.update(); if (doDraw) s.draw(ctx); });
     caches.forEach(c => { if (doUpdate) c.update(); if (doDraw) c.draw(ctx); });
@@ -14199,7 +14233,10 @@ function gameLoopLogic(opts = null) {
     for (let i = 0, len = particles.length; i < len; i++) {
         const p = particles[i];
         if (doUpdate) p.update();
-        if (doDraw && isInView(p.pos.x, p.pos.y)) p.draw(ctx, particleRes);
+        if (doDraw) {
+            if (isInView(p.pos.x, p.pos.y, 20)) p.draw(ctx, particleRes);
+            else if (typeof p.cull === 'function') p.cull();
+        }
     }
 
     // Explosions - always update, cull drawing
@@ -14214,13 +14251,13 @@ function gameLoopLogic(opts = null) {
 
     for (let i = 0; i < shockwaves.length; i++) { const s = shockwaves[i]; if (doUpdate) s.update(); if (doDraw) s.draw(ctx); }
     if (doUpdate) compactArray(shockwaves);
+    globalProfiler.end('Entities');
 
-    // Render Pixi overlay once per frame (Pixi ticker is stopped).
-    if (doDraw && pixiApp && pixiApp.renderer && pixiApp.stage) {
-        try { pixiApp.renderer.render(pixiApp.stage); } catch (e) { }
-    }
+    // [MOVED] Pixi overlay render moved to end of Draw block
+
 
     if (doUpdate) {
+        globalProfiler.start('Cleanup');
         compactArray(bullets);
         compactArray(bossBombs);
         compactArray(guidedMissiles);
@@ -14243,17 +14280,21 @@ function gameLoopLogic(opts = null) {
         compactArray(contractEntities.anomalies);
         compactArray(contractEntities.fortresses);
         compactArray(contractEntities.wallTurrets);
+        globalProfiler.end('Cleanup');
 
+        globalProfiler.start('EntityCollision');
         resolveEntityCollision();
+        globalProfiler.end('EntityCollision');
 
         // Bullet Logic Loop
+        globalProfiler.start('BulletLogic');
         setProjectileImpactSoundContext(true);
         try {
             for (let i = bullets.length - 1; i >= 0; i--) {
                 const b = bullets[i];
                 let hit = false;
                 const astCol = checkBulletWallCollision(b);
-                if (astCol.hit) {
+                if (astCol) {
                     hit = true;
                     b.dead = true;
                     if (astCol.obj) {
@@ -14681,10 +14722,13 @@ function gameLoopLogic(opts = null) {
             }
         } finally {
             setProjectileImpactSoundContext(false);
+            globalProfiler.end('BulletLogic');
         }
     }
+    if (doUpdate) globalProfiler.end('Update');
 
     if (doDraw) {
+        globalProfiler.start('Draw');
         // Draw cave boundaries on top. 
         if (caveActive) {
             caveLevel.draw(ctx, camX, camY, height, zoom);
@@ -14700,7 +14744,16 @@ function gameLoopLogic(opts = null) {
         updateMiniEventUI();
         updateKeysUI();
         if (bossActive && boss && typeof boss.drawBossHud === 'function') boss.drawBossHud(ctx);
+
+        // Render Pixi overlay (MOVED from Update loop)
+        if (pixiApp && pixiApp.renderer && pixiApp.stage) {
+            globalProfiler.start('PixiRender');
+            try { pixiApp.renderer.render(pixiApp.stage); } catch (e) { }
+            globalProfiler.end('PixiRender');
+        }
     }
+    if (doDraw) globalProfiler.end('Draw');
+    globalProfiler.end('GameLoopLogic');
 }
 
 function drawStationIndicator() {

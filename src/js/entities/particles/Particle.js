@@ -63,6 +63,10 @@ export class Particle extends Entity {
         ctx.fillRect(this.pos.x, this.pos.y, 2, 2);
         ctx.globalAlpha = 1.0;
     }
+
+    cull() {
+        if (this.sprite) this.sprite.visible = false;
+    }
 }
 
 /**

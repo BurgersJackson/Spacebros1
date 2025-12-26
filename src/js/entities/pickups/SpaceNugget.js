@@ -110,4 +110,8 @@ export class SpaceNugget extends Entity {
         ctx.stroke();
         ctx.restore();
     }
+
+    cull() {
+        if (this.sprite) this.sprite.visible = false;
+    }
 }
