@@ -72,7 +72,23 @@ export class Vector {
     static angle(v1, v2) {
         return Math.atan2(v2.y - v1.y, v2.x - v1.x);
     }
+
+    /**
+     * Squared distance between two vectors (faster than dist, no sqrt).
+     * Use for distance comparisons: distSq < threshold * threshold
+     */
+    static distSq(v1, v2) {
+        const dx = v2.x - v1.x;
+        const dy = v2.y - v1.y;
+        return dx * dx + dy * dy;
+    }
 }
+
+// Reusable temp vectors for zero-allocation calculations
+// Use these in hot paths instead of creating new Vector instances
+export const _tempVec1 = new Vector();
+export const _tempVec2 = new Vector();
+export const _tempVec3 = new Vector();
 
 /**
  * Spatial hash grid for efficient neighbor queries.

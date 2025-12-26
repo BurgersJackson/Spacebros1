@@ -1,5 +1,9 @@
 // --- Module Imports ---
-import { Vector, SpatialHash } from './core/math.js';
+import { Vector, SpatialHash, _tempVec1, _tempVec2 } from './core/math.js';
+import {
+    updateViewBounds, viewBounds, isInView, entityInView,
+    bulletGrid, rebuildBulletGrid, distSq, distLessThan
+} from './core/performance.js';
 import { colorToPixi } from './rendering/colors.js';
 import { Entity } from './entities/Entity.js';
 import {
@@ -3787,6 +3791,8 @@ class Enemy extends Entity {
         this.sprite = null;
         this._pixiGfx = null;
         this._pixiNameText = null;
+        this.freezeTimer = 0;
+        this.freezeCooldown = 0;
 
         if (startPos) {
             this.pos.x = startPos.x;
@@ -3972,7 +3978,7 @@ class Enemy extends Entity {
             this.vel.x = 0;
             this.vel.y = 0;
             // Skip AI movement when frozen
-        } else if (player.stats.slowField > 0) {
+        } else if (player.stats.slowField > 0 && !this.isCruiser) {
             if (this.freezeCooldown > 0) this.freezeCooldown--;
 
             const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
@@ -4909,10 +4915,36 @@ class Base extends Entity {
 
         this.vel.x = Math.cos(angle) * speed;
         this.vel.y = Math.sin(angle) * speed;
+
+        this.freezeTimer = 0;
+        this.freezeCooldown = 0;
     }
 
     update() {
         if (this.dead) return;
+
+        // Stasis Field Logic (Freeze)
+        if (this.freezeTimer > 0) {
+            this.freezeTimer--;
+            this.vel.x = 0;
+            this.vel.y = 0;
+            // Skip logic when frozen
+        } else if (player.stats.slowField > 0) {
+            if (this.freezeCooldown > 0) this.freezeCooldown--;
+
+            const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+            if (dist < player.stats.slowField && this.freezeCooldown <= 0) {
+                this.freezeTimer = player.stats.slowFieldDuration;
+                this.freezeCooldown = this.freezeTimer + 120; // 2s immunity after freeze
+                spawnParticles(this.pos.x, this.pos.y, 10, '#0ff');
+            }
+        }
+
+        if (this.freezeTimer > 0) {
+            super.update();
+            return;
+        }
+
         if (player && !player.dead) {
             const dx = player.pos.x - this.pos.x;
             const dy = player.pos.y - this.pos.y;
@@ -10442,8 +10474,8 @@ class SpaceStation extends Entity {
         this.innerShieldRadius = Math.floor(520 * 0.65);
 
         // High segment count for "boss" feel
-        this.shieldSegments = new Array(72).fill(5);
-        this.innerShieldSegments = new Array(64).fill(5);
+        this.shieldSegments = new Array(36).fill(5);
+        this.innerShieldSegments = new Array(32).fill(5);
 
         this.shieldRotation = 0;
         this.innerShieldRotation = 0;
@@ -10478,7 +10510,7 @@ class SpaceStation extends Entity {
             const e = enemies[i];
             if (e && !e.dead && e.assignedBase === this) myDefenderCount++;
         }
-        if (myDefenderCount < 8) {
+        if (myDefenderCount < 4) {
             if (this.defenderSpawnTimer <= 0) {
                 const angle = Math.random() * Math.PI * 2;
                 const d = this.radius + 70;
@@ -10486,7 +10518,7 @@ class SpaceStation extends Entity {
                 const sy = this.pos.y + Math.sin(angle) * d;
                 enemies.push(new Enemy('defender', { x: sx, y: sy }, this));
                 spawnParticles(sx, sy, 15, '#0f0');
-                this.defenderSpawnTimer = 45;
+                this.defenderSpawnTimer = 360; // Spawn every 3 seconds (120 FPS)
             } else {
                 this.defenderSpawnTimer--;
             }
@@ -13892,6 +13924,9 @@ function gameLoopLogic(opts = null) {
             for (let i = 0; i < warpZone.turrets.length; i++) targetGrid.insert(warpZone.turrets[i]);
         }
 
+        // Build bullet spatial hash for efficient collision detection
+        rebuildBulletGrid(bullets);
+
         if (!warpActive && !bossActive && !sectorTransitionActive && initialSpawnDone) {
             // Ramp base count up over the first few minutes (start easier).
             let elapsed = now - gameStartTime - pausedAccumMs;
@@ -13957,6 +13992,11 @@ function gameLoopLogic(opts = null) {
 
     if (isNaN(camX)) camX = 0;
     if (isNaN(camY)) camY = 0;
+
+    // Update view bounds for frustum culling (used throughout this frame)
+    const viewW = width / zoom;
+    const viewH = height / zoom;
+    updateViewBounds(camX + viewW / 2, camY + viewH / 2, viewW, viewH);
 
     if (doDraw) {
         // Defensive reset: ensure no draw routine can permanently corrupt the main canvas state
@@ -14085,11 +14125,34 @@ function gameLoopLogic(opts = null) {
         player.drawLaser(ctx);
         player.draw(ctx);
     }
-    floatingTexts.forEach(t => { if (doUpdate) t.update(); if (doDraw) t.draw(ctx); });
-    drones.forEach(d => { if (doUpdate) d.update(); if (doDraw) d.draw(ctx); });
 
-    bases.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
-    enemies.forEach(e => { if (doUpdate) e.update(); if (doDraw) e.draw(ctx); });
+    // FloatingTexts - always update, cull drawing by view
+    for (let i = 0, len = floatingTexts.length; i < len; i++) {
+        const t = floatingTexts[i];
+        if (doUpdate) t.update();
+        if (doDraw && isInView(t.pos.x, t.pos.y)) t.draw(ctx);
+    }
+
+    // Drones - always close to player, no culling needed
+    for (let i = 0, len = drones.length; i < len; i++) {
+        const d = drones[i];
+        if (doUpdate) d.update();
+        if (doDraw) d.draw(ctx);
+    }
+
+    // Bases - always update (can fire), cull drawing
+    for (let i = 0, len = bases.length; i < len; i++) {
+        const b = bases[i];
+        if (doUpdate) b.update();
+        if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
+    }
+
+    // Enemies - always update (AI), cull drawing
+    for (let i = 0, len = enemies.length; i < len; i++) {
+        const e = enemies[i];
+        if (doUpdate) e.update();
+        if (doDraw && isInView(e.pos.x, e.pos.y)) e.draw(ctx);
+    }
 
     if (bossActive && boss) {
         if (doUpdate) boss.update();
@@ -14113,12 +14176,40 @@ function gameLoopLogic(opts = null) {
         if (doDraw && sContainer) sContainer.style.display = 'none';
     }
 
-    bullets.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
-    bossBombs.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
-    guidedMissiles.forEach(m => { if (doUpdate) m.update(); if (doDraw) m.draw(ctx); });
+    // Bullets - always update (movement), cull drawing
+    for (let i = 0, len = bullets.length; i < len; i++) {
+        const b = bullets[i];
+        if (doUpdate) b.update();
+        if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
+    }
 
-    for (let i = 0; i < particles.length; i++) { const p = particles[i]; if (doUpdate) p.update(); if (doDraw) p.draw(ctx, particleRes); }
-    for (let i = 0; i < explosions.length; i++) { const ex = explosions[i]; if (doUpdate) ex.update(); if (doDraw) ex.draw(ctx); }
+    // Boss bombs - always update, cull drawing
+    for (let i = 0, len = bossBombs.length; i < len; i++) {
+        const b = bossBombs[i];
+        if (doUpdate) b.update();
+        if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
+    }
+
+    // Guided missiles - always update (tracking), cull drawing
+    for (let i = 0, len = guidedMissiles.length; i < len; i++) {
+        const m = guidedMissiles[i];
+        if (doUpdate) m.update();
+        if (doDraw && isInView(m.pos.x, m.pos.y)) m.draw(ctx);
+    }
+
+    // Particles - always update, cull drawing (high volume)
+    for (let i = 0, len = particles.length; i < len; i++) {
+        const p = particles[i];
+        if (doUpdate) p.update();
+        if (doDraw && isInView(p.pos.x, p.pos.y)) p.draw(ctx, particleRes);
+    }
+
+    // Explosions - always update, cull drawing
+    for (let i = 0, len = explosions.length; i < len; i++) {
+        const ex = explosions[i];
+        if (doUpdate) ex.update();
+        if (doDraw && isInView(ex.pos.x, ex.pos.y)) ex.draw(ctx);
+    }
 
     for (let i = 0; i < warpParticles.length; i++) { const p = warpParticles[i]; if (doUpdate) p.update(); if (doDraw) p.draw(ctx); }
     if (doUpdate) compactArray(warpParticles);
@@ -14226,10 +14317,13 @@ function gameLoopLogic(opts = null) {
                         }
                     }
                     else {
-                        for (let m of guidedMissiles) {
+                        for (let mi = 0, mlen = guidedMissiles.length; mi < mlen; mi++) {
+                            const m = guidedMissiles[mi];
                             if (!m || m.dead) continue;
-                            const dist = Math.hypot(b.pos.x - m.pos.x, b.pos.y - m.pos.y);
-                            if (dist < (m.radius || 0) + (b.radius || 0)) {
+                            const dx = b.pos.x - m.pos.x;
+                            const dy = b.pos.y - m.pos.y;
+                            const hitRad = (m.radius || 0) + (b.radius || 0);
+                            if (dx * dx + dy * dy < hitRad * hitRad) {
                                 if (typeof m.takeHit === 'function') m.takeHit(b.damage);
                                 else m.dead = true;
                                 hit = true;
@@ -14276,8 +14370,10 @@ function gameLoopLogic(opts = null) {
                             }
                             // Wall Turret Logic (Contracts)
                             else if (e instanceof WallTurret) {
-                                const dist = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
-                                if (dist < e.radius + b.radius) {
+                                const wtDx = b.pos.x - e.pos.x;
+                                const wtDy = b.pos.y - e.pos.y;
+                                const wtHitRad = e.radius + b.radius;
+                                if (wtDx * wtDx + wtDy * wtDy < wtHitRad * wtHitRad) {
                                     e.hp -= b.damage;
                                     hit = true;
                                     playSound('hit');
@@ -14291,8 +14387,10 @@ function gameLoopLogic(opts = null) {
                             }
                             // Warp Turret Logic
                             else if (e instanceof WarpTurret) {
-                                const dist = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
-                                if (dist < e.radius + b.radius) {
+                                const wpDx = b.pos.x - e.pos.x;
+                                const wpDy = b.pos.y - e.pos.y;
+                                const wpHitRad = e.radius + b.radius;
+                                if (wpDx * wpDx + wpDy * wpDy < wpHitRad * wpHitRad) {
                                     e.hp -= b.damage;
                                     hit = true;
                                     playSound('hit');
