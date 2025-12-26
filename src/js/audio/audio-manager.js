@@ -145,9 +145,10 @@ export function playSound(type, volumeMult = 1) {
 
         switch (type) {
             case 'shoot': {
-                const { osc, gain } = createOsc('sawtooth', 880, 0.15, 0.1);
-                osc.frequency.exponentialRampToValueAtTime(110, now + 0.15);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                // Deeper bass-heavy version: 700Hz -> 50Hz, reduced volume
+                const { osc, gain } = createOsc('triangle', 700, 0.15, 0.075);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 0.15);
+                gain.gain.linearRampToValueAtTime(0, now + 0.15);
                 osc.start(now);
                 osc.stop(now + 0.15);
                 break;

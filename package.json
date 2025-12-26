@@ -27,6 +27,7 @@
       "package.json",
       "electron/**/*",
       "assets/**/*",
+      "src/**/*",
       "index.html",
       "node_modules/phaser/dist/phaser.min.js"
     ],

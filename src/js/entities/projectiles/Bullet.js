@@ -16,14 +16,14 @@ export class Bullet extends Entity {
         this._poolType = 'bullet';
         this.sprite = null;
 
-        this.vel.x = Math.cos(angle) * speed;
-        this.vel.y = Math.sin(angle) * speed;
+        this.vel.x = Math.cos(angle) * speed * 2; // Doubled for 60Hz
+        this.vel.y = Math.sin(angle) * speed * 2;
         this.angle = angle;
-        this.speed = speed;
+        this.speed = speed * 2;
 
         this.damage = opts.damage || 1;
         this.radius = opts.radius || 4;
-        this.life = opts.life || 120;
+        this.life = opts.life ? opts.life / 2 : 60; // halved
         this.maxLife = this.life;
         this.color = opts.color || '#0ff';
         this.owner = opts.owner || 'player'; // 'player' or 'enemy'
@@ -130,14 +130,14 @@ export class Missile extends Entity {
 
         this.damage = opts.damage || 5;
         this.radius = opts.radius || 6;
-        this.life = opts.life || 180;
+        this.life = opts.life ? opts.life / 2 : 90;
         this.maxLife = this.life;
         this.color = opts.color || '#f80';
         this.owner = opts.owner || 'player';
 
-        this.turnRate = opts.turnRate || 0.08;
-        this.acceleration = opts.acceleration || 0.5;
-        this.maxSpeed = opts.maxSpeed || speed * 1.5;
+        this.turnRate = opts.turnRate ? opts.turnRate * 2 : 0.16;
+        this.acceleration = opts.acceleration ? opts.acceleration * 2 : 1.0;
+        this.maxSpeed = opts.maxSpeed ? opts.maxSpeed : speed * 1.5; // maxSpeed is already correctly set or scaled elsewhere if needed
     }
 
     update() {

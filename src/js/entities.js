@@ -181,8 +181,8 @@ export class Coin extends Entity {
         this.value = value;
         this.radius = 8;
         this.sprite = null;
-        this.vel.x = (Math.random() - 0.5) * 0.5;
-        this.vel.y = (Math.random() - 0.5) * 0.5;
+        this.vel.x = (Math.random() - 0.5) * 1.0; // doubled
+        this.vel.y = (Math.random() - 0.5) * 1.0; // doubled
         this.magnetized = false;
         this.flash = 0;
     }
@@ -282,8 +282,8 @@ export class HealthPowerUp extends Entity {
         this._pixiPool = 'pickup';
         this.radius = 15;
         this.sprite = null;
-        this.vel.x = (Math.random() - 0.5) * 2;
-        this.vel.y = (Math.random() - 0.5) * 2;
+        this.vel.x = (Math.random() - 0.5) * 4; // doubled
+        this.vel.y = (Math.random() - 0.5) * 4; // doubled
         this.magnetized = false;
         this.flash = 0;
     }
@@ -327,11 +327,11 @@ export class EnvironmentAsteroid extends Entity {
         super(x, y);
         this.radius = r;
         this.sizeLevel = sizeLevel;
-        const speed = (Math.random() * 0.2) + 0.1;
+        const speed = (Math.random() * 0.4) + 0.2; // doubled
         const angle = Math.random() * Math.PI * 2;
         this.vel.x = Math.cos(angle) * speed;
         this.vel.y = Math.sin(angle) * speed;
-        this.rotSpeed = (Math.random() - 0.5) * 0.01;
+        this.rotSpeed = (Math.random() - 0.5) * 0.02; // doubled
         this.unbreakable = false;
         this.contractId = null;
 
@@ -414,8 +414,8 @@ export class SpaceNugget extends Entity {
         this.value = value;
         this.radius = 10;
         this.sprite = null;
-        this.vel.x = (Math.random() - 0.5) * 0.6;
-        this.vel.y = (Math.random() - 0.5) * 0.6;
+        this.vel.x = (Math.random() - 0.5) * 1.2; // doubled
+        this.vel.y = (Math.random() - 0.5) * 1.2; // doubled
         this.magnetized = false;
         this.flash = 0;
     }

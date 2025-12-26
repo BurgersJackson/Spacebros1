@@ -1914,11 +1914,11 @@ class EnvironmentAsteroid extends Entity {
         this.sizeLevel = sizeLevel;
         this.sprite = null;
         this._pixiAsteroidIndex = Math.floor(Math.random() * 12);
-        const speed = (Math.random() * 0.2) + 0.1;
+        const speed = (Math.random() * 0.4) + 0.2; // doubled for 60Hz
         const angle = Math.random() * Math.PI * 2;
         this.vel.x = Math.cos(angle) * speed;
         this.vel.y = Math.sin(angle) * speed;
-        this.rotSpeed = (Math.random() - 0.5) * 0.01;
+        this.rotSpeed = (Math.random() - 0.5) * 0.04; // doubled for 60Hz
 
         this.vertices = [];
         const points = 8 + Math.floor(Math.random() * 6);
@@ -2212,8 +2212,8 @@ class Spaceship extends Entity {
         this.radius = 30;
         this.angle = -Math.PI / 2;
         this.turretAngle = -Math.PI / 2;
-        this.baseThrust = 0.15;
-        this.baseMaxSpeed = 6.0;
+        this.baseThrust = 0.60; // quadrupled (0.15 * 4) for 60Hz
+        this.baseMaxSpeed = 12.0; // doubled (6.0 * 2) for 60Hz
 
         // Progression
         this.xp = 0;
@@ -2241,11 +2241,11 @@ class Spaceship extends Entity {
         this.magnetRadius = 150;
 
         this.thrustPower = this.baseThrust;
-        this.rotationSpeed = 0.06;
-        this.friction = 0.99;
-        this.maxSpeed = this.baseMaxSpeed;
+        this.rotationSpeed = 0.12; // doubled for 60Hz
+        this.friction = 0.98; // 0.99^2 for 60Hz logic to stay same real-time speed
+        this.maxSpeed = this.baseMaxSpeed; // Correctly uses 12.0 now
 
-        this.invulnerable = 180;
+        this.invulnerable = 90; // halved for 60Hz
         this.visible = true;
         this.maxHp = 25;  // starting health hp
         this.hp = this.maxHp;
@@ -2266,10 +2266,10 @@ class Spaceship extends Entity {
         this.outerShieldSegments = [];
         this.outerShieldRotation = 0;
 
-        this.baseFireDelay = 24;
-        this.fireDelay = 24;
+        this.baseFireDelay = 12;
+        this.fireDelay = 12;
         this.autofireTimer = 0;
-        this.baseShotgunDelay = 60;  // shotgun fire rate (lower = faster)
+        this.baseShotgunDelay = 30;  // shotgun fire rate (lower = faster)
         this.shotgunDelay = this.baseShotgunDelay;
         this.shotgunTimer = 0;
         this.turretLevel = 1;
@@ -2317,7 +2317,7 @@ class Spaceship extends Entity {
         this.vel.x = 0;
         this.vel.y = 0;
         this.angle = -Math.PI / 2;
-        this.invulnerable = 180;
+        this.invulnerable = 90; // halved for 60Hz
         this.dead = false;
         this.visible = true;
         this.hp = this.maxHp;
@@ -2512,7 +2512,7 @@ class Spaceship extends Entity {
             this.missileTimer--;
             if (this.missileTimer <= 0) {
                 this.fireMissiles();
-                this.missileTimer = 60 / this.stats.fireRateMult;
+                this.missileTimer = 30 / this.stats.fireRateMult;
             }
         }
 
@@ -2619,7 +2619,7 @@ class Spaceship extends Entity {
         }
         // Player shooting SFX (MP3), rate-limited.
         const now = Date.now();
-        if (!this._lastShootSfxAt || (now - this._lastShootSfxAt) >= 200) {
+        if (!this._lastShootSfxAt || (now - this._lastShootSfxAt) >= 100) {
             playSound('shoot', 0.5);
             this._lastShootSfxAt = now;
         }
@@ -3255,7 +3255,7 @@ class CruiserMineBomb extends Entity {
         super(owner.pos.x, owner.pos.y);
         this.owner = owner;
         this.angle = angle;
-        this.speed = 6.5;
+        this.speed = 13.0;
         this.vel.x = Math.cos(angle) * this.speed;
         this.vel.y = Math.sin(angle) * this.speed;
         this.radius = 14;
@@ -3623,14 +3623,14 @@ class Bullet extends Entity {
     }
     init(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0, shape = null) {
         this.pos.x = x; this.pos.y = y;
-        this.speed = speed;
+        this.speed = speed * 2; // Doubled for 60Hz
         this.angle = angle;
         this.vel.x = Math.cos(angle) * this.speed;
         this.vel.y = Math.sin(angle) * this.speed;
         this.isEnemy = isEnemy;
         this.damage = damage;
         this.radius = radius;
-        this.life = 100 * player.stats.rangeMult;
+        this.life = 50 * player.stats.rangeMult; // 100 / 2
         this.color = color;
         this.homing = homing;
         this.ignoreShields = false;
@@ -3675,7 +3675,7 @@ class Bullet extends Entity {
                 while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                 while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-                const turnRate = this.homing === 2 ? 0.2 : 0.05;
+                const turnRate = this.homing === 2 ? 0.4 : 0.1; // doubled for 60Hz
                 this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), turnRate);
 
                 this.vel.x = Math.cos(this.angle) * this.speed;
@@ -3805,12 +3805,10 @@ class Enemy extends Entity {
 
         this.radius = 20;
         const speedMult = 1 + (difficultyTier - 1) * 0.1;
-        this.thrustPower = 0.12 * speedMult;
-        this.maxSpeed = 4.0 * speedMult;
-        this.thrustPower = 0.18 * speedMult;
-        this.maxSpeed = 6.8 * speedMult;
-        this.rotationSpeed = 0.05;
-        this.friction = 0.97;
+        this.thrustPower = 0.72 * speedMult; // quadrupled (0.18 * 4) for 60Hz
+        this.maxSpeed = 13.6 * speedMult; // doubled (6.8 * 2) for 60Hz
+        this.rotationSpeed = 0.1; // 0.05 * 2
+        this.friction = 0.94; // 0.97^2 approx 0.941
 
         if (this.type === 'roamer') {
             this.hp = 1;
@@ -3823,17 +3821,17 @@ class Enemy extends Entity {
         } else if (this.type === 'hunter') {
             this.hp = 12 + (difficultyTier * 3);
             this.radius = Math.round(22 * 1.35);
-            this.maxSpeed = 6.5 + (difficultyTier * 0.25);
-            this.thrustPower = 0.3;
+            this.maxSpeed = 13.0 + (difficultyTier * 0.5); // doubled
+            this.thrustPower = 1.2; // quadrupled (0.3 * 4)
             this.shieldSegments = new Array(4).fill(1);
             this.shieldRadius = Math.round(30 * 1.35);
-            this.shootTimer = 40;
+            this.shootTimer = 20; // 40 / 2
         } else {
             this.hp = 5 + (difficultyTier - 1) * 2;
         }
 
-        this.shootTimer = 80; // faster baseline fire
-        if (this.type === 'elite_roamer' || this.type === 'hunter') this.shootTimer = 60;
+        this.shootTimer = 40; // 80 / 2
+        if (this.type === 'elite_roamer' || this.type === 'hunter') this.shootTimer = 30; // 60 / 2
 
         // Named elite modifiers
         if (this.type === 'elite_roamer' || this.type === 'hunter') {
@@ -3867,12 +3865,12 @@ class Enemy extends Entity {
             this.gunboatLevel = overrideLevel ? overrideLevel : ((difficultyTier >= 4 || (player && player.level >= 6)) ? 2 : 1);
             this.radius = 30; // match player size
             this.hp = this.gunboatLevel === 1 ? 10 : 16;
-            this.maxSpeed = 4.0;
-            this.thrustPower = 0.22;
-            this.shootTimer = this.gunboatLevel === 1 ? 21 : 17; // 50% faster
+            this.maxSpeed = 8.0; // doubled
+            this.thrustPower = 0.88; // quadrupled (0.22 * 4)
+            this.shootTimer = this.gunboatLevel === 1 ? 11 : 9; // ~half
             this.shieldSegments = new Array(10).fill(2);
             this.shieldRadius = 45;
-            this.gunboatShieldRecharge = 180; // frames between shield regen (~3s at 60fps)
+            this.gunboatShieldRecharge = 90; // halved for 60Hz (approx 1.5s)
             const gunboatSizeMult = 3;
             this.radius = Math.round(this.radius * gunboatSizeMult);
             this.shieldRadius = Math.round(this.shieldRadius * gunboatSizeMult);
@@ -4256,7 +4254,7 @@ class Enemy extends Entity {
                         bullets.push(new Bullet(bx, by, a2, true, 3, 22, 4, '#0ff'));
                     }
                     spawnBarrelSmoke(bx, by, angle);
-                    this.shootTimer = this.isCruiser ? this.cruiserFireDelay || 24 : (this.gunboatLevel === 1 ? 21 : 16);
+                    this.shootTimer = this.isCruiser ? this.cruiserFireDelay || 24 : (this.gunboatLevel === 1 ? 11 : 9);
                 } else if (this.type === 'elite_roamer' || this.type === 'hunter') {
                     const bx = this.pos.x + Math.cos(angle) * 25;
                     const by = this.pos.y + Math.sin(angle) * 25;
@@ -4266,7 +4264,7 @@ class Enemy extends Entity {
                         bullets.push(new Bullet(bx, by, a2, true, 1, 11, 5, '#f0f'));
                     }
                     spawnBarrelSmoke(bx, by, angle);
-                    this.shootTimer = this.type === 'hunter' ? 30 : 60;
+                    this.shootTimer = this.type === 'hunter' ? 20 : 30;
                 } else if (difficultyTier >= 5 && this.type === 'roamer') {
                     for (let i = -1; i <= 1; i++) {
                         const a = angle + i * 0.2;
@@ -4275,13 +4273,13 @@ class Enemy extends Entity {
                         bullets.push(new Bullet(bx, by, a, true, 1));
                         spawnBarrelSmoke(bx, by, a);
                     }
-                    this.shootTimer = 80;
+                    this.shootTimer = 40;
                 } else {
                     const bx = this.pos.x + Math.cos(angle) * 20;
                     const by = this.pos.y + Math.sin(angle) * 20;
                     bullets.push(new Bullet(bx, by, angle, true, 1));
                     spawnBarrelSmoke(bx, by, angle);
-                    this.shootTimer = 80;
+                    this.shootTimer = 40;
                 }
                 playSound('shoot');
             }
@@ -4289,7 +4287,7 @@ class Enemy extends Entity {
     }
 
     updateAIState() {
-        if (!player || player.dead) { this.aiState = 'IDLE'; this.aiTimer = 60; return; }
+        if (!player || player.dead) { this.aiState = 'IDLE'; this.aiTimer = 30; return; }
         const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
 
         // All roamers (elite/hunter included) should be actively seeking, not waiting
@@ -4312,7 +4310,7 @@ class Enemy extends Entity {
                 this.flankSide = Math.random() < 0.5 ? 1 : -1;
             } else if (dist > 800) {
                 this.aiState = 'SEEK';
-                this.aiTimer = 60;
+                this.aiTimer = 30;
             } else {
                 const roll = Math.random();
                 if (roll < 0.6) { this.aiState = 'ORBIT'; this.aiTimer = 120 + Math.random() * 60; }
@@ -4863,7 +4861,7 @@ class Base extends Entity {
         this.type = type;
         this.radius = 70;
         this.hp = 10 + (difficultyTier - 1) * 5;
-        this.shootTimer = 150;
+        this.shootTimer = 75; // 150 / 2
         this.angle = 0;
         this.turretAngle = 0;
         this.shieldRadius = 110;
@@ -4890,11 +4888,11 @@ class Base extends Entity {
             this.hp *= 1.5;
             outerHp = Math.ceil(outerHp * 1.5);
             innerHp = Math.ceil(innerHp * 1.5);
-            this.shootTimer = 120;
+            this.shootTimer = 60; // 120 / 2
         } else if (type === 'rapid') {
             this.hp *= 0.7;
             outerHp = Math.max(1, Math.floor(outerHp * 0.8));
-            this.shootTimer = 30;
+            this.shootTimer = 15; // 30 / 2
         }
 
         this.maxShieldHp = outerHp;
@@ -4981,7 +4979,7 @@ class Base extends Entity {
             if (elapsed < 0) elapsed = 0;
             const elapsedMinutes = elapsed / 60000;
             const rampT = Math.max(0, Math.min(1, elapsedMinutes / 10));
-            const chaseAccel = (0.03 + 0.02 * rampT);
+            const chaseAccel = (0.12 + 0.08 * rampT);
             const speedRamp = (0.85 + 0.15 * rampT);
 
             if (dist > 250) {
@@ -4992,7 +4990,7 @@ class Base extends Entity {
             this.vel.x += dreadAvoidX;
             this.vel.y += dreadAvoidY;
             const speed = this.vel.mag();
-            let maxSpeed = this.type === 'heavy' ? 1.5 : (this.type === 'rapid' ? 3.0 : 2.5);
+            let maxSpeed = this.type === 'heavy' ? 3.0 : (this.type === 'rapid' ? 6.0 : 5.0); // doubled for 60Hz
             maxSpeed *= speedRamp;
             if (speed > maxSpeed) this.vel.mult(maxSpeed / speed);
         } else {
@@ -5038,7 +5036,7 @@ class Base extends Entity {
                             spawnBarrelSmoke(bx, by, a);
                         }
                         playSound('heavy_shoot');
-                        this.shootTimer = Math.round(120 * cooldownMult);
+                        this.shootTimer = Math.round(60 * cooldownMult);
                     } else if (this.type === 'rapid') {
                         const spread = (Math.random() - 0.5) * 0.1;
                         const a = shootAngle + spread;
@@ -5047,7 +5045,7 @@ class Base extends Entity {
                         bullets.push(new Bullet(bx, by, a, true, 1, 14, 3, '#0ff'));
                         spawnBarrelSmoke(bx, by, a);
                         playSound('rapid_shoot');
-                        this.shootTimer = Math.round(20 * cooldownMult);
+                        this.shootTimer = Math.round(15 * cooldownMult);
                     } else {
                         const damage = 2;
                         // 3-sided star shooting pattern
@@ -5059,7 +5057,7 @@ class Base extends Entity {
                             spawnBarrelSmoke(bx, by, a);
                         }
                         playSound('shoot');
-                        this.shootTimer = Math.round((difficultyTier >= 2 ? 40 : 60) * cooldownMult);
+                        this.shootTimer = Math.round((difficultyTier >= 2 ? 40 : 75) * cooldownMult);
                     }
                 }
             }
@@ -8736,7 +8734,7 @@ class MiniEventEscortDrone extends Entity {
         if (dWp < 70) { this.success(); return; }
 
         const close = dPlayer <= this.tetherRange;
-        const targetSpeed = close ? 3.0 : 0.55;
+        const targetSpeed = close ? 6.0 : 1.1;
         const ang = Math.atan2(dy, dx);
         const desiredVx = Math.cos(ang) * targetSpeed;
         const desiredVy = Math.sin(ang) * targetSpeed;
@@ -9067,13 +9065,13 @@ class Cruiser extends Enemy {
         this.shieldSegments = new Array(12).fill(shieldStrength);
         this.innerShieldSegments = new Array(18).fill(shieldStrength);
         this.innerShieldRotation = 0;
-        this.gunboatShieldRecharge = 180;
+        this.gunboatShieldRecharge = 90;
         this.gunboatMuzzleDist = Math.round(6 * this.cruiserHullScale);
-        this.cruiserWeaponRangeMult = 1.25;
+        this.cruiserWeaponRangeMult = 1.05625;
         this.baseGunboatRange = (900 + boost * 150) * this.cruiserWeaponRangeMult;
         this.gunboatRange = this.baseGunboatRange;
         this.cruiserBaseDamage = 1 + boost; // scales with encounters
-        this.cruiserFireDelay = Math.round(16 / 0.65); // base 35% slower vs gunboat
+        this.cruiserFireDelay = Math.round(16 / 1.3); // Scale fire delay appropriately for 60Hz (previously 16 / 0.65)
         this.circleStrafePreferred = true;
         this.despawnImmune = true;
         this.disableShieldRegen = true;
@@ -9087,10 +9085,10 @@ class Cruiser extends Enemy {
 
         // Arcade-style boss kit
         this.shieldStrength = shieldStrength;
-        this.vulnerableDurationFrames = 180;
+        this.vulnerableDurationFrames = 90;
         this.vulnerableTimer = 0;
         this.phaseName = 'INTRO';
-        this.phaseTimer = 90;
+        this.phaseTimer = 45;
         this.phaseIndex = 0;
         this.phaseTick = 0;
         // Reinforcements scale: first cruiser is 50% weaker/less; later scale up from that baseline
@@ -9100,8 +9098,8 @@ class Cruiser extends Enemy {
         this.helperCall70 = Math.max(1, Math.round(2 * this.helperScale));
         this.helperCall40 = Math.max(1, Math.round(3 * this.helperScale));
         this.helperBurst = Math.max(1, Math.round(2 * this.helperScale));
-        this.helperCooldownBase = Math.round(420 / Math.max(0.25, this.helperScale));
-        this.helperCooldown = Math.round(180 / Math.max(0.25, this.helperScale));
+        this.helperCooldownBase = Math.round(210 / Math.max(0.25, this.helperScale));
+        this.helperCooldown = Math.round(90 / Math.max(0.25, this.helperScale));
         this.helperStrengthTier = (encounterIndex <= 1) ? 0 : (encounterIndex === 2 ? 1 : 2);
         this.called70 = false;
         this.called40 = false;
@@ -9109,8 +9107,8 @@ class Cruiser extends Enemy {
 
         // Guided missiles for the 2nd cruiser (like flagship, but slower).
         this.guidedMissileEnabled = (encounterIndex === 2);
-        this.guidedMissileCd = 180;
-        this.guidedMissileInterval = 180; // ~3s
+        this.guidedMissileCd = 90;
+        this.guidedMissileInterval = 90; // ~1.5s
         this.guidedMissileCap = 2;
 
         // Heavier turning to feel like a capital ship
@@ -9129,11 +9127,11 @@ class Cruiser extends Enemy {
 
         // Phase sequence (rotated by encounter for variety)
         this.phaseSeq = [
-            { name: 'SALVO', duration: 360 },
-            { name: 'CURTAIN', duration: 300 },
-            { name: 'MINEFIELD', duration: 300 },
-            { name: 'SWEEP', duration: 300 },
-            { name: 'CHARGE', duration: 220 }
+            { name: 'SALVO', duration: 180 },
+            { name: 'CURTAIN', duration: 150 },
+            { name: 'MINEFIELD', duration: 150 },
+            { name: 'SWEEP', duration: 150 },
+            { name: 'CHARGE', duration: 110 }
         ];
         const rot = encounterIndex % this.phaseSeq.length;
         this.phaseSeq = this.phaseSeq.slice(rot).concat(this.phaseSeq.slice(0, rot));
@@ -9234,8 +9232,8 @@ class Cruiser extends Enemy {
         if (charging) {
             this.circleStrafePreferred = false;
             this.aiState = 'SEEK';
-            this.thrustPower = 0.16;
-            this.maxSpeed = 4.2;
+            this.thrustPower = 0.64; // quadrupled for 60Hz
+            this.maxSpeed = 8.4; // doubled for 60Hz
             this.gunboatRange = this.baseGunboatRange + 350;
         } else {
             // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
@@ -9251,34 +9249,34 @@ class Cruiser extends Enemy {
                 if (dist > 1700) this.moveMode = (r < 0.55) ? 'SEEK' : (r < 0.80 ? 'CIRCLE' : 'ORBIT');
                 else this.moveMode = (r < 0.38) ? 'CIRCLE' : (r < 0.60 ? 'ORBIT' : (r < 0.82 ? 'SEEK' : 'FLANK'));
                 this.flankSide = Math.random() < 0.5 ? 1 : -1;
-                this.moveModeTimer = 90 + Math.floor(Math.random() * 180);
+                this.moveModeTimer = 22 + Math.floor(Math.random() * 45);
             }
 
             if (this.moveMode === 'SEEK') {
                 this.circleStrafePreferred = false;
                 this.aiState = 'SEEK';
-                this.thrustPower = 0.13;
-                this.maxSpeed = 3.9;
+                this.thrustPower = 0.52; // quadrupled
+                this.maxSpeed = 7.8; // doubled
             } else if (this.moveMode === 'ORBIT') {
                 this.circleStrafePreferred = false;
                 this.aiState = 'ORBIT';
-                this.thrustPower = 0.12;
-                this.maxSpeed = 3.3;
+                this.thrustPower = 0.48; // quadrupled
+                this.maxSpeed = 6.6; // doubled
             } else if (this.moveMode === 'FLANK') {
                 this.circleStrafePreferred = false;
                 this.aiState = 'FLANK';
-                this.thrustPower = 0.14;
-                this.maxSpeed = 4.1;
+                this.thrustPower = 0.56; // quadrupled
+                this.maxSpeed = 8.2; // doubled
             } else {
                 this.circleStrafePreferred = true;
                 this.aiState = 'CIRCLE';
-                this.thrustPower = 0.10;
-                this.maxSpeed = 2.9;
+                this.thrustPower = 0.40; // quadrupled
+                this.maxSpeed = 5.8; // doubled
             }
             this.gunboatRange = this.baseGunboatRange;
         }
 
-        this.innerShieldRotation -= 0.02;
+        this.innerShieldRotation -= 0.08;
         super.update();
 
         // Shield generator gimmick (destroy SG hardpoint to stop regen)
@@ -9323,35 +9321,35 @@ class Cruiser extends Enemy {
         const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
 
         if (this.phaseName === 'SALVO') {
-            if (this.phaseTick % 22 === 0) {
+            if (this.phaseTick % 11 === 0) {
                 this.fireCannons(aim, 3, 0.18, 18, this.cruiserBaseDamage, '#f44');
             }
         } else if (this.phaseName === 'CURTAIN') {
-            if (this.phaseTick % 10 === 0) {
+            if (this.phaseTick % 5 === 0) {
                 this.fireSprayerFan(aim, 11, 1.1, 10, 1, '#f0f');
             }
-            if (this.phaseTick % 70 === 0 && this.hasHardpoint('cannon')) {
+            if (this.phaseTick % 35 === 0 && this.hasHardpoint('cannon')) {
                 this.fireCannons(aim, 2, 0.12, 20, this.cruiserBaseDamage, '#ff0');
             }
         } else if (this.phaseName === 'MINEFIELD') {
-            if (this.phaseTick % 90 === 1) {
+            if (this.phaseTick % 45 === 1) {
                 this.launchMinefieldBombs();
             }
         } else if (this.phaseName === 'SWEEP') {
             // Simple sweeping stream (telegraphed by consistent direction change)
-            if (this.phaseTick % 3 === 0) {
-                const t = (this.phaseTick % 240) / 240;
+            if (this.phaseTick % 2 === 0) {
+                const t = (this.phaseTick % 120) / 120;
                 const a = (Math.PI / 2 - 1.1) + t * 2.2;
                 this.fireSprayerSingle(a, 12, 1, '#0ff');
             }
-            if (this.phaseTick % 80 === 0) {
+            if (this.phaseTick % 40 === 0) {
                 this.fireRing(14, 8.4, 1, '#ff0');
             }
         } else if (this.phaseName === 'CHARGE') {
-            if (this.phaseTick % 18 === 0) {
+            if (this.phaseTick % 9 === 0) {
                 this.fireCannons(aim, 1, 0, 22, this.cruiserBaseDamage, '#f55');
             }
-            if (this.phaseTick % 35 === 0) {
+            if (this.phaseTick % 17 === 0) {
                 this.dropMine(aim + (Math.random() - 0.5) * 0.6, 4.0, 2, '#f80');
             }
         } else if (this.phaseName === 'INTRO') {
@@ -9384,7 +9382,7 @@ class Cruiser extends Enemy {
             const t = count === 1 ? 0 : (i / (count - 1) - 0.5);
             const a = baseAngle + t * spread;
             const b = new Bullet(p.x, p.y, a, true, dmg, speed, 4, color);
-            b.life = Math.round(120 * this.cruiserWeaponRangeMult);
+            b.life = Math.round(60 * this.cruiserWeaponRangeMult);
             bullets.push(b);
         }
         playSound('shoot');
@@ -9395,7 +9393,7 @@ class Cruiser extends Enemy {
         if (!spr) return;
         const p = this.hardpointWorld(spr);
         const b = new Bullet(p.x, p.y, angle, true, dmg, speed, 4, color);
-        b.life = Math.round(110 * this.cruiserWeaponRangeMult);
+        b.life = Math.round(55 * this.cruiserWeaponRangeMult);
         bullets.push(b);
     }
 
@@ -9404,7 +9402,7 @@ class Cruiser extends Enemy {
         if (!bay) return;
         const p = this.hardpointWorld(bay);
         const b = new Bullet(p.x, p.y, angle, true, dmg, speed, 11, color, 0, 'square');
-        b.life = Math.round(220 * this.cruiserWeaponRangeMult);
+        b.life = Math.round(110 * this.cruiserWeaponRangeMult);
         bullets.push(b);
         playSound('heavy_shoot');
     }
@@ -9430,7 +9428,7 @@ class Cruiser extends Enemy {
         for (let i = 0; i < n; i++) {
             const a = (Math.PI * 2 / n) * i;
             const b = new Bullet(p.x, p.y, a, true, dmg, speed, 4, color);
-            b.life = Math.round(140 * this.cruiserWeaponRangeMult);
+            b.life = Math.round(70 * this.cruiserWeaponRangeMult);
             bullets.push(b);
         }
         playSound('shotgun');
@@ -9576,7 +9574,7 @@ class Flagship extends Cruiser {
         this.isFlagship = true;
         this.despawnImmune = true;
         // Harder to punish: +2s invul by shrinking the core-exposed window.
-        this.vulnerableDurationFrames = 60;
+        this.vulnerableDurationFrames = 30; // halved for 60Hz
 
         // Bigger, slower, higher-stakes fight
         this.cruiserHullScale = 8.8;
@@ -9604,8 +9602,8 @@ class Flagship extends Cruiser {
         this.shieldSegments = new Array(14).fill(this.shieldStrength);
         this.innerShieldSegments = new Array(22).fill(this.shieldStrength);
 
-        this.thrustPower = 0.09;
-        this.maxSpeed = 2.7;
+        this.thrustPower = 0.36; // quadrupled (0.09 * 4) for 60Hz
+        this.maxSpeed = 5.4; // doubled (2.7 * 2) for 60Hz
         this.baseGunboatRange = this.baseGunboatRange * 1.15;
         this.gunboatRange = this.baseGunboatRange;
         this.cruiserBaseDamage = Math.max(this.cruiserBaseDamage, 2 + Math.floor(bonus / 2));
@@ -9616,19 +9614,19 @@ class Flagship extends Cruiser {
 
         // Tighten phases to keep it frantic
         this.phaseSeq = [
-            { name: 'SALVO', duration: 140 },
-            { name: 'CURTAIN', duration: 170 },
-            { name: 'MINEFIELD', duration: 200 },
-            { name: 'SWEEP', duration: 160 },
-            { name: 'CHARGE', duration: 120 }
-        ];
+            { name: 'SALVO', duration: 70 },
+            { name: 'CURTAIN', duration: 85 },
+            { name: 'MINEFIELD', duration: 100 },
+            { name: 'SWEEP', duration: 80 },
+            { name: 'CHARGE', duration: 60 }
+        ]; // halved for 60Hz
         this.phaseIndex = 0;
         this.phaseName = 'INTRO';
-        this.phaseTimer = 90;
+        this.phaseTimer = 45; // halved for 60Hz
         this.phaseTick = 0;
 
-        this.guidedMissileCd = 210;
-        this.guidedMissileInterval = 210; // ~3.5s
+        this.guidedMissileCd = 105;
+        this.guidedMissileInterval = 105; // halved for 60Hz (~1.75s)
         this.guidedMissileCap = 4;
     }
 
@@ -9947,32 +9945,32 @@ class WarpSentinelBoss extends Entity {
         this.shieldRotation = Math.random() * Math.PI * 2;
         this.innerShieldRotation = Math.random() * Math.PI * 2;
         this.lastShieldRegenAt = Date.now();
-        this.shieldRegenMs = 1400;
+        this.shieldRegenMs = 700;
 
         this.t = 0;
         this.phase = 1;
         this.coreRot = 0;
-        this.burstCooldown = 110;
-        this.mineCooldown = 260;
+        this.burstCooldown = 55;
+        this.mineCooldown = 130;
 
         // Smoother movement (no hard velocity snaps).
         this.orbitOffset = Math.random() * Math.PI * 2;
-        this.maxSpeed = 4.0;
-        this.dashCooldown = 260;
+        this.maxSpeed = 5.5;
+        this.dashCooldown = 240;
         this.dashWarmup = 0;
         this.dashFrames = 0;
         this.dashDir = { x: 0, y: 0 };
-        this.dashSpeed = 10;
+        this.dashSpeed = 15;
 
         // Telegraphed heavy laser (quick blast).
         // Fire less frequently; extra lock delay improves readability.
-        this.laserCooldown = 360;
+        this.laserCooldown = 180;
         this.laserCharge = 0;
-        this.laserChargeTotal = 70;
+        this.laserChargeTotal = 35;
         this.laserDelay = 0;
-        this.laserDelayTotal = 30; // ~0.5s at 60fps after lock-in
+        this.laserDelayTotal = 15; // ~0.25s at 60fps after lock-in
         this.laserFire = 0;
-        this.laserFireTotal = 10;
+        this.laserFireTotal = 5;
         this.laserAngle = 0;
         this.laserLen = 5200;
         this.laserWidth = 44;
@@ -9983,8 +9981,8 @@ class WarpSentinelBoss extends Entity {
         this.helperCall70 = 2;
         this.helperCall40 = 3;
         this.helperBurst = 2;
-        this.helperCooldownBase = 420;
-        this.helperCooldown = 180;
+        this.helperCooldownBase = 210;
+        this.helperCooldown = 90;
         this.called70 = false;
         this.called50 = false;
         this.called40 = false;
@@ -10043,9 +10041,9 @@ class WarpSentinelBoss extends Entity {
         if (!player || player.dead) return;
         const now = Date.now();
         this.t++;
-        this.coreRot += 0.02;
-        this.shieldRotation += 0.03;
-        this.innerShieldRotation -= 0.045;
+        this.coreRot += 0.04;
+        this.shieldRotation += 0.06;
+        this.innerShieldRotation -= 0.09;
 
         // Shield regen (outer then inner).
         if (now - this.lastShieldRegenAt >= this.shieldRegenMs) {
@@ -10074,7 +10072,7 @@ class WarpSentinelBoss extends Entity {
         const cx = this.zone ? this.zone.pos.x : this.pos.x;
         const cy = this.zone ? this.zone.pos.y : this.pos.y;
         const orbitR = this.phase === 2 ? 560 : 720;
-        const orbitSpeed = this.phase === 2 ? 0.0065 : 0.005;
+        const orbitSpeed = this.phase === 2 ? 0.01 : 0.0075;
         const orbitAng = this.orbitOffset + this.t * orbitSpeed;
         const targetX = cx + Math.cos(orbitAng) * orbitR;
         const targetY = cy + Math.sin(orbitAng) * orbitR;
@@ -10087,12 +10085,12 @@ class WarpSentinelBoss extends Entity {
             this.dashWarmup--;
             this.vel.mult(0.92);
             if (this.dashWarmup === 0) {
-                this.dashFrames = 180;
+                this.dashFrames = 60;
             }
         } else if (this.dashFrames > 0) {
             this.dashFrames--;
-            this.vel.x = this.vel.x * 0.60 + this.dashDir.x * this.dashSpeed * 0.40;
-            this.vel.y = this.vel.y * 0.60 + this.dashDir.y * this.dashSpeed * 0.40;
+            this.vel.x = this.vel.x * 0.80 + this.dashDir.x * this.dashSpeed * 0.20;
+            this.vel.y = this.vel.y * 0.80 + this.dashDir.y * this.dashSpeed * 0.20;
             if (this.dashFrames === 0) {
                 shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 2, 650, { damagePlayer: true, color: '#f0f' }));
                 playSound('explode');
@@ -10101,8 +10099,8 @@ class WarpSentinelBoss extends Entity {
             const dx = Math.cos(aimToPlayer);
             const dy = Math.sin(aimToPlayer);
             this.dashDir = { x: dx, y: dy };
-            this.dashWarmup = 18;
-            this.dashCooldown = this.phase === 2 ? 210 : 280;
+            this.dashWarmup = 9;
+            this.dashCooldown = this.phase === 2 ? 180 : 240;
             spawnParticles(this.pos.x, this.pos.y, 14, '#f0f');
             showOverlayMessage("SENTINEL CHARGING", '#f0f', 700);
         }
@@ -10171,7 +10169,7 @@ class WarpSentinelBoss extends Entity {
                 spawnParticles(player.pos.x, player.pos.y, 10, '#ff0');
                 playSound('shield_hit');
             }
-            player.invulnerable = 45;
+            player.invulnerable = 22;
         };
 
         if (this.laserFire > 0) {
@@ -10480,15 +10478,15 @@ class SpaceStation extends Entity {
         this.shieldRotation = 0;
         this.innerShieldRotation = 0;
 
-        this.turretReload = 19; // 25% slower
+        this.turretReload = 10; // halved (19 -> 10) for 60Hz
         this.defenderSpawnTimer = 0;
     }
 
     update() {
         if (this.dead) return;
         // Rotate shields in opposite directions for visual effect
-        this.shieldRotation += 0.003;
-        this.innerShieldRotation -= 0.0045;
+        this.shieldRotation += 0.006; // doubled for 60Hz
+        this.innerShieldRotation -= 0.009; // doubled for 60Hz
 
         // Check if player is within range to engage
         if (player && !player.dead) {
@@ -10497,7 +10495,7 @@ class SpaceStation extends Entity {
                 this.turretReload--;
                 if (this.turretReload <= 0) {
                     this.fireTurrets();
-                    this.turretReload = 19; // 25% slower
+                    this.turretReload = 10; // halved for 60Hz
                 }
                 this.manageDefenders();
             }
@@ -10518,7 +10516,7 @@ class SpaceStation extends Entity {
                 const sy = this.pos.y + Math.sin(angle) * d;
                 enemies.push(new Enemy('defender', { x: sx, y: sy }, this));
                 spawnParticles(sx, sy, 15, '#0f0');
-                this.defenderSpawnTimer = 360; // Spawn every 3 seconds (120 FPS)
+                this.defenderSpawnTimer = 180; // Spawn every 3 seconds (60 FPS)
             } else {
                 this.defenderSpawnTimer--;
             }
@@ -11415,7 +11413,7 @@ class Drone extends Entity {
     update() {
         if (!player || player.dead) return;
         const now = Date.now();
-        this.orbitAngle += 0.02;
+        this.orbitAngle += 0.04; // doubled for 60Hz
         const baseX = player.pos.x + Math.cos(this.orbitAngle) * this.orbitRadius;
         const baseY = player.pos.y + Math.sin(this.orbitAngle) * this.orbitRadius;
         this.pos.x = baseX;
@@ -11442,7 +11440,7 @@ class Drone extends Entity {
                 }
                 this.lastShieldTick = now;
             }
-        } else if (this.type === 'shooter' && this.timer % 50 === 0) {
+        } else if (this.type === 'shooter' && this.timer % 25 === 0) { // halved interval for 60Hz
             // Shooter drone now fires where the player's turret aims
             const aimAngle = player ? player.turretAngle : 0;
             bullets.push(new Bullet(this.pos.x, this.pos.y, aimAngle, false, 1.5, 14, 4, '#ff0'));
@@ -12071,7 +12069,7 @@ class WallTurret extends Entity {
         this.radius = 26;
         this.hp = 6;
         this.maxHp = 6;
-        this.reload = 25 + Math.floor(Math.random() * 20);
+        this.reload = 50 + Math.floor(Math.random() * 30);
         this.t = 0;
     }
 
