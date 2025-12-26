@@ -7,7 +7,7 @@ import {
     PIXI_SPRITE_POOL_MAX, USE_PIXI_OVERLAY, BACKGROUND_MUSIC_URL,
     ENABLE_NEBULA, NEBULA_ALPHA, ENABLE_PROJECTILE_IMPACT_SOUNDS
 } from './core/constants.js';
-import { SmokeParticle, Explosion, WarpParticle } from './entities/particles/Particle.js';
+import { Particle, SmokeParticle, Explosion, WarpParticle, Coin, FloatingText, HealthPowerUp, SpaceNugget, getOrCreateFloatingText } from './entities/index.js';
 import {
     initAudio, startMusic, stopMusic, setMusicMode, playSound, playMp3Sfx,
     toggleMusic as audioToggleMusic, isMusicEnabled, setProjectileImpactSoundContext,
@@ -85,282 +85,9 @@ const asteroidGrid = new SpatialHash(300); // Cell size approx max asteroid size
 
 // --- Base Classes (Vector and Entity imported from modules) ---
 
-class Particle extends Entity {
-    constructor(x, y, vx, vy, color = '#fff', life = 30) {
-        super(x, y);
-        this._poolType = 'particle';
-        this.sprite = null;
-        this.vel.x = vx || (Math.random() - 0.5) * 3;
-        this.vel.y = vy || (Math.random() - 0.5) * 3;
-        this.life = life + Math.random() * 10;
-        this.maxLife = this.life;
-        this.color = color;
-    }
-    reset(x, y, vx, vy, color = '#fff', life = 30) {
-        this.pos.x = x;
-        this.pos.y = y;
-        this.vel.x = vx || (Math.random() - 0.5) * 3;
-        this.vel.y = vy || (Math.random() - 0.5) * 3;
-        this.life = life + Math.random() * 10;
-        this.maxLife = this.life;
-        this.color = color;
-        this.dead = false;
-        this.sprite = null;
-    }
-    update() {
-        super.update();
-        this.life--;
-        if (this.life <= 0) this.dead = true;
-    }
-    draw(ctx) {
-        if (pixiParticleLayer && pixiTextureWhite) {
-            let spr = this.sprite;
-            if (!spr) {
-                spr = allocPixiSprite(pixiParticleSpritePool, pixiParticleLayer, pixiTextureWhite, 2);
-                this.sprite = spr;
-            }
-            if (spr) {
-                if (!spr.parent) pixiParticleLayer.addChild(spr);
-                spr.position.set(this.pos.x, this.pos.y);
-                spr.alpha = Math.max(0, this.life / this.maxLife);
-                spr.tint = colorToPixi(this.color);
-                return;
-            }
-        }
-        ctx.globalAlpha = this.life / this.maxLife;
-        ctx.fillStyle = this.color;
-        ctx.fillRect(this.pos.x, this.pos.y, 2, 2);
-        ctx.globalAlpha = 1.0;
-    }
-}
-
-// SmokeParticle, Explosion, WarpParticle imported from ./entities/particles/Particle.js
-
-class Coin extends Entity {
-    constructor(x, y, value) {
-        super(x, y);
-        this._pixiPool = 'pickup';
-        this.value = value;
-        this.radius = 8;
-        this.sprite = null;
-        this.vel.x = (Math.random() - 0.5) * 0.5;
-        this.vel.y = (Math.random() - 0.5) * 0.5;
-        this.magnetized = false;
-        this.flash = 0;
-    }
-
-    update() {
-        if (!player || player.dead) return;
-
-        const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-
-        if (dist < player.magnetRadius) {
-            this.magnetized = true;
-        }
-
-        if (this.magnetized) {
-            const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
-            const speed = 12 + (1000 / Math.max(10, dist));
-            this.vel.x = Math.cos(angle) * speed;
-            this.vel.y = Math.sin(angle) * speed;
-        } else {
-            this.vel.mult(0.98);
-        }
-
-        this.pos.add(this.vel);
-        this.flash++;
-    }
-
-    draw(ctx) {
-        if (this.dead) {
-            if (this.sprite && pixiPickupSpritePool) {
-                releasePixiSprite(pixiPickupSpritePool, this.sprite);
-                this.sprite = null;
-            }
-            return;
-        }
-        if (pixiPickupLayer && pixiTextures && (pixiTextures.coin1 || pixiTextures.coin5 || pixiTextures.coin10)) {
-            const tex = (this.value >= 10 ? pixiTextures.coin10 : (this.value >= 5 ? pixiTextures.coin5 : pixiTextures.coin1)) || pixiTextures.coin1;
-            let spr = this.sprite;
-            if (!spr && tex) {
-                spr = allocPixiSprite(pixiPickupSpritePool, pixiPickupLayer, tex, null, 0.5);
-                this.sprite = spr;
-            }
-            if (spr && tex) {
-                spr.texture = tex;
-                if (!spr.parent) pixiPickupLayer.addChild(spr);
-                spr.visible = true;
-                spr.position.set(this.pos.x, this.pos.y);
-                const pulse = 1.0 + Math.sin(this.flash * 0.1) * 0.2;
-                const base = (this.radius * 2) / Math.max(1, Math.max(tex.width, tex.height));
-                spr.scale.set(base * pulse);
-                spr.rotation = 0;
-                spr.tint = 0xffffff;
-                spr.alpha = 1;
-                spr.blendMode = PIXI.BLEND_MODES.ADD;
-                return;
-            }
-        }
-
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.2;
-        ctx.scale(scale, scale);
-        ctx.rotate(Math.PI / 4);
-
-        let color = '#ff0';
-        if (this.value >= 5) color = '#f0f';
-        if (this.value >= 10) color = '#0ff';
-
-        ctx.fillStyle = color;
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.rect(-4, -4, 8, 8);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.restore();
-    }
-}
-
-class FloatingText extends Entity {
-    constructor(x, y, text, color = '#ff0', life = 45, opts = {}) {
-        super(x, y);
-        this.text = text;
-        this.color = color;
-        this.life = life;
-        this.maxLife = life;
-        this.vel.y = -0.7;
-        this.vel.x = (Math.random() - 0.5) * 0.25;
-        this.key = opts.key || null;
-        this.amount = (typeof opts.amount === 'number') ? opts.amount : null;
-        this.prefix = opts.prefix || '';
-        this.suffix = opts.suffix || '';
-        this.lastBumpAt = Date.now();
-    }
-    bump(deltaAmount, x, y) {
-        if (typeof deltaAmount === 'number') {
-            if (typeof this.amount !== 'number') this.amount = 0;
-            this.amount += deltaAmount;
-            this.text = `${this.prefix}${this.amount}${this.suffix}`;
-        }
-        if (typeof x === 'number') this.pos.x = x;
-        if (typeof y === 'number') this.pos.y = y;
-        this.life = this.maxLife;
-        this.lastBumpAt = Date.now();
-    }
-    update() {
-        this.pos.add(this.vel);
-        this.vel.mult(0.98);
-        this.life--;
-        if (this.life <= 0) this.dead = true;
-    }
-    draw(ctx) {
-        if (this.dead) return;
-        const t = Math.max(0, this.life / this.maxLife);
-        const alpha = Math.min(1, t * t); // fade quickly
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = this.color;
-        // Camera is zoomed out; keep pickup text readable.
-        ctx.font = 'bold 60px Courier New';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = '#000';
-        ctx.fillText(this.text, 0, 0);
-        ctx.restore();
-    }
-}
-
-class HealthPowerUp extends Entity {
-    constructor(x, y) {
-        super(x, y);
-        this._pixiPool = 'pickup';
-        this.radius = 15;
-        this.sprite = null;
-        this.vel.x = (Math.random() - 0.5) * 2;
-        this.vel.y = (Math.random() - 0.5) * 2;
-        this.magnetized = false;
-        this.flash = 0;
-    }
-
-    update() {
-        if (!player || player.dead) return;
-
-        const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-
-        if (dist < player.magnetRadius) {
-            this.magnetized = true;
-        }
-
-        if (this.magnetized) {
-            const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
-            const speed = 10 + (1000 / Math.max(10, dist));
-            this.vel.x = Math.cos(angle) * speed;
-            this.vel.y = Math.sin(angle) * speed;
-        } else {
-            this.vel.mult(0.95);
-        }
-
-        this.pos.add(this.vel);
-        this.flash++;
-    }
-
-    draw(ctx) {
-        if (this.dead) {
-            if (this.sprite && pixiPickupSpritePool) {
-                releasePixiSprite(pixiPickupSpritePool, this.sprite);
-                this.sprite = null;
-            }
-            return;
-        }
-        if (pixiPickupLayer && pixiTextures && pixiTextures.health) {
-            const tex = pixiTextures.health;
-            let spr = this.sprite;
-            if (!spr) {
-                spr = allocPixiSprite(pixiPickupSpritePool, pixiPickupLayer, tex, null, 0.5);
-                this.sprite = spr;
-            }
-            if (spr) {
-                spr.texture = tex;
-                if (!spr.parent) pixiPickupLayer.addChild(spr);
-                spr.visible = true;
-                spr.position.set(this.pos.x, this.pos.y);
-                const pulse = 1.0 + Math.sin(this.flash * 0.1) * 0.2;
-                const base = (this.radius * 2) / Math.max(1, Math.max(tex.width, tex.height));
-                spr.scale.set(base * pulse);
-                spr.rotation = 0;
-                spr.tint = 0xffffff;
-                spr.alpha = 1;
-                spr.blendMode = PIXI.BLEND_MODES.ADD;
-                return;
-            }
-        }
-
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.2;
-        ctx.scale(scale, scale);
-
-        ctx.fillStyle = '#0f0';
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#0f0';
-
-        ctx.beginPath();
-        ctx.rect(-4, -10, 8, 20);
-        ctx.rect(-10, -4, 20, 8);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.shadowBlur = 0;
-        ctx.restore();
-    }
-}
+// Particle, SmokeParticle, Explosion, WarpParticle imported from ./entities/index.js
+// Coin, FloatingText, HealthPowerUp, SpaceNugget imported from ./entities/index.js
+// getOrCreateFloatingText imported from ./entities/index.js
 
 // --- Audio System ---
 // Audio functions imported from ./audio/audio-manager.js
@@ -5683,96 +5410,7 @@ class Base extends Entity {
     }
 }
 
-class SpaceNugget extends Entity {
-    constructor(x, y, value = 1) {
-        super(x, y);
-        this._pixiPool = 'pickup';
-        this.value = value;
-        this.radius = 10;
-        this.sprite = null;
-        this.vel.x = (Math.random() - 0.5) * 0.6;
-        this.vel.y = (Math.random() - 0.5) * 0.6;
-        this.magnetized = false;
-        this.flash = 0;
-    }
-
-    update() {
-        if (!player || player.dead) return;
-        const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        if (dist < player.magnetRadius) this.magnetized = true;
-
-        if (this.magnetized) {
-            const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
-            const speed = 11 + (900 / Math.max(10, dist));
-            this.vel.x = Math.cos(angle) * speed;
-            this.vel.y = Math.sin(angle) * speed;
-        } else {
-            this.vel.mult(0.98);
-        }
-
-        this.pos.add(this.vel);
-        this.flash++;
-    }
-
-    draw(ctx) {
-        if (this.dead) {
-            if (this.sprite && pixiPickupSpritePool) {
-                releasePixiSprite(pixiPickupSpritePool, this.sprite);
-                this.sprite = null;
-            }
-            return;
-        }
-        if (pixiPickupLayer && pixiTextures && pixiTextures.nugget) {
-            const tex = pixiTextures.nugget;
-            let spr = this.sprite;
-            if (!spr) {
-                spr = allocPixiSprite(pixiPickupSpritePool, pixiPickupLayer, tex, null, 0.5);
-                this.sprite = spr;
-            }
-            if (spr) {
-                spr.texture = tex;
-                if (!spr.parent) pixiPickupLayer.addChild(spr);
-                spr.visible = true;
-                spr.position.set(this.pos.x, this.pos.y);
-                const pulse = 1.0 + Math.sin(this.flash * 0.12) * 0.25;
-                const base = (this.radius * 2) / Math.max(1, Math.max(tex.width, tex.height));
-                spr.scale.set(base * pulse);
-                spr.rotation = 0;
-                spr.tint = 0xffffff;
-                spr.alpha = 1;
-                spr.blendMode = PIXI.BLEND_MODES.ADD;
-                return;
-            }
-        }
-
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        const scale = 1.0 + Math.sin(this.flash * 0.12) * 0.25;
-        ctx.scale(scale, scale);
-        ctx.rotate(Math.PI / 6);
-
-        const gradient = ctx.createLinearGradient(-10, -10, 10, 10);
-        gradient.addColorStop(0, '#ff0');
-        gradient.addColorStop(0.5, '#f90');
-        gradient.addColorStop(1, '#0ff');
-
-        ctx.fillStyle = gradient;
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-            const angle = (Math.PI / 3) * i;
-            const x = Math.cos(angle) * 8;
-            const y = Math.sin(angle) * 8;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-    }
-}
+// SpaceNugget imported from ./entities/index.js
 
 class GateKey extends Entity {
     constructor(x, y) {
@@ -13283,27 +12921,22 @@ function setupGameWorld() {
     if (tEl) tEl.innerText = '00:00';
 }
 
+function showFloatingText(x, y, amount, color = '#ff0', key = null) {
+    if (key) {
+        getOrCreateFloatingText(floatingTexts, key, x, y, amount, color, {
+            prefix: '+',
+            life: 70
+        });
+    } else {
+        floatingTexts.push(new FloatingText(x, y, `+${amount}`, color, 70, { prefix: '+' }));
+    }
+}
+
 function addPickupFloatingText(key, amount, color = '#ff0') {
     if (!player || player.dead) return;
     const x = player.pos.x;
     const y = player.pos.y - player.radius - 10;
-    const now = Date.now();
-
-    const mergeWindowMs = 450;
-    const existing = floatingTexts.find(t => t && !t.dead && t.key === key && (now - (t.lastBumpAt || 0)) <= mergeWindowMs);
-    if (existing) {
-        existing.bump(amount, x, y);
-        return;
-    }
-
-    floatingTexts.push(new FloatingText(
-        x,
-        y,
-        `+${amount}`,
-        color,
-        70,
-        { key, amount, prefix: '+', suffix: '' }
-    ));
+    showFloatingText(x, y, amount, color, key);
 }
 
 function awardCoinsInstant(amount, opts = {}) {
@@ -14352,9 +13985,10 @@ function gameLoopLogic(opts = null) {
 
     // Asteroids should render behind everything else (drops, ships, UI).
     environmentAsteroids.forEach(a => { if (doUpdate) a.update(); if (doDraw) a.draw(ctx); });
-    coins.forEach(c => { if (doUpdate) c.update(); if (doDraw) c.draw(ctx); });
-    nuggets.forEach(n => { if (doUpdate) n.update(); if (doDraw) n.draw(ctx); });
-    powerups.forEach(p => { if (doUpdate) p.update(); if (doDraw) p.draw(ctx); });
+    const pickupRes = { layer: pixiPickupLayer, textures: pixiTextures, pool: pixiPickupSpritePool };
+    coins.forEach(c => { if (doUpdate) c.update(player); if (doDraw) c.draw(ctx, pickupRes); });
+    nuggets.forEach(n => { if (doUpdate) n.update(player); if (doDraw) n.draw(ctx, pickupRes); });
+    powerups.forEach(p => { if (doUpdate) p.update(player); if (doDraw) p.draw(ctx, pickupRes); });
     gateKeyItems.forEach(k => { if (doUpdate) k.update(); if (doDraw) k.draw(ctx); });
     shootingStars.forEach(s => { if (doUpdate) s.update(); if (doDraw) s.draw(ctx); });
     caches.forEach(c => { if (doUpdate) c.update(); if (doDraw) c.draw(ctx); });
@@ -14424,7 +14058,8 @@ function gameLoopLogic(opts = null) {
     bullets.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
     bossBombs.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
     guidedMissiles.forEach(m => { if (doUpdate) m.update(); if (doDraw) m.draw(ctx); });
-    for (let i = 0; i < particles.length; i++) { const p = particles[i]; if (doUpdate) p.update(); if (doDraw) p.draw(ctx); }
+    const particleRes = { layer: pixiParticleLayer, whiteTexture: pixiTextureWhite, pool: pixiParticleSpritePool };
+    for (let i = 0; i < particles.length; i++) { const p = particles[i]; if (doUpdate) p.update(); if (doDraw) p.draw(ctx, particleRes); }
     for (let i = 0; i < explosions.length; i++) { const ex = explosions[i]; if (doUpdate) ex.update(); if (doDraw) ex.draw(ctx); }
 
     for (let i = 0; i < warpParticles.length; i++) { const p = warpParticles[i]; if (doUpdate) p.update(); if (doDraw) p.draw(ctx); }
