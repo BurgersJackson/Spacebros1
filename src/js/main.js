@@ -82,6 +82,7 @@ let arcadeWaveNextAt = 0;
 
 // --- Spatial Grid (SpatialHash imported from module) ---
 const asteroidGrid = new SpatialHash(300); // Cell size approx max asteroid size + buffer
+const targetGrid = new SpatialHash(350); // Spatial hash for Enemies, Bases, Turrets
 
 // --- Base Classes (Vector and Entity imported from modules) ---
 
@@ -13838,6 +13839,21 @@ function gameLoopLogic(opts = null) {
         asteroidGrid.clear();
         for (let i = 0; i < environmentAsteroids.length; i++) asteroidGrid.insert(environmentAsteroids[i]);
 
+        targetGrid.clear();
+        for (let i = 0; i < enemies.length; i++) targetGrid.insert(enemies[i]);
+        for (let i = 0; i < bases.length; i++) targetGrid.insert(bases[i]);
+        if (contractEntities) {
+            if (contractEntities.fortresses) {
+                for (let i = 0; i < contractEntities.fortresses.length; i++) targetGrid.insert(contractEntities.fortresses[i]);
+            }
+            if (contractEntities.wallTurrets) {
+                for (let i = 0; i < contractEntities.wallTurrets.length; i++) targetGrid.insert(contractEntities.wallTurrets[i]);
+            }
+        }
+        if (warpZone && warpZone.turrets) {
+            for (let i = 0; i < warpZone.turrets.length; i++) targetGrid.insert(warpZone.turrets[i]);
+        }
+
         if (!warpActive && !bossActive && !sectorTransitionActive && initialSpawnDone) {
             // Ramp base count up over the first few minutes (start easier).
             let elapsed = now - gameStartTime - pausedAccumMs;
@@ -13965,6 +13981,10 @@ function gameLoopLogic(opts = null) {
         ctx.translate(-camX, -camY);
     }
 
+    // Hoisted resource objects to prevent GC
+    const pickupRes = { layer: pixiPickupLayer, textures: pixiTextures, pool: pixiPickupSpritePool };
+    const particleRes = { layer: pixiParticleLayer, whiteTexture: pixiTextureWhite, pool: pixiParticleSpritePool };
+
     const caveActive = (caveMode && caveLevel && caveLevel.active);
     // Use local refs in case update() clears the global (prevents null deref on draw()).
     const wz = warpZone;
@@ -13985,7 +14005,7 @@ function gameLoopLogic(opts = null) {
 
     // Asteroids should render behind everything else (drops, ships, UI).
     environmentAsteroids.forEach(a => { if (doUpdate) a.update(); if (doDraw) a.draw(ctx); });
-    const pickupRes = { layer: pixiPickupLayer, textures: pixiTextures, pool: pixiPickupSpritePool };
+
     coins.forEach(c => { if (doUpdate) c.update(player); if (doDraw) c.draw(ctx, pickupRes); });
     nuggets.forEach(n => { if (doUpdate) n.update(player); if (doDraw) n.draw(ctx, pickupRes); });
     powerups.forEach(p => { if (doUpdate) p.update(player); if (doDraw) p.draw(ctx, pickupRes); });
@@ -14058,7 +14078,7 @@ function gameLoopLogic(opts = null) {
     bullets.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
     bossBombs.forEach(b => { if (doUpdate) b.update(); if (doDraw) b.draw(ctx); });
     guidedMissiles.forEach(m => { if (doUpdate) m.update(); if (doDraw) m.draw(ctx); });
-    const particleRes = { layer: pixiParticleLayer, whiteTexture: pixiTextureWhite, pool: pixiParticleSpritePool };
+
     for (let i = 0; i < particles.length; i++) { const p = particles[i]; if (doUpdate) p.update(); if (doDraw) p.draw(ctx, particleRes); }
     for (let i = 0; i < explosions.length; i++) { const ex = explosions[i]; if (doUpdate) ex.update(); if (doDraw) ex.draw(ctx); }
 
@@ -14124,7 +14144,11 @@ function gameLoopLogic(opts = null) {
                 if (!hit) {
                     if (b.isEnemy) {
                         if (!player.dead && !player.invulnerable) {
-                            const dist = Math.hypot(b.pos.x - player.pos.x, b.pos.y - player.pos.y);
+                            const dx = b.pos.x - player.pos.x;
+                            const dy = b.pos.y - player.pos.y;
+                            const distSq = dx * dx + dy * dy;
+                            const dist = Math.sqrt(distSq); // Only calc sqrt if needed for specific range checks, but kept here for logic flow
+
                             if (!hit && player.outerShieldSegments && player.outerShieldSegments.some(s => s > 0) &&
                                 dist < player.outerShieldRadius + b.radius && dist > player.outerShieldRadius - 10) {
                                 let angle = Math.atan2(b.pos.y - player.pos.y, b.pos.x - player.pos.x) - player.outerShieldRotation;
@@ -14150,7 +14174,8 @@ function gameLoopLogic(opts = null) {
                                     spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
                                 }
                             }
-                            if (!hit && dist < player.radius + b.radius) {
+                            const hitDist = player.radius + b.radius;
+                            if (!hit && distSq < hitDist * hitDist) {
                                 player.hp -= b.damage;
                                 hit = true;
                                 updateHealthUI();
@@ -14176,9 +14201,18 @@ function gameLoopLogic(opts = null) {
                         }
 
                         if (hit) continue;
-                        for (let e of enemies) {
-                            if (!e.dead) {
-                                const dist = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
+                        const nearby = targetGrid.query(b.pos.x, b.pos.y, 250);
+                        for (let e of nearby) {
+                            if (e.dead) continue;
+                            if (hit) break;
+
+                            // Enemy Logic
+                            if (e instanceof Enemy) {
+                                const dx = b.pos.x - e.pos.x;
+                                const dy = b.pos.y - e.pos.y;
+                                const distSq = dx * dx + dy * dy;
+                                const dist = Math.sqrt(distSq);
+
                                 if (!b.ignoreShields && e.shieldSegments && e.shieldSegments.length > 0 && dist < e.shieldRadius + b.radius && dist > e.shieldRadius - 10) {
                                     const activeIdx = e.shieldSegments.findIndex(s => s > 0);
                                     if (activeIdx !== -1) {
@@ -14189,29 +14223,178 @@ function gameLoopLogic(opts = null) {
                                     }
                                 }
 
-                                if (!hit && dist < e.radius + b.radius) {
+                                const hitRadius = e.radius + b.radius;
+                                if (!hit && distSq < hitRadius * hitRadius) {
                                     e.hp -= b.damage;
                                     hit = true;
                                     playSound('hit');
                                     spawnParticles(e.pos.x, e.pos.y, 3, '#fff');
                                     if (e.hp <= 0) {
-                                        e.kill(); // Drops coins
-                                        score += 100; // Legacy score bump
+                                        e.kill();
+                                        score += 100;
+                                    }
+                                    break;
+                                }
+                            }
+                            // Wall Turret Logic (Contracts)
+                            else if (e instanceof WallTurret) {
+                                const dist = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
+                                if (dist < e.radius + b.radius) {
+                                    e.hp -= b.damage;
+                                    hit = true;
+                                    playSound('hit');
+                                    spawnParticles(b.pos.x, b.pos.y, 6, '#ff8');
+                                    if (e.hp <= 0) {
+                                        if (typeof e.kill === 'function') e.kill();
+                                        else e.dead = true;
+                                    }
+                                    break;
+                                }
+                            }
+                            // Warp Turret Logic
+                            else if (e instanceof WarpTurret) {
+                                const dist = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
+                                if (dist < e.radius + b.radius) {
+                                    e.hp -= b.damage;
+                                    hit = true;
+                                    playSound('hit');
+                                    spawnParticles(b.pos.x, b.pos.y, 6, '#0ff');
+                                    if (e.hp <= 0) e.kill();
+                                    break;
+                                }
+                            }
+                            // Fortress Logic
+                            else if (e instanceof ContractFortress) {
+                                const distF = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
+
+                                if (!b.ignoreShields) {
+                                    for (let ri = 0; ri < e.rings.length; ri++) {
+                                        const ring = e.rings[ri];
+                                        if (!ring || !ring.segments || !ring.segments.some(s => s > 0)) continue;
+                                        if (distF < ring.r + e.ringThickness && distF > ring.r - e.ringThickness) {
+                                            let ang = Math.atan2(b.pos.y - e.pos.y, b.pos.x - e.pos.x) - ring.rot;
+                                            while (ang < 0) ang += Math.PI * 2;
+                                            const count = ring.segments.length;
+                                            const segIndex = Math.floor((ang / (Math.PI * 2)) * count) % count;
+                                            if (ring.segments[segIndex] > 0) {
+                                                ring.segments[segIndex] = Math.max(0, ring.segments[segIndex] - 1);
+                                                hit = true;
+                                                playSound('shield_hit');
+                                                if (ring.segments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 10, '#0f0');
+                                                else spawnParticles(b.pos.x, b.pos.y, 4, '#060');
+                                                if (!ring.segments.some(s => s > 0)) {
+                                                    showOverlayMessage("FORTRESS SHIELD RING DOWN", '#0f0', 900);
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                if (hit) break;
+
+                                if (distF < e.radius + b.radius) {
+                                    e.hp -= b.damage;
+                                    hit = true;
+                                    playSound('hit');
+                                    spawnParticles(b.pos.x, b.pos.y, 6, '#0f0');
+                                    if (e.hp <= 0) e.kill();
+                                    break;
+                                }
+                            }
+                            // Base Logic
+                            else if (e instanceof Base) {
+                                const dist = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
+                                if (!b.ignoreShields && dist < e.shieldRadius + 5 && dist > e.shieldRadius - 15) {
+                                    let angle = Math.atan2(b.pos.y - e.pos.y, b.pos.x - e.pos.x) - e.shieldRotation;
+                                    while (angle < 0) angle += Math.PI * 2;
+                                    const segCount = e.shieldSegments.length;
+                                    const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
+                                    if (e.shieldSegments[segIndex] > 0) {
+                                        e.shieldSegments[segIndex]--;
+                                        hit = true;
+                                        playSound('shield_hit');
+                                        if (e.shieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#0ff');
+                                        else spawnParticles(b.pos.x, b.pos.y, 3, '#088');
+                                        e.aggro = true;
+                                        break;
+                                    }
+                                }
+                                if (!b.ignoreShields && e.innerShieldSegments.length > 0 && dist < e.innerShieldRadius + 5 && dist > e.innerShieldRadius - 15) {
+                                    let angle = Math.atan2(b.pos.y - e.pos.y, b.pos.x - e.pos.x) - e.innerShieldRotation;
+                                    while (angle < 0) angle += Math.PI * 2;
+                                    const count = e.innerShieldSegments.length;
+                                    const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                                    if (e.innerShieldSegments[segIndex] > 0) {
+                                        e.innerShieldSegments[segIndex]--;
+                                        hit = true;
+                                        playSound('shield_hit');
+                                        if (e.innerShieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#f0f');
+                                        else spawnParticles(b.pos.x, b.pos.y, 3, '#808');
+                                        e.aggro = true;
+                                        break;
+                                    }
+                                }
+
+                                if (dist < e.radius + b.radius) {
+                                    e.hp -= b.damage;
+                                    hit = true;
+                                    e.aggro = true;
+                                    playSound('hit');
+                                    spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
+                                    if (e.hp <= 0) {
+                                        e.dead = true;
+                                        playSound('base_explode');
+                                        spawnParticles(e.pos.x, e.pos.y, 50, '#f0f');
+
+                                        // DROP COINS
+                                        const caveActive = (caveMode && caveLevel && caveLevel.active);
+                                        if (caveActive) {
+                                            const gold = Math.floor((6 * 5) * 0.5);
+                                            awardCoinsInstant(gold, { noSound: false, sound: 'coin', color: '#ff0' });
+                                            const baseNugCount = 4 + Math.floor(Math.random() * 3);
+                                            const nugCount = Math.max(1, Math.floor(baseNugCount * 0.5));
+                                            if (typeof awardNugzInstant === 'function') awardNugzInstant(nugCount, { noSound: false, sound: 'coin', color: '#fa0' });
+                                        } else {
+                                            for (let i = 0; i < 6; i++) {
+                                                coins.push(new Coin(e.pos.x + (Math.random() - 0.5) * 50, e.pos.y + (Math.random() - 0.5) * 50, 5));
+                                            }
+                                            nuggets.push(new SpaceNugget(e.pos.x, e.pos.y, 1));
+                                        }
+
+                                        basesDestroyed++;
+                                        basesDestroyedTotal++;
+                                        difficultyTier = 1 + Math.floor(basesDestroyedTotal / 6);
+                                        score += 1000;
+                                        const bdDisplay = document.getElementById('bases-display');
+                                        if (bdDisplay) bdDisplay.innerText = `${basesDestroyedTotal}`;
+
+                                        enemies.forEach(en => { if (en.assignedBase === e) en.type = 'roamer'; });
+
+                                        const delay = 5000 + Math.random() * 5000;
+                                        baseRespawnTimers.push(Date.now() + delay);
                                     }
                                     break;
                                 }
                             }
                         }
+                    }
 
-                        if (!hit && contractEntities && contractEntities.wallTurrets && contractEntities.wallTurrets.length > 0) {
-                            for (let t of contractEntities.wallTurrets) {
-                                if (!t || t.dead) continue;
+
+
+
+
+                    if (!hit && caveMode && caveLevel && caveLevel.active && caveLevel.wallTurrets && caveLevel.wallTurrets.length > 0) {
+                        for (let t of caveLevel.wallTurrets) {
+                            if (!t || t.dead) continue;
+                            if (typeof t.hitByPlayerBullet === 'function') {
+                                if (t.hitByPlayerBullet(b)) { hit = true; break; }
+                            } else {
                                 const dist = Math.hypot(b.pos.x - t.pos.x, b.pos.y - t.pos.y);
                                 if (dist < t.radius + b.radius) {
                                     t.hp -= b.damage;
                                     hit = true;
                                     playSound('hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 6, '#ff8');
+                                    spawnParticles(b.pos.x, b.pos.y, 6, '#88f');
                                     if (t.hp <= 0) {
                                         if (typeof t.kill === 'function') t.kill();
                                         else t.dead = true;
@@ -14220,303 +14403,137 @@ function gameLoopLogic(opts = null) {
                                 }
                             }
                         }
+                    }
 
-                        if (!hit && warpZone && warpZone.active && warpZone.turrets && warpZone.turrets.length > 0) {
-                            for (let t of warpZone.turrets) {
-                                if (!t || t.dead) continue;
-                                const dist = Math.hypot(b.pos.x - t.pos.x, b.pos.y - t.pos.y);
-                                if (dist < t.radius + b.radius) {
-                                    t.hp -= b.damage;
-                                    hit = true;
-                                    playSound('hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 6, '#0ff');
-                                    if (t.hp <= 0) t.kill();
-                                    break;
-                                }
-                            }
+                    if (!hit && caveMode && caveLevel && caveLevel.active && caveLevel.switches && caveLevel.switches.length > 0) {
+                        for (let s of caveLevel.switches) {
+                            if (!s || s.dead) continue;
+                            if (typeof s.hitByPlayerBullet === 'function' && s.hitByPlayerBullet(b)) { hit = true; break; }
                         }
+                    }
 
-                        if (!hit && caveMode && caveLevel && caveLevel.active && caveLevel.wallTurrets && caveLevel.wallTurrets.length > 0) {
-                            for (let t of caveLevel.wallTurrets) {
-                                if (!t || t.dead) continue;
-                                if (typeof t.hitByPlayerBullet === 'function') {
-                                    if (t.hitByPlayerBullet(b)) { hit = true; break; }
-                                } else {
-                                    const dist = Math.hypot(b.pos.x - t.pos.x, b.pos.y - t.pos.y);
-                                    if (dist < t.radius + b.radius) {
-                                        t.hp -= b.damage;
-                                        hit = true;
-                                        playSound('hit');
-                                        spawnParticles(b.pos.x, b.pos.y, 6, '#88f');
-                                        if (t.hp <= 0) {
-                                            if (typeof t.kill === 'function') t.kill();
-                                            else t.dead = true;
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
+                    if (!hit && caveMode && caveLevel && caveLevel.active && caveLevel.relays && caveLevel.relays.length > 0) {
+                        for (let r of caveLevel.relays) {
+                            if (!r || r.dead) continue;
+                            if (typeof r.hitByPlayerBullet === 'function' && r.hitByPlayerBullet(b)) { hit = true; break; }
                         }
+                    }
 
-                        if (!hit && caveMode && caveLevel && caveLevel.active && caveLevel.switches && caveLevel.switches.length > 0) {
-                            for (let s of caveLevel.switches) {
-                                if (!s || s.dead) continue;
-                                if (typeof s.hitByPlayerBullet === 'function' && s.hitByPlayerBullet(b)) { hit = true; break; }
-                            }
-                        }
-
-                        if (!hit && caveMode && caveLevel && caveLevel.active && caveLevel.relays && caveLevel.relays.length > 0) {
-                            for (let r of caveLevel.relays) {
-                                if (!r || r.dead) continue;
-                                if (typeof r.hitByPlayerBullet === 'function' && r.hitByPlayerBullet(b)) { hit = true; break; }
-                            }
-                        }
-
-                        if (!hit && caveMode && caveLevel && caveLevel.active && caveLevel.critters && caveLevel.critters.length > 0) {
-                            for (let c of caveLevel.critters) {
-                                if (!c || c.dead) continue;
-                                const dist = Math.hypot(b.pos.x - c.pos.x, b.pos.y - c.pos.y);
-                                if (dist < c.radius + b.radius) {
-                                    c.dead = true;
-                                    hit = true;
-                                    spawnParticles(c.pos.x, c.pos.y, 18, '#6f6');
-                                    playSound('explode');
-                                    // Disturbance: nearby turrets react. 
-                                    if (caveLevel.wallTurrets && caveLevel.wallTurrets.length > 0) {
-                                        for (let t of caveLevel.wallTurrets) {
-                                            if (!t || t.dead) continue;
-                                            const dt = Math.hypot(t.pos.x - c.pos.x, t.pos.y - c.pos.y);
-                                            if (dt < 900) {
-                                                t.reload = Math.min(t.reload || 0, 10);
-                                                t.beamCooldown = Math.min(t.beamCooldown || 0, 30);
-                                                t.trackerCharge = Math.min(t.trackerCharge || 0, 30);
-                                            }
+                    if (!hit && caveMode && caveLevel && caveLevel.active && caveLevel.critters && caveLevel.critters.length > 0) {
+                        for (let c of caveLevel.critters) {
+                            if (!c || c.dead) continue;
+                            const dist = Math.hypot(b.pos.x - c.pos.x, b.pos.y - c.pos.y);
+                            if (dist < c.radius + b.radius) {
+                                c.dead = true;
+                                hit = true;
+                                spawnParticles(c.pos.x, c.pos.y, 18, '#6f6');
+                                playSound('explode');
+                                // Disturbance: nearby turrets react. 
+                                if (caveLevel.wallTurrets && caveLevel.wallTurrets.length > 0) {
+                                    for (let t of caveLevel.wallTurrets) {
+                                        if (!t || t.dead) continue;
+                                        const dt = Math.hypot(t.pos.x - c.pos.x, t.pos.y - c.pos.y);
+                                        if (dt < 900) {
+                                            t.reload = Math.min(t.reload || 0, 10);
+                                            t.beamCooldown = Math.min(t.beamCooldown || 0, 30);
+                                            t.trackerCharge = Math.min(t.trackerCharge || 0, 30);
                                         }
                                     }
-                                    break;
                                 }
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!hit && spaceStation) {
+                        const dist = Math.hypot(b.pos.x - spaceStation.pos.x, b.pos.y - spaceStation.pos.y);
+                        if (!b.ignoreShields && dist < spaceStation.shieldRadius + 10 && dist > spaceStation.shieldRadius - 10) {
+                            let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.shieldRotation;
+                            while (angle < 0) angle += Math.PI * 2;
+                            const count = spaceStation.shieldSegments.length;
+                            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                            if (spaceStation.shieldSegments[idx] > 0) {
+                                spaceStation.shieldSegments[idx]--;
+                                hit = true;
+                                playSound('shield_hit');
+                                spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
+                            }
+                        }
+                        if (!hit && !b.ignoreShields && dist < spaceStation.innerShieldRadius + 10 && dist > spaceStation.innerShieldRadius - 10) {
+                            let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.innerShieldRotation;
+                            while (angle < 0) angle += Math.PI * 2;
+                            const count = spaceStation.innerShieldSegments.length;
+                            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                            if (spaceStation.innerShieldSegments[idx] > 0) {
+                                spaceStation.innerShieldSegments[idx]--;
+                                hit = true;
+                                playSound('shield_hit');
+                                spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
+                            }
+                        }
+                        if (!hit && dist < spaceStation.radius + b.radius) {
+                            spaceStation.hp -= b.damage;
+                            hit = true;
+                            playSound('hit');
+                            spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
+                            if (spaceStation.hp <= 0) {
+                                handleSpaceStationDestroyed();
+                            }
+                        }
+                    }
+
+                    if (!hit && bossActive && boss && !boss.dead) {
+                        if (typeof boss.applyPlayerBulletHit === 'function') {
+                            if (boss.applyPlayerBulletHit(b)) {
+                                hit = true;
                             }
                         }
 
-                        if (!hit && spaceStation) {
-                            const dist = Math.hypot(b.pos.x - spaceStation.pos.x, b.pos.y - spaceStation.pos.y);
-                            if (!b.ignoreShields && dist < spaceStation.shieldRadius + 10 && dist > spaceStation.shieldRadius - 10) {
-                                let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.shieldRotation;
+                        if (!hit) {
+                            const dist = Math.hypot(b.pos.x - boss.pos.x, b.pos.y - boss.pos.y);
+                            if (!b.ignoreShields && dist < boss.shieldRadius + 5 && dist > boss.shieldRadius - 15) {
+                                let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.shieldRotation;
                                 while (angle < 0) angle += Math.PI * 2;
-                                const count = spaceStation.shieldSegments.length;
-                                const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                                if (spaceStation.shieldSegments[idx] > 0) {
-                                    spaceStation.shieldSegments[idx]--;
+                                const segCount = boss.shieldSegments.length;
+                                const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
+                                if (boss.shieldSegments[segIndex] > 0) {
+                                    boss.shieldSegments[segIndex]--;
                                     hit = true;
                                     playSound('shield_hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
+                                    spawnParticles(b.pos.x, b.pos.y, 3, '#f00');
                                 }
                             }
-                            if (!hit && !b.ignoreShields && dist < spaceStation.innerShieldRadius + 10 && dist > spaceStation.innerShieldRadius - 10) {
-                                let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.innerShieldRotation;
+                            if (!hit && !b.ignoreShields && boss.innerShieldSegments.length > 0 && dist < boss.innerShieldRadius + 5 && dist > boss.innerShieldRadius - 15) {
+                                let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.innerShieldRotation;
                                 while (angle < 0) angle += Math.PI * 2;
-                                const count = spaceStation.innerShieldSegments.length;
-                                const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                                if (spaceStation.innerShieldSegments[idx] > 0) {
-                                    spaceStation.innerShieldSegments[idx]--;
+                                const count = boss.innerShieldSegments.length;
+                                const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                                if (boss.innerShieldSegments[segIndex] > 0) {
+                                    boss.innerShieldSegments[segIndex]--;
                                     hit = true;
                                     playSound('shield_hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
+                                    spawnParticles(b.pos.x, b.pos.y, 3, '#f00');
                                 }
                             }
-                            if (!hit && dist < spaceStation.radius + b.radius) {
-                                spaceStation.hp -= b.damage;
+                            if (!hit && dist < boss.radius + b.radius) {
+                                const dmg = (boss.vulnerableTimer && boss.vulnerableTimer > 0) ? (b.damage * 2) : b.damage;
+                                boss.hp -= dmg;
                                 hit = true;
                                 playSound('hit');
-                                spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
-                                if (spaceStation.hp <= 0) {
-                                    handleSpaceStationDestroyed();
-                                }
-                            }
-                        }
-
-                        if (!hit && bossActive && boss && !boss.dead) {
-                            if (typeof boss.applyPlayerBulletHit === 'function') {
-                                if (boss.applyPlayerBulletHit(b)) {
-                                    hit = true;
-                                }
-                            }
-
-                            if (!hit) {
-                                const dist = Math.hypot(b.pos.x - boss.pos.x, b.pos.y - boss.pos.y);
-                                if (!b.ignoreShields && dist < boss.shieldRadius + 5 && dist > boss.shieldRadius - 15) {
-                                    let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.shieldRotation;
-                                    while (angle < 0) angle += Math.PI * 2;
-                                    const segCount = boss.shieldSegments.length;
-                                    const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
-                                    if (boss.shieldSegments[segIndex] > 0) {
-                                        boss.shieldSegments[segIndex]--;
-                                        hit = true;
-                                        playSound('shield_hit');
-                                        spawnParticles(b.pos.x, b.pos.y, 3, '#f00');
-                                    }
-                                }
-                                if (!hit && !b.ignoreShields && boss.innerShieldSegments.length > 0 && dist < boss.innerShieldRadius + 5 && dist > boss.innerShieldRadius - 15) {
-                                    let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.innerShieldRotation;
-                                    while (angle < 0) angle += Math.PI * 2;
-                                    const count = boss.innerShieldSegments.length;
-                                    const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                                    if (boss.innerShieldSegments[segIndex] > 0) {
-                                        boss.innerShieldSegments[segIndex]--;
-                                        hit = true;
-                                        playSound('shield_hit');
-                                        spawnParticles(b.pos.x, b.pos.y, 3, '#f00');
-                                    }
-                                }
-                                if (!hit && dist < boss.radius + b.radius) {
-                                    const dmg = (boss.vulnerableTimer && boss.vulnerableTimer > 0) ? (b.damage * 2) : b.damage;
-                                    boss.hp -= dmg;
-                                    hit = true;
-                                    playSound('hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 5, '#f00');
-                                    if (boss.hp <= 0) {
-                                        boss.kill(); // Drops coins
-                                        score += 10000;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (!hit) {
-                            // Contract fortress collision (player bullets only)
-                            if (contractEntities && contractEntities.fortresses && contractEntities.fortresses.length > 0) {
-                                for (let fortress of contractEntities.fortresses) {
-                                    if (!fortress || fortress.dead) continue;
-                                    const distF = Math.hypot(b.pos.x - fortress.pos.x, b.pos.y - fortress.pos.y);
-
-                                    // Shield rings absorb first (outer -> inner)
-                                    if (!b.ignoreShields) {
-                                        for (let ri = 0; ri < fortress.rings.length; ri++) {
-                                            const ring = fortress.rings[ri];
-                                            if (!ring || !ring.segments || !ring.segments.some(s => s > 0)) continue;
-                                            if (distF < ring.r + fortress.ringThickness && distF > ring.r - fortress.ringThickness) {
-                                                let ang = Math.atan2(b.pos.y - fortress.pos.y, b.pos.x - fortress.pos.x) - ring.rot;
-                                                while (ang < 0) ang += Math.PI * 2;
-                                                const count = ring.segments.length;
-                                                const segIndex = Math.floor((ang / (Math.PI * 2)) * count) % count;
-                                                if (ring.segments[segIndex] > 0) {
-                                                    ring.segments[segIndex] = Math.max(0, ring.segments[segIndex] - 1);
-                                                    hit = true;
-                                                    playSound('shield_hit');
-                                                    if (ring.segments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 10, '#0f0');
-                                                    else spawnParticles(b.pos.x, b.pos.y, 4, '#060');
-                                                    if (!ring.segments.some(s => s > 0)) {
-                                                        showOverlayMessage("FORTRESS SHIELD RING DOWN", '#0f0', 900);
-                                                    }
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    if (hit) break;
-
-                                    // Core can be damaged even while shield rings still have segments;
-                                    // shields only block bullets that actually hit an active segment.
-
-                                    if (distF < fortress.radius + b.radius) {
-                                        fortress.hp -= b.damage;
-                                        hit = true;
-                                        playSound('hit');
-                                        spawnParticles(b.pos.x, b.pos.y, 6, '#0f0');
-                                        if (fortress.hp <= 0) fortress.kill();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (!hit) {
-                            for (let base of bases) {
-                                if (!base.dead) {
-                                    const dist = Math.hypot(b.pos.x - base.pos.x, b.pos.y - base.pos.y);
-                                    if (!b.ignoreShields && dist < base.shieldRadius + 5 && dist > base.shieldRadius - 15) {
-                                        let angle = Math.atan2(b.pos.y - base.pos.y, b.pos.x - base.pos.x) - base.shieldRotation;
-                                        while (angle < 0) angle += Math.PI * 2;
-                                        const segCount = base.shieldSegments.length;
-                                        const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
-                                        if (base.shieldSegments[segIndex] > 0) {
-                                            base.shieldSegments[segIndex]--;
-                                            hit = true;
-                                            playSound('shield_hit');
-                                            if (base.shieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#0ff');
-                                            else spawnParticles(b.pos.x, b.pos.y, 3, '#088');
-                                            base.aggro = true;
-                                            break;
-                                        }
-                                    }
-                                    if (!b.ignoreShields && base.innerShieldSegments.length > 0 && dist < base.innerShieldRadius + 5 && dist > base.innerShieldRadius - 15) {
-                                        let angle = Math.atan2(b.pos.y - base.pos.y, b.pos.x - base.pos.x) - base.innerShieldRotation;
-                                        while (angle < 0) angle += Math.PI * 2;
-                                        const count = base.innerShieldSegments.length;
-                                        const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                                        if (base.innerShieldSegments[segIndex] > 0) {
-                                            base.innerShieldSegments[segIndex]--;
-                                            hit = true;
-                                            playSound('shield_hit');
-                                            if (base.innerShieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#f0f');
-                                            else spawnParticles(b.pos.x, b.pos.y, 3, '#808');
-                                            base.aggro = true;
-                                            break;
-                                        }
-                                    }
-
-                                    if (dist < base.radius + b.radius) {
-                                        base.hp -= b.damage;
-                                        hit = true;
-                                        base.aggro = true;
-                                        playSound('hit');
-                                        spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
-                                        if (base.hp <= 0) {
-                                            base.dead = true;
-                                            playSound('base_explode');
-                                            spawnParticles(base.pos.x, base.pos.y, 50, '#f0f');
-
-                                            // DROP COINS
-                                            const caveActive = (caveMode && caveLevel && caveLevel.active);
-                                            if (caveActive) {
-                                                // Sector 2: auto-award base rewards (no map drops) and reduce by 50%.
-                                                const gold = Math.floor((6 * 5) * 0.5);
-                                                awardCoinsInstant(gold, { noSound: false, sound: 'coin', color: '#ff0' });
-
-                                                const baseNugCount = 4 + Math.floor(Math.random() * 3);
-                                                const nugCount = Math.max(1, Math.floor(baseNugCount * 0.5));
-                                                awardNugzInstant(nugCount, { noSound: false, sound: 'coin', color: '#fa0' });
-                                            } else {
-                                                for (let i = 0; i < 6; i++) {
-                                                    coins.push(new Coin(base.pos.x + (Math.random() - 0.5) * 50, base.pos.y + (Math.random() - 0.5) * 50, 5));
-                                                }
-                                                nuggets.push(new SpaceNugget(base.pos.x, base.pos.y, 1));
-                                            }
-
-                                            basesDestroyed++;
-                                            basesDestroyedTotal++;
-
-                                            // Increase Difficulty every 3 bases
-                                            difficultyTier = 1 + Math.floor(basesDestroyedTotal / 6);
-
-                                            score += 1000;
-                                            document.getElementById('bases-display').innerText = `${basesDestroyedTotal}`;
-
-                                            enemies.forEach(e => { if (e.assignedBase === base) e.type = 'roamer'; });
-
-                                            const delay = 5000 + Math.random() * 5000;
-                                            baseRespawnTimers.push(Date.now() + delay);
-
-                                            // Boss spawns are now handled strictly via the cruiser timer after a boss is destroyed
-                                        }
-                                        break;
-                                    }
+                                spawnParticles(b.pos.x, b.pos.y, 5, '#f00');
+                                if (boss.hp <= 0) {
+                                    boss.kill(); // Drops coins
+                                    score += 10000;
                                 }
                             }
                         }
                     }
+
+
+
+
                 }
+
                 if (hit) {
                     destroyBulletSprite(b);
                     bullets.splice(i, 1);
