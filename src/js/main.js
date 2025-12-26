@@ -8,6 +8,10 @@ import {
     ENABLE_NEBULA, NEBULA_ALPHA, ENABLE_PROJECTILE_IMPACT_SOUNDS
 } from './core/constants.js';
 import { SmokeParticle, Explosion, WarpParticle } from './entities/particles/Particle.js';
+import {
+    initAudio, startMusic, stopMusic, setMusicMode, playSound, playMp3Sfx,
+    toggleMusic as audioToggleMusic, isMusicEnabled, setProjectileImpactSoundContext
+} from './audio/audio-manager.js';
 
 // --- Upgrade Data ---
 const UPGRADE_DATA = {
@@ -366,7 +370,7 @@ let musicMode = 'normal'; // 'normal' or 'cruiser'
 // BACKGROUND_MUSIC_URL imported from ./core/constants.js
 let backgroundMusicAudio = null;
 
-function initAudio() {
+function _INLINE_initAudio() {
     try {
         if (!audioCtx) audioCtx = new AudioCtx();
         if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -383,7 +387,7 @@ function stopLegacyMusicNodes() {
     musicNodes = [];
 }
 
-function setMusicMode(mode = null) {
+function _INLINE_setMusicMode(mode = null) {
     if (mode) musicMode = mode;
     if (!musicMode) musicMode = 'normal';
     if (!musicEnabled) return;
@@ -404,7 +408,7 @@ function setMusicMode(mode = null) {
     } catch (e) { }
 }
 
-function startMusic(mode = null) {
+function _INLINE_startMusic(mode = null) {
     if (mode) musicMode = mode;
     if (!musicMode) musicMode = 'normal';
     if (!musicEnabled) return;
@@ -412,7 +416,7 @@ function startMusic(mode = null) {
     setMusicMode(musicMode);
 }
 
-function stopMusic() {
+function _INLINE_stopMusic() {
     stopLegacyMusicNodes();
     musicMode = musicMode || 'normal';
     if (backgroundMusicAudio) {
@@ -422,23 +426,17 @@ function stopMusic() {
 }
 
 function toggleMusic() {
-    musicEnabled = !musicEnabled;
+    // Uses audioToggleMusic from module (imported as audioToggleMusic)
+    const enabled = audioToggleMusic(gameActive, gamePaused);
     const btn = document.getElementById('music-btn');
-    btn.innerText = musicEnabled ? "MUSIC: ON" : "MUSIC: OFF";
-
-    if (musicEnabled && gameActive && !gamePaused) {
-        initAudio();
-        startMusic();
-    } else {
-        stopMusic();
-    }
+    if (btn) btn.innerText = enabled ? "MUSIC: ON" : "MUSIC: OFF";
 }
 
 // Toggle: impact sounds when projectiles hit shields/hulls/walls.
 // ENABLE_PROJECTILE_IMPACT_SOUNDS imported from ./core/constants.js
 let inProjectileImpactSoundContext = false;
 
-function playSound(type, volumeMult = 1) {
+function _INLINE_playSound(type, volumeMult = 1) {
     if (!audioCtx || audioCtx.state === 'suspended') return;
     if (!ENABLE_PROJECTILE_IMPACT_SOUNDS && inProjectileImpactSoundContext && (type === 'hit' || type === 'shield_hit')) return;
     if (!(volumeMult > 0)) return;
@@ -643,7 +641,7 @@ function playSound(type, volumeMult = 1) {
 }
 
 const mp3SfxPools = Object.create(null);
-function playMp3Sfx(url, opts = {}) {
+function _INLINE_playMp3Sfx(url, opts = {}) {
     const volume = (typeof opts.volume === 'number') ? opts.volume : 1;
     if (!(volume > 0)) return;
 
@@ -14765,7 +14763,7 @@ function gameLoopLogic(opts = null) {
         resolveEntityCollision();
 
         // Bullet Logic Loop
-        inProjectileImpactSoundContext = true;
+        setProjectileImpactSoundContext(true);
         try {
             for (let i = bullets.length - 1; i >= 0; i--) {
                 const b = bullets[i];
@@ -15188,7 +15186,7 @@ function gameLoopLogic(opts = null) {
                 }
             }
         } finally {
-            inProjectileImpactSoundContext = false;
+            setProjectileImpactSoundContext(false);
         }
     }
 
