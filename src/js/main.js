@@ -3339,8 +3339,8 @@ class FlagshipGuidedMissile extends Entity {
         this.radius = 28;
         this.hp = 10;
         this.maxHp = 10;
-        // Enemy guided missiles are intentionally slower than before. 
-        this.speed = 7.2 * 0.7;
+        // Updated for 60Hz: player speed is ~12, so missiles must be faster.
+        this.speed = 11.0;
         this.turnRate = 0.085;
         this.life = 900;
         this.angle = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
@@ -5730,8 +5730,8 @@ class CaveGuidedMissile extends Entity {
         this.hp = opts.hp || 4;
         this.maxHp = this.hp;
         this.maxDamage = (typeof opts.maxDamage === 'number') ? opts.maxDamage : null;
-        const enemyMissileSpeedMult = 0.7;
-        this.speed = (opts.speed || 8.4) * enemyMissileSpeedMult;
+        // Removed multiplier for 60Hz scaling transparency.
+        this.speed = (opts.speed || 11.0);
         this.turnRate = opts.turnRate || 0.11;
         this.life = opts.life || 720;
         this.angle = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
@@ -6818,7 +6818,7 @@ class CaveGateBoss extends Entity {
         if (this.missileCooldown <= 0) {
             const count = 1;
             for (let k = 0; k < count; k++) {
-                guidedMissiles.push(new CaveGuidedMissile(this, { hp: phase2 ? 7 : 5, radius: phase2 ? 22 : 20, speed: phase2 ? 8.7 : 8.2, turnRate: phase2 ? 0.14 : 0.12 }));
+                guidedMissiles.push(new CaveGuidedMissile(this, { hp: phase2 ? 7 : 5, radius: phase2 ? 22 : 20, speed: phase2 ? 12.5 : 11.5, turnRate: phase2 ? 0.14 : 0.12 }));
             }
             spawnParticles(this.pos.x, this.pos.y, 10, '#fa0');
             playSound('heavy_shoot');
