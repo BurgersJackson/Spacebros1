@@ -90,10 +90,47 @@ const targetGrid = new SpatialHash(350); // Spatial hash for Enemies, Bases, Tur
 // Coin, FloatingText, HealthPowerUp, SpaceNugget imported from ./entities/index.js
 // getOrCreateFloatingText imported from ./entities/index.js
 
-// --- Audio System ---
 // Audio functions imported from ./audio/audio-manager.js
 // initAudio, startMusic, stopMusic, setMusicMode, playSound, playMp3Sfx,
 // audioToggleMusic, isMusicEnabled, setProjectileImpactSoundContext
+
+// DEBUG: Spawn cruiser instantly from console with window.spawnCruiser()
+window.spawnCruiser = function () {
+    if (typeof bossActive !== 'undefined' && bossActive) {
+        console.log('[DEBUG] Boss already active');
+        return;
+    }
+    cruiserEncounterCount++;
+    clearArrayWithPixiCleanup(enemies);
+    clearArrayWithPixiCleanup(bases);
+    baseRespawnTimers = [];
+    roamerRespawnQueue = [];
+    clearArrayWithPixiCleanup(bullets);
+    clearArrayWithPixiCleanup(bossBombs);
+    clearArrayWithPixiCleanup(guidedMissiles);
+    boss = new Cruiser(cruiserEncounterCount);
+    bossActive = true;
+    bossArena.x = (player.pos.x + boss.pos.x) / 2;
+    bossArena.y = (player.pos.y + boss.pos.y) / 2;
+    bossArena.radius = 2500;
+    bossArena.active = true;
+    bossArena.growing = false;
+    radiationStorm = null;
+    miniEvent = null;
+    dreadManager.timerActive = false;
+    dreadManager.firstSpawnDone = true;
+    showOverlayMessage("DEBUG: CRUISER SPAWNED", '#ff0', 2000);
+    playSound('boss_spawn');
+    if (musicEnabled) setMusicMode('cruiser');
+};
+
+// DEBUG: Ctrl+Shift+3 to spawn cruiser
+document.addEventListener('keydown', function (e) {
+    if (e.ctrlKey && e.shiftKey && e.key === '3') {
+        e.preventDefault();
+        window.spawnCruiser();
+    }
+});
 
 // toggleMusic wrapper that updates DOM button
 function toggleMusic() {
@@ -13665,7 +13702,8 @@ function gameLoopLogic(opts = null) {
                 clearArrayWithPixiCleanup(bases);
                 baseRespawnTimers = [];
                 roamerRespawnQueue = [];
-                filterArrayWithPixiCleanup(bullets, b => !b.isEnemy);
+                // Clear all bullets to prevent immediate cruiser death
+                clearArrayWithPixiCleanup(bullets);
                 clearArrayWithPixiCleanup(bossBombs);
                 clearArrayWithPixiCleanup(guidedMissiles);
                 boss = new Cruiser(cruiserEncounterCount);
@@ -14383,7 +14421,8 @@ function gameLoopLogic(opts = null) {
 
 
 
-                    if (!hit && caveMode && caveLevel && caveLevel.active && caveLevel.wallTurrets && caveLevel.wallTurrets.length > 0) {
+                    // Only player bullets can hit cave wall turrets
+                    if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.wallTurrets && caveLevel.wallTurrets.length > 0) {
                         for (let t of caveLevel.wallTurrets) {
                             if (!t || t.dead) continue;
                             if (typeof t.hitByPlayerBullet === 'function') {
@@ -14405,21 +14444,24 @@ function gameLoopLogic(opts = null) {
                         }
                     }
 
-                    if (!hit && caveMode && caveLevel && caveLevel.active && caveLevel.switches && caveLevel.switches.length > 0) {
+                    // Only player bullets can hit cave switches
+                    if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.switches && caveLevel.switches.length > 0) {
                         for (let s of caveLevel.switches) {
                             if (!s || s.dead) continue;
                             if (typeof s.hitByPlayerBullet === 'function' && s.hitByPlayerBullet(b)) { hit = true; break; }
                         }
                     }
 
-                    if (!hit && caveMode && caveLevel && caveLevel.active && caveLevel.relays && caveLevel.relays.length > 0) {
+                    // Only player bullets can hit cave relays
+                    if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.relays && caveLevel.relays.length > 0) {
                         for (let r of caveLevel.relays) {
                             if (!r || r.dead) continue;
                             if (typeof r.hitByPlayerBullet === 'function' && r.hitByPlayerBullet(b)) { hit = true; break; }
                         }
                     }
 
-                    if (!hit && caveMode && caveLevel && caveLevel.active && caveLevel.critters && caveLevel.critters.length > 0) {
+                    // Only player bullets can hit cave critters
+                    if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.critters && caveLevel.critters.length > 0) {
                         for (let c of caveLevel.critters) {
                             if (!c || c.dead) continue;
                             const dist = Math.hypot(b.pos.x - c.pos.x, b.pos.y - c.pos.y);
@@ -14445,7 +14487,8 @@ function gameLoopLogic(opts = null) {
                         }
                     }
 
-                    if (!hit && spaceStation) {
+                    // Only player bullets can hit the space station
+                    if (!hit && !b.isEnemy && spaceStation) {
                         const dist = Math.hypot(b.pos.x - spaceStation.pos.x, b.pos.y - spaceStation.pos.y);
                         if (!b.ignoreShields && dist < spaceStation.shieldRadius + 10 && dist > spaceStation.shieldRadius - 10) {
                             let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.shieldRotation;
@@ -14482,7 +14525,8 @@ function gameLoopLogic(opts = null) {
                         }
                     }
 
-                    if (!hit && bossActive && boss && !boss.dead) {
+                    // Only player bullets (!b.isEnemy) can hit the boss
+                    if (!hit && !b.isEnemy && bossActive && boss && !boss.dead) {
                         if (typeof boss.applyPlayerBulletHit === 'function') {
                             if (boss.applyPlayerBulletHit(b)) {
                                 hit = true;
