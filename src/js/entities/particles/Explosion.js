@@ -73,7 +73,8 @@ export class Explosion extends Entity {
         const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
         ctx.translate(rPos.x, rPos.y);
 
-        // Draw particles
+        // Draw particles with an additive glow effect
+        ctx.globalCompositeOperation = 'lighter';
         for (let i = 0; i < this.particles.length; i++) {
             const p = this.particles[i];
             if (p.life <= 0) continue;
@@ -82,12 +83,21 @@ export class Explosion extends Entity {
             const renderY = (typeof alpha === 'number' && p.prevY !== undefined) ? (p.prevY + (p.y - p.prevY) * alpha) : p.y;
 
             const pAlpha = Math.max(0, p.life / p.maxLife);
-            ctx.globalAlpha = pAlpha;
             ctx.fillStyle = p.color;
             ctx.beginPath();
+
+            // Draw "Glow" (large, low alpha)
+            ctx.globalAlpha = pAlpha * 0.3;
+            ctx.arc(renderX, renderY, p.size * pAlpha * 2.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw "Core" (normal size, high alpha)
+            ctx.beginPath();
+            ctx.globalAlpha = pAlpha;
             ctx.arc(renderX, renderY, p.size * pAlpha, 0, Math.PI * 2);
             ctx.fill();
         }
+        ctx.globalCompositeOperation = 'source-over';
 
         ctx.restore();
         ctx.globalAlpha = 1.0;

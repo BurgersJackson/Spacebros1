@@ -151,13 +151,35 @@ const ctx = (() => {
     try { return canvas.getContext('2d', { desynchronized: true, alpha: false }); }
     catch (e) { return canvas.getContext('2d'); }
 })();
+// --- UI Canvas Setup ---
+const uiCanvas = document.getElementById('uiCanvas');
+const uiCtx = (() => {
+    try { return uiCanvas.getContext('2d', { alpha: true }); }
+    catch (e) { return uiCanvas.getContext('2d'); }
+})();
+
 const minimapCanvas = document.getElementById('minimap');
 const minimapCtx = (() => {
     try { return minimapCanvas.getContext('2d', { desynchronized: true, alpha: false }); }
     catch (e) { return minimapCanvas.getContext('2d'); }
 })();
 if (ctx) ctx.imageSmoothingEnabled = false;
+if (uiCtx) uiCtx.imageSmoothingEnabled = false;
 if (minimapCtx) minimapCtx.imageSmoothingEnabled = false;
+
+// Handle Resizing for both Canvases
+function resizeGameCanvases() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    canvas.width = w;
+    canvas.height = h;
+    uiCanvas.width = w;
+    uiCanvas.height = h;
+    if (ctx) ctx.imageSmoothingEnabled = false;
+    if (uiCtx) uiCtx.imageSmoothingEnabled = false;
+}
+window.addEventListener('resize', resizeGameCanvases);
+resizeGameCanvases();
 
 // PixiJS overlay (optional; falls back to Canvas if unavailable)
 // Note: Pixi is rendered manually inside our main loop to avoid running a second render/ticker.
@@ -189,6 +211,7 @@ let pixiTextureWhite = null;
 let pixiCaveGridLayer = null;   // screen-space
 let pixiCaveGridSprite = null;  // TilingSprite
 let pixiCaveGridTexture = null;
+let pixiParticleGlowTexture = null;
 
 // PIXI_SPRITE_POOL_MAX imported from ./core/constants.js
 const pixiBulletSpritePool = [];
@@ -682,6 +705,22 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
     pixiBulletTextures.laser = makeLaserTexture();
     pixiBulletTextures.square = makeSquareTexture();
 
+    const makeParticleGlowTexture = () => {
+        const g = new PIXI.Graphics();
+        // Inner core
+        g.beginFill(0xffffff, 1);
+        g.drawCircle(0, 0, 2);
+        // Soft outer halo
+        g.beginFill(0xffffff, 0.45);
+        g.drawCircle(0, 0, 5);
+        g.beginFill(0xffffff, 0.15);
+        g.drawCircle(0, 0, 10);
+        const tex = pixiApp.renderer.generateTexture(g);
+        g.destroy(true);
+        return tex;
+    };
+    pixiParticleGlowTexture = makeParticleGlowTexture();
+
     // Background (screen-space)
     pixiNebulaLayer = new PIXI.Container();
     pixiCaveGridLayer = new PIXI.Container();
@@ -783,14 +822,21 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
         const makeCoin = (fillHex) => {
             const g = new PIXI.Graphics();
             const pts = [0, -8, 8, 0, 0, 8, -8, 0];
+
+            // Outer Glow (Large halo)
+            g.lineStyle(24, fillHex, 0.15);
+            g.drawPolygon(pts);
+
+            // Inner Glow
+            g.lineStyle(12, fillHex, 0.4);
+            g.drawPolygon(pts);
+
+            // Core Outline (White)
+            g.lineStyle(2, 0xffffff, 1);
             g.beginFill(fillHex, 1);
             g.drawPolygon(pts);
             g.endFill();
-            g.lineStyle(2, 0xffffff, 1);
-            g.drawPolygon(pts);
-            // subtle glow
-            g.lineStyle(8, fillHex, 0.08);
-            g.drawPolygon(pts);
+
             return genTexture(g).tex;
         };
         pixiTextures.coin1 = makeCoin(0xffff00);
@@ -2984,14 +3030,18 @@ class Spaceship extends Entity {
         const segAngle = (Math.PI * 2) / segCount;
         for (let i = 0; i < segCount; i++) {
             if (this.shieldSegments[i] > 0) {
-                ctx.strokeStyle = '#0ff';
-                ctx.shadowBlur = 5;
-                ctx.shadowColor = '#0ff';
-                ctx.globalAlpha = this.shieldSegments[i] / 2;
+                // Optimized Glow (Wide transparent stroke)
                 ctx.beginPath();
                 ctx.arc(0, 0, this.shieldRadius, i * segAngle + 0.1, (i + 1) * segAngle - 0.1);
+                ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+                ctx.lineWidth = 12;
                 ctx.stroke();
-                ctx.shadowBlur = 0;
+
+                // Core
+                ctx.strokeStyle = '#0ff';
+                ctx.lineWidth = 3;
+                ctx.globalAlpha = this.shieldSegments[i] / 2;
+                ctx.stroke();
             }
         }
         ctx.restore();
@@ -3026,8 +3076,10 @@ class Spaceship extends Entity {
             grad.addColorStop(1, 'rgba(255,0,0,0)');
 
             ctx.save();
-            ctx.shadowBlur = 25;
-            ctx.shadowColor = '#f80';
+            ctx.shadowBlur = 0; // Disable laggy shadow
+            ctx.globalCompositeOperation = 'lighter'; // Additive blending for glow look
+
+            // Draw Flame
             ctx.fillStyle = grad;
             ctx.beginPath();
             ctx.moveTo(baseX, 0);
@@ -3038,9 +3090,7 @@ class Spaceship extends Entity {
             ctx.fill();
 
             // Inner white-hot core
-            ctx.shadowBlur = 18;
-            ctx.shadowColor = '#ff0';
-            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
             ctx.beginPath();
             ctx.moveTo(baseX, 0);
             ctx.lineTo(baseX - flameLen * 0.55, -flameWid * 0.35);
@@ -3340,8 +3390,18 @@ class CruiserMineBomb extends Entity {
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
         ctx.rotate(this.t * 0.1);
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = '#fa0';
+
+        // Glow Halo (Optimized)
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.4;
+        ctx.fillStyle = '#fa0';
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius * 1.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // Main Body
         ctx.fillStyle = '#fa0';
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 2;
@@ -3349,7 +3409,6 @@ class CruiserMineBomb extends Entity {
         ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        ctx.shadowBlur = 0;
         ctx.restore();
     }
 }
@@ -3520,23 +3579,35 @@ class FlagshipGuidedMissile extends Entity {
 
         const len = 64;
         const w = 18;
-        ctx.shadowBlur = 22;
-        ctx.shadowColor = '#fa0';
 
-        // Body
         const grad = ctx.createLinearGradient(-len / 2, 0, len / 2, 0);
         grad.addColorStop(0, '#fff');
         grad.addColorStop(0.35, '#ff6');
         grad.addColorStop(1, '#f80');
+
         ctx.fillStyle = grad;
         ctx.strokeStyle = '#111';
         ctx.lineWidth = 2 / z;
+
+        // Path definition
         ctx.beginPath();
         ctx.moveTo(len / 2, 0);
         ctx.lineTo(-len / 2 + 10, w / 2);
         ctx.lineTo(-len / 2, 0);
         ctx.lineTo(-len / 2 + 10, -w / 2);
         ctx.closePath();
+
+        // Glow pass (Optimized)
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.shadowBlur = 0; // Ensure off
+        ctx.globalAlpha = 0.4;
+        ctx.fillStyle = '#fa0';
+        ctx.scale(1.2, 1.4); // Larger halo
+        ctx.fill();
+        ctx.restore();
+
+        // Main Body
         ctx.fill();
         ctx.stroke();
 
@@ -11347,7 +11418,8 @@ function spawnFieryExplosion(x, y, scale = 1) {
         const vy = Math.sin(a) * speed;
         const color = colors[(Math.random() * colors.length) | 0];
         const life = 20 + Math.floor(Math.random() * 16);
-        emitParticle(x, y, vx, vy, color, life);
+        const p = emitParticle(x, y, vx, vy, color, life);
+        p.glow = true;
     }
     spawnSmoke(x, y, Math.max(1, Math.round(2 * s)));
 }
@@ -13177,7 +13249,7 @@ function showLevelUpMenu() {
     }
 
     // 3. Create DOM
-    choices.forEach(choice => {
+    choices.forEach((choice, index) => {
         const currentTier = player.inventory[choice.id] || 0;
         const nextTier = currentTier + 1;
         const desc = choice[`tier${nextTier}`];
@@ -13189,17 +13261,45 @@ function showLevelUpMenu() {
                     <div style="color:#aaa; font-size:12px; margin-bottom:10px">${choice.category}</div>
                     <div class="upgrade-desc">${desc}</div>
                     <div style="font-size:12px; color:#888; margin-top:10px">${choice.notes}</div>
-                    <div class="upgrade-tier">Tier ${nextTier}</div>
                 `;
+
+        card.onmouseenter = () => {
+            menuSelectionIndex = index;
+            const active = getActiveMenuElements();
+            updateMenuVisuals(active);
+        };
 
         card.onclick = () => {
             applyUpgrade(choice.id, nextTier);
             document.getElementById('levelup-screen').style.display = 'none';
-            gameActive = true;
-            // Reset simulation timing to prevent jitter after pause
-            simLastPerfAt = 0;
-            simAccMs = 0;
-            if (musicEnabled) startMusic();
+
+            // Delay resume to allow browser layout/GC to settle (increased to 200ms)
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    // Force reset interpolation for all entities to prevent visual jumps
+                    // if the first frame has weird timing.
+                    const resetEnt = (e) => {
+                        if (e && e.pos && e.prevPos) {
+                            e.prevPos.x = e.pos.x;
+                            e.prevPos.y = e.pos.y;
+                        }
+                    };
+                    if (player) resetEnt(player);
+                    if (boss) resetEnt(boss);
+                    if (spaceStation) resetEnt(spaceStation);
+                    if (enemies) enemies.forEach(resetEnt);
+                    if (bases) bases.forEach(resetEnt);
+                    if (bullets) bullets.forEach(resetEnt);
+                    if (particles) particles.forEach(resetEnt);
+                    if (floatingTexts) floatingTexts.forEach(resetEnt);
+
+                    gameActive = true;
+                    // Reset simulation timing
+                    simLastPerfAt = 0;
+                    simAccMs = 0;
+                    if (musicEnabled) startMusic();
+                }, 200);
+            });
         };
         container.appendChild(card);
     });
@@ -13230,8 +13330,9 @@ function applyUpgrade(id, tier) {
     try {
         dreadManager.upgradesChosen = (dreadManager.upgradesChosen || 0) + 1;
         // On the 3rd chosen upgrade, schedule the first cruiser to spawn after 10s
+        // On the 3rd chosen upgrade, schedule the first cruiser to spawn after 10s
         if (!dreadManager.firstSpawnDone && dreadManager.upgradesChosen >= 3 && !bossActive && !dreadManager.timerActive) {
-            dreadManager.timerAt = Date.now() + 10000; // 10 seconds
+            dreadManager.timerAt = simNowMs + 10000; // 10 seconds (in sim time)
             dreadManager.timerActive = true;
             // Inform player a cruiser is incoming
             showOverlayMessage("WARNING: CRUISER INCOMING IN 10s", '#f00', 3000);
@@ -13543,6 +13644,7 @@ function mainLoop() {
         simLastPerfAt = perfNow;
         if (!isFinite(frameDt) || frameDt < 0) frameDt = 0;
         frameDt = Math.min(250, frameDt);
+
         simAccMs += frameDt;
 
         const originalDateNow = Date.now;
@@ -14152,8 +14254,11 @@ function gameLoopLogic(opts = null) {
     window.cachedPickupRes.layer = pixiPickupLayer; window.cachedPickupRes.textures = pixiTextures; window.cachedPickupRes.pool = pixiPickupSpritePool;
     const pickupRes = window.cachedPickupRes;
 
-    if (!window.cachedParticleRes) window.cachedParticleRes = { layer: null, whiteTexture: null, pool: null };
-    window.cachedParticleRes.layer = pixiParticleLayer; window.cachedParticleRes.whiteTexture = pixiTextureWhite; window.cachedParticleRes.pool = pixiParticleSpritePool;
+    if (!window.cachedParticleRes) window.cachedParticleRes = { layer: null, whiteTexture: null, glowTexture: null, pool: null };
+    window.cachedParticleRes.layer = pixiParticleLayer;
+    window.cachedParticleRes.whiteTexture = pixiTextureWhite;
+    window.cachedParticleRes.glowTexture = pixiParticleGlowTexture;
+    window.cachedParticleRes.pool = pixiParticleSpritePool;
     const particleRes = window.cachedParticleRes;
 
     const caveActive = (caveMode && caveLevel && caveLevel.active);
@@ -14821,6 +14926,10 @@ function gameLoopLogic(opts = null) {
         }
 
         ctx.restore();
+
+        // Clear UI Canvas for this frame
+        uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
+
         drawStationIndicator();
         drawWarpGateIndicator();
         drawFlagshipWarpZoneIndicator();
@@ -14829,7 +14938,7 @@ function gameLoopLogic(opts = null) {
         drawMiniEventIndicator();
         updateMiniEventUI();
         updateKeysUI();
-        if (bossActive && boss && typeof boss.drawBossHud === 'function') boss.drawBossHud(ctx);
+        if (bossActive && boss && typeof boss.drawBossHud === 'function') boss.drawBossHud(uiCtx);
 
         // Render Pixi overlay (MOVED from Update loop)
         if (pixiApp && pixiApp.renderer && pixiApp.stage) {
@@ -14883,38 +14992,38 @@ function drawStationIndicator() {
     const arrowX = cx + vx * t;
     const arrowY = cy + vy * t;
 
-    ctx.save();
-    ctx.translate(arrowX, arrowY);
-    ctx.rotate(angle);
+    uiCtx.save();
+    uiCtx.translate(arrowX, arrowY);
+    uiCtx.rotate(angle);
 
     const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
-    ctx.scale(pulse, pulse);
+    uiCtx.scale(pulse, pulse);
 
-    ctx.fillStyle = '#0ff';
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
+    uiCtx.fillStyle = '#0ff';
+    uiCtx.strokeStyle = '#000';
+    uiCtx.lineWidth = 2;
 
-    ctx.beginPath();
-    ctx.moveTo(15, 0);
-    ctx.lineTo(-15, 12);
-    ctx.lineTo(-15, -12);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    uiCtx.beginPath();
+    uiCtx.moveTo(15, 0);
+    uiCtx.lineTo(-15, 12);
+    uiCtx.lineTo(-15, -12);
+    uiCtx.closePath();
+    uiCtx.fill();
+    uiCtx.stroke();
 
     // Distance Text
-    ctx.rotate(-angle);
-    ctx.fillStyle = '#0ff';
-    ctx.font = 'bold 14px Courier New';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowBlur = 4;
-    ctx.shadowColor = '#000';
+    uiCtx.rotate(-angle);
+    uiCtx.fillStyle = '#0ff';
+    uiCtx.font = 'bold 14px Courier New';
+    uiCtx.textAlign = 'center';
+    uiCtx.textBaseline = 'middle';
+    uiCtx.shadowBlur = 4;
+    uiCtx.shadowColor = '#000';
     const dist = Math.hypot(dx, dy);
-    ctx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
-    ctx.shadowBlur = 0;
+    uiCtx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
+    uiCtx.shadowBlur = 0;
 
-    ctx.restore();
+    uiCtx.restore();
 }
 
 function drawWarpGateIndicator() {
@@ -14953,38 +15062,38 @@ function drawWarpGateIndicator() {
     const arrowX = cx + vx * t;
     const arrowY = cy + vy * t;
 
-    ctx.save();
-    ctx.translate(arrowX, arrowY);
-    ctx.rotate(angle);
+    uiCtx.save();
+    uiCtx.translate(arrowX, arrowY);
+    uiCtx.rotate(angle);
 
     const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
-    ctx.scale(pulse, pulse);
+    uiCtx.scale(pulse, pulse);
 
-    ctx.fillStyle = '#f80';
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
+    uiCtx.fillStyle = '#f80';
+    uiCtx.strokeStyle = '#000';
+    uiCtx.lineWidth = 2;
 
-    ctx.beginPath();
-    ctx.moveTo(15, 0);
-    ctx.lineTo(-15, 12);
-    ctx.lineTo(-15, -12);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    uiCtx.beginPath();
+    uiCtx.moveTo(15, 0);
+    uiCtx.lineTo(-15, 12);
+    uiCtx.lineTo(-15, -12);
+    uiCtx.closePath();
+    uiCtx.fill();
+    uiCtx.stroke();
 
-    ctx.rotate(-angle);
-    ctx.fillStyle = '#f80';
-    ctx.font = 'bold 14px Courier New';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowBlur = 4;
-    ctx.shadowColor = '#000';
-    ctx.fillText("WARP", 0, -18);
+    uiCtx.rotate(-angle);
+    uiCtx.fillStyle = '#f80';
+    uiCtx.font = 'bold 14px Courier New';
+    uiCtx.textAlign = 'center';
+    uiCtx.textBaseline = 'middle';
+    uiCtx.shadowBlur = 4;
+    uiCtx.shadowColor = '#000';
+    uiCtx.fillText("WARP", 0, -18);
     const dist = Math.hypot(dx, dy);
-    ctx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
-    ctx.shadowBlur = 0;
+    uiCtx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
+    uiCtx.shadowBlur = 0;
 
-    ctx.restore();
+    uiCtx.restore();
 }
 
 function drawFlagshipWarpZoneIndicator() {
@@ -15022,38 +15131,38 @@ function drawFlagshipWarpZoneIndicator() {
     const arrowX = cx + vx * t;
     const arrowY = cy + vy * t;
 
-    ctx.save();
-    ctx.translate(arrowX, arrowY);
-    ctx.rotate(angle);
+    uiCtx.save();
+    uiCtx.translate(arrowX, arrowY);
+    uiCtx.rotate(angle);
 
     const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
-    ctx.scale(pulse, pulse);
+    uiCtx.scale(pulse, pulse);
 
-    ctx.fillStyle = '#f0f';
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
+    uiCtx.fillStyle = '#f0f';
+    uiCtx.strokeStyle = '#000';
+    uiCtx.lineWidth = 2;
 
-    ctx.beginPath();
-    ctx.moveTo(15, 0);
-    ctx.lineTo(-15, 12);
-    ctx.lineTo(-15, -12);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    uiCtx.beginPath();
+    uiCtx.moveTo(15, 0);
+    uiCtx.lineTo(-15, 12);
+    uiCtx.lineTo(-15, -12);
+    uiCtx.closePath();
+    uiCtx.fill();
+    uiCtx.stroke();
 
-    ctx.rotate(-angle);
-    ctx.fillStyle = '#f0f';
-    ctx.font = 'bold 14px Courier New';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowBlur = 4;
-    ctx.shadowColor = '#000';
-    ctx.fillText("FLAGSHIP", 0, -18);
+    uiCtx.rotate(-angle);
+    uiCtx.fillStyle = '#f0f';
+    uiCtx.font = 'bold 14px Courier New';
+    uiCtx.textAlign = 'center';
+    uiCtx.textBaseline = 'middle';
+    uiCtx.shadowBlur = 4;
+    uiCtx.shadowColor = '#000';
+    uiCtx.fillText("FLAGSHIP", 0, -18);
     const dist = Math.hypot(dx, dy);
-    ctx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
-    ctx.shadowBlur = 0;
+    uiCtx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
+    uiCtx.shadowBlur = 0;
 
-    ctx.restore();
+    uiCtx.restore();
 }
 
 function drawContractIndicator() {
@@ -15100,38 +15209,38 @@ function drawContractIndicator() {
     const arrowX = cx + vx * tEdge;
     const arrowY = cy + vy * tEdge;
 
-    ctx.save();
-    ctx.translate(arrowX, arrowY);
-    ctx.rotate(angle);
+    uiCtx.save();
+    uiCtx.translate(arrowX, arrowY);
+    uiCtx.rotate(angle);
 
     const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
-    ctx.scale(pulse, pulse);
+    uiCtx.scale(pulse, pulse);
 
-    ctx.fillStyle = '#0f0';
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
+    uiCtx.fillStyle = '#0f0';
+    uiCtx.strokeStyle = '#000';
+    uiCtx.lineWidth = 2;
 
-    ctx.beginPath();
-    ctx.moveTo(15, 0);
-    ctx.lineTo(-15, 12);
-    ctx.lineTo(-15, -12);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    uiCtx.beginPath();
+    uiCtx.moveTo(15, 0);
+    uiCtx.lineTo(-15, 12);
+    uiCtx.lineTo(-15, -12);
+    uiCtx.closePath();
+    uiCtx.fill();
+    uiCtx.stroke();
 
     // Distance Text
-    ctx.rotate(-angle);
-    ctx.fillStyle = '#0f0';
-    ctx.font = 'bold 14px Courier New';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowBlur = 4;
-    ctx.shadowColor = '#000';
+    uiCtx.rotate(-angle);
+    uiCtx.fillStyle = '#0f0';
+    uiCtx.font = 'bold 14px Courier New';
+    uiCtx.textAlign = 'center';
+    uiCtx.textBaseline = 'middle';
+    uiCtx.shadowBlur = 4;
+    uiCtx.shadowColor = '#000';
     const dist = Math.hypot(dx, dy);
-    ctx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
-    ctx.shadowBlur = 0;
+    uiCtx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
+    uiCtx.shadowBlur = 0;
 
-    ctx.restore();
+    uiCtx.restore();
 }
 
 function drawMiniEventIndicator() {
@@ -15174,57 +15283,127 @@ function drawMiniEventIndicator() {
     const arrowX = cx + vx * tEdge;
     const arrowY = cy + vy * tEdge;
 
-    ctx.save();
-    ctx.translate(arrowX, arrowY);
-    ctx.rotate(angle);
+    uiCtx.save();
+    uiCtx.translate(arrowX, arrowY);
+    uiCtx.rotate(angle);
 
     const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
     const blink = (Math.sin(Date.now() * 0.012) > 0.2) ? 1 : 0.55;
-    ctx.scale(pulse, pulse);
-    ctx.globalAlpha = blink;
+    uiCtx.scale(pulse, pulse);
+    uiCtx.globalAlpha = blink;
 
-    ctx.fillStyle = '#ff0';
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(15, 0);
-    ctx.lineTo(-15, 12);
-    ctx.lineTo(-15, -12);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    uiCtx.fillStyle = '#ff0';
+    uiCtx.strokeStyle = '#000';
+    uiCtx.lineWidth = 2;
+    uiCtx.beginPath();
+    uiCtx.moveTo(15, 0);
+    uiCtx.lineTo(-15, 12);
+    uiCtx.lineTo(-15, -12);
+    uiCtx.closePath();
+    uiCtx.fill();
+    uiCtx.stroke();
 
-    ctx.rotate(-angle);
-    ctx.fillStyle = '#ff0';
-    ctx.font = 'bold 14px Courier New';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowBlur = 4;
-    ctx.shadowColor = '#000';
+    uiCtx.rotate(-angle);
+    uiCtx.fillStyle = '#ff0';
+    uiCtx.font = 'bold 14px Courier New';
+    uiCtx.textAlign = 'center';
+    uiCtx.textBaseline = 'middle';
+    uiCtx.shadowBlur = 4;
+    uiCtx.shadowColor = '#000';
     const dist = Math.hypot(dx, dy);
-    ctx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
-    ctx.shadowBlur = 0;
+    uiCtx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
+    uiCtx.shadowBlur = 0;
 
-    ctx.restore();
+    uiCtx.restore();
 }
 
 function drawMinimap() {
     minimapFrame++;
     if (minimapFrame % 2 === 1) return; // throttle updates
+
+    // Clear canvas and draw circular boundary
+    minimapCtx.clearRect(0, 0, 200, 200);
+
+    minimapCtx.save();
+    minimapCtx.translate(100, 100);
+
+    // Draw circular background
+    minimapCtx.beginPath();
+    minimapCtx.arc(0, 0, 100, 0, Math.PI * 2);
     minimapCtx.fillStyle = '#001';
-    minimapCtx.fillRect(0, 0, 200, 200);
+    minimapCtx.fill();
+    // Clip rest of drawing to this circle
+    minimapCtx.clip();
+
+    // Restore transform for content drawing (which expects translation)
+    // Actually, the previous code saved, translated, path, clip. 
+    // We already translated and clipped. We just need to ensure background was drawn.
+    // The previous code did:
+    // minimapCtx.fillRect(0, 0, 200, 200);
+    // minimapCtx.translate(100, 100);
+    // ... clip
+
+    // My change:
+    // clearRect
+    // translate
+    // path, fill, clip
+
+    // The rest of the function uses (0,0) as center because of translate. I should be careful.
+    // The original code was:
+    // minimapCtx.save();
+    // minimapCtx.translate(100, 100);
+    // minimapCtx.beginPath(); 
+    // minimapCtx.arc(0, 0, 100 ...); 
+    // minimapCtx.clip();
+
+    // So I am already in the translated context. 
+    // I can proceed. I will remove the logic below "minimapCtx.save()" from my replacement since I am modifying the top part.
+    // Wait, I need to match the TargetContent accurately.
+
     const warpActive = !!(warpZone && warpZone.active);
     const radarRange = warpActive ? ((warpZone.boundaryRadius || 6200) + 300) : 4000;
     const scale = 100 / radarRange;
     const refX = warpActive ? warpZone.pos.x : (player ? player.pos.x : 0);
     const refY = warpActive ? warpZone.pos.y : (player ? player.pos.y : 0);
 
-    minimapCtx.save();
-    minimapCtx.translate(100, 100);
+    // Context is already saved/translated/clipped in the block above? 
+    // No, I need to properly structure this.
+    // Original:
+    // 15300:     minimapCtx.save();
+    // 15301:     minimapCtx.translate(100, 100);
+    // 15302: 
+    // 15303:     minimapCtx.beginPath();
+    // 15304:     minimapCtx.arc(0, 0, 100, 0, Math.PI * 2);
+    // 15305:     minimapCtx.clip();
 
-    minimapCtx.beginPath();
-    minimapCtx.arc(0, 0, 100, 0, Math.PI * 2);
-    minimapCtx.clip();
+    // Since I removed the fillRect and added the circle fill at the top, I can just let this standard clip happen?
+    // Wait, my replacement above did:
+    // clearRect
+    // translate
+    // fill circle
+    // clip
+
+    // But the original code does the save/translate closer to here.
+    // If I replaced lines 15291-15294 with the clear/fill logic, I need to handle the fact that I might not have saved/translated yet.
+
+    // Revised Plan for Minimap:
+    // Replace lines 15291-15305 (inclusive) with the new logic.
+
+    // Logic:
+    // if (minimapFrame % 2 === 1) return;
+    // minimapCtx.clearRect(0,0,200,200);
+    // const warpActive...
+    // ...
+    // minimapCtx.save();
+    // minimapCtx.translate(100, 100);
+    // minimapCtx.beginPath();
+    // minimapCtx.arc(0,0,100,0,Math.PI*2);
+    // minimapCtx.fillStyle = '#001';
+    // minimapCtx.fill();
+    // minimapCtx.clip();
+
+    // This looks correct.
+
 
     if (player && !player.dead) {
         const px = warpActive ? ((player.pos.x - refX) * scale) : 0;

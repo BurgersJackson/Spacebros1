@@ -100,13 +100,25 @@ export class Coin extends Entity {
         if (this.value >= 5) color = '#f0f';
         if (this.value >= 10) color = '#0ff';
 
+        ctx.globalCompositeOperation = 'lighter';
         ctx.fillStyle = color;
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        // Glow Halo
+        ctx.globalAlpha = 0.3;
+        ctx.rect(-12, -12, 24, 24);
+        ctx.fill();
+
+        // Inner Core
+        ctx.globalAlpha = 1.0;
         ctx.beginPath();
         ctx.rect(-4, -4, 8, 8);
         ctx.fill();
-        ctx.stroke();
+        ctx.stroke(); // White outline
+
+        ctx.globalCompositeOperation = 'source-over';
 
         ctx.restore();
     }

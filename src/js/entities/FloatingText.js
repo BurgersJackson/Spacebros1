@@ -21,7 +21,7 @@ export class FloatingText extends Entity {
         this.amount = (typeof opts.amount === 'number') ? opts.amount : null;
         this.prefix = opts.prefix || '';
         this.suffix = opts.suffix || '';
-        this.lastBumpAt = Date.now();
+        this.age = 0;
     }
 
     /**
@@ -39,7 +39,7 @@ export class FloatingText extends Entity {
         if (typeof x === 'number') { this.pos.x = x; this.prevPos.x = x; }
         if (typeof y === 'number') { this.pos.y = y; this.prevPos.y = y; }
         this.life = this.maxLife;
-        this.lastBumpAt = Date.now();
+        this.age = 0;
     }
 
     update() {
@@ -48,6 +48,7 @@ export class FloatingText extends Entity {
         this.pos.add(this.vel);
         this.vel.mult(0.98);
         this.life--;
+        this.age++;
         if (this.life <= 0) this.dead = true;
     }
 
@@ -63,8 +64,10 @@ export class FloatingText extends Entity {
         ctx.font = 'bold 60px Courier New';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = '#000';
+        // Use stroke instead of shadowBlur for performance
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#000';
+        ctx.strokeText(this.text, 0, 0);
         ctx.fillText(this.text, 0, 0);
         ctx.restore();
     }
@@ -83,12 +86,11 @@ export class FloatingText extends Entity {
  */
 export function getOrCreateFloatingText(floatingTexts, key, x, y, amount, color = '#ff0', opts = {}) {
     const maxAge = opts.maxAge || 600;
-    const now = Date.now();
-
     // Look for existing text with same key
     for (let i = 0; i < floatingTexts.length; i++) {
         const ft = floatingTexts[i];
-        if (ft.key === key && !ft.dead && (now - ft.lastBumpAt) < maxAge) {
+        // Stack if key matches, not dead, and "young" enough (wait ~0.3s or 20 frames)
+        if (ft.key === key && !ft.dead && ft.age < 20) {
             ft.bump(amount, x, y);
             return ft;
         }

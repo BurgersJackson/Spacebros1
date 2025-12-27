@@ -20,6 +20,7 @@ export class Particle extends Entity {
         this.life = life + Math.random() * 10;
         this.maxLife = this.life;
         this.color = color;
+        this.glow = false;
     }
 
     reset(x, y, vx, vy, color = '#fff', life = 30) {
@@ -32,6 +33,7 @@ export class Particle extends Entity {
         this.life = life + Math.random() * 10;
         this.maxLife = this.life;
         this.color = color;
+        this.glow = false;
         this.dead = false;
         this.sprite = null;
     }
@@ -49,7 +51,10 @@ export class Particle extends Entity {
         if (pixiResources?.layer && pixiResources?.whiteTexture) {
             let spr = this.sprite;
             if (!spr) {
-                spr = allocPixiSprite(pixiResources.pool, pixiResources.layer, pixiResources.whiteTexture, 2);
+                const tex = (this.glow && pixiResources.glowTexture) ? pixiResources.glowTexture : pixiResources.whiteTexture;
+                // For glowing particles, use a slightly larger sprite to accommodate the glow
+                const size = this.glow ? 8 : 2;
+                spr = allocPixiSprite(pixiResources.pool, pixiResources.layer, tex, size);
                 this.sprite = spr;
             }
             if (spr) {
@@ -57,15 +62,26 @@ export class Particle extends Entity {
                 spr.position.set(rPos.x, rPos.y);
                 spr.alpha = Math.max(0, this.life / this.maxLife);
                 spr.tint = colorToPixi(this.color);
+                if (this.glow) {
+                    spr.blendMode = window.PIXI ? PIXI.BLEND_MODES.ADD : 0;
+                } else {
+                    spr.blendMode = window.PIXI ? PIXI.BLEND_MODES.NORMAL : 0;
+                }
                 return;
             }
         }
 
         // Canvas fallback
+        ctx.save();
         ctx.globalAlpha = this.life / this.maxLife;
+        if (this.glow) {
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = this.color;
+            ctx.globalCompositeOperation = 'lighter';
+        }
         ctx.fillStyle = this.color;
         ctx.fillRect(rPos.x, rPos.y, 2, 2);
-        ctx.globalAlpha = 1.0;
+        ctx.restore();
     }
 
     cull() {

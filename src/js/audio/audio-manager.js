@@ -62,6 +62,10 @@ export function setMusicMode(mode = null) {
     }
 
     backgroundMusicAudio.volume = (musicMode === 'cruiser') ? 0.22 : 0.25;
+    if (!backgroundMusicAudio.paused && backgroundMusicAudio.readyState > 2) {
+        // Already playing
+        return;
+    }
     try {
         const p = backgroundMusicAudio.play();
         if (p && typeof p.catch === 'function') p.catch(() => { });
