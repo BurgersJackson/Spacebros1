@@ -8913,7 +8913,7 @@ class RadiationStorm extends Entity {
         this.t++;
         const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
         if (now >= this.endsAt) {
-            this.dead = true;
+            this.kill();
             return;
         }
         const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
@@ -9103,7 +9103,7 @@ class MiniEventDefendCache extends Entity {
     }
     success() {
         if (this.dead) return;
-        this.dead = true;
+        this.kill();
         showOverlayMessage("EVENT COMPLETE - CACHE SECURED", '#0f0', 2200, 1);
         playSound('powerup');
         player.addXp(60);
@@ -9112,7 +9112,7 @@ class MiniEventDefendCache extends Entity {
     }
     fail() {
         if (this.dead) return;
-        this.dead = true;
+        this.kill();
         showOverlayMessage("EVENT FAILED", '#f00', 2000, 1);
     }
     getUiText() {
@@ -9298,7 +9298,7 @@ class MiniEventEscortDrone extends Entity {
     }
     success() {
         if (this.dead) return;
-        this.dead = true;
+        this.kill();
         showOverlayMessage("EVENT COMPLETE - DRONE DELIVERED", '#0f0', 2200, 1);
         playSound('powerup');
         player.addXp(80);
@@ -9307,7 +9307,7 @@ class MiniEventEscortDrone extends Entity {
     }
     fail() {
         if (this.dead) return;
-        this.dead = true;
+        this.kill();
         showOverlayMessage("EVENT FAILED", '#f00', 2000, 1);
     }
     getUiText() {
@@ -14289,6 +14289,10 @@ function showLevelUpMenu() {
         };
 
         card.onclick = () => {
+            // Reset timing immediately to prevent jitter on resume
+            simLastPerfAt = 0;
+            simAccMs = 0;
+
             applyUpgrade(choice.id, nextTier);
             document.getElementById('levelup-screen').style.display = 'none';
 
@@ -14313,9 +14317,6 @@ function showLevelUpMenu() {
                     if (floatingTexts) floatingTexts.forEach(resetEnt);
 
                     gameActive = true;
-                    // Reset simulation timing
-                    simLastPerfAt = 0;
-                    simAccMs = 0;
                     if (musicEnabled) startMusic();
                 }, 200);
             });
@@ -15851,33 +15852,43 @@ function gameLoopLogic(opts = null) {
                     }
 
                     // Only player bullets can hit the space station
-                    if (!hit && !b.isEnemy && spaceStation) {
+                    if (!hit && !b.isEnemy && spaceStation && !spaceStation.dead) {
                         const dist = Math.hypot(b.pos.x - spaceStation.pos.x, b.pos.y - spaceStation.pos.y);
-                        if (!b.ignoreShields && dist < spaceStation.shieldRadius + 10 && dist > spaceStation.shieldRadius - 10) {
+
+                        // Check if outer shields have any segments up
+                        const outerShieldsUp = spaceStation.shieldSegments && spaceStation.shieldSegments.some(s => s > 0);
+                        const innerShieldsUp = spaceStation.innerShieldSegments && spaceStation.innerShieldSegments.some(s => s > 0);
+
+                        // Outer shield collision - bullet is within or touching the outer shield radius
+                        if (!hit && !b.ignoreShields && outerShieldsUp && dist < spaceStation.shieldRadius + b.radius) {
                             let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.shieldRotation;
                             while (angle < 0) angle += Math.PI * 2;
                             const count = spaceStation.shieldSegments.length;
                             const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
                             if (spaceStation.shieldSegments[idx] > 0) {
                                 spaceStation.shieldSegments[idx]--;
+                                spaceStation.shieldsDirty = true;
                                 hit = true;
                                 playSound('shield_hit');
                                 spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
                             }
                         }
-                        if (!hit && !b.ignoreShields && dist < spaceStation.innerShieldRadius + 10 && dist > spaceStation.innerShieldRadius - 10) {
+                        // Inner shield collision - bullet is within or touching the inner shield radius
+                        if (!hit && !b.ignoreShields && innerShieldsUp && dist < spaceStation.innerShieldRadius + b.radius) {
                             let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.innerShieldRotation;
                             while (angle < 0) angle += Math.PI * 2;
                             const count = spaceStation.innerShieldSegments.length;
                             const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
                             if (spaceStation.innerShieldSegments[idx] > 0) {
                                 spaceStation.innerShieldSegments[idx]--;
+                                spaceStation.shieldsDirty = true;
                                 hit = true;
                                 playSound('shield_hit');
                                 spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
                             }
                         }
-                        if (!hit && dist < spaceStation.radius + b.radius) {
+                        // Hull damage only if ALL shields are down
+                        if (!hit && !outerShieldsUp && !innerShieldsUp && dist < spaceStation.radius + b.radius) {
                             spaceStation.hp -= b.damage;
                             hit = true;
                             playSound('hit');
