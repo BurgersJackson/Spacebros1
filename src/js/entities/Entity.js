@@ -11,6 +11,7 @@ import { Vector } from '../core/math.js';
 export class Entity {
     constructor(x = 0, y = 0) {
         this.pos = new Vector(x, y);
+        this.prevPos = new Vector(x, y);
         this.vel = new Vector(0, 0);
         this.radius = 10;
         this.angle = 0;
@@ -28,7 +29,23 @@ export class Entity {
      * Update entity position based on velocity.
      */
     update() {
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
         this.pos.add(this.vel);
+    }
+
+    /**
+     * Get interpolated render position.
+     * @param {number} alpha - Interpolation factor (0..1)
+     * @returns {Object} {x, y}
+     */
+    getRenderPos(alpha) {
+        if (alpha <= 0) return this.prevPos;
+        if (alpha >= 1) return this.pos;
+        return {
+            x: this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha,
+            y: this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
+        };
     }
 
     /**

@@ -2315,6 +2315,7 @@ class Spaceship extends Entity {
     respawn() {
         this.pos.x = 0;
         this.pos.y = 0;
+        if (this.prevPos) { this.prevPos.x = 0; this.prevPos.y = 0; }
         this.vel.x = 0;
         this.vel.y = 0;
         this.angle = -Math.PI / 2;
@@ -2726,7 +2727,7 @@ class Spaceship extends Entity {
         ctx.restore();
     }
 
-    draw(ctx) {
+    draw(ctx, alpha = 1.0) {
         if (!this.visible || this.dead) {
             if (this._pixiContainer) this._pixiContainer.visible = false;
             if (this._pixiLaserGfx) {
@@ -2736,6 +2737,8 @@ class Spaceship extends Entity {
             if (this.dead) pixiCleanupObject(this);
             return;
         }
+
+        const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
 
         // Pixi fast path (player hull/turret/shields)
         if (pixiPlayerLayer && pixiTextures && pixiTextures.player_hull) {
@@ -2786,7 +2789,7 @@ class Spaceship extends Entity {
                 pixiPlayerLayer.addChild(container);
             }
             container.visible = true;
-            container.position.set(this.pos.x, this.pos.y);
+            container.position.set(rPos.x, rPos.y);
 
             // Hull
             if (this._pixiHullSpr) {
@@ -13483,15 +13486,23 @@ function mainLoop() {
             simNowMs += SIM_STEP_MS;
             Date.now = () => Math.floor(simNowMs);
             const drawThisTick = (i === stepsToRun - 1);
-            gameLoopLogic({ doUpdate: true, doDraw: drawThisTick });
+            // On the final tick (which draws), pass alpha=1.0 (current state)
+            // But wait, if we are strictly interpolating, we want to view state at 'renderTime'.
+            // If we just stepped, we are at T. Valid interpolation is between T-1 and T?
+            // Actually, if we just updated, 'simAccMs' is decremented.
+            // Let's pass simAccMs / SIM_STEP_MS for general interpolation.
+            // If we are INSIDE the loop, we are catching up. We shouldn't draw intermediate catch-up frames usually, 
+            // except the last one.
+            gameLoopLogic({ doUpdate: true, doDraw: drawThisTick, alpha: 1.0 });
             simAccMs -= SIM_STEP_MS;
         }
         // If no sim steps ran this RAF (common on >120Hz displays), still render a frame so
         // the canvases don't get compositor-discarded (prevents intermittent dark frames).
         if (stepsToRun === 0) {
             const renderNowMs = simNowMs + simAccMs; // smooth time between sim ticks
+            const alpha = simAccMs / SIM_STEP_MS;
             Date.now = () => Math.floor(renderNowMs);
-            gameLoopLogic({ doUpdate: false, doDraw: true });
+            gameLoopLogic({ doUpdate: false, doDraw: true, alpha: alpha });
         }
         Date.now = originalDateNow;
         // If we hit the cap, drop any remaining accumulated time to avoid spiraling.
@@ -13981,8 +13992,10 @@ function gameLoopLogic(opts = null) {
     }
     const zoom = currentZoom;
 
-    let camX = player.pos.x - width / (2 * zoom);
-    let camY = player.pos.y - height / (2 * zoom);
+    const alpha = (opts && opts.alpha !== undefined) ? opts.alpha : 1.0;
+    const renderPos = player.getRenderPos(alpha);
+    let camX = renderPos.x - width / (2 * zoom);
+    let camY = renderPos.y - height / (2 * zoom);
     if (shakeTimer > 0) {
         if (doUpdate) {
             shakeTimer--;
@@ -14155,7 +14168,8 @@ function gameLoopLogic(opts = null) {
     if (doUpdate) player.update();
     if (doDraw) {
         player.drawLaser(ctx);
-        player.draw(ctx);
+        const alpha = (opts && opts.alpha !== undefined) ? opts.alpha : 1.0;
+        player.draw(ctx, alpha);
     }
 
     // FloatingTexts - always update, cull drawing by view
