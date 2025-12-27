@@ -33,6 +33,8 @@ export class Explosion extends Entity {
             this.particles.push({
                 x: 0,
                 y: 0,
+                prevX: 0,
+                prevY: 0,
                 vx: vx,
                 vy: vy,
                 life: life,
@@ -53,6 +55,8 @@ export class Explosion extends Entity {
         // Update particles
         for (let i = 0; i < this.particles.length; i++) {
             const p = this.particles[i];
+            p.prevX = p.x;
+            p.prevY = p.y;
             p.x += p.vx;
             p.y += p.vy;
             p.vx *= 0.96; // friction
@@ -63,20 +67,25 @@ export class Explosion extends Entity {
         }
     }
 
-    draw(ctx) {
+    draw(ctx, alpha = 1.0) {
         ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
+        // Explosion center doesn't move, but if it did we'd use getRenderPos here too
+        const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
+        ctx.translate(rPos.x, rPos.y);
 
         // Draw particles
         for (let i = 0; i < this.particles.length; i++) {
             const p = this.particles[i];
             if (p.life <= 0) continue;
 
-            const alpha = Math.max(0, p.life / p.maxLife);
-            ctx.globalAlpha = alpha;
+            const renderX = (typeof alpha === 'number' && p.prevX !== undefined) ? (p.prevX + (p.x - p.prevX) * alpha) : p.x;
+            const renderY = (typeof alpha === 'number' && p.prevY !== undefined) ? (p.prevY + (p.y - p.prevY) * alpha) : p.y;
+
+            const pAlpha = Math.max(0, p.life / p.maxLife);
+            ctx.globalAlpha = pAlpha;
             ctx.fillStyle = p.color;
             ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+            ctx.arc(renderX, renderY, p.size * pAlpha, 0, Math.PI * 2);
             ctx.fill();
         }
 

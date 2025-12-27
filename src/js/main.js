@@ -637,10 +637,13 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
 
     const makeGlowTexture = () => {
         const g = new PIXI.Graphics();
-        g.beginFill(0xffffff, 0.16);
-        g.drawCircle(0, 0, 12);
-        g.beginFill(0xffffff, 0.6);
-        g.drawCircle(0, 0, 7);
+        // Large soft outer glow
+        g.beginFill(0xffffff, 0.15);
+        g.drawCircle(0, 0, 16);
+        // Medium glow
+        g.beginFill(0xffffff, 0.4);
+        g.drawCircle(0, 0, 8);
+        // Core
         g.beginFill(0xffffff, 1);
         g.drawCircle(0, 0, 4);
         const tex = pixiApp.renderer.generateTexture(g);
@@ -649,10 +652,12 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
     };
     const makeLaserTexture = () => {
         const g = new PIXI.Graphics();
-        g.beginFill(0xffffff, 0.18);
-        g.drawRoundedRect(-20, -4, 40, 8, 4);
-        g.beginFill(0xffffff, 0.65);
-        g.drawRoundedRect(-16, -3, 32, 6, 3);
+        // Glow
+        g.beginFill(0xffffff, 0.15);
+        g.drawRoundedRect(-24, -8, 48, 16, 8);
+        g.beginFill(0xffffff, 0.5);
+        g.drawRoundedRect(-18, -5, 36, 10, 5);
+        // Core
         g.beginFill(0xffffff, 1);
         g.drawRoundedRect(-14, -2, 28, 4, 2);
         const tex = pixiApp.renderer.generateTexture(g);
@@ -661,10 +666,12 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
     };
     const makeSquareTexture = () => {
         const g = new PIXI.Graphics();
-        g.beginFill(0xffffff, 0.22);
-        g.drawRoundedRect(-6, -6, 12, 12, 2);
-        g.beginFill(0xffffff, 0.6);
-        g.drawRoundedRect(-5, -5, 10, 10, 2);
+        // Glow
+        g.beginFill(0xffffff, 0.15);
+        g.drawRoundedRect(-16, -16, 32, 32, 4);
+        g.beginFill(0xffffff, 0.5);
+        g.drawRoundedRect(-10, -10, 20, 20, 3);
+        // Core
         g.beginFill(0xffffff, 1);
         g.drawRoundedRect(-4, -4, 8, 8, 2);
         const tex = pixiApp.renderer.generateTexture(g);
@@ -1418,6 +1425,7 @@ let fpsUiVisible = null;
 let simAccMs = 0;
 let simNowMs = 0;
 let simLastPerfAt = 0;
+let renderAlpha = 1.0; // Global render interpolation alpha (0-1)
 let shakeOffsetX = 0;
 let shakeOffsetY = 0;
 
@@ -1931,6 +1939,10 @@ class EnvironmentAsteroid extends Entity {
     }
 
     update() {
+        // Save previous state for interpolation
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+        this.prevAngle = this.angle;
         this.pos.add(this.vel);
         this.angle += this.rotSpeed;
         // Contract / maze walls should persist until the contract cleans them up.
@@ -1981,6 +1993,12 @@ class EnvironmentAsteroid extends Entity {
             }
             return;
         }
+
+        // Interpolate position and angle for smooth rendering on high refresh displays
+        const rPos = this.getRenderPos(renderAlpha);
+        const prevAng = (this.prevAngle !== undefined) ? this.prevAngle : this.angle;
+        const rAngle = prevAng + (this.angle - prevAng) * renderAlpha;
+
         if (pixiAsteroidLayer && pixiTextures && pixiTextures.asteroids && pixiTextures.asteroids.length > 0) {
             let idx = 0;
             if (asteroidTexturesExternalReady && pixiTextures.asteroids.length >= 3) {
@@ -2004,8 +2022,8 @@ class EnvironmentAsteroid extends Entity {
                 } catch (e) { }
                 if (!spr.parent) pixiAsteroidLayer.addChild(spr);
                 spr.visible = true;
-                spr.position.set(this.pos.x, this.pos.y);
-                spr.rotation = this.angle;
+                spr.position.set(rPos.x, rPos.y);
+                spr.rotation = rAngle;
                 const s = (this.radius * 2) / Math.max(1, Math.max(tex.width, tex.height));
                 spr.scale.set(s);
                 const tint = this.unbreakable ? 0x00aaff : 0xffffff;
@@ -2017,8 +2035,8 @@ class EnvironmentAsteroid extends Entity {
         }
 
         ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.rotate(this.angle);
+        ctx.translate(rPos.x, rPos.y);
+        ctx.rotate(rAngle);
 
         // Canvas fallback: draw external asteroid art if present.
         if (!this.unbreakable && asteroidImages && asteroidTexturesExternalReady) {
@@ -2383,7 +2401,17 @@ class Spaceship extends Entity {
             updateTurboUI();
         }
 
-        const moveMag = Math.sqrt(gpState.move.x * gpState.move.x + gpState.move.y * gpState.move.y);
+        let moveX = gpState.move.x;
+        let moveY = gpState.move.y;
+
+        if (!usingGamepad) {
+            if (keys.w) moveY -= 1;
+            if (keys.s) moveY += 1;
+            if (keys.a) moveX -= 1;
+            if (keys.d) moveX += 1;
+        }
+
+        const moveMag = Math.sqrt(moveX * moveX + moveY * moveY);
         let thrusting = false;
 
         const aimMag = Math.sqrt(gpState.aim.x * gpState.aim.x + gpState.aim.y * gpState.aim.y);
@@ -2394,7 +2422,7 @@ class Spaceship extends Entity {
             if (aimMag > aimThresh) {
                 this.turretAngle = Math.atan2(gpState.aim.y, gpState.aim.x);
             } else if (moveMag > moveAimThresh) {
-                this.turretAngle = Math.atan2(gpState.move.y, gpState.move.x);
+                this.turretAngle = Math.atan2(moveY, moveX);
             }
         } else {
             this.turretAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
@@ -2408,34 +2436,25 @@ class Spaceship extends Entity {
         if (this.caveSlowFrames > 0) this.caveSlowFrames--;
         const slowMult = (this.caveSlowFrames > 0) ? Math.max(0.4, Math.min(1.0, this.caveSlowMult || 0.62)) : 1.0;
         const currentMaxSpeed = this.maxSpeed * this.stats.speedMult * turboMult * slowMult;
-        // Removed rotation stat multiplier
-        const currentRot = this.rotationSpeed;
 
         if (moveMag > 0.06) {
-            const targetAngle = Math.atan2(gpState.move.y, gpState.move.x);
+            const targetAngle = Math.atan2(moveY, moveX);
             let angleDiff = targetAngle - this.angle;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
             if (Math.abs(angleDiff) > 0.05) {
                 this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), 0.15);
             }
-            this.vel.x += Math.cos(targetAngle) * (currentThrust * moveMag);
-            this.vel.y += Math.sin(targetAngle) * (currentThrust * moveMag);
+            // Use normalized components for thrust calculation
+            const normMoveX = moveX / moveMag;
+            const normMoveY = moveY / moveMag;
+            const finalMag = Math.min(1.0, moveMag);
+
+            this.vel.x += normMoveX * (currentThrust * finalMag);
+            this.vel.y += normMoveY * (currentThrust * finalMag);
             thrusting = true;
-        } else {
-            if (keys.a) this.angle -= currentRot;
-            if (keys.d) this.angle += currentRot;
-            if (keys.w) {
-                this.vel.x += Math.cos(this.angle) * currentThrust;
-                this.vel.y += Math.sin(this.angle) * currentThrust;
-                thrusting = true;
-            }
-            if (keys.s) {
-                this.vel.x -= Math.cos(this.angle) * (currentThrust * 0.5);
-                this.vel.y -= Math.sin(this.angle) * (currentThrust * 0.5);
-                thrusting = true;
-            }
         }
+
 
         this.fireDelay = this.baseFireDelay / this.stats.fireRateMult;
         this.shotgunDelay = this.baseShotgunDelay / this.stats.shotgunFireRateMult;
@@ -3627,6 +3646,8 @@ class Bullet extends Entity {
     }
     init(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0, shape = null) {
         this.pos.x = x; this.pos.y = y;
+        // Initialize prevPos for interpolation
+        if (this.prevPos) { this.prevPos.x = x; this.prevPos.y = y; }
         this.speed = speed * 2; // Doubled for 60Hz
         this.angle = angle;
         this.vel.x = Math.cos(angle) * this.speed;
@@ -3696,6 +3717,10 @@ class Bullet extends Entity {
             destroyBulletSprite(this);
             return;
         }
+
+        // Interpolate position for smooth rendering on high refresh displays
+        const rPos = this.getRenderPos(renderAlpha);
+
         // Pixi path (skip for missile shape to keep glow)
         if (!this.isMissile && pixiBulletLayer && pixiBulletTextures.glow) {
             let spr = this.sprite;
@@ -3712,15 +3737,15 @@ class Bullet extends Entity {
                 spr.texture = texture;
                 if (!spr.parent) pixiBulletLayer.addChild(spr);
                 spr.visible = true;
-                spr.position.set(this.pos.x, this.pos.y);
+                spr.position.set(rPos.x, rPos.y);
                 spr.rotation = this.angle;
                 spr.blendMode = PIXI.BLEND_MODES.ADD;
                 if (isLaser) {
-                    spr.width = size * 5;
-                    spr.height = size * 0.9;
+                    spr.width = size * 6;
+                    spr.height = size * 3.5;
                 } else {
-                    spr.width = size;
-                    spr.height = size;
+                    spr.width = size * 4;
+                    spr.height = size * 4;
                 }
                 spr.tint = colorToPixi(this.color || (this.isEnemy ? '#f00' : '#ff0'));
                 spr.alpha = 1;
@@ -3729,10 +3754,12 @@ class Bullet extends Entity {
         }
 
         ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
+        ctx.translate(rPos.x, rPos.y);
 
         if (this.isMissile) {
             ctx.rotate(this.angle);
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#fa0';
             ctx.fillStyle = '#f80';
             ctx.beginPath();
             ctx.moveTo(6, 0);
@@ -4371,6 +4398,9 @@ class Enemy extends Entity {
             return;
         }
 
+        // Interpolate position for smooth rendering on high refresh displays
+        const rPos = this.getRenderPos(renderAlpha);
+
         // Pixi fast path for the hot enemy rendering (hulls + shields + name tags).
         if (pixiEnemyLayer && pixiTextures) {
             // Defensive: some bosses change `type` strings (e.g. flagship) but should always render as cruisers.
@@ -4453,7 +4483,7 @@ class Enemy extends Entity {
                     if (typeof anchor === 'number') spr.anchor.set(anchor);
                     else if (anchor && typeof anchor.x === 'number' && typeof anchor.y === 'number') spr.anchor.set(anchor.x, anchor.y);
                     spr.visible = true;
-                    spr.position.set(this.pos.x, this.pos.y);
+                    spr.position.set(rPos.x, rPos.y);
                     spr.rotation = (this.angle || 0) + (pixiTextureRotOffsets[key] || 0);
                     let effectiveScale = modelScale;
                     if (pixiTextureScaleToRadius[key]) {
@@ -4482,7 +4512,7 @@ class Enemy extends Entity {
                     pixiVectorLayer.addChild(gfx);
                 }
                 gfx.clear();
-                gfx.position.set(this.pos.x, this.pos.y);
+                gfx.position.set(rPos.x, rPos.y);
                 gfx.alpha = stealthAlpha;
 
                 if (this.freezeTimer > 0 && hasOuter) {
@@ -5074,6 +5104,9 @@ class Base extends Entity {
             return;
         }
 
+        // Interpolate position for smooth rendering on high refresh displays
+        const rPos = this.getRenderPos(renderAlpha);
+
         // Pixi fast path (base hull + shields)
         if (pixiBaseLayer && pixiTextures) {
             const baseKey = (this.type === 'heavy') ? 'base_heavy' : (this.type === 'rapid' ? 'base_rapid' : 'base_standard');
@@ -5117,7 +5150,7 @@ class Base extends Entity {
             const jitter = (this.hp <= 2) ? 2 : 0;
             const jx = jitter ? (Math.random() - 0.5) * jitter * 2 : 0;
             const jy = jitter ? (Math.random() - 0.5) * jitter * 2 : 0;
-            container.position.set(this.pos.x + jx, this.pos.y + jy);
+            container.position.set(rPos.x + jx, rPos.y + jy);
 
             if (this._pixiHullSpr) this._pixiHullSpr.rotation = this.angle || 0;
 
@@ -5138,7 +5171,7 @@ class Base extends Entity {
                         pixiVectorLayer.addChild(gfx);
                     }
                     gfx.clear();
-                    gfx.position.set(this.pos.x, this.pos.y);
+                    gfx.position.set(rPos.x, rPos.y);
 
                     if (hasOuter) {
                         const segCount = this.shieldSegments.length;
@@ -6777,6 +6810,9 @@ class CaveGateBoss extends Entity {
         const vmax = phase2 ? 6.2 : 4.6;
         const v = Math.hypot(this.vel.x, this.vel.y);
         if (v > vmax) { this.vel.x = (this.vel.x / v) * vmax; this.vel.y = (this.vel.y / v) * vmax; }
+        // Save prevPos for interpolation
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
         this.pos.add(this.vel);
 
         // Beam sweep (telegraphed, heavy damage).
@@ -6888,8 +6924,11 @@ class CaveGateBoss extends Entity {
         const phase2 = this.phase2();
         const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
 
+        // Interpolate position
+        const rPos = this.getRenderPos(renderAlpha);
+
         ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
+        ctx.translate(rPos.x, rPos.y);
         ctx.rotate(aim);
         ctx.fillStyle = '#120018';
         ctx.strokeStyle = phase2 ? '#ff0' : '#f0f';
@@ -9543,18 +9582,31 @@ class Cruiser extends Enemy {
     draw(ctx) {
         super.draw(ctx);
         if (this.dead) return;
+
+        const rPos = this.getRenderPos(renderAlpha);
+        // Using current angle (not interpolated) matches Enemy.draw behavior
+        const ang = this.angle + (this.visualAngleOffset || 0);
+        const ca = Math.cos(ang);
+        const sa = Math.sin(ang);
+
         // Hardpoints overlay
         ctx.save();
         for (let i = 0; i < this.hardpoints.length; i++) {
             const hp = this.hardpoints[i];
-            const p = this.hardpointWorld(hp);
+
+            // Replicate hardpointWorld logic but with rPos
+            const ox = hp.off.x;
+            const oy = hp.off.y;
+            const px = rPos.x + ox * ca - oy * sa;
+            const py = rPos.y + ox * sa + oy * ca;
+
             const alive = hp.hp > 0;
             ctx.globalAlpha = alive ? 1 : 0.35;
             ctx.strokeStyle = alive ? '#ff0' : '#0f0';
             ctx.fillStyle = alive ? '#222' : '#040';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.arc(p.x, p.y, hp.r, 0, Math.PI * 2);
+            ctx.arc(px, py, hp.r, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
         }
@@ -9564,7 +9616,7 @@ class Cruiser extends Enemy {
             ctx.strokeStyle = '#ff0';
             ctx.lineWidth = 4;
             ctx.beginPath();
-            ctx.arc(this.pos.x, this.pos.y, this.radius + 18, 0, Math.PI * 2);
+            ctx.arc(rPos.x, rPos.y, this.radius + 18, 0, Math.PI * 2);
             ctx.stroke();
         }
         ctx.restore();
@@ -10272,6 +10324,9 @@ class WarpSentinelBoss extends Entity {
             }
         }
 
+        // Save previous position for interpolation
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
         this.pos.add(this.vel);
     }
 
@@ -10359,9 +10414,13 @@ class WarpSentinelBoss extends Entity {
 
     draw(ctx) {
         if (this.dead) return;
+
+        // Interpolate for smooth rendering
+        const rPos = this.getRenderPos(renderAlpha);
+
         const z = currentZoom || ZOOM_LEVEL;
         ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
+        ctx.translate(rPos.x, rPos.y);
         const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
 
         const drawShieldRing = (segments, radius, rotation, color, strength) => {
@@ -11416,6 +11475,10 @@ class Drone extends Entity {
     }
     update() {
         if (!player || player.dead) return;
+
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+
         const now = Date.now();
         this.orbitAngle += 0.04; // doubled for 60Hz
         const baseX = player.pos.x + Math.cos(this.orbitAngle) * this.orbitRadius;
@@ -11453,8 +11516,9 @@ class Drone extends Entity {
     }
     draw(ctx) {
         if (!player || player.dead) return;
+        const rPos = this.getRenderPos(renderAlpha);
         ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
+        ctx.translate(rPos.x, rPos.y);
         ctx.rotate(this.orbitAngle);
         ctx.lineWidth = 2;
         if (this.type === 'heal') {
@@ -13132,7 +13196,9 @@ function showLevelUpMenu() {
             applyUpgrade(choice.id, nextTier);
             document.getElementById('levelup-screen').style.display = 'none';
             gameActive = true;
-            // Resume logic
+            // Reset simulation timing to prevent jitter after pause
+            simLastPerfAt = 0;
+            simAccMs = 0;
             if (musicEnabled) startMusic();
         };
         container.appendChild(card);
@@ -13469,7 +13535,8 @@ function mainLoop() {
         const perfNow = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         if (!simLastPerfAt) {
             simLastPerfAt = perfNow;
-            simNowMs = Date.now();
+            // Only init simNowMs if it's 0 (first run or reset), otherwise preserve it (resume)
+            if (!simNowMs) simNowMs = Date.now();
             simAccMs = 0;
         }
         let frameDt = perfNow - simLastPerfAt;
@@ -13993,6 +14060,7 @@ function gameLoopLogic(opts = null) {
     const zoom = currentZoom;
 
     const alpha = (opts && opts.alpha !== undefined) ? opts.alpha : 1.0;
+    renderAlpha = alpha; // Set global for entity draw methods
     const renderPos = player.getRenderPos(alpha);
     let camX = renderPos.x - width / (2 * zoom);
     let camY = renderPos.y - height / (2 * zoom);
@@ -14176,7 +14244,7 @@ function gameLoopLogic(opts = null) {
     for (let i = 0, len = floatingTexts.length; i < len; i++) {
         const t = floatingTexts[i];
         if (doUpdate) t.update();
-        if (doDraw && isInView(t.pos.x, t.pos.y)) t.draw(ctx);
+        if (doDraw && isInView(t.pos.x, t.pos.y)) t.draw(ctx, alpha);
     }
 
     // Drones - always close to player, no culling needed
@@ -14248,7 +14316,7 @@ function gameLoopLogic(opts = null) {
         const p = particles[i];
         if (doUpdate) p.update();
         if (doDraw) {
-            if (isInView(p.pos.x, p.pos.y, 20)) p.draw(ctx, particleRes);
+            if (isInView(p.pos.x, p.pos.y, 20)) p.draw(ctx, particleRes, alpha);
             else if (typeof p.cull === 'function') p.cull();
         }
     }
@@ -14257,10 +14325,14 @@ function gameLoopLogic(opts = null) {
     for (let i = 0, len = explosions.length; i < len; i++) {
         const ex = explosions[i];
         if (doUpdate) ex.update();
-        if (doDraw && isInView(ex.pos.x, ex.pos.y)) ex.draw(ctx);
+        if (doDraw && isInView(ex.pos.x, ex.pos.y)) ex.draw(ctx, alpha);
     }
 
-    for (let i = 0; i < warpParticles.length; i++) { const p = warpParticles[i]; if (doUpdate) p.update(); if (doDraw) p.draw(ctx); }
+    for (let i = 0; i < warpParticles.length; i++) {
+        const p = warpParticles[i];
+        if (doUpdate) p.update();
+        if (doDraw) p.draw(ctx, null, alpha);
+    }
     if (doUpdate) compactArray(warpParticles);
 
     for (let i = 0; i < shockwaves.length; i++) { const s = shockwaves[i]; if (doUpdate) s.update(); if (doDraw) s.draw(ctx); }
@@ -15409,6 +15481,7 @@ function startGame() {
     // Always reset audio state to normal before a new run 
     setMusicMode('normal');
     gameMode = 'normal';
+    simNowMs = 0; // Reset simulation clock for new game logic
     arcadeBoss = null;
     arcadeWave = 0;
     arcadeWaveNextAt = 0;

@@ -36,26 +36,29 @@ export class FloatingText extends Entity {
             this.amount += deltaAmount;
             this.text = `${this.prefix}${this.amount}${this.suffix}`;
         }
-        if (typeof x === 'number') this.pos.x = x;
-        if (typeof y === 'number') this.pos.y = y;
+        if (typeof x === 'number') { this.pos.x = x; this.prevPos.x = x; }
+        if (typeof y === 'number') { this.pos.y = y; this.prevPos.y = y; }
         this.life = this.maxLife;
         this.lastBumpAt = Date.now();
     }
 
     update() {
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
         this.pos.add(this.vel);
         this.vel.mult(0.98);
         this.life--;
         if (this.life <= 0) this.dead = true;
     }
 
-    draw(ctx) {
+    draw(ctx, alpha = 1.0) {
         if (this.dead) return;
+        const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
         const t = Math.max(0, this.life / this.maxLife);
-        const alpha = Math.min(1, t * t);
+        const a = Math.min(1, t * t);
         ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.globalAlpha = alpha;
+        ctx.translate(rPos.x, rPos.y);
+        ctx.globalAlpha = a;
         ctx.fillStyle = this.color;
         ctx.font = 'bold 60px Courier New';
         ctx.textAlign = 'center';

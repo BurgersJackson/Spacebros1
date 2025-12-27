@@ -25,6 +25,8 @@ export class Particle extends Entity {
     reset(x, y, vx, vy, color = '#fff', life = 30) {
         this.pos.x = x;
         this.pos.y = y;
+        // Reset prevPos for interpolation
+        if (this.prevPos) { this.prevPos.x = x; this.prevPos.y = y; }
         this.vel.x = vx || (Math.random() - 0.5) * 3;
         this.vel.y = vy || (Math.random() - 0.5) * 3;
         this.life = life + Math.random() * 10;
@@ -40,7 +42,9 @@ export class Particle extends Entity {
         if (this.life <= 0) this.dead = true;
     }
 
-    draw(ctx, pixiResources = null) {
+    draw(ctx, pixiResources = null, alpha = 1.0) {
+        const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
+
         // Try PixiJS rendering
         if (pixiResources?.layer && pixiResources?.whiteTexture) {
             let spr = this.sprite;
@@ -50,7 +54,7 @@ export class Particle extends Entity {
             }
             if (spr) {
                 if (!spr.parent) pixiResources.layer.addChild(spr);
-                spr.position.set(this.pos.x, this.pos.y);
+                spr.position.set(rPos.x, rPos.y);
                 spr.alpha = Math.max(0, this.life / this.maxLife);
                 spr.tint = colorToPixi(this.color);
                 return;
@@ -60,7 +64,7 @@ export class Particle extends Entity {
         // Canvas fallback
         ctx.globalAlpha = this.life / this.maxLife;
         ctx.fillStyle = this.color;
-        ctx.fillRect(this.pos.x, this.pos.y, 2, 2);
+        ctx.fillRect(rPos.x, rPos.y, 2, 2);
         ctx.globalAlpha = 1.0;
     }
 
@@ -86,6 +90,7 @@ export class SmokeParticle extends Entity {
     reset(x, y, vx, vy) {
         this.pos.x = x;
         this.pos.y = y;
+        if (this.prevPos) { this.prevPos.x = x; this.prevPos.y = y; }
         this.vel.x = vx || (Math.random() - 0.5) * 1;
         this.vel.y = vy || (Math.random() - 0.5) * 1;
         this.life = 60 + Math.random() * 30;
@@ -95,18 +100,21 @@ export class SmokeParticle extends Entity {
     }
 
     update() {
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
         this.pos.add(this.vel);
         this.size += 0.1;
         this.life--;
         if (this.life <= 0) this.dead = true;
     }
 
-    draw(ctx) {
+    draw(ctx, dummy, alpha = 1.0) {
+        const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
         ctx.save();
         ctx.globalAlpha = (this.life / this.maxLife) * 0.5;
         ctx.strokeStyle = '#aaa';
         ctx.lineWidth = 1;
-        ctx.translate(this.pos.x, this.pos.y);
+        ctx.translate(rPos.x, rPos.y);
         ctx.rotate(this.life * 0.1);
         ctx.strokeRect(-this.size / 2, -this.size / 2, this.size, this.size);
         ctx.restore();
@@ -128,23 +136,26 @@ export class WarpParticle extends Entity {
     }
 
     update() {
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
         this.pos.add(this.vel);
         this.life--;
         this.length += 5;
         if (this.life <= 0) this.dead = true;
     }
 
-    draw(ctx) {
+    draw(ctx, dummy, alpha = 1.0) {
+        const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
         ctx.save();
         ctx.strokeStyle = this.color;
         ctx.lineWidth = 3;
         ctx.globalAlpha = this.life / this.maxLife;
         ctx.beginPath();
-        ctx.moveTo(this.pos.x, this.pos.y);
+        ctx.moveTo(rPos.x, rPos.y);
         const mag = this.vel.mag();
         if (mag > 0) {
-            const tailX = this.pos.x - (this.vel.x / mag) * this.length;
-            const tailY = this.pos.y - (this.vel.y / mag) * this.length;
+            const tailX = rPos.x - (this.vel.x / mag) * this.length;
+            const tailY = rPos.y - (this.vel.y / mag) * this.length;
             ctx.lineTo(tailX, tailY);
         }
         ctx.stroke();
