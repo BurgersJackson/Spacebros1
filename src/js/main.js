@@ -787,6 +787,103 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
         pixiCaveGridLayer.visible = false;
     } catch (e) { }
 
+    // --- Starfield and Nebula Backdrop ---
+    // Create procedural textures for parallax star layers and nebula clouds.
+    // Uses TilingSprite for GPU-optimized infinite scrolling.
+    const STAR_TILE_SIZE = 512;
+    const NEBULA_TILE_SIZE = 512;
+
+    // Generate a starfield texture with random stars
+    const makeStarfieldTexture = (starCount, minSize, maxSize, minAlpha, maxAlpha) => {
+        const g = new PIXI.Graphics();
+        for (let i = 0; i < starCount; i++) {
+            const x = Math.random() * STAR_TILE_SIZE;
+            const y = Math.random() * STAR_TILE_SIZE;
+            const size = minSize + Math.random() * (maxSize - minSize);
+            const alpha = minAlpha + Math.random() * (maxAlpha - minAlpha);
+            // Slight color variation: white to light blue/yellow
+            const colorVar = Math.random();
+            let color = 0xffffff;
+            if (colorVar < 0.15) color = 0xaaddff; // light blue
+            else if (colorVar < 0.25) color = 0xffffaa; // light yellow
+            else if (colorVar < 0.3) color = 0xffccaa; // light orange
+            g.beginFill(color, alpha);
+            g.drawCircle(x, y, size);
+            g.endFill();
+        }
+        const tex = pixiApp.renderer.generateTexture(g, { region: new PIXI.Rectangle(0, 0, STAR_TILE_SIZE, STAR_TILE_SIZE) });
+        try {
+            tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+            tex.baseTexture.wrapMode = PIXI.WRAP_MODES.REPEAT;
+        } catch (e) { }
+        try { g.destroy(true); } catch (e) { }
+        return tex;
+    };
+
+    // Generate a nebula texture with soft colored blobs
+    const makeNebulaTexture = (blobCount, palette) => {
+        const g = new PIXI.Graphics();
+        for (let i = 0; i < blobCount; i++) {
+            const x = Math.random() * NEBULA_TILE_SIZE;
+            const y = Math.random() * NEBULA_TILE_SIZE;
+            const size = 40 + Math.random() * 120;
+            const color = palette[Math.floor(Math.random() * palette.length)];
+            const alpha = 0.02 + Math.random() * 0.06;
+            g.beginFill(color, alpha);
+            g.drawCircle(x, y, size);
+            g.endFill();
+        }
+        const tex = pixiApp.renderer.generateTexture(g, { region: new PIXI.Rectangle(0, 0, NEBULA_TILE_SIZE, NEBULA_TILE_SIZE) });
+        try {
+            tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+            tex.baseTexture.wrapMode = PIXI.WRAP_MODES.REPEAT;
+        } catch (e) { }
+        try { g.destroy(true); } catch (e) { }
+        return tex;
+    };
+
+    // Color palettes for nebulae (different sectors can use different palettes)
+    const nebulaPalettes = [
+        [0x4400aa, 0x220066, 0x6622aa, 0x3311aa], // Purple/violet
+        [0x004488, 0x002266, 0x006688, 0x003366], // Blue
+        [0x440022, 0x660033, 0x880044, 0x330022], // Red/magenta
+        [0x224400, 0x336600, 0x448800, 0x113300], // Green (rare)
+    ];
+    pixiNebulaPaletteIdx = Math.floor(Math.random() * nebulaPalettes.length);
+
+    try {
+        // Create 3 parallax star layers (far, mid, near)
+        const starTexFar = makeStarfieldTexture(80, 0.5, 1.2, 0.2, 0.5);   // Many dim distant stars
+        const starTexMid = makeStarfieldTexture(40, 0.8, 1.8, 0.4, 0.7);   // Medium stars
+        const starTexNear = makeStarfieldTexture(15, 1.2, 2.5, 0.6, 1.0); // Fewer bright close stars
+
+        const w = (typeof width === 'number' && width > 0) ? width : window.innerWidth || 1920;
+        const h = (typeof height === 'number' && height > 0) ? height : window.innerHeight || 1080;
+
+        pixiStarTiles = [
+            { sprite: new PIXI.TilingSprite(starTexFar, w, h), parallax: 0.02 },
+            { sprite: new PIXI.TilingSprite(starTexMid, w, h), parallax: 0.05 },
+            { sprite: new PIXI.TilingSprite(starTexNear, w, h), parallax: 0.10 }
+        ];
+        pixiStarTiles.forEach(layer => {
+            pixiStarTilingLayer.addChild(layer.sprite);
+        });
+
+        // Create 2 nebula layers (far, near)
+        const nebulaTexFar = makeNebulaTexture(12, nebulaPalettes[pixiNebulaPaletteIdx]);
+        const nebulaTexNear = makeNebulaTexture(8, nebulaPalettes[pixiNebulaPaletteIdx]);
+        pixiNebulaTiles = [
+            { sprite: new PIXI.TilingSprite(nebulaTexFar, w, h), parallax: 0.01 },
+            { sprite: new PIXI.TilingSprite(nebulaTexNear, w, h), parallax: 0.03 }
+        ];
+        pixiNebulaTiles.forEach(layer => {
+            layer.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+            pixiNebulaLayer.addChild(layer.sprite);
+        });
+    } catch (e) {
+        console.warn('Backdrop initialization failed:', e);
+    }
+
     // --- Prebaked textures (avoid per-frame Canvas2D paths for hot objects) ---
     const genTexture = (graphics) => {
         const b = graphics.getLocalBounds();
@@ -1372,6 +1469,10 @@ function releasePixiEnemySprite(spr) {
 
 function pixiCleanupObject(obj) {
     if (!obj) return;
+    // Safety check to prevent recursion
+    if (obj._pixiIsCleaning) return;
+    obj._pixiIsCleaning = true;
+
     // Non-pooled containers (player/bases/stations/etc)
     if (obj._pixiContainer) {
         try { obj._pixiContainer.destroy({ children: true }); } catch (e) { }
@@ -1386,23 +1487,27 @@ function pixiCleanupObject(obj) {
         else if (obj._poolType === 'particle' && pixiParticleSpritePool) releasePixiSprite(pixiParticleSpritePool, obj.sprite);
         obj.sprite = null;
     }
-    // Enemy extras
-    if (obj._pixiGfx) {
-        try { obj._pixiGfx.destroy(true); } catch (e) { }
-        obj._pixiGfx = null;
+
+    // Comprehensive destruction of all _pixi Graphics/Text/etc.
+    // This allows classes to add pixi elements without manually updating the cleanup logic.
+    const keys = Object.keys(obj);
+    for (let k of keys) {
+        if (k.startsWith('_pixi') && obj[k] && k !== '_pixiIsCleaning') {
+            const val = obj[k];
+            if (Array.isArray(val)) {
+                val.forEach(item => {
+                    if (item && typeof item.destroy === 'function') {
+                        try { item.destroy(true); } catch (e) { }
+                    }
+                });
+            } else if (val && typeof val.destroy === 'function') {
+                try { val.destroy(true); } catch (e) { }
+            }
+            obj[k] = null;
+        }
     }
-    if (obj._pixiGfx2) {
-        try { obj._pixiGfx2.destroy(true); } catch (e) { }
-        obj._pixiGfx2 = null;
-    }
-    if (obj._pixiNameText) {
-        try { obj._pixiNameText.destroy(true); } catch (e) { }
-        obj._pixiNameText = null;
-    }
-    if (obj._pixiLaserGfx) {
-        try { obj._pixiLaserGfx.destroy(true); } catch (e) { }
-        obj._pixiLaserGfx = null;
-    }
+
+    obj._pixiIsCleaning = false;
 }
 
 function clearArrayWithPixiCleanup(arr) {
@@ -1728,28 +1833,32 @@ function initStars() {
 }
 
 function updatePixiBackground(camX, camY) {
+    // Update nebula layers (additive blend, very slow parallax)
     if (pixiNebulaTiles && pixiNebulaTiles.length) {
         for (const t of pixiNebulaTiles) {
-            if (!t || !t.spr) continue;
-            if (t.spr.width !== width) t.spr.width = width;
-            if (t.spr.height !== height) t.spr.height = height;
+            const spr = t && (t.sprite || t.spr);
+            if (!spr) continue;
+            if (spr.width !== width) spr.width = width;
+            if (spr.height !== height) spr.height = height;
             const tx = -camX * (t.parallax || 0.012);
             const ty = -camY * (t.parallax || 0.012);
-            t.spr.tilePosition.set(Math.round(tx), Math.round(ty));
+            spr.tilePosition.set(Math.round(tx), Math.round(ty));
         }
     }
-    // Preferred: 1-2 tiling sprites (no per-star updates)
+    // Update star layers (faster parallax for depth effect)
     if (pixiStarTiles && pixiStarTiles.length) {
         for (const t of pixiStarTiles) {
-            if (!t || !t.spr) continue;
-            if (t.spr.width !== width) t.spr.width = width;
-            if (t.spr.height !== height) t.spr.height = height;
+            const spr = t && (t.sprite || t.spr);
+            if (!spr) continue;
+            if (spr.width !== width) spr.width = width;
+            if (spr.height !== height) spr.height = height;
             const tx = -camX * (t.parallax || 0.08);
             const ty = -camY * (t.parallax || 0.08);
-            t.spr.tilePosition.set(Math.round(tx), Math.round(ty));
+            spr.tilePosition.set(Math.round(tx), Math.round(ty));
         }
         return;
     }
+    // Legacy fallback: per-star sprite positioning (disabled)
     if (!pixiStarLayer) return;
     for (const s of starfield) {
         const spr = s && s._pixiSprite;
@@ -2324,6 +2433,9 @@ class Spaceship extends Entity {
         this.maxShieldSegments = 8;
         this.shieldSegments = new Array(8).fill(2);
         this.shieldRotation = 0;
+        this.shieldsDirty = true;
+        this._pixiInnerShieldGfx = null;
+        this._pixiOuterShieldGfx = null;
 
         // Optional outer shield ring (separate from the main shield)
         this.outerShieldRadius = this.shieldRadius + (26 * PLAYER_SHIELD_RADIUS_SCALE);
@@ -2391,6 +2503,7 @@ class Spaceship extends Entity {
         this.lastArenaDamageTime = 0;
         this.lastShieldRegenTime = Date.now();
         this.shieldSegments = new Array(this.maxShieldSegments).fill(2);
+        this.shieldsDirty = true;
         this.outerShieldSegments = (this.maxOuterShieldSegments > 0) ? new Array(this.maxOuterShieldSegments).fill(1) : [];
         this.warpCooldown = 0;
         this.nukeCooldown = 0;
@@ -2519,11 +2632,13 @@ class Spaceship extends Entity {
                 const innerIdx = this.shieldSegments.findIndex(s => s < 2);
                 if (innerIdx !== -1) {
                     this.shieldSegments[innerIdx] = 2;
+                    this.shieldsDirty = true;
                     playSound('powerup'); // Soft sound
                 } else if (this.outerShieldSegments && this.outerShieldSegments.length > 0) {
                     const outerIdx = this.outerShieldSegments.findIndex(s => s <= 0);
                     if (outerIdx !== -1) {
                         this.outerShieldSegments[outerIdx] = 1;
+                        this.shieldsDirty = true;
                         playSound('powerup'); // Soft sound
                     }
                 }
@@ -2798,6 +2913,16 @@ class Spaceship extends Entity {
             if (this._pixiLaserGfx) {
                 try { this._pixiLaserGfx.clear(); } catch (e) { }
                 this._pixiLaserGfx.visible = false;
+                try { this._pixiLaserGfx.clear(); } catch (e) { }
+                this._pixiLaserGfx.visible = false;
+            }
+            if (this._pixiOuterShieldGfx) {
+                try { this._pixiOuterShieldGfx.destroy(true); } catch (e) { }
+                this._pixiOuterShieldGfx = null;
+            }
+            if (this._pixiInnerShieldGfx) {
+                try { this._pixiInnerShieldGfx.destroy(true); } catch (e) { }
+                this._pixiInnerShieldGfx = null;
             }
             if (this.dead) pixiCleanupObject(this);
             return;
@@ -2921,7 +3046,10 @@ class Spaceship extends Entity {
                 const hasOuter = (this.outerShieldSegments && this.outerShieldSegments.some(s => s > 0));
                 const hasInner = (this.shieldSegments && this.shieldSegments.length > 0);
                 const needs = !!(hasOuter || hasInner || (this.stats && this.stats.slowField > 0) || (this.invincibilityCycle && this.invincibilityCycle.unlocked && this.invincibilityCycle.state === 'active'));
+
                 if (needs) {
+                    // --- STATIC EFFECTS (Phase & Slow Field) ---
+                    // Re-drawn every frame as they are simple circles and might pulse/chang size.
                     let gfx = this._pixiGfx;
                     if (!gfx) {
                         gfx = new PIXI.Graphics();
@@ -2945,39 +3073,97 @@ class Spaceship extends Entity {
                         gfx.drawCircle(0, 0, this.stats.slowField);
                     }
 
+                    // --- OUTER SHIELD ---
+                    let outerGfx = this._pixiOuterShieldGfx;
                     if (hasOuter) {
-                        const outerCount = this.outerShieldSegments.length;
-                        const outerAngle = (Math.PI * 2) / outerCount;
-                        gfx.lineStyle(4, 0xb000ff, 0.9);
-                        for (let i = 0; i < outerCount; i++) {
-                            if (this.outerShieldSegments[i] > 0) {
-                                const a0 = i * outerAngle + 0.08 + (this.outerShieldRotation || 0);
-                                const a1 = (i + 1) * outerAngle - 0.08 + (this.outerShieldRotation || 0);
-                                gfx.moveTo(Math.cos(a0) * this.outerShieldRadius, Math.sin(a0) * this.outerShieldRadius);
-                                gfx.arc(0, 0, this.outerShieldRadius, a0, a1);
-                            }
-                        }
+                        if (!outerGfx) {
+                            outerGfx = new PIXI.Graphics();
+                            pixiVectorLayer.addChild(outerGfx);
+                            this._pixiOuterShieldGfx = outerGfx;
+                            this.shieldsDirty = true;
+                        } else if (!outerGfx.parent) pixiVectorLayer.addChild(outerGfx);
+
+                        outerGfx.position.set(this.pos.x, this.pos.y);
+                        outerGfx.rotation = this.outerShieldRotation || 0;
+                    } else if (outerGfx) {
+                        try { outerGfx.destroy(true); } catch (e) { }
+                        this._pixiOuterShieldGfx = null;
+                        outerGfx = null;
                     }
 
+                    // --- INNER SHIELD ---
+                    let innerGfx = this._pixiInnerShieldGfx;
                     if (hasInner) {
-                        const segCount = this.shieldSegments.length;
-                        const segAngle = (Math.PI * 2) / segCount;
-                        gfx.lineStyle(3, 0x00ffff, 1);
-                        for (let i = 0; i < segCount; i++) {
-                            const v = this.shieldSegments[i];
-                            if (v > 0) {
-                                const a0 = i * segAngle + 0.1 + (this.shieldRotation || 0);
-                                const a1 = (i + 1) * segAngle - 0.1 + (this.shieldRotation || 0);
-                                const alpha = Math.max(0.15, Math.min(1, v / 2));
-                                gfx.lineStyle(3, 0x00ffff, alpha);
-                                gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
-                                gfx.arc(0, 0, this.shieldRadius, a0, a1);
+                        if (!innerGfx) {
+                            innerGfx = new PIXI.Graphics();
+                            pixiVectorLayer.addChild(innerGfx);
+                            this._pixiInnerShieldGfx = innerGfx;
+                            this.shieldsDirty = true;
+                        } else if (!innerGfx.parent) pixiVectorLayer.addChild(innerGfx);
+
+                        innerGfx.position.set(this.pos.x, this.pos.y);
+                        innerGfx.rotation = this.shieldRotation || 0;
+                    } else if (innerGfx) {
+                        try { innerGfx.destroy(true); } catch (e) { }
+                        this._pixiInnerShieldGfx = null;
+                        innerGfx = null;
+                    }
+
+                    // --- GEOMETRY REBUILD ---
+                    if (this.shieldsDirty) {
+                        if (outerGfx && hasOuter) {
+                            outerGfx.clear();
+                            const outerCount = this.outerShieldSegments.length;
+                            const outerAngle = (Math.PI * 2) / outerCount;
+                            outerGfx.lineStyle(4, 0xb000ff, 0.9);
+                            for (let i = 0; i < outerCount; i++) {
+                                if (this.outerShieldSegments[i] > 0) {
+                                    // Draw at base angle 0
+                                    const a0 = i * outerAngle + 0.08;
+                                    const a1 = (i + 1) * outerAngle - 0.08;
+                                    outerGfx.moveTo(Math.cos(a0) * this.outerShieldRadius, Math.sin(a0) * this.outerShieldRadius);
+                                    outerGfx.arc(0, 0, this.outerShieldRadius, a0, a1);
+                                }
                             }
                         }
+
+                        if (innerGfx && hasInner) {
+                            innerGfx.clear();
+                            const segCount = this.shieldSegments.length;
+                            const segAngle = (Math.PI * 2) / segCount;
+
+                            // Iterate segments once to group by alpha if needed, or just multiple lineStyles?
+                            // PIXI lineStyle applies to subsequent drawing.
+                            // To optimize batches, we can draw all full segments then all damaged ones, but simpler is loop.
+                            for (let i = 0; i < segCount; i++) {
+                                const v = this.shieldSegments[i];
+                                if (v > 0) {
+                                    const a0 = i * segAngle + 0.1;
+                                    const a1 = (i + 1) * segAngle - 0.1;
+                                    const alpha = Math.max(0.15, Math.min(1, v / 2));
+                                    innerGfx.lineStyle(3, 0x00ffff, alpha);
+                                    innerGfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
+                                    innerGfx.arc(0, 0, this.shieldRadius, a0, a1);
+                                }
+                            }
+                        }
+
+                        this.shieldsDirty = false;
                     }
-                } else if (this._pixiGfx) {
-                    try { this._pixiGfx.destroy(true); } catch (e) { }
-                    this._pixiGfx = null;
+
+                } else {
+                    if (this._pixiGfx) {
+                        try { this._pixiGfx.destroy(true); } catch (e) { }
+                        this._pixiGfx = null;
+                    }
+                    if (this._pixiOuterShieldGfx) {
+                        try { this._pixiOuterShieldGfx.destroy(true); } catch (e) { }
+                        this._pixiOuterShieldGfx = null;
+                    }
+                    if (this._pixiInnerShieldGfx) {
+                        try { this._pixiInnerShieldGfx.destroy(true); } catch (e) { }
+                        this._pixiInnerShieldGfx = null;
+                    }
                 }
             }
 
@@ -3784,10 +3970,7 @@ class Bullet extends Entity {
         if (this.life <= 0) this.dead = true;
     }
     draw(ctx) {
-        if (this.dead) {
-            destroyBulletSprite(this);
-            return;
-        }
+        if (this.dead) return;
 
         // Interpolate position for smooth rendering on high refresh displays
         const rPos = this.getRenderPos(renderAlpha);
@@ -3892,6 +4075,8 @@ class Enemy extends Entity {
         this.nameTag = null;
         this.sprite = null;
         this._pixiGfx = null;
+        this._pixiInnerGfx = null;
+        this.shieldsDirty = true;
         this._pixiNameText = null;
         this.freezeTimer = 0;
         this.freezeCooldown = 0;
@@ -4003,6 +4188,18 @@ class Enemy extends Entity {
     kill() {
         this.dead = true;
         pixiCleanupObject(this);
+        if (this._pixiGfx) {
+            try { this._pixiGfx.destroy(true); } catch (e) { }
+            this._pixiGfx = null;
+        }
+        if (this._pixiInnerGfx) {
+            try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+            this._pixiInnerGfx = null;
+        }
+        if (this._pixiNameText) {
+            try { this._pixiNameText.destroy(true); } catch (e) { }
+            this._pixiNameText = null;
+        }
         if (this.isGunboat) playSound('base_explode');
         else playSound('explode');
         const boomScale = Math.max(0.9, Math.min(2.6, (this.radius || 30) / 40));
@@ -4094,7 +4291,10 @@ class Enemy extends Entity {
             this.gunboatShieldRecharge--;
             if (this.gunboatShieldRecharge <= 0) {
                 const idx = this.shieldSegments.findIndex(s => s < 2);
-                if (idx !== -1) this.shieldSegments[idx] = 2;
+                if (idx !== -1) {
+                    this.shieldSegments[idx] = 2;
+                    this.shieldsDirty = true;
+                }
                 this.gunboatShieldRecharge = 180;
             }
         }
@@ -4457,15 +4657,7 @@ class Enemy extends Entity {
 
     draw(ctx) {
         if (this.dead) {
-            if (this.sprite) pixiCleanupObject(this);
-            if (this._pixiGfx) {
-                try { this._pixiGfx.destroy(true); } catch (e) { }
-                this._pixiGfx = null;
-            }
-            if (this._pixiNameText) {
-                try { this._pixiNameText.destroy(true); } catch (e) { }
-                this._pixiNameText = null;
-            }
+            pixiCleanupObject(this);
             return;
         }
 
@@ -4531,6 +4723,10 @@ class Enemy extends Entity {
                     try { this._pixiGfx.destroy(true); } catch (e) { }
                     this._pixiGfx = null;
                 }
+                if (this._pixiInnerGfx) {
+                    try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+                    this._pixiInnerGfx = null;
+                }
                 if (this._pixiNameText) {
                     try { this._pixiNameText.destroy(true); } catch (e) { }
                     this._pixiNameText = null;
@@ -4573,66 +4769,117 @@ class Enemy extends Entity {
             const hasOuter = (this.shieldSegments && this.shieldSegments.length > 0);
             const hasInner = (this.innerShieldSegments && this.innerShieldSegments.length > 0);
             const needsGfx = !!(hasOuter || hasInner || (this.freezeTimer > 0 && hasOuter));
+
             if (needsGfx && pixiVectorLayer) {
+                // --- Outer Shield & Freeze Highlight ---
                 let gfx = this._pixiGfx;
                 if (!gfx) {
                     gfx = new PIXI.Graphics();
                     pixiVectorLayer.addChild(gfx);
                     this._pixiGfx = gfx;
+                    this.shieldsDirty = true;
                 } else if (!gfx.parent) {
                     pixiVectorLayer.addChild(gfx);
                 }
-                gfx.clear();
+
                 gfx.position.set(rPos.x, rPos.y);
                 gfx.alpha = stealthAlpha;
 
-                if (this.freezeTimer > 0 && hasOuter) {
-                    gfx.lineStyle(2, 0x00ffff, 1);
-                    gfx.drawRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
-                }
-
-                if (hasOuter) {
-                    const segCount = this.shieldSegments.length;
-                    const segAngle = (Math.PI * 2) / segCount;
-                    const shieldColor = this.isCruiser
-                        ? 0x88ffff
-                        : (this.isGunboat
-                            ? (this.gunboatLevel === 1 ? 0xff5555 : 0xffaa00)
-                            : (this.type === 'hunter' ? 0xffaa00 : 0xff5555));
-                    gfx.lineStyle(2, shieldColor, 1);
-                    for (let i = 0; i < segCount; i++) {
-                        if (this.shieldSegments[i] > 0) {
-                            const a0 = i * segAngle + this.shieldRotation;
-                            const a1 = (i + 1) * segAngle - 0.2 + this.shieldRotation;
-                            gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
-                            gfx.arc(0, 0, this.shieldRadius, a0, a1);
-                        }
-                    }
-                }
-
+                // --- Inner Shield ---
+                let innerGfx = this._pixiInnerGfx;
                 if (hasInner) {
-                    const innerRot = (typeof this.innerShieldRotation === 'number') ? this.innerShieldRotation : -this.shieldRotation;
-                    const innerCount = this.innerShieldSegments.length;
-                    const innerAngle = (Math.PI * 2) / innerCount;
-                    const innerRadius = this.innerShieldRadius || Math.max(10, this.shieldRadius - 20);
-                    const innerColor = this.isCruiser
-                        ? 0x88ffff
-                        : (this.isGunboat
-                            ? (this.gunboatLevel === 1 ? 0xff8888 : 0xffff00)
-                            : (this.type === 'hunter' ? 0xffdd55 : 0xff8888));
-                    gfx.lineStyle(2, innerColor, 1);
-                    for (let i = 0; i < innerCount; i++) {
-                        if (this.innerShieldSegments[i] > 0) {
-                            const a0 = i * innerAngle + 0.05 + innerRot;
-                            const a1 = (i + 1) * innerAngle - 0.15 + innerRot;
-                            gfx.moveTo(Math.cos(a0) * innerRadius, Math.sin(a0) * innerRadius);
-                            gfx.arc(0, 0, innerRadius, a0, a1);
+                    if (!innerGfx) {
+                        innerGfx = new PIXI.Graphics();
+                        pixiVectorLayer.addChild(innerGfx);
+                        this._pixiInnerGfx = innerGfx;
+                        this.shieldsDirty = true;
+                    } else if (!innerGfx.parent) {
+                        pixiVectorLayer.addChild(innerGfx);
+                    }
+                    innerGfx.position.set(rPos.x, rPos.y);
+                    innerGfx.alpha = stealthAlpha;
+                } else if (innerGfx) {
+                    try { innerGfx.destroy(true); } catch (e) { }
+                    this._pixiInnerGfx = null;
+                    innerGfx = null;
+                }
+
+                if (this.shieldsDirty) {
+                    // OUTER SHIELD REBUILD
+                    gfx.clear();
+
+                    if (this.freezeTimer > 0 && hasOuter) {
+                        gfx.lineStyle(2, 0x00ffff, 1);
+                        gfx.drawRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
+                    }
+
+                    if (hasOuter) {
+                        const segCount = this.shieldSegments.length;
+                        const segAngle = (Math.PI * 2) / segCount;
+                        const shieldColor = this.isCruiser
+                            ? 0x88ffff
+                            : (this.isGunboat
+                                ? (this.gunboatLevel === 1 ? 0xff5555 : 0xffaa00)
+                                : (this.type === 'hunter' ? 0xffaa00 : 0xff5555));
+
+                        // Draw at rotation 0; container rotation handles the spin
+                        gfx.lineStyle(2, shieldColor, 1);
+                        for (let i = 0; i < segCount; i++) {
+                            if (this.shieldSegments[i] > 0) {
+                                const a0 = i * segAngle;
+                                const a1 = (i + 1) * segAngle - 0.2;
+                                gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
+                                gfx.arc(0, 0, this.shieldRadius, a0, a1);
+                            }
                         }
                     }
+
+                    // INNER SHIELD REBUILD
+                    if (hasInner && innerGfx) {
+                        innerGfx.clear();
+                        const innerCount = this.innerShieldSegments.length;
+                        const innerAngle = (Math.PI * 2) / innerCount;
+                        const innerRadius = this.innerShieldRadius || Math.max(10, this.shieldRadius - 20);
+                        const innerColor = this.isCruiser
+                            ? 0x88ffff
+                            : (this.isGunboat
+                                ? (this.gunboatLevel === 1 ? 0xff8888 : 0xffff00)
+                                : (this.type === 'hunter' ? 0xffdd55 : 0xff8888));
+
+                        innerGfx.lineStyle(2, innerColor, 1);
+                        for (let i = 0; i < innerCount; i++) {
+                            if (this.innerShieldSegments[i] > 0) {
+                                const a0 = i * innerAngle + 0.05;
+                                const a1 = (i + 1) * innerAngle - 0.15;
+                                innerGfx.moveTo(Math.cos(a0) * innerRadius, Math.sin(a0) * innerRadius);
+                                innerGfx.arc(0, 0, innerRadius, a0, a1);
+                            }
+                        }
+                    } else if (innerGfx) {
+                        innerGfx.clear();
+                    }
+
+                    this.shieldsDirty = false;
                 }
-            } else if (this._pixiGfx) {
-                try { this._pixiGfx.destroy(true); } catch (e) { }
-                this._pixiGfx = null;
+
+                // UPDATE ROTATIONS
+                if (hasOuter) gfx.rotation = this.shieldRotation;
+                else gfx.rotation = 0;
+
+                if (hasInner && innerGfx) {
+                    const innerRot = (typeof this.innerShieldRotation === 'number') ? this.innerShieldRotation : -this.shieldRotation;
+                    innerGfx.rotation = innerRot;
+                }
+
+            } else {
+                if (this._pixiGfx) {
+                    try { this._pixiGfx.destroy(true); } catch (e) { }
+                    this._pixiGfx = null;
+                }
+                if (this._pixiInnerGfx) {
+                    try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+                    this._pixiInnerGfx = null;
+                }
             }
 
             // Name tag (rare; only named elites)
@@ -5021,6 +5268,8 @@ class Base extends Entity {
 
         this.freezeTimer = 0;
         this.freezeCooldown = 0;
+        this.shieldsDirty = true;
+        this._pixiInnerGfx = null;
     }
 
     update() {
@@ -5172,6 +5421,14 @@ class Base extends Entity {
     draw(ctx) {
         if (this.dead) {
             pixiCleanupObject(this);
+            if (this._pixiInnerGfx) {
+                try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+                this._pixiInnerGfx = null;
+            }
+            if (this._pixiGfx) {
+                try { this._pixiGfx.destroy(true); } catch (e) { }
+                this._pixiGfx = null;
+            }
             return;
         }
 
@@ -5232,54 +5489,95 @@ class Base extends Entity {
                 const hasOuter = (this.shieldSegments && this.shieldSegments.length > 0);
                 const hasInner = (this.innerShieldSegments && this.innerShieldSegments.length > 0);
                 const needs = !!(hasOuter || hasInner);
+
                 if (needs) {
+                    // --- Outer Shield ---
                     let gfx = this._pixiGfx;
-                    if (!gfx) {
-                        gfx = new PIXI.Graphics();
-                        pixiVectorLayer.addChild(gfx);
-                        this._pixiGfx = gfx;
-                    } else if (!gfx.parent) {
-                        pixiVectorLayer.addChild(gfx);
-                    }
-                    gfx.clear();
-                    gfx.position.set(rPos.x, rPos.y);
-
                     if (hasOuter) {
-                        const segCount = this.shieldSegments.length;
-                        const segAngle = (Math.PI * 2) / segCount;
-                        const rot = this.shieldRotation || 0;
-                        for (let i = 0; i < segCount; i++) {
-                            const v = this.shieldSegments[i];
-                            if (v > 0) {
-                                const alpha = Math.min(1.0, v / (this.maxShieldHp * 0.5));
-                                gfx.lineStyle(4, shieldColor, alpha);
-                                const a0 = i * segAngle + 0.05 + rot;
-                                const a1 = (i + 1) * segAngle - 0.05 + rot;
-                                gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
-                                gfx.arc(0, 0, this.shieldRadius, a0, a1);
-                            }
-                        }
+                        if (!gfx) {
+                            gfx = new PIXI.Graphics();
+                            pixiVectorLayer.addChild(gfx);
+                            this._pixiGfx = gfx;
+                            this.shieldsDirty = true;
+                        } else if (!gfx.parent) pixiVectorLayer.addChild(gfx);
+
+                        gfx.position.set(rPos.x, rPos.y);
+                        gfx.rotation = this.shieldRotation || 0;
+                    } else if (gfx) {
+                        try { gfx.destroy(true); } catch (e) { }
+                        this._pixiGfx = null;
+                        gfx = null;
                     }
 
+                    // --- Inner Shield ---
+                    let innerGfx = this._pixiInnerGfx;
                     if (hasInner) {
-                        const innerCount = this.innerShieldSegments.length;
-                        const innerAngle = (Math.PI * 2) / innerCount;
-                        const rot = this.innerShieldRotation || 0;
-                        for (let i = 0; i < innerCount; i++) {
-                            const v = this.innerShieldSegments[i];
-                            if (v > 0) {
-                                const alpha = Math.min(1.0, v / (this.maxShieldHp * 0.5));
-                                gfx.lineStyle(3, innerColor, alpha);
-                                const a0 = i * innerAngle + 0.05 + rot;
-                                const a1 = (i + 1) * innerAngle - 0.05 + rot;
-                                gfx.moveTo(Math.cos(a0) * this.innerShieldRadius, Math.sin(a0) * this.innerShieldRadius);
-                                gfx.arc(0, 0, this.innerShieldRadius, a0, a1);
+                        if (!innerGfx) {
+                            innerGfx = new PIXI.Graphics();
+                            pixiVectorLayer.addChild(innerGfx);
+                            this._pixiInnerGfx = innerGfx;
+                            this.shieldsDirty = true;
+                        } else if (!innerGfx.parent) pixiVectorLayer.addChild(innerGfx);
+
+                        innerGfx.position.set(rPos.x, rPos.y);
+                        innerGfx.rotation = this.innerShieldRotation || 0;
+                    } else if (innerGfx) {
+                        try { innerGfx.destroy(true); } catch (e) { }
+                        this._pixiInnerGfx = null;
+                        innerGfx = null;
+                    }
+
+                    if (this.shieldsDirty) {
+                        // Outer Rebuild
+                        if (gfx && hasOuter) {
+                            gfx.clear();
+                            const segCount = this.shieldSegments.length;
+                            const segAngle = (Math.PI * 2) / segCount;
+                            for (let i = 0; i < segCount; i++) {
+                                const v = this.shieldSegments[i];
+                                if (v > 0) {
+                                    const alpha = Math.min(1.0, v / (this.maxShieldHp * 0.5));
+                                    gfx.lineStyle(4, shieldColor, alpha);
+                                    // Draw at base angle 0
+                                    const a0 = i * segAngle + 0.05;
+                                    const a1 = (i + 1) * segAngle - 0.05;
+                                    gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
+                                    gfx.arc(0, 0, this.shieldRadius, a0, a1);
+                                }
                             }
                         }
+
+                        // Inner Rebuild
+                        if (innerGfx && hasInner) {
+                            innerGfx.clear();
+                            const innerCount = this.innerShieldSegments.length;
+                            const innerAngle = (Math.PI * 2) / innerCount;
+                            for (let i = 0; i < innerCount; i++) {
+                                const v = this.innerShieldSegments[i];
+                                if (v > 0) {
+                                    const alpha = Math.min(1.0, v / (this.maxShieldHp * 0.5));
+                                    innerGfx.lineStyle(3, innerColor, alpha);
+                                    // Draw at base angle 0
+                                    const a0 = i * innerAngle + 0.05;
+                                    const a1 = (i + 1) * innerAngle - 0.05;
+                                    innerGfx.moveTo(Math.cos(a0) * this.innerShieldRadius, Math.sin(a0) * this.innerShieldRadius);
+                                    innerGfx.arc(0, 0, this.innerShieldRadius, a0, a1);
+                                }
+                            }
+                        }
+
+                        this.shieldsDirty = false;
                     }
-                } else if (this._pixiGfx) {
-                    try { this._pixiGfx.destroy(true); } catch (e) { }
-                    this._pixiGfx = null;
+
+                } else {
+                    if (this._pixiGfx) {
+                        try { this._pixiGfx.destroy(true); } catch (e) { }
+                        this._pixiGfx = null;
+                    }
+                    if (this._pixiInnerGfx) {
+                        try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+                        this._pixiInnerGfx = null;
+                    }
                 }
             }
 
@@ -8598,15 +8896,22 @@ class RadiationStorm extends Entity {
     constructor(x, y, radius = 900, durationMs = 45000) {
         super(x, y);
         this.radius = radius;
-        this.endsAt = Date.now() + durationMs;
+        this.endsAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now()) + durationMs;
         this.t = 0;
         this.tick = 0;
         this.wasInside = false;
+        this.shieldsDirty = true;
+        this._pixiGfx = null;
+    }
+    kill() {
+        if (this.dead) return;
+        super.kill();
+        pixiCleanupObject(this);
     }
     update() {
         if (!player || player.dead) return;
         this.t++;
-        const now = Date.now();
+        const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
         if (now >= this.endsAt) {
             this.dead = true;
             return;
@@ -8648,6 +8953,47 @@ class RadiationStorm extends Entity {
     }
     draw(ctx) {
         if (this.dead) return;
+
+        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
+            if (!this._pixiGfx) {
+                this._pixiGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiGfx);
+            }
+            this._pixiGfx.clear();
+            const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
+            const remaining = Math.max(0, this.endsAt - now);
+            const lifeT = Math.min(1, remaining / 45000);
+            const pulse = 0.25 + Math.abs(Math.sin(this.t * 0.03)) * 0.25;
+
+            this._pixiGfx.position.set(this.pos.x, this.pos.y);
+
+            // Outer Ring
+            const innerColor = 0xffdc00;
+            const alpha = 0.35 + pulse;
+            this._pixiGfx.lineStyle(6 / (currentZoom || 1), innerColor, alpha);
+            this._pixiGfx.drawCircle(0, 0, this.radius);
+
+            // Haze Fill
+            const hazeAlpha = 0.08 + (1 - lifeT) * 0.08;
+            this._pixiGfx.beginFill(0xffff00, hazeAlpha);
+            this._pixiGfx.drawCircle(0, 0, this.radius);
+            this._pixiGfx.endFill();
+
+            // Sparks
+            for (let i = 0; i < 8; i++) {
+                const a = (this.t * 0.02) + i * (Math.PI * 2 / 8);
+                const r = this.radius * (0.65 + 0.35 * Math.sin(this.t * 0.02 + i));
+                const x = Math.cos(a) * r;
+                const y = Math.sin(a) * r;
+                const sparkAlpha = 0.55;
+                const sparkColor = 0xffa000 + ((i * 8) % 80) * 256; // approximation
+                this._pixiGfx.beginFill(0xffaa00, sparkAlpha);
+                this._pixiGfx.drawCircle(x, y, 4 + (i % 3));
+                this._pixiGfx.endFill();
+            }
+            return;
+        }
+
         const now = Date.now();
         const remaining = Math.max(0, this.endsAt - now);
         const lifeT = Math.min(1, remaining / 45000);
@@ -8694,16 +9040,26 @@ class MiniEventDefendCache extends Entity {
         this.radius = 520;
         this.requiredMs = 5000;
         this.progressMs = 0;
-        this.expiresAt = Date.now() + 75000;
-        this.lastUpdateAt = Date.now();
-        this.nextWaveAt = Date.now() + 1500;
+        this.expiresAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now()) + 75000;
+        this.lastUpdateAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
+        this.nextWaveAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now()) + 1500;
         this.activated = false;
         this.t = 0;
+        this.shieldsDirty = true;
+        this._pixiGfx = null;
+        this._pixiProgressGfx = null;
+        this._pixiLabelText = null;
+        this._pixiTimerText = null;
+    }
+    kill() {
+        if (this.dead) return;
+        super.kill();
+        pixiCleanupObject(this);
     }
     update() {
         if (this.dead) return;
         if (!player || player.dead) { this.dead = true; return; }
-        const now = Date.now();
+        const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
         const dt = Math.min(120, Math.max(0, now - this.lastUpdateAt));
         this.lastUpdateAt = now;
         this.t++;
@@ -8765,6 +9121,56 @@ class MiniEventDefendCache extends Entity {
     }
     draw(ctx) {
         if (this.dead) return;
+
+        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
+            if (!this._pixiGfx) {
+                this._pixiGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiGfx);
+            }
+            if (!this._pixiProgressGfx) {
+                this._pixiProgressGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiProgressGfx);
+            }
+            if (!this._pixiLabelText) {
+                this._pixiLabelText = new PIXI.Text("DEFEND", { fontFamily: 'Courier New', fontSize: 48, fill: 0xffff00, fontWeight: 'bold' });
+                this._pixiLabelText.anchor.set(0.5);
+                pixiVectorLayer.addChild(this._pixiLabelText);
+            }
+            if (!this._pixiTimerText) {
+                this._pixiTimerText = new PIXI.Text("", { fontFamily: 'Courier New', fontSize: 24, fill: 0xffffff, fontWeight: 'bold' });
+                this._pixiTimerText.anchor.set(0.5);
+                pixiVectorLayer.addChild(this._pixiTimerText);
+            }
+
+            const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
+            const remain = Math.max(0, this.expiresAt - now);
+            const pct = Math.max(0, Math.min(1, this.progressMs / this.requiredMs));
+            const pulse = 0.85 + Math.sin(this.t * 0.08) * 0.15;
+
+            this._pixiGfx.position.set(this.pos.x, this.pos.y);
+            this._pixiProgressGfx.position.set(this.pos.x, this.pos.y);
+            this._pixiLabelText.position.set(this.pos.x, this.pos.y - this.radius - 64);
+            this._pixiTimerText.position.set(this.pos.x, this.pos.y - this.radius - 26);
+
+            this._pixiGfx.clear();
+            // boundary
+            this._pixiGfx.lineStyle(6 / (currentZoom || 1), 0xffdc00, 0.45);
+            this._pixiGfx.drawCircle(0, 0, this.radius);
+
+            // central area
+            this._pixiGfx.beginFill(0xffff00, 0.35 * pulse);
+            this._pixiGfx.drawCircle(0, 0, 54);
+            this._pixiGfx.endFill();
+
+            // progress
+            this._pixiProgressGfx.clear();
+            this._pixiProgressGfx.lineStyle(8 / (currentZoom || 1), 0x00ff00, 0.6);
+            this._pixiProgressGfx.arc(0, 0, this.radius + 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
+
+            this._pixiTimerText.text = `${(remain / 1000).toFixed(0)}s`;
+            return;
+        }
+
         const now = Date.now();
         const remain = Math.max(0, this.expiresAt - now);
         const pct = Math.max(0, Math.min(1, this.progressMs / this.requiredMs));
@@ -8817,19 +9223,30 @@ class MiniEventEscortDrone extends Entity {
         const a = Math.random() * Math.PI * 2;
         const dist = 2200 + Math.random() * 800;
         this.waypoint = { x: x + Math.cos(a) * dist, y: y + Math.sin(a) * dist, r: 110 };
-        this.expiresAt = Date.now() + 80000;
-        this.lastUpdateAt = Date.now();
+        this.expiresAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now()) + 80000;
+        this.lastUpdateAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
         this.tetherRange = 750;
         this.failMs = 0;
-        this.nextWaveAt = Date.now() + 2000;
+        this.nextWaveAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now()) + 2000;
         this.activated = false;
         this.t = 0;
         this.startDist = Math.max(1, Math.hypot(this.waypoint.x - this.dronePos.x, this.waypoint.y - this.dronePos.y));
+        this.shieldsDirty = true;
+        this._pixiWaypointGfx = null;
+        this._pixiTetherGfx = null;
+        this._pixiDroneGfx = null;
+        this._pixiProgressGfx = null;
+        this._pixiTimerText = null;
+    }
+    kill() {
+        if (this.dead) return;
+        super.kill();
+        pixiCleanupObject(this);
     }
     update() {
         if (this.dead) return;
         if (!player || player.dead) { this.dead = true; return; }
-        const now = Date.now();
+        const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
         const dt = Math.min(120, Math.max(0, now - this.lastUpdateAt));
         this.lastUpdateAt = now;
         this.t++;
@@ -8900,6 +9317,71 @@ class MiniEventEscortDrone extends Entity {
     }
     draw(ctx) {
         if (this.dead) return;
+
+        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
+            if (!this._pixiWaypointGfx) {
+                this._pixiWaypointGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiWaypointGfx);
+            }
+            if (!this._pixiTetherGfx) {
+                this._pixiTetherGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiTetherGfx);
+            }
+            if (!this._pixiDroneGfx) {
+                this._pixiDroneGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiDroneGfx);
+            }
+            if (!this._pixiProgressGfx) {
+                this._pixiProgressGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiProgressGfx);
+            }
+            if (!this._pixiTimerText) {
+                this._pixiTimerText = new PIXI.Text("", { fontFamily: 'Courier New', fontSize: 13, fill: 0xffffff, fontWeight: 'bold' });
+                this._pixiTimerText.anchor.set(0.5);
+                pixiVectorLayer.addChild(this._pixiTimerText);
+            }
+
+            const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
+            const remain = Math.max(0, this.expiresAt - now);
+            const d = Math.hypot(this.waypoint.x - this.dronePos.x, this.waypoint.y - this.dronePos.y);
+            const pct = Math.max(0, Math.min(1, 1 - (d / this.startDist)));
+            const pulse = 0.85 + Math.sin(this.t * 0.1) * 0.15;
+
+            // Waypoint
+            this._pixiWaypointGfx.clear();
+            this._pixiWaypointGfx.position.set(this.waypoint.x, this.waypoint.y);
+            this._pixiWaypointGfx.lineStyle(5 / (currentZoom || 1), 0x00ffff, 0.65);
+            this._pixiWaypointGfx.drawCircle(0, 0, 70);
+
+            // Tether
+            this._pixiTetherGfx.clear();
+            this._pixiTetherGfx.lineStyle(2 / (currentZoom || 1), 0xffdc00, 0.25 + 0.35 * pulse);
+            this._pixiTetherGfx.moveTo(player.pos.x, player.pos.y);
+            this._pixiTetherGfx.lineTo(this.dronePos.x, this.dronePos.y);
+
+            // Progress ring around drone (not rotated)
+            this._pixiProgressGfx.clear();
+            this._pixiProgressGfx.position.set(this.dronePos.x, this.dronePos.y);
+            this._pixiProgressGfx.lineStyle(6 / (currentZoom || 1), 0x00ff00, 0.65);
+            this._pixiProgressGfx.arc(0, 0, 34, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
+
+            // Drone body (rotated)
+            this._pixiDroneGfx.clear();
+            this._pixiDroneGfx.position.set(this.dronePos.x, this.dronePos.y);
+            this._pixiDroneGfx.rotation = this.t * 0.06;
+            this._pixiDroneGfx.beginFill(0xffff00, 1.0);
+            this._pixiDroneGfx.lineStyle(2 / (currentZoom || 1), 0xffffff, 1.0);
+            this._pixiDroneGfx.moveTo(20, 0);
+            this._pixiDroneGfx.lineTo(-14, 10);
+            this._pixiDroneGfx.lineTo(-10, 0);
+            this._pixiDroneGfx.lineTo(-14, -10);
+            this._pixiDroneGfx.closePath();
+            this._pixiDroneGfx.endFill();
+            this._pixiTimerText.position.set(this.dronePos.x, this.dronePos.y - 46);
+            this._pixiTimerText.text = `${(remain / 1000).toFixed(0)}s`;
+            return;
+        }
+
         const now = Date.now();
         const remain = Math.max(0, this.expiresAt - now);
         const d = Math.hypot(this.waypoint.x - this.dronePos.x, this.waypoint.y - this.dronePos.y);
@@ -8976,6 +9458,14 @@ class SectorPOI extends Entity {
         this.t = 0;
         this.rewardXp = 20;
         this.rewardCoins = 30;
+        this.shieldsDirty = true;
+        this._pixiGfx = null;
+        this._pixiNameText = null;
+    }
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        pixiCleanupObject(this);
     }
     canClaim() {
         if (!player || player.dead) return false;
@@ -8994,6 +9484,7 @@ class SectorPOI extends Entity {
             coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 220, this.pos.y + (Math.random() - 0.5) * 220, 8));
         }
         spawnParticles(this.pos.x, this.pos.y, 30, this.color);
+        this.dead = true;
     }
     update() {
         if (this.dead) return;
@@ -9001,7 +9492,49 @@ class SectorPOI extends Entity {
         if (this.canClaim()) this.claim();
     }
     draw(ctx) {
-        if (this.dead || this.claimed) return;
+        if (this.dead || this.claimed) {
+            if (this._pixiGfx) this._pixiGfx.visible = false;
+            if (this._pixiNameText) this._pixiNameText.visible = false;
+            return;
+        }
+
+        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
+            if (!this._pixiGfx) {
+                this._pixiGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiGfx);
+            }
+            if (!this._pixiNameText) {
+                const c = parseInt(this.color.replace('#', '0x'), 16) || 0x00ffff;
+                this._pixiNameText = new PIXI.Text(this.name, { fontFamily: 'Courier New', fontSize: 42, fill: c, fontWeight: 'bold' });
+                this._pixiNameText.anchor.set(0.5);
+                pixiVectorLayer.addChild(this._pixiNameText);
+            }
+            this._pixiGfx.visible = true;
+            this._pixiNameText.visible = true;
+
+            const pulse = 0.8 + Math.sin(this.t * 0.08) * 0.2;
+            this._pixiGfx.position.set(this.pos.x, this.pos.y);
+            this._pixiNameText.position.set(this.pos.x, this.pos.y - this.radius - 18);
+
+            this._pixiGfx.clear();
+            const c = parseInt(this.color.replace('#', '0x'), 16) || 0x00ffff;
+
+            // boundary
+            this._pixiGfx.lineStyle(5 / (currentZoom || 1), c, 0.35 + pulse * 0.15);
+            this._pixiGfx.drawCircle(0, 0, this.radius);
+
+            // center diamond
+            this._pixiGfx.lineStyle(2 / (currentZoom || 1), 0xffffff, 1.0);
+            this._pixiGfx.beginFill(c, 1.0);
+            this._pixiGfx.moveTo(0, -18);
+            this._pixiGfx.lineTo(16, 0);
+            this._pixiGfx.lineTo(0, 18);
+            this._pixiGfx.lineTo(-16, 0);
+            this._pixiGfx.closePath();
+            this._pixiGfx.endFill();
+            return;
+        }
+
         const pulse = 0.8 + Math.sin(this.t * 0.08) * 0.2;
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
@@ -9053,13 +9586,17 @@ class DebrisFieldPOI extends SectorPOI {
         this.captureMsRequired = 3000;
         this.captureMs = 0;
         this.captureActive = false;
-        this.lastUpdateAt = Date.now();
+        this.lastUpdateAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
+    }
+    kill() {
+        if (this.dead) return;
+        super.kill();
     }
     update() {
         if (this.dead || this.claimed) return;
         this.t++;
         if (!player || player.dead) return;
-        const now = Date.now();
+        const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
         const dt = Math.min(120, Math.max(0, now - (this.lastUpdateAt || now)));
         this.lastUpdateAt = now;
 
@@ -9078,8 +9615,30 @@ class DebrisFieldPOI extends SectorPOI {
         }
     }
     draw(ctx) {
-        if (this.dead || this.claimed) return;
+        if (this.dead || this.claimed) {
+            if (this._pixiProgressGfx) this._pixiProgressGfx.visible = false;
+            return;
+        }
         super.draw(ctx);
+
+        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
+            if (!this._pixiProgressGfx) {
+                this._pixiProgressGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiProgressGfx);
+            }
+            const pct = Math.max(0, Math.min(1, (this.captureMs || 0) / this.captureMsRequired));
+            this._pixiProgressGfx.clear();
+            if (pct > 0) {
+                this._pixiProgressGfx.visible = true;
+                this._pixiProgressGfx.position.set(this.pos.x, this.pos.y);
+                this._pixiProgressGfx.lineStyle(10 / (currentZoom || 1), 0x00ff00, 0.65);
+                this._pixiProgressGfx.arc(0, 0, 42, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
+            } else {
+                this._pixiProgressGfx.visible = false;
+            }
+            return;
+        }
+
         const pct = Math.max(0, Math.min(1, (this.captureMs || 0) / this.captureMsRequired));
         if (pct <= 0) return;
         ctx.save();
@@ -9094,6 +9653,10 @@ class DebrisFieldPOI extends SectorPOI {
         ctx.shadowBlur = 0;
         ctx.restore();
     }
+    kill() {
+        super.kill();
+        if (this._pixiProgressGfx) { this._pixiProgressGfx.destroy(true); this._pixiProgressGfx = null; }
+    }
 }
 
 class ExplorationCache extends Entity {
@@ -9106,6 +9669,12 @@ class ExplorationCache extends Entity {
         this.magnetized = false;
         this.flash = 0;
         this.value = 2 + Math.floor(Math.random() * 3); // 2-4 nuggets
+        this._pixiGfx = null;
+    }
+    kill() {
+        if (this.dead) return;
+        super.kill();
+        pixiCleanupObject(this);
     }
     update() {
         if (!player || player.dead) return;
@@ -9123,6 +9692,32 @@ class ExplorationCache extends Entity {
         this.flash++;
     }
     draw(ctx) {
+        if (this.dead) return;
+
+        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
+            if (!this._pixiGfx) {
+                this._pixiGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiGfx);
+
+                // Static shape (diamond)
+                this._pixiGfx.lineStyle(2 / (currentZoom || 1), 0xffffff, 1.0);
+                this._pixiGfx.beginFill(0xffaa00, 1.0); // Gold
+                this._pixiGfx.moveTo(0, -12);
+                this._pixiGfx.lineTo(10, 0);
+                this._pixiGfx.lineTo(0, 12);
+                this._pixiGfx.lineTo(-10, 0);
+                this._pixiGfx.closePath();
+                this._pixiGfx.endFill();
+            }
+
+            const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.15;
+            this._pixiGfx.position.set(this.pos.x, this.pos.y);
+            this._pixiGfx.scale.set(scale, scale);
+            this._pixiGfx.rotation = this.flash * 0.05;
+            this._pixiGfx.visible = true;
+            return;
+        }
+
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
         const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.15;
@@ -10118,6 +10713,8 @@ class WarpSentinelBoss extends Entity {
 
         this.spiralTimer = 0;
         this.spiralAng = Math.random() * Math.PI * 2;
+        this.shieldsDirty = true;
+        this._pixiInnerGfx = null;
     }
 
     drawBossHud(ctx) {
@@ -10148,6 +10745,14 @@ class WarpSentinelBoss extends Entity {
         if (this.dead) return;
         this.dead = true;
         pixiCleanupObject(this);
+        if (this._pixiInnerGfx) {
+            try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+            this._pixiInnerGfx = null;
+        }
+        if (this._pixiGfx) {
+            try { this._pixiGfx.destroy(true); } catch (e) { }
+            this._pixiGfx = null;
+        }
         playSound('base_explode');
         spawnParticles(this.pos.x, this.pos.y, 140, '#f0f');
         clearArrayWithPixiCleanup(bossBombs);
@@ -10175,9 +10780,9 @@ class WarpSentinelBoss extends Entity {
         // Shield regen (outer then inner).
         if (now - this.lastShieldRegenAt >= this.shieldRegenMs) {
             const idx1 = this.shieldSegments.findIndex(s => s < this.shieldStrength);
-            if (idx1 !== -1) this.shieldSegments[idx1] = Math.min(this.shieldStrength, this.shieldSegments[idx1] + 1);
+            if (idx1 !== -1) { this.shieldSegments[idx1] = Math.min(this.shieldStrength, this.shieldSegments[idx1] + 1); this.shieldsDirty = true; }
             const idx2 = this.innerShieldSegments.findIndex(s => s < this.shieldStrength);
-            if (idx2 !== -1) this.innerShieldSegments[idx2] = Math.min(this.shieldStrength, this.innerShieldSegments[idx2] + 1);
+            if (idx2 !== -1) { this.innerShieldSegments[idx2] = Math.min(this.shieldStrength, this.innerShieldSegments[idx2] + 1); this.shieldsDirty = true; }
             this.lastShieldRegenAt = now;
             if (Math.random() < 0.5) spawnParticles(this.pos.x, this.pos.y, 4, '#0ff');
         }
@@ -10494,31 +11099,59 @@ class WarpSentinelBoss extends Entity {
         ctx.translate(rPos.x, rPos.y);
         const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
 
-        const drawShieldRing = (segments, radius, rotation, color, strength) => {
+        const drawShieldRing = (graphics, segments, radius, color, strength) => {
             if (!segments || segments.length === 0) return;
-            ctx.save();
-            ctx.rotate(rotation);
+            graphics.clear();
             const count = segments.length;
             const arcLen = (Math.PI * 2) / count;
-            ctx.lineWidth = 8 / z;
+            graphics.lineWidth = 8 / z;
+            // Static alpha for cached version
+            graphics.lineStyle(8 / z, color, 0.8);
             for (let i = 0; i < count; i++) {
                 if (segments[i] <= 0) continue;
-                const energyPulse = 0.6 + Math.sin(Date.now() * 0.008 + i) * 0.3;
-                ctx.globalAlpha = Math.min(1, (segments[i] / (strength || 1)) * energyPulse);
-                ctx.strokeStyle = color;
-                ctx.shadowBlur = 18;
-                ctx.shadowColor = color;
-                ctx.beginPath();
-                ctx.arc(0, 0, radius, i * arcLen + 0.03, (i + 1) * arcLen - 0.03);
-                ctx.stroke();
+                // const energyPulse = ... (dropped for cache)
+                // ctx.globalAlpha = ...
+                const a0 = i * arcLen + 0.03;
+                const a1 = (i + 1) * arcLen - 0.03;
+                graphics.moveTo(Math.cos(a0) * radius, Math.sin(a0) * radius);
+                graphics.arc(0, 0, radius, a0, a1);
             }
-            ctx.shadowBlur = 0;
-            ctx.globalAlpha = 1;
-            ctx.restore();
         };
 
-        drawShieldRing(this.shieldSegments, this.shieldRadius, this.shieldRotation, '#0ff', this.shieldStrength);
-        drawShieldRing(this.innerShieldSegments, this.innerShieldRadius, this.innerShieldRotation, '#f0f', this.shieldStrength);
+        if (pixiVectorLayer) {
+            let gfx = this._pixiGfx;
+            if (!gfx) {
+                gfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(gfx);
+                this._pixiGfx = gfx;
+                this.shieldsDirty = true;
+            } else if (!gfx.parent) pixiVectorLayer.addChild(gfx);
+
+            let innerGfx = this._pixiInnerGfx;
+            if (!innerGfx) {
+                innerGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(innerGfx);
+                this._pixiInnerGfx = innerGfx;
+                this.shieldsDirty = true;
+            } else if (!innerGfx.parent) pixiVectorLayer.addChild(innerGfx);
+
+            gfx.position.set(rPos.x, rPos.y);
+            gfx.rotation = this.shieldRotation;
+            innerGfx.position.set(rPos.x, rPos.y);
+            innerGfx.rotation = this.innerShieldRotation;
+
+            if (this.shieldsDirty) {
+                drawShieldRing(gfx, this.shieldSegments, this.shieldRadius, 0x00ffff, this.shieldStrength);
+                drawShieldRing(innerGfx, this.innerShieldSegments, this.innerShieldRadius, 0xff00ff, this.shieldStrength);
+                this.shieldsDirty = false;
+            }
+        }
+        // Fallback or just suppress Canvas draw if PIXI is active (which it is)
+        // Original code drew to ctx. We replaced it with PIXI logic above.
+        // We do NOT call ctx draw for shields if PIXI is used.
+
+        // drawShieldRing(this.shieldSegments, this.shieldRadius, this.shieldRotation, '#0ff', this.shieldStrength);
+        // drawShieldRing(this.innerShieldSegments, this.innerShieldRadius, this.innerShieldRotation, '#f0f', this.shieldStrength);
 
         ctx.shadowBlur = 26;
         ctx.shadowColor = '#f0f';
@@ -10614,6 +11247,8 @@ class SpaceStation extends Entity {
 
         this.turretReload = 10; // halved (19 -> 10) for 60Hz
         this.defenderSpawnTimer = 0;
+        this.shieldsDirty = true;
+        this._pixiInnerGfx = null;
     }
 
     update() {
@@ -10681,6 +11316,10 @@ class SpaceStation extends Entity {
     draw(ctx) {
         if (this.dead) {
             pixiCleanupObject(this);
+            if (this._pixiInnerGfx) {
+                try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+                this._pixiInnerGfx = null;
+            }
             return;
         }
 
@@ -10745,36 +11384,84 @@ class SpaceStation extends Entity {
 
             // Shields + nameplate (vector layer)
             if (pixiVectorLayer) {
-                let gfx = this._pixiGfx;
-                if (!gfx) {
-                    gfx = new PIXI.Graphics();
-                    pixiVectorLayer.addChild(gfx);
-                    this._pixiGfx = gfx;
-                } else if (!gfx.parent) {
-                    pixiVectorLayer.addChild(gfx);
-                }
-                gfx.clear();
-                gfx.position.set(this.pos.x, this.pos.y);
+                const hasOuter = (this.shieldSegments && this.shieldSegments.length > 0);
+                const hasInner = (this.innerShieldSegments && this.innerShieldSegments.length > 0);
+                const needs = !!(hasOuter || hasInner);
 
-                const drawRing = (segments, radius, rotation, color) => {
-                    if (!segments || segments.length === 0) return;
-                    const count = segments.length;
-                    const arcLen = (Math.PI * 2) / count;
-                    const t = now * 0.008;
-                    for (let i = 0; i < count; i++) {
-                        if (segments[i] > 0) {
-                            const energyPulse = 0.6 + Math.sin(t + i) * 0.3;
-                            const alpha = Math.min(1, (segments[i] / 2) * energyPulse);
-                            gfx.lineStyle(8, color, alpha);
-                            const a0 = i * arcLen + 0.02 + (rotation || 0);
-                            const a1 = (i + 1) * arcLen - 0.02 + (rotation || 0);
-                            gfx.moveTo(Math.cos(a0) * radius, Math.sin(a0) * radius);
-                            gfx.arc(0, 0, radius, a0, a1);
-                        }
+                if (needs) {
+                    // --- Outer Shield ---
+                    let gfx = this._pixiGfx;
+                    if (hasOuter) {
+                        if (!gfx) {
+                            gfx = new PIXI.Graphics();
+                            pixiVectorLayer.addChild(gfx);
+                            this._pixiGfx = gfx;
+                            this.shieldsDirty = true;
+                        } else if (!gfx.parent) pixiVectorLayer.addChild(gfx);
+
+                        gfx.position.set(this.pos.x, this.pos.y);
+                        gfx.rotation = this.shieldRotation || 0;
+                    } else if (gfx) {
+                        try { gfx.destroy(true); } catch (e) { }
+                        this._pixiGfx = null;
+                        gfx = null;
                     }
-                };
-                drawRing(this.shieldSegments, this.shieldRadius, this.shieldRotation, 0x00ffff);
-                drawRing(this.innerShieldSegments, this.innerShieldRadius, this.innerShieldRotation, 0xff00ff);
+
+                    // --- Inner Shield ---
+                    let innerGfx = this._pixiInnerGfx;
+                    if (hasInner) {
+                        if (!innerGfx) {
+                            innerGfx = new PIXI.Graphics();
+                            pixiVectorLayer.addChild(innerGfx);
+                            this._pixiInnerGfx = innerGfx;
+                            this.shieldsDirty = true;
+                        } else if (!innerGfx.parent) pixiVectorLayer.addChild(innerGfx);
+
+                        innerGfx.position.set(this.pos.x, this.pos.y);
+                        innerGfx.rotation = this.innerShieldRotation || 0;
+                    } else if (innerGfx) {
+                        try { innerGfx.destroy(true); } catch (e) { }
+                        this._pixiInnerGfx = null;
+                        innerGfx = null;
+                    }
+
+                    if (this.shieldsDirty) {
+                        const drawRing = (graphics, segments, radius, color) => {
+                            if (!segments || segments.length === 0) return;
+                            graphics.clear();
+                            const count = segments.length;
+                            const arcLen = (Math.PI * 2) / count;
+                            // We lose the per-segment pulse for caching optimization.
+                            // Instead we apply a static alpha. To regain pulse, we'd need to modify container alpha in update loop.
+                            // For now, static alpha 0.8 looks fine.
+                            graphics.lineStyle(8, color, 0.8);
+                            for (let i = 0; i < count; i++) {
+                                if (segments[i] > 0) {
+                                    // Draw at base angle 0
+                                    const a0 = i * arcLen + 0.02;
+                                    const a1 = (i + 1) * arcLen - 0.02;
+                                    graphics.moveTo(Math.cos(a0) * radius, Math.sin(a0) * radius);
+                                    graphics.arc(0, 0, radius, a0, a1);
+                                }
+                            }
+                        };
+
+                        if (gfx && hasOuter) drawRing(gfx, this.shieldSegments, this.shieldRadius, 0x00ffff);
+                        if (innerGfx && hasInner) drawRing(innerGfx, this.innerShieldSegments, this.innerShieldRadius, 0xff00ff);
+
+                        this.shieldsDirty = false;
+                    }
+
+                } else {
+                    if (this._pixiGfx) {
+                        try { this._pixiGfx.destroy(true); } catch (e) { }
+                        this._pixiGfx = null;
+                    }
+                    if (this._pixiInnerGfx) {
+                        try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+                        this._pixiInnerGfx = null;
+                    }
+                }
 
                 if (this.displayName) {
                     let t = this._pixiNameText;
@@ -11682,16 +12369,11 @@ function completeContract(success = true) {
         showOverlayMessage("CONTRACT FAILED", '#f00', 1500);
     }
     // Cleanup entities
-    contractEntities.beacons.forEach(b => b.dead = true);
-    contractEntities.gates.forEach(g => g.dead = true);
-    contractEntities.anomalies.forEach(a => a.dead = true);
-    contractEntities.fortresses.forEach(f => f.dead = true);
-    contractEntities.wallTurrets.forEach(t => t.dead = true);
-    contractEntities.beacons = [];
-    contractEntities.gates = [];
-    contractEntities.anomalies = [];
-    contractEntities.fortresses = [];
-    contractEntities.wallTurrets = [];
+    clearArrayWithPixiCleanup(contractEntities.beacons);
+    clearArrayWithPixiCleanup(contractEntities.gates);
+    clearArrayWithPixiCleanup(contractEntities.anomalies);
+    clearArrayWithPixiCleanup(contractEntities.fortresses);
+    clearArrayWithPixiCleanup(contractEntities.wallTurrets);
     // Cleanup anomaly contract debris
     if (contractId) {
         filterArrayWithPixiCleanup(environmentAsteroids, a => !a.contractId || a.contractId !== contractId);
@@ -11710,6 +12392,17 @@ class ContractBeacon extends Entity {
         this.t = 0;
         this.scanStartAt = null;
         this.scanMsRequired = 2000;
+        this.shieldsDirty = true;
+        this._pixiGfx = null;
+        this._pixiLabelText = null;
+        this._pixiProgressText = null;
+        this._pixiProgressGfx = null;
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        pixiCleanupObject(this);
     }
     update() {
         if (!player || player.dead) return;
@@ -11728,9 +12421,100 @@ class ContractBeacon extends Entity {
         }
     }
     draw(ctx) {
+        if (this.dead) return;
+
+        const pulse = 0.6 + Math.sin(this.t * 0.1) * 0.2;
+
+        if (pixiVectorLayer) {
+            if (!this._pixiGfx) {
+                this._pixiGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiGfx);
+                this.shieldsDirty = true;
+            }
+            if (!this._pixiGfx.parent) pixiVectorLayer.addChild(this._pixiGfx);
+
+            if (this.shieldsDirty) {
+                this._pixiGfx.clear();
+                // Outer ring
+                this._pixiGfx.lineStyle(3, 0x00ff00, 1.0);
+                this._pixiGfx.drawCircle(0, 0, this.radius);
+                // Crosshair
+                this._pixiGfx.lineStyle(2, 0x00ff00, 1.0);
+                this._pixiGfx.moveTo(-12, 0); this._pixiGfx.lineTo(12, 0);
+                this._pixiGfx.moveTo(0, -12); this._pixiGfx.lineTo(0, 12);
+                this.shieldsDirty = false;
+            }
+            this._pixiGfx.position.set(this.pos.x, this.pos.y);
+            this._pixiGfx.alpha = pulse;
+
+            // Label
+            if (!this._pixiLabelText) {
+                this._pixiLabelText = new PIXI.Text(this.label, {
+                    fontFamily: 'Courier New',
+                    fontSize: 14,
+                    fontWeight: 'bold',
+                    fill: 0x00ff00,
+                    align: 'center'
+                });
+                this._pixiLabelText.anchor.set(0.5, 1);
+                pixiVectorLayer.addChild(this._pixiLabelText);
+            }
+            if (!this._pixiLabelText.parent) pixiVectorLayer.addChild(this._pixiLabelText);
+            this._pixiLabelText.position.set(this.pos.x, this.pos.y - this.radius - 10);
+            this._pixiLabelText.visible = true;
+
+            // Progress
+            if (player && !player.dead && activeContract && activeContract.type === 'scan_beacon') {
+                const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (d < this.radius) {
+                    const progress = Math.max(0, Math.min(1, activeContract.progress || 0));
+
+                    if (!this._pixiProgressGfx) {
+                        this._pixiProgressGfx = new PIXI.Graphics();
+                        pixiVectorLayer.addChild(this._pixiProgressGfx);
+                    }
+                    if (!this._pixiProgressGfx.parent) pixiVectorLayer.addChild(this._pixiProgressGfx);
+
+                    this._pixiProgressGfx.clear();
+                    const w = 140, h = 10;
+                    const x = this.pos.x - w / 2, y = this.pos.y + this.radius + 18;
+                    this._pixiProgressGfx.beginFill(0x000000, 0.65);
+                    this._pixiProgressGfx.lineStyle(2, 0x00ff00, 1.0);
+                    this._pixiProgressGfx.drawRect(x, y, w, h);
+                    this._pixiProgressGfx.endFill();
+                    this._pixiProgressGfx.beginFill(0x00ff00, 1.0);
+                    this._pixiProgressGfx.drawRect(x, y, w * progress, h);
+                    this._pixiProgressGfx.endFill();
+                    this._pixiProgressGfx.visible = true;
+
+                    if (!this._pixiProgressText) {
+                        this._pixiProgressText = new PIXI.Text('STAY IN ZONE 2s', {
+                            fontFamily: 'Courier New',
+                            fontSize: 13,
+                            fontWeight: 'bold',
+                            fill: 0xffffff,
+                            align: 'center'
+                        });
+                        this._pixiProgressText.anchor.set(0.5, 0);
+                        pixiVectorLayer.addChild(this._pixiProgressText);
+                    }
+                    if (!this._pixiProgressText.parent) pixiVectorLayer.addChild(this._pixiProgressText);
+                    this._pixiProgressText.position.set(this.pos.x, y + h + 6);
+                    this._pixiProgressText.visible = true;
+                } else {
+                    if (this._pixiProgressGfx) this._pixiProgressGfx.visible = false;
+                    if (this._pixiProgressText) this._pixiProgressText.visible = false;
+                }
+            } else {
+                if (this._pixiProgressGfx) this._pixiProgressGfx.visible = false;
+                if (this._pixiProgressText) this._pixiProgressText.visible = false;
+            }
+
+            return;
+        }
+
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
-        const pulse = 0.6 + Math.sin(this.t * 0.1) * 0.2;
         ctx.strokeStyle = `rgba(0,255,0,${pulse})`;
         ctx.lineWidth = 3;
         ctx.shadowBlur = 15;
@@ -11791,6 +12575,15 @@ class GateRing extends Entity {
         this.index = index;
         this.total = total;
         this.t = 0;
+        this.shieldsDirty = true;
+        this._pixiGfx = null;
+        this._pixiText = null;
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        pixiCleanupObject(this);
     }
     update() {
         if (!player || player.dead) return;
@@ -11809,10 +12602,51 @@ class GateRing extends Entity {
         }
     }
     draw(ctx) {
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
+        if (this.dead) return;
+
         const active = activeContract && activeContract.type === 'gate_run' && activeContract.gateIndex === this.index;
         const pulse = 0.45 + Math.abs(Math.sin(this.t * 0.08)) * 0.35;
+
+        if (pixiVectorLayer) {
+            if (!this._pixiGfx) {
+                this._pixiGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiGfx);
+                this.shieldsDirty = true;
+            }
+            if (!this._pixiGfx.parent) pixiVectorLayer.addChild(this._pixiGfx);
+
+            if (this.shieldsDirty) {
+                this._pixiGfx.clear();
+                const col = active ? 0x00ff00 : 0x005000;
+                const lw = active ? 6 : 3;
+                this._pixiGfx.lineStyle(lw, col, 1.0);
+                this._pixiGfx.drawCircle(0, 0, this.radius);
+                this.shieldsDirty = false;
+            }
+            this._pixiGfx.position.set(this.pos.x, this.pos.y);
+            this._pixiGfx.alpha = active ? pulse : 0.6;
+
+            if (!this._pixiText) {
+                this._pixiText = new PIXI.Text(`${this.index + 1}/${this.total}`, {
+                    fontFamily: 'Courier New',
+                    fontSize: 16,
+                    fontWeight: 'bold',
+                    fill: 0xffffff,
+                    align: 'center'
+                });
+                this._pixiText.anchor.set(0.5);
+                pixiVectorLayer.addChild(this._pixiText);
+            }
+            if (!this._pixiText.parent) pixiVectorLayer.addChild(this._pixiText);
+            this._pixiText.position.set(this.pos.x, this.pos.y);
+            this._pixiText.tint = active ? 0x00ff00 : 0x005500;
+            this._pixiText.visible = true;
+
+            return;
+        }
+
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
         ctx.strokeStyle = active ? `rgba(0,255,0,${pulse})` : 'rgba(0,80,0,0.6)';
         ctx.lineWidth = active ? 6 : 3;
         ctx.shadowBlur = active ? 18 : 0;
@@ -11848,6 +12682,8 @@ class ContractFortress extends Entity {
             { r: 140, segHp: 2, segments: new Array(20).fill(2), rot: 0, rotSpeed: 0.010 }
         ];
         this.ringThickness = 16;
+        this.shieldsDirty = true;
+        this._pixiRingGfxs = [];
     }
 
     ringsLeft() {
@@ -11902,6 +12738,7 @@ class ContractFortress extends Entity {
     kill() {
         if (this.dead) return;
         this.dead = true;
+        pixiCleanupObject(this);
         playSound('base_explode');
         spawnParticles(this.pos.x, this.pos.y, 80, '#0f0');
 
@@ -11924,27 +12761,69 @@ class ContractFortress extends Entity {
         ctx.translate(this.pos.x, this.pos.y);
 
         // Rings
-        for (let r = 0; r < this.rings.length; r++) {
-            const ring = this.rings[r];
-            const count = ring.segments.length;
-            const step = (Math.PI * 2) / count;
-            ctx.save();
-            ctx.rotate(ring.rot);
-            ctx.lineWidth = 10;
-            ctx.strokeStyle = '#0f0';
-            ctx.shadowBlur = 16;
-            ctx.shadowColor = '#0f0';
-            for (let i = 0; i < count; i++) {
-                if (ring.segments[i] <= 0) continue;
-                const a0 = i * step;
-                const a1 = a0 + step * 0.82; // segment gap
-                ctx.globalAlpha = 0.35 + 0.30 * (ring.segments[i] / ring.segHp);
-                ctx.beginPath();
-                ctx.arc(0, 0, ring.r, a0, a1);
-                ctx.stroke();
+        // Rings (PIXI Cached)
+        if (pixiVectorLayer) {
+            if (!this._pixiRingGfxs) this._pixiRingGfxs = [];
+            // Ensure graphics objects exist
+            while (this._pixiRingGfxs.length < this.rings.length) {
+                const g = new PIXI.Graphics();
+                pixiVectorLayer.addChild(g);
+                this._pixiRingGfxs.push(g);
+                this.shieldsDirty = true;
             }
-            ctx.restore();
+            // Handle cleanup if rings reduced (unlikely but safe)
+            while (this._pixiRingGfxs.length > this.rings.length) {
+                const g = this._pixiRingGfxs.pop();
+                try { g.destroy(true); } catch (e) { }
+            }
+
+            // Update transforms
+            for (let i = 0; i < this._pixiRingGfxs.length; i++) {
+                const g = this._pixiRingGfxs[i];
+                if (!g.parent) pixiVectorLayer.addChild(g);
+                g.position.set(this.pos.x, this.pos.y);
+                g.rotation = this.rings[i].rot;
+                // Set alpha based on some global/state if needed, currently static in draw loop
+                // Actually original draw used varying alpha per segment. We can't do that easily with single cached geometry unless we use tint/alpha on sprite...
+                // But original used ctx.globalAlpha per segment.
+                // To optimize, we will use a static alpha for the ring, and maybe pulse the whole ring.
+                // Compromise: Draw segments with fixed alpha, but pulse the container?
+                // Original: alpha = 0.35 + 0.30 * (hp / max).
+                // We will redraw geometry if HP changes significantly? No, that defeats caching locally.
+                // We can use the dirty flag. BUT HP changes continuously?
+                // No, segment HP is int. Max 2.
+                // So we REDRAW when segment HP changes.
+            }
+
+            if (this.shieldsDirty) {
+                for (let r = 0; r < this.rings.length; r++) {
+                    const ring = this.rings[r];
+                    const g = this._pixiRingGfxs[r];
+                    g.clear();
+                    const count = ring.segments.length;
+                    const step = (Math.PI * 2) / count;
+
+                    // Helper to draw segments of specific Alpha
+                    // Since we can't change alpha per line easily in one geometry without multiple drawCalls or complex mesh...
+                    // We will group segments by HP? (1 or 2).
+                    // Or just draw them.
+                    for (let i = 0; i < count; i++) {
+                        if (ring.segments[i] <= 0) continue;
+                        const hpRatio = ring.segments[i] / ring.segHp;
+                        const alpha = 0.35 + 0.30 * hpRatio;
+                        g.lineStyle(10, 0x00ff00, alpha); // Green
+
+                        const a0 = i * step;
+                        const a1 = a0 + step * 0.82;
+                        g.moveTo(Math.cos(a0) * ring.r, Math.sin(a0) * ring.r);
+                        g.arc(0, 0, ring.r, a0, a1);
+                    }
+                }
+                this.shieldsDirty = false;
+            }
         }
+
+        /* canvas rendering removed */
         ctx.globalAlpha = 1;
         ctx.shadowBlur = 0;
 
@@ -11994,6 +12873,17 @@ class AnomalyZone extends Entity {
         this.coreRadius = 195;
         this.entryAngle = Math.random() * Math.PI * 2;
         this.segments = []; // 1px line walls (like warp maze)
+        this.shieldsDirty = true;
+        this._pixiGfx = null;
+        this._pixiCoreGfx = null;
+        this._pixiOuterGfx = null;
+        this._pixiCoreText = null;
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        pixiCleanupObject(this);
     }
 
     generateMaze() {
@@ -12111,7 +13001,10 @@ class AnomalyZone extends Entity {
 
         // Build the maze before the player hits the ring so it can be seen on approach.
         if (d < this.radius * 1.6) {
-            if (!this.generated) this.generateMaze();
+            if (!this.generated) {
+                this.generateMaze();
+                this.shieldsDirty = true;
+            }
         }
 
         const collected = !!activeContract.coreCollected;
@@ -12147,6 +13040,84 @@ class AnomalyZone extends Entity {
         }
     }
     draw(ctx) {
+        if (this.dead) return;
+
+        const pulse = 0.25 + Math.abs(Math.sin(this.t * 0.02)) * 0.25;
+
+        if (pixiVectorLayer) {
+            // Initialization
+            if (!this._pixiGfx) {
+                this._pixiGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiGfx);
+
+                this._pixiOuterGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiOuterGfx);
+
+                this._pixiCoreGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiCoreGfx);
+
+                this.shieldsDirty = true;
+            }
+            if (!this._pixiGfx.parent) pixiVectorLayer.addChild(this._pixiGfx);
+            if (!this._pixiOuterGfx.parent) pixiVectorLayer.addChild(this._pixiOuterGfx);
+            if (!this._pixiCoreGfx.parent) pixiVectorLayer.addChild(this._pixiCoreGfx);
+
+            // Rebuild Geometry if dirty
+            if (this.shieldsDirty && this.segments && this.segments.length > 0) {
+                const z = currentZoom || ZOOM_LEVEL;
+
+                // 1. Maze Segments
+                this._pixiGfx.clear();
+                this._pixiGfx.lineStyle(2 / z, 0x00ffff, 0.55); // Increased line width slightly for visibility
+                for (let i = 0; i < this.segments.length; i++) {
+                    const s = this.segments[i];
+                    this._pixiGfx.moveTo(s.x0, s.y0);
+                    this._pixiGfx.lineTo(s.x1, s.y1);
+                }
+
+                // 2. Outer Ring
+                this._pixiOuterGfx.clear();
+                this._pixiOuterGfx.lineStyle(4, 0x00ff78, 1.0);
+                this._pixiOuterGfx.drawCircle(this.pos.x, this.pos.y, this.radius);
+
+                // 3. Core
+                this._pixiCoreGfx.clear();
+                this._pixiCoreGfx.beginFill(0xff8c00, 0.3); // Core fill
+                this._pixiCoreGfx.lineStyle(4, 0xff8c00, 0.8);
+                this._pixiCoreGfx.drawCircle(this.pos.x, this.pos.y, this.coreRadius);
+                this._pixiCoreGfx.endFill();
+
+                this.shieldsDirty = false;
+            }
+
+            // Update Dynamic states (Alpha pulse)
+            if (this._pixiOuterGfx) this._pixiOuterGfx.alpha = 0.5 + pulse;
+            if (this._pixiCoreGfx) this._pixiCoreGfx.alpha = 0.5 + pulse;
+
+            // Core Text
+            if (pixiVectorLayer) {
+                let t = this._pixiCoreText;
+                if (!t) {
+                    const fontSize = Math.round(16 / (currentZoom || ZOOM_LEVEL));
+                    t = new PIXI.Text('CORE', {
+                        fontFamily: 'Courier New',
+                        fontSize: fontSize,
+                        fontWeight: 'bold',
+                        fill: 0xffffff,
+                        align: 'center'
+                    });
+                    t.anchor.set(0.5);
+                    pixiVectorLayer.addChild(t);
+                    this._pixiCoreText = t;
+                }
+                if (!t.parent) pixiVectorLayer.addChild(t);
+                t.position.set(this.pos.x, this.pos.y);
+                t.visible = true;
+            }
+
+            return; // Exit canvas path
+        }
+
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
 
@@ -12168,8 +13139,6 @@ class AnomalyZone extends Entity {
             ctx.restore();
         }
 
-        const pulse = 0.25 + Math.abs(Math.sin(this.t * 0.02)) * 0.25;
-        // Outer anomaly edge: green so it doesn't blend with cyan walls.
         ctx.strokeStyle = `rgba(0,255,120,${pulse})`;
         ctx.lineWidth = 4;
         ctx.shadowBlur = 20;
@@ -12179,7 +13148,6 @@ class AnomalyZone extends Entity {
         ctx.stroke();
         ctx.shadowBlur = 0;
 
-        // Core target: distinct color/fill to show it's not a wall.
         ctx.save();
         ctx.fillStyle = `rgba(255,140,0,${0.10 + pulse * 0.20})`;
         ctx.beginPath();
@@ -12211,11 +13179,15 @@ class WallTurret extends Entity {
         this.maxHp = 6;
         this.reload = 50 + Math.floor(Math.random() * 30);
         this.t = 0;
+        this.shieldsDirty = true;
+        this._pixiGfx = null;
+        this._pixiHpGfx = null;
     }
 
     kill() {
         if (this.dead) return;
         this.dead = true;
+        pixiCleanupObject(this);
         // Drop coins like a roamer ship.
         for (let i = 0; i < 3; i++) coins.push(new Coin(this.pos.x, this.pos.y, 2));
         spawnParticles(this.pos.x, this.pos.y, 18, '#ff6');
@@ -12247,9 +13219,56 @@ class WallTurret extends Entity {
 
     draw(ctx) {
         if (this.dead) return;
+
+        const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : this.baseAngle;
+
+        if (pixiVectorLayer) {
+            if (!this._pixiGfx) {
+                this._pixiGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiGfx);
+
+                this._pixiHpGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(this._pixiHpGfx);
+
+                this.shieldsDirty = true;
+            }
+            if (!this._pixiGfx.parent) pixiVectorLayer.addChild(this._pixiGfx);
+            if (!this._pixiHpGfx.parent) pixiVectorLayer.addChild(this._pixiHpGfx);
+
+            if (this.shieldsDirty) {
+                this._pixiGfx.clear();
+                // Base
+                this._pixiGfx.beginFill(0x111111, 1.0);
+                this._pixiGfx.lineStyle(2, 0xff8800, 1.0);
+                this._pixiGfx.drawCircle(0, 0, this.radius);
+                this._pixiGfx.endFill();
+                // Barrel
+                this._pixiGfx.beginFill(0xff8800, 1.0);
+                this._pixiGfx.drawRect(this.radius * 0.2, -5, this.radius * 1.25, 10);
+                this._pixiGfx.endFill();
+                // Core
+                this._pixiGfx.beginFill(0x222222, 1.0);
+                this._pixiGfx.drawCircle(0, 0, 8);
+                this._pixiGfx.endFill();
+
+                this.shieldsDirty = false;
+            }
+
+            this._pixiGfx.position.set(this.pos.x, this.pos.y);
+            this._pixiGfx.rotation = aim;
+
+            // HP ring
+            const pct = this.maxHp > 0 ? Math.max(0, this.hp / this.maxHp) : 0;
+            this._pixiHpGfx.clear();
+            this._pixiHpGfx.lineStyle(3, 0xffff66, 0.75);
+            this._pixiHpGfx.arc(this.pos.x, this.pos.y, this.radius + 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
+            this._pixiHpGfx.visible = true;
+
+            return;
+        }
+
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
-        const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : this.baseAngle;
         ctx.rotate(aim);
 
         // Base
@@ -14516,6 +15535,7 @@ function gameLoopLogic(opts = null) {
                                 const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
                                 if (player.outerShieldSegments[segIndex] > 0) {
                                     player.outerShieldSegments[segIndex] = 0;
+                                    player.shieldsDirty = true;
                                     hit = true;
                                     playSound('shield_hit');
                                     spawnParticles(b.pos.x, b.pos.y, 7, '#b0f');
@@ -14528,6 +15548,7 @@ function gameLoopLogic(opts = null) {
                                 const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
                                 if (player.shieldSegments[segIndex] > 0) {
                                     player.shieldSegments[segIndex]--;
+                                    player.shieldsDirty = true;
                                     hit = true;
                                     playSound('shield_hit');
                                     spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
@@ -14579,9 +15600,20 @@ function gameLoopLogic(opts = null) {
                                     const activeIdx = e.shieldSegments.findIndex(s => s > 0);
                                     if (activeIdx !== -1) {
                                         e.shieldSegments[activeIdx] = 0;
+                                        e.shieldsDirty = true;
                                         hit = true;
                                         playSound('shield_hit');
                                         spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
+                                    }
+                                }
+                                if (!hit && !b.ignoreShields && e.innerShieldSegments && e.innerShieldSegments.length > 0 && dist < e.innerShieldRadius + b.radius && dist > e.innerShieldRadius - 10) {
+                                    const activeIdx = e.innerShieldSegments.findIndex(s => s > 0);
+                                    if (activeIdx !== -1) {
+                                        e.innerShieldSegments[activeIdx] = Math.max(0, e.innerShieldSegments[activeIdx] - 1);
+                                        e.shieldsDirty = true;
+                                        hit = true;
+                                        playSound('shield_hit');
+                                        spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
                                     }
                                 }
 
@@ -14644,6 +15676,7 @@ function gameLoopLogic(opts = null) {
                                             const segIndex = Math.floor((ang / (Math.PI * 2)) * count) % count;
                                             if (ring.segments[segIndex] > 0) {
                                                 ring.segments[segIndex] = Math.max(0, ring.segments[segIndex] - 1);
+                                                e.shieldsDirty = true;
                                                 hit = true;
                                                 playSound('shield_hit');
                                                 if (ring.segments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 10, '#0f0');
@@ -14677,6 +15710,7 @@ function gameLoopLogic(opts = null) {
                                     const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
                                     if (e.shieldSegments[segIndex] > 0) {
                                         e.shieldSegments[segIndex]--;
+                                        e.shieldsDirty = true;
                                         hit = true;
                                         playSound('shield_hit');
                                         if (e.shieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#0ff');
@@ -14692,6 +15726,7 @@ function gameLoopLogic(opts = null) {
                                     const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
                                     if (e.innerShieldSegments[segIndex] > 0) {
                                         e.innerShieldSegments[segIndex]--;
+                                        e.shieldsDirty = true;
                                         hit = true;
                                         playSound('shield_hit');
                                         if (e.innerShieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#f0f');
@@ -16199,7 +17234,105 @@ if (pauseRestartBtn) pauseRestartBtn.addEventListener('click', () => {
 document.getElementById('quit-btn').addEventListener('click', quitGame);
 document.getElementById('music-btn').addEventListener('click', toggleMusic);
 
+
+// --- Settings Menu Logic ---
+
+const settingsBtn = document.getElementById('settings-btn');
+const settingsMenu = document.getElementById('settings-menu');
+const settingsCloseBtn = document.getElementById('settings-close-btn');
+const settingsApplyBtn = document.getElementById('settings-apply-btn');
+const resSelect = document.getElementById('res-select');
+const fullscreenCheck = document.getElementById('fullscreen-check');
+const framelessCheck = document.getElementById('frameless-check');
+
+// Only enable if running in Electron environment with exposed API
+const isElectron = window.SpacebrosApp && window.SpacebrosApp.settings;
+
+if (settingsBtn) {
+    if (!isElectron) {
+        settingsBtn.style.display = 'none';
+    } else {
+        settingsBtn.addEventListener('click', async () => {
+            const current = await window.SpacebrosApp.settings.get();
+            if (current) {
+                // Populate UI
+                if (current.fullscreen) {
+                    fullscreenCheck.checked = true;
+                    resSelect.disabled = true;
+                } else {
+                    fullscreenCheck.checked = false;
+                    resSelect.disabled = false;
+                    const resString = `${current.width}x${current.height}`;
+                    if ([...resSelect.options].some(o => o.value === resString)) {
+                        resSelect.value = resString;
+                    }
+                }
+                framelessCheck.checked = !!current.frameless;
+            }
+            settingsMenu.style.display = 'block';
+        });
+
+        settingsCloseBtn.addEventListener('click', () => {
+            settingsMenu.style.display = 'none';
+        });
+
+        fullscreenCheck.addEventListener('change', (e) => {
+            resSelect.disabled = e.target.checked;
+        });
+
+        settingsApplyBtn.addEventListener('click', async () => {
+            const isFullscreen = fullscreenCheck.checked;
+            const isFrameless = framelessCheck.checked;
+            const [w, h] = resSelect.value.split('x').map(Number);
+
+            // Get old settings to compare for restart requirement
+            const old = await window.SpacebrosApp.settings.get();
+            const framelessChanged = old.frameless !== isFrameless;
+
+            // Save everything
+            await window.SpacebrosApp.settings.save({
+                width: w,
+                height: h,
+                fullscreen: isFullscreen,
+                frameless: isFrameless
+            });
+
+            // Apply runtime changes
+            window.SpacebrosApp.settings.setFullscreen(isFullscreen);
+            if (!isFullscreen) {
+                window.SpacebrosApp.settings.setResolution(w, h);
+            }
+
+            // Handle restart if frameless changed
+            if (framelessChanged) {
+                if (confirm("Changing window frame style requires a restart. Restart now?")) {
+                    window.SpacebrosApp.settings.relaunch();
+                }
+            } else {
+                showOverlayMessage("SETTINGS SAVED", '#0f0', 1500);
+                settingsMenu.style.display = 'none';
+            }
+        });
+
+        // Desktop Quit Support
+        const qStart = document.getElementById('desktop-quit-start-btn');
+        const qPause = document.getElementById('desktop-quit-pause-btn');
+
+        if (qStart) {
+            qStart.addEventListener('click', () => window.SpacebrosApp.settings.quit());
+        }
+        if (qPause) {
+            qPause.addEventListener('click', () => {
+                if (confirm("Quit to desktop? Any unsaved progress will be lost.")) {
+                    window.SpacebrosApp.settings.quit();
+                }
+            });
+        }
+    }
+}
+
 document.getElementById('start-btn').focus();
 loadMetaProfile();
 updateMetaUI();
 mainLoop();
+

@@ -1,24 +1,46 @@
 const path = require("path");
 const fs = require("fs");
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain } = require("electron");
 
-// Some Windows setups (e.g. locked-down profiles / sync tools) can prevent Chromium from creating/migrating
-// its GPU/Disk cache in the default location, which results in noisy "Unable to move the cache" errors.
-// Keep `userData` unchanged (so localStorage/saves persist), but move caches to a guaranteed-writable temp dir.
+// Settings Persistence
+const userDataPath = app.getPath('userData');
+const settingsPath = path.join(userDataPath, 'settings.json');
+const defaultSettings = { width: 1280, height: 720, fullscreen: false, frameless: false };
+
+function loadSettings() {
+  try {
+    if (fs.existsSync(settingsPath)) {
+      return { ...defaultSettings, ...JSON.parse(fs.readFileSync(settingsPath, 'utf8')) };
+    }
+  } catch (e) { console.error("Failed to load settings:", e); }
+  return defaultSettings;
+}
+
+function saveSettings(settings) {
+  try {
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  } catch (e) { console.error("Failed to save settings:", e); }
+}
+
+// Cache Management
 try {
   const cacheRoot = path.join(app.getPath("temp"), "spacebros-electron-cache");
   fs.mkdirSync(cacheRoot, { recursive: true });
   app.commandLine.appendSwitch("disk-cache-dir", path.join(cacheRoot, "disk"));
   app.commandLine.appendSwitch("gpu-cache-dir", path.join(cacheRoot, "gpu"));
   app.commandLine.appendSwitch("disable-gpu-shader-disk-cache");
-} catch {
-  // If this fails, Electron will fall back to its defaults.
-}
+} catch { }
+
+let mainWindow = null;
 
 function createWindow() {
+  const settings = loadSettings();
+
   const win = new BrowserWindow({
-    width: 1280,
-    height: 720,
+    width: settings.fullscreen ? undefined : settings.width,
+    height: settings.fullscreen ? undefined : settings.height,
+    fullscreen: settings.fullscreen,
+    frame: !settings.frameless,
     backgroundColor: "#000000",
     show: false,
     autoHideMenuBar: true,
@@ -29,10 +51,13 @@ function createWindow() {
     }
   });
 
+  mainWindow = win;
+
   if (process.env.ELECTRON_SMOKE !== "1") {
     win.once("ready-to-show", () => {
-      win.maximize();
       win.show();
+      // If purely windowed, center it. If fullscreen, it handles itself.
+      if (!settings.fullscreen) win.center();
     });
   }
 
@@ -52,6 +77,34 @@ app.whenReady().then(() => {
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+
+  // IPC Handlers
+  ipcMain.handle("app:get-settings", () => loadSettings());
+
+  ipcMain.handle("app:save-settings", (event, newSettings) => {
+    const current = loadSettings();
+    saveSettings({ ...current, ...newSettings });
+  });
+
+  ipcMain.handle("app:set-resolution", (event, w, h) => {
+    if (mainWindow && !mainWindow.isFullScreen()) {
+      mainWindow.setSize(w, h);
+      mainWindow.center();
+    }
+  });
+
+  ipcMain.handle("app:set-fullscreen", (event, flag) => {
+    if (mainWindow) mainWindow.setFullScreen(flag);
+  });
+
+  ipcMain.handle("app:relaunch", () => {
+    app.relaunch();
+    app.exit(0);
+  });
+
+  ipcMain.handle("app:quit", () => {
+    app.quit();
   });
 });
 
