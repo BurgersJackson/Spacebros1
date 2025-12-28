@@ -15153,8 +15153,8 @@ function gameLoopLogic(opts = null) {
                                 spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
                             }
                         }
-                        // Hull damage only if ALL shields are down
-                        if (!hit && !outerShieldsUp && !innerShieldsUp && dist < spaceStation.radius + b.radius) {
+                        // Hull damage: allowed if shields are bypassed or down
+                        if (!hit && dist < spaceStation.radius + b.radius) {
                             spaceStation.hp -= b.damage;
                             hit = true;
                             playSound('hit');
@@ -15202,9 +15202,9 @@ function gameLoopLogic(opts = null) {
                             }
                         }
 
-                        // If shields are down, allow hardpoints and hull damage
-                        if (!hit && !outerShieldsUp && !innerShieldsUp) {
-                            // Hardpoints take damage when shields are down
+                        // If shields are bypassed or down, allow hardpoints and hull damage
+                        if (!hit) {
+                            // Hardpoints take damage when shields are down (or bypassed)
                             if (typeof boss.applyPlayerBulletHit === 'function') {
                                 if (boss.applyPlayerBulletHit(b)) {
                                     hit = true;
