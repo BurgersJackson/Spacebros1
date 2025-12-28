@@ -85,26 +85,7 @@ export class HealthPowerUp extends Entity {
             }
         }
 
-        // Canvas fallback
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.2;
-        ctx.scale(scale, scale);
 
-        ctx.fillStyle = '#0f0';
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#0f0';
-
-        ctx.beginPath();
-        ctx.rect(-4, -10, 8, 20);
-        ctx.rect(-10, -4, 20, 8);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.shadowBlur = 0;
-        ctx.restore();
     }
 
     cull() {

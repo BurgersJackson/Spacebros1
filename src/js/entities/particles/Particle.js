@@ -71,17 +71,7 @@ export class Particle extends Entity {
             }
         }
 
-        // Canvas fallback
-        ctx.save();
-        ctx.globalAlpha = this.life / this.maxLife;
-        if (this.glow) {
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = this.color;
-            ctx.globalCompositeOperation = 'lighter';
-        }
-        ctx.fillStyle = this.color;
-        ctx.fillRect(rPos.x, rPos.y, 2, 2);
-        ctx.restore();
+
     }
 
     cull() {
@@ -124,16 +114,35 @@ export class SmokeParticle extends Entity {
         if (this.life <= 0) this.dead = true;
     }
 
-    draw(ctx, dummy, alpha = 1.0) {
+    draw(ctx, pixiResources = null, alpha = 1.0) {
         const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
-        ctx.save();
-        ctx.globalAlpha = (this.life / this.maxLife) * 0.5;
-        ctx.strokeStyle = '#aaa';
-        ctx.lineWidth = 1;
-        ctx.translate(rPos.x, rPos.y);
-        ctx.rotate(this.life * 0.1);
-        ctx.strokeRect(-this.size / 2, -this.size / 2, this.size, this.size);
-        ctx.restore();
+
+        // Pixi Rendering
+        if (pixiResources?.layer && pixiResources?.smokeTexture) {
+            let spr = this.sprite;
+            if (!spr) {
+                // Smoke texture is 32x32, this.size starts small (~4) and grows
+                spr = allocPixiSprite(pixiResources.pool, pixiResources.layer, pixiResources.smokeTexture, 32);
+                this.sprite = spr;
+            }
+            if (spr) {
+                if (!spr.parent) pixiResources.layer.addChild(spr);
+                spr.texture = pixiResources.smokeTexture;
+                spr.position.set(rPos.x, rPos.y);
+                spr.anchor.set(0.5);
+                spr.rotation = this.life * 0.1;
+                // Scale sprite to match this.size (which is pixel size of rect)
+                // Texture is 32px.
+                const s = this.size / 32;
+                spr.scale.set(s);
+                spr.alpha = (this.life / this.maxLife) * 0.5;
+                spr.tint = 0xaaaaaa;
+                spr.blendMode = window.PIXI ? PIXI.BLEND_MODES.NORMAL : 0;
+                return;
+            }
+        }
+
+
     }
 }
 
@@ -149,6 +158,8 @@ export class WarpParticle extends Entity {
         this.maxLife = 20;
         this.length = 20;
         this.color = '#aff';
+        this._poolType = 'warp'; // Assume shared pool or no pool? Particle pool handles generic sprites.
+        this.sprite = null;
     }
 
     update() {
@@ -160,21 +171,42 @@ export class WarpParticle extends Entity {
         if (this.life <= 0) this.dead = true;
     }
 
-    draw(ctx, dummy, alpha = 1.0) {
+    draw(ctx, pixiResources = null, alpha = 1.0) {
         const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
-        ctx.save();
-        ctx.strokeStyle = this.color;
-        ctx.lineWidth = 3;
-        ctx.globalAlpha = this.life / this.maxLife;
-        ctx.beginPath();
-        ctx.moveTo(rPos.x, rPos.y);
-        const mag = this.vel.mag();
-        if (mag > 0) {
-            const tailX = rPos.x - (this.vel.x / mag) * this.length;
-            const tailY = rPos.y - (this.vel.y / mag) * this.length;
-            ctx.lineTo(tailX, tailY);
+
+        // Pixi Rendering
+        if (pixiResources?.layer && pixiResources?.warpTexture) {
+            let spr = this.sprite;
+            if (!spr) {
+                spr = allocPixiSprite(pixiResources.pool, pixiResources.layer, pixiResources.warpTexture, 32);
+                this.sprite = spr;
+            }
+            if (spr) {
+                if (!spr.parent) pixiResources.layer.addChild(spr);
+                spr.texture = pixiResources.warpTexture;
+                // Position at head
+                spr.position.set(rPos.x, rPos.y);
+                // Align with velocity
+                const angle = Math.atan2(this.vel.y, this.vel.x);
+                spr.rotation = angle + Math.PI; // Texture origin is left, drawing tail backwards?
+                // Wait, WarpParticle code: tailX = x - (vx/mag)*len.
+                // So line is from Head TO Tail (opposite velocity).
+                // If texture origin is (0,0) (left), pointing Right.
+                // If we rotate to vel angle + PI, it points backward.
+                spr.anchor.set(0, 0.5); // Origin left-center
+
+                // Scale Width to length
+                // Texture base width 32.
+                const s = this.length / 32;
+                spr.scale.set(s, 1); // Stretch X, keep Y (height 4px seems fine)
+
+                spr.alpha = this.life / this.maxLife;
+                spr.tint = colorToPixi(this.color);
+                spr.blendMode = window.PIXI ? PIXI.BLEND_MODES.ADD : 0;
+                return;
+            }
         }
-        ctx.stroke();
-        ctx.restore();
+
+
     }
 }

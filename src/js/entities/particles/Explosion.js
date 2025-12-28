@@ -4,6 +4,8 @@
  */
 
 import { Entity } from '../Entity.js';
+import { colorToPixi } from '../../rendering/colors.js';
+import { allocPixiSprite, releasePixiSprite } from '../../rendering/sprite-pools.js';
 
 /**
  * Explosion effect with multiple particles.
@@ -40,13 +42,15 @@ export class Explosion extends Entity {
                 life: life,
                 maxLife: life,
                 color: color,
-                size: 2 + Math.random() * (this.size / 30)
+                size: 2 + Math.random() * (this.size / 30),
+                sprite: null
             });
         }
     }
 
     update() {
         this.life--;
+        // If the explosion itself is dead, particles should be cleaned up in draw.
         if (this.life <= 0) {
             this.dead = true;
             return;
@@ -62,44 +66,82 @@ export class Explosion extends Entity {
             p.vx *= 0.96; // friction
             p.vy *= 0.96;
             p.life--;
-            // Add gravity effect
+            // Add gravity effect (visual only)
             p.vy += 0.05;
         }
     }
 
-    draw(ctx, alpha = 1.0) {
-        ctx.save();
-        // Explosion center doesn't move, but if it did we'd use getRenderPos here too
-        const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
-        ctx.translate(rPos.x, rPos.y);
-
-        // Draw particles with an additive glow effect
-        ctx.globalCompositeOperation = 'lighter';
+    cleanup(pixiResources) {
+        if (!pixiResources || !pixiResources.pool) return;
         for (let i = 0; i < this.particles.length; i++) {
             const p = this.particles[i];
-            if (p.life <= 0) continue;
-
-            const renderX = (typeof alpha === 'number' && p.prevX !== undefined) ? (p.prevX + (p.x - p.prevX) * alpha) : p.x;
-            const renderY = (typeof alpha === 'number' && p.prevY !== undefined) ? (p.prevY + (p.y - p.prevY) * alpha) : p.y;
-
-            const pAlpha = Math.max(0, p.life / p.maxLife);
-            ctx.fillStyle = p.color;
-            ctx.beginPath();
-
-            // Draw "Glow" (large, low alpha)
-            ctx.globalAlpha = pAlpha * 0.3;
-            ctx.arc(renderX, renderY, p.size * pAlpha * 2.5, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Draw "Core" (normal size, high alpha)
-            ctx.beginPath();
-            ctx.globalAlpha = pAlpha;
-            ctx.arc(renderX, renderY, p.size * pAlpha, 0, Math.PI * 2);
-            ctx.fill();
+            if (p.sprite) {
+                releasePixiSprite(pixiResources.pool, p.sprite);
+                p.sprite = null;
+            }
         }
-        ctx.globalCompositeOperation = 'source-over';
+    }
 
-        ctx.restore();
-        ctx.globalAlpha = 1.0;
+    draw(ctx, pixiResources = null, alpha = 1.0) {
+        // Cleanup if dead
+        if (this.dead) {
+            if (pixiResources && pixiResources.pool) {
+                for (let i = 0; i < this.particles.length; i++) {
+                    const p = this.particles[i];
+                    if (p.sprite) {
+                        releasePixiSprite(pixiResources.pool, p.sprite);
+                        p.sprite = null;
+                    }
+                }
+            }
+            return;
+        }
+
+        // PixiJS Rendering
+        if (pixiResources && pixiResources.layer && pixiResources.pool) {
+            const tex = pixiResources.glowTexture || pixiResources.whiteTexture;
+            const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
+
+            for (let i = 0; i < this.particles.length; i++) {
+                const p = this.particles[i];
+                if (p.life <= 0) {
+                    if (p.sprite) {
+                        releasePixiSprite(pixiResources.pool, p.sprite);
+                        p.sprite = null;
+                    }
+                    continue;
+                }
+
+                if (!p.sprite) {
+                    // Alloc sprite
+                    p.sprite = allocPixiSprite(pixiResources.pool, pixiResources.layer, tex, null, 0.5);
+                }
+
+                const spr = p.sprite;
+                if (spr) {
+                    // Update sprite props
+                    if (!spr.parent) pixiResources.layer.addChild(spr);
+
+                    const pRX = (typeof alpha === 'number' && p.prevX !== undefined) ? (p.prevX + (p.x - p.prevX) * alpha) : p.x;
+                    const pRY = (typeof alpha === 'number' && p.prevY !== undefined) ? (p.prevY + (p.y - p.prevY) * alpha) : p.y;
+
+                    spr.position.set(rPos.x + pRX, rPos.y + pRY);
+
+                    const pAlpha = Math.max(0, p.life / p.maxLife);
+                    const baseSize = 32; // Assuming glowTexture is approx 32x32
+                    // Canvas drew radius p.size * pAlpha * 2.5 (glow)
+                    // We want diameter: radius * 2
+                    // Scale = (radius * 2) / baseSize
+                    const radius = p.size * pAlpha * 2.5;
+                    const scale = (radius * 2) / baseSize;
+
+                    spr.scale.set(scale);
+                    spr.tint = colorToPixi(p.color);
+                    spr.alpha = pAlpha;
+                    spr.blendMode = window.PIXI ? PIXI.BLEND_MODES.ADD : 0;
+                }
+            }
+            return;
+        }
     }
 }

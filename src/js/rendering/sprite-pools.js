@@ -26,7 +26,12 @@ export function allocPixiSprite(pool, layer, texture = null, size = 2, anchor = 
     if (!texture || !layer || !window.PIXI) return null;
 
     let spr = pool && pool.length > 0 ? pool.pop() : null;
-    if (!spr) spr = new PIXI.Sprite(texture);
+    if (!spr) {
+        spr = new PIXI.Sprite(texture);
+        if (Math.random() < 0.005) { // Sample logs
+            console.warn('[PIXI] Pool exhausted, creating new sprite. Pool length:', pool ? pool.length : 'null');
+        }
+    }
 
     spr.texture = texture;
     spr.tint = 0xffffff;
@@ -61,7 +66,11 @@ export function releasePixiSprite(pool, spr) {
     if (!spr) return;
     if (spr.parent) spr.parent.removeChild(spr);
     spr.visible = false;
-    if (pool && pool.length < PIXI_SPRITE_POOL_MAX) pool.push(spr);
+    if (pool && pool.length < PIXI_SPRITE_POOL_MAX) {
+        pool.push(spr);
+    } else if (!pool) {
+        console.warn('[PIXI] releasePixiSprite called with null pool!');
+    }
 }
 
 /**

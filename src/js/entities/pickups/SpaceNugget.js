@@ -82,33 +82,7 @@ export class SpaceNugget extends Entity {
             }
         }
 
-        // Canvas fallback
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        const scale = 1.0 + Math.sin(this.flash * 0.12) * 0.25;
-        ctx.scale(scale, scale);
-        ctx.rotate(Math.PI / 6);
 
-        const gradient = ctx.createLinearGradient(-10, -10, 10, 10);
-        gradient.addColorStop(0, '#ff0');
-        gradient.addColorStop(0.5, '#f90');
-        gradient.addColorStop(1, '#0ff');
-
-        ctx.fillStyle = gradient;
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-            const angle = (Math.PI / 3) * i;
-            const x = Math.cos(angle) * 8;
-            const y = Math.sin(angle) * 8;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
     }
 
     cull() {

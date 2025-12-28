@@ -18,6 +18,10 @@ import {
     toggleMusic as audioToggleMusic, isMusicEnabled, setProjectileImpactSoundContext,
     musicEnabled
 } from './audio/audio-manager.js';
+import {
+    pixiBulletSpritePool, pixiParticleSpritePool, pixiEnemySpritePools,
+    pixiPickupSpritePool, pixiAsteroidSpritePool, pixiStarSpritePool
+} from './rendering/pixi-setup.js';
 
 // --- Upgrade Data ---
 const UPGRADE_DATA = {
@@ -78,6 +82,11 @@ let nebulas = [];
 let shockwaves = [];
 let menuSelectionIndex = 0;
 let sectorIndex = 1;
+
+// Pixi Textures (Global)
+let pixiParticleSmokeTexture;
+let pixiParticleWarpTexture;
+
 
 // --- Game Mode State ---
 let gameMode = 'normal'; // 'normal' or 'arcade'
@@ -214,12 +223,7 @@ let pixiCaveGridTexture = null;
 let pixiParticleGlowTexture = null;
 
 // PIXI_SPRITE_POOL_MAX imported from ./core/constants.js
-const pixiBulletSpritePool = [];
-const pixiParticleSpritePool = [];
-const pixiEnemySpritePools = Object.create(null); // keyed by enemy texture id
-const pixiPickupSpritePool = [];
-const pixiAsteroidSpritePool = [];
-const pixiStarSpritePool = [];
+// Sprite pools imported from ./rendering/pixi-setup.js (see imports at top)
 
 const pixiBulletTextures = { glow: null, laser: null, square: null };
 const pixiTextures = {
@@ -633,6 +637,7 @@ explosion1Image.addEventListener('load', () => { explosion1Ready = true; });
 explosion1Image.addEventListener('error', () => { explosion1Ready = false; });
 
 if (USE_PIXI_OVERLAY && window.PIXI) {
+    console.log('[DEBUG] Pixi Block Entered');
     try { PIXI.settings.ROUND_PIXELS = true; } catch (e) { }
     pixiApp = new PIXI.Application({
         resizeTo: window,
@@ -705,6 +710,31 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
     pixiBulletTextures.laser = makeLaserTexture();
     pixiBulletTextures.square = makeSquareTexture();
 
+    const makeMissileTexture = () => {
+        const g = new PIXI.Graphics();
+        // Shadow / Glow
+        g.beginFill(0xffaa00, 0.3);
+        g.drawCircle(0, 0, 12);
+        g.beginFill(0xffaa00, 0.5);
+        g.drawCircle(0, 0, 6);
+
+        // Missile Body (Triangle pointing right)
+        g.beginFill(0xff8800, 1);
+        g.moveTo(6, 0);
+        g.lineTo(-4, 4);
+        g.lineTo(-4, -4);
+        g.closePath();
+
+        // Engine Glow (Static approximation)
+        g.beginFill(0xff6400, 0.8);
+        g.drawRect(-6, -2, 4, 4);
+
+        const tex = pixiApp.renderer.generateTexture(g);
+        g.destroy(true);
+        return tex;
+    };
+    pixiBulletTextures.missile = makeMissileTexture();
+
     const makeParticleGlowTexture = () => {
         const g = new PIXI.Graphics();
         // Inner core
@@ -720,6 +750,26 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
         return tex;
     };
     pixiParticleGlowTexture = makeParticleGlowTexture();
+
+    const makeSmokeTexture = () => {
+        const g = new PIXI.Graphics();
+        g.lineStyle(2, 0xffffff, 1);
+        g.drawRect(-16, -16, 32, 32);
+        const tex = pixiApp.renderer.generateTexture(g);
+        g.destroy(true);
+        return tex;
+    };
+    pixiParticleSmokeTexture = makeSmokeTexture();
+
+    const makeWarpTexture = () => {
+        const g = new PIXI.Graphics();
+        g.beginFill(0xffffff, 1);
+        g.drawRect(0, -2, 32, 4); // Origin at left-center
+        const tex = pixiApp.renderer.generateTexture(g);
+        g.destroy(true);
+        return tex;
+    };
+    pixiParticleWarpTexture = makeWarpTexture();
 
     // Background (screen-space)
     pixiNebulaLayer = new PIXI.Container();
@@ -743,7 +793,9 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
     pixiEnemyLayer = new PIXI.Container();
     pixiBossLayer = new PIXI.Container();
     pixiVectorLayer = new PIXI.Container();
-    pixiBulletLayer = new PIXI.ParticleContainer(15000, { position: true, rotation: true, tint: true, scale: true, alpha: true });
+    // Use regular Container for bullets since they use multiple different generated textures
+    // (glow, laser, square, missile). ParticleContainer requires uniform base textures.
+    pixiBulletLayer = new PIXI.Container();
     pixiParticleLayer = new PIXI.ParticleContainer(20000, { position: true, tint: true, scale: true, alpha: true });
 
     pixiWorldRoot.addChild(pixiAsteroidLayer);
@@ -793,7 +845,7 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
     const STAR_TILE_SIZE = 512;
     const NEBULA_TILE_SIZE = 512;
 
-    // Generate a starfield texture with random stars
+    // Generate a starfield texture with random stars (seamless tile)
     const makeStarfieldTexture = (starCount, minSize, maxSize, minAlpha, maxAlpha) => {
         const g = new PIXI.Graphics();
         for (let i = 0; i < starCount; i++) {
@@ -807,9 +859,14 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
             if (colorVar < 0.15) color = 0xaaddff; // light blue
             else if (colorVar < 0.25) color = 0xffffaa; // light yellow
             else if (colorVar < 0.3) color = 0xffccaa; // light orange
-            g.beginFill(color, alpha);
-            g.drawCircle(x, y, size);
-            g.endFill();
+            // Draw the star and its wrapped copies for seamless tiling
+            for (let ox = -1; ox <= 1; ox++) {
+                for (let oy = -1; oy <= 1; oy++) {
+                    g.beginFill(color, alpha);
+                    g.drawCircle(x + ox * STAR_TILE_SIZE, y + oy * STAR_TILE_SIZE, size);
+                    g.endFill();
+                }
+            }
         }
         const tex = pixiApp.renderer.generateTexture(g, { region: new PIXI.Rectangle(0, 0, STAR_TILE_SIZE, STAR_TILE_SIZE) });
         try {
@@ -820,18 +877,33 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
         return tex;
     };
 
-    // Generate a nebula texture with soft colored blobs
+    // Generate a nebula texture with soft colored clouds (seamless tile)
+    // Uses multiple overlapping circles with varying alpha to create soft gradient-like blobs
     const makeNebulaTexture = (blobCount, palette) => {
         const g = new PIXI.Graphics();
         for (let i = 0; i < blobCount; i++) {
             const x = Math.random() * NEBULA_TILE_SIZE;
             const y = Math.random() * NEBULA_TILE_SIZE;
-            const size = 40 + Math.random() * 120;
+            const baseSize = 60 + Math.random() * 140;
             const color = palette[Math.floor(Math.random() * palette.length)];
-            const alpha = 0.02 + Math.random() * 0.06;
-            g.beginFill(color, alpha);
-            g.drawCircle(x, y, size);
-            g.endFill();
+            const baseAlpha = 0.001 + Math.random() * 0.003; // Very subtle/transparent
+
+            // Draw multiple layered circles to create soft gradient falloff
+            const layers = 8;
+            for (let layer = layers; layer >= 1; layer--) {
+                const ratio = layer / layers;
+                const size = baseSize * ratio;
+                const layerAlpha = baseAlpha * (1 - ratio * 0.7); // Fade toward edges
+
+                // Draw at the position and wrapped copies for seamless tiling
+                for (let ox = -1; ox <= 1; ox++) {
+                    for (let oy = -1; oy <= 1; oy++) {
+                        g.beginFill(color, layerAlpha);
+                        g.drawCircle(x + ox * NEBULA_TILE_SIZE, y + oy * NEBULA_TILE_SIZE, size);
+                        g.endFill();
+                    }
+                }
+            }
         }
         const tex = pixiApp.renderer.generateTexture(g, { region: new PIXI.Rectangle(0, 0, NEBULA_TILE_SIZE, NEBULA_TILE_SIZE) });
         try {
@@ -857,8 +929,8 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
         const starTexMid = makeStarfieldTexture(40, 0.8, 1.8, 0.4, 0.7);   // Medium stars
         const starTexNear = makeStarfieldTexture(15, 1.2, 2.5, 0.6, 1.0); // Fewer bright close stars
 
-        const w = (typeof width === 'number' && width > 0) ? width : window.innerWidth || 1920;
-        const h = (typeof height === 'number' && height > 0) ? height : window.innerHeight || 1080;
+        const w = window.innerWidth || 1920;
+        const h = window.innerHeight || 1080;
 
         pixiStarTiles = [
             { sprite: new PIXI.TilingSprite(starTexFar, w, h), parallax: 0.02 },
@@ -937,8 +1009,8 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
             return genTexture(g).tex;
         };
         pixiTextures.coin1 = makeCoin(0xffff00);
-        pixiTextures.coin5 = makeCoin(0xff00ff);
-        pixiTextures.coin10 = makeCoin(0x00ffff);
+        pixiTextures.coin5 = makeCoin(0xffff00);  // All coins are gold
+        pixiTextures.coin10 = makeCoin(0xffff00); // All coins are gold
 
         const makeGateKey = () => {
             const g = new PIXI.Graphics();
@@ -1456,6 +1528,7 @@ function destroyBulletSprite(b) {
     if (b && b.sprite && pixiBulletSpritePool) {
         releasePixiSprite(pixiBulletSpritePool, b.sprite);
         b.sprite = null;
+        if (Math.random() < 0.01) console.log('[BULLET CLEANUP] Pool size:', pixiBulletSpritePool.length);
     }
 }
 
@@ -1497,11 +1570,25 @@ function pixiCleanupObject(obj) {
             if (Array.isArray(val)) {
                 val.forEach(item => {
                     if (item && typeof item.destroy === 'function') {
-                        try { item.destroy(true); } catch (e) { }
+                        try {
+                            if (!item.destroyed) {
+                                item.visible = false;
+                                if (typeof item.clear === 'function') item.clear();
+                                if (item.parent) item.parent.removeChild(item);
+                                item.destroy(true);
+                            }
+                        } catch (e) { console.warn('[CLEANUP] Error destroying item:', e); }
                     }
                 });
             } else if (val && typeof val.destroy === 'function') {
-                try { val.destroy(true); } catch (e) { }
+                try {
+                    if (!val.destroyed) {
+                        val.visible = false;
+                        if (typeof val.clear === 'function') val.clear();
+                        if (val.parent) val.parent.removeChild(val);
+                        val.destroy(true);
+                    }
+                } catch (e) { console.warn('[CLEANUP] Error destroying val:', e); }
             }
             obj[k] = null;
         }
@@ -1512,7 +1599,14 @@ function pixiCleanupObject(obj) {
 
 function clearArrayWithPixiCleanup(arr) {
     if (!arr || arr.length === 0) return;
-    for (let i = 0; i < arr.length; i++) pixiCleanupObject(arr[i]);
+    for (let i = 0; i < arr.length; i++) {
+        const obj = arr[i];
+        if (obj) {
+            // Mark as dead FIRST to prevent draw() from recreating graphics
+            obj.dead = true;
+            pixiCleanupObject(obj);
+        }
+    }
     arr.length = 0;
 }
 
@@ -2782,6 +2876,9 @@ class Spaceship extends Entity {
         const bulletSpeed = 15;
         const shots = this.stats.multiShot;
 
+        // DEBUG: Validation
+        if (bullets.length > 500) console.warn('[WARN] Bullet count high:', bullets.length);
+
         // Calculate firing vectors for parallel multi-shot
         const aimX = Math.cos(this.turretAngle);
         const aimY = Math.sin(this.turretAngle);
@@ -2849,12 +2946,13 @@ class Spaceship extends Entity {
             }
             return;
         }
-        const startX = this.pos.x + Math.cos(this.turretAngle) * 25;
-        const startY = this.pos.y + Math.sin(this.turretAngle) * 25;
-        const hit = rayCast(startX, startY, this.turretAngle, 2000 * this.stats.rangeMult);
 
         // Pixi path (dashed aim laser)
         if (pixiVectorLayer && pixiApp && pixiApp.renderer) {
+            const startX = this.pos.x + Math.cos(this.turretAngle) * 25;
+            const startY = this.pos.y + Math.sin(this.turretAngle) * 25;
+            const hit = rayCast(startX, startY, this.turretAngle, 2000 * this.stats.rangeMult);
+
             let gfx = this._pixiLaserGfx;
             if (!gfx) {
                 gfx = new PIXI.Graphics();
@@ -2887,24 +2985,6 @@ class Spaceship extends Entity {
             gfx.endFill();
             return;
         }
-
-        ctx.save();
-        ctx.strokeStyle = '#8ff';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 10]);
-        ctx.globalAlpha = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(hit.x, hit.y);
-        ctx.stroke();
-
-        ctx.setLineDash([]);
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = '#aff';
-        ctx.beginPath();
-        ctx.arc(hit.x, hit.y, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
     }
 
     draw(ctx, alpha = 1.0) {
@@ -2931,7 +3011,7 @@ class Spaceship extends Entity {
         const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
 
         // Pixi fast path (player hull/turret/shields)
-        if (pixiPlayerLayer && pixiTextures && pixiTextures.player_hull) {
+        if (pixiPlayerLayer) {
             let container = this._pixiContainer;
             if (!container) {
                 container = new PIXI.Container();
@@ -3169,244 +3249,6 @@ class Spaceship extends Entity {
 
             return;
         }
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-
-        // Draw Phase Shield Visual
-        if (this.invincibilityCycle.unlocked && this.invincibilityCycle.state === 'active') {
-            ctx.save();
-            // Keep the phase shield a constant, transparent yellow — no pulsing or glow
-            ctx.shadowBlur = 0;
-            ctx.shadowColor = 'rgba(0,0,0,0)';
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = 'rgba(255,220,0,0.6)';
-            ctx.beginPath();
-            const outerR = (this.outerShieldSegments && this.outerShieldSegments.some(s => s > 0)) ? this.outerShieldRadius : 0;
-            ctx.arc(0, 0, Math.max(this.shieldRadius, outerR) + 14, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        // Outer shield ring (purple, rotates opposite the main shield)
-        if (this.outerShieldSegments && this.outerShieldSegments.some(s => s > 0)) {
-            ctx.save();
-            ctx.rotate(this.outerShieldRotation);
-            ctx.lineWidth = 4;
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = '#b0f';
-            const outerCount = this.outerShieldSegments.length;
-            const outerAngle = (Math.PI * 2) / outerCount;
-            for (let i = 0; i < outerCount; i++) {
-                if (this.outerShieldSegments[i] > 0) {
-                    ctx.strokeStyle = '#b0f';
-                    ctx.globalAlpha = 0.9;
-                    ctx.beginPath();
-                    ctx.arc(0, 0, this.outerShieldRadius, i * outerAngle + 0.08, (i + 1) * outerAngle - 0.08);
-                    ctx.stroke();
-                }
-            }
-            ctx.shadowBlur = 0;
-            ctx.restore();
-        }
-
-        ctx.save();
-        ctx.rotate(this.shieldRotation);
-        ctx.lineWidth = 3;
-        const segCount = this.shieldSegments.length;
-        const segAngle = (Math.PI * 2) / segCount;
-        for (let i = 0; i < segCount; i++) {
-            if (this.shieldSegments[i] > 0) {
-                // Optimized Glow (Wide transparent stroke)
-                ctx.beginPath();
-                ctx.arc(0, 0, this.shieldRadius, i * segAngle + 0.1, (i + 1) * segAngle - 0.1);
-                ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
-                ctx.lineWidth = 12;
-                ctx.stroke();
-
-                // Core
-                ctx.strokeStyle = '#0ff';
-                ctx.lineWidth = 3;
-                ctx.globalAlpha = this.shieldSegments[i] / 2;
-                ctx.stroke();
-            }
-        }
-        ctx.restore();
-
-        // Slow Field Visual
-        if (this.stats.slowField > 0) {
-            ctx.beginPath();
-            ctx.arc(0, 0, this.stats.slowField, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
-            ctx.stroke();
-        }
-
-        ctx.save();
-        ctx.rotate(this.angle);
-
-        ctx.shadowBlur = 5;
-        ctx.shadowColor = '#0ff';
-
-        const s = 1.4;
-
-        // Turbo flame VFX (big red/yellow exhaust)
-        if (this.turboBoost && this.turboBoost.activeFrames > 0) {
-            const flicker = 0.75 + Math.random() * 0.35;
-            const flameLen = 95 * s * flicker;
-            const flameWid = 22 * s * flicker;
-            const baseX = -25 * s;
-
-            const grad = ctx.createLinearGradient(baseX, 0, baseX - flameLen, 0);
-            grad.addColorStop(0, 'rgba(255,255,180,0.95)');
-            grad.addColorStop(0.25, 'rgba(255,220,0,0.95)');
-            grad.addColorStop(0.6, 'rgba(255,80,0,0.9)');
-            grad.addColorStop(1, 'rgba(255,0,0,0)');
-
-            ctx.save();
-            ctx.shadowBlur = 0; // Disable laggy shadow
-            ctx.globalCompositeOperation = 'lighter'; // Additive blending for glow look
-
-            // Draw Flame
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.moveTo(baseX, 0);
-            ctx.lineTo(baseX - flameLen, -flameWid);
-            ctx.lineTo(baseX - flameLen * 0.88, 0);
-            ctx.lineTo(baseX - flameLen, flameWid);
-            ctx.closePath();
-            ctx.fill();
-
-            // Inner white-hot core
-            ctx.fillStyle = 'rgba(255,255,255,0.6)';
-            ctx.beginPath();
-            ctx.moveTo(baseX, 0);
-            ctx.lineTo(baseX - flameLen * 0.55, -flameWid * 0.35);
-            ctx.lineTo(baseX - flameLen * 0.75, 0);
-            ctx.lineTo(baseX - flameLen * 0.55, flameWid * 0.35);
-            ctx.closePath();
-            ctx.fill();
-            ctx.restore();
-        }
-
-        if (playerHullExternalReady && playerHullImage && playerHullImage.naturalWidth > 0) {
-            const desired = this.radius * 2 * PLAYER_HULL_RENDER_SCALE;
-            const denom = Math.max(1, Math.max(playerHullImage.naturalWidth || 1, playerHullImage.naturalHeight || 1));
-            const scale = desired / denom;
-            ctx.save();
-            ctx.rotate(PLAYER_HULL_ROT_OFFSET);
-            ctx.scale(scale, scale);
-            ctx.drawImage(playerHullImage, -playerHullImage.naturalWidth / 2, -playerHullImage.naturalHeight / 2);
-            ctx.restore();
-        } else {
-            ctx.beginPath();
-            ctx.moveTo(25 * s, 0);
-            ctx.lineTo(-10 * s, 10 * s);
-            ctx.lineTo(-20 * s, 20 * s);
-            ctx.lineTo(-20 * s, 5 * s);
-            ctx.lineTo(-25 * s, 5 * s);
-            ctx.lineTo(-25 * s, -5 * s);
-            ctx.lineTo(-20 * s, -5 * s);
-            ctx.lineTo(-20 * s, -20 * s);
-            ctx.lineTo(-10 * s, -10 * s);
-            ctx.closePath();
-            ctx.fillStyle = '#122';
-            ctx.strokeStyle = '#0ff';
-            ctx.lineWidth = 2;
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.moveTo(10 * s, 0);
-            ctx.lineTo(-15 * s, 8 * s);
-            ctx.moveTo(10 * s, 0);
-            ctx.lineTo(-15 * s, -8 * s);
-            ctx.stroke();
-
-            ctx.fillStyle = '#011';
-            ctx.beginPath();
-            ctx.ellipse(-5 * s, 0, 8 * s, 4 * s, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-        }
-
-        if (keys.w || (Math.abs(gpState.move.x) > 0.1 || Math.abs(gpState.move.y) > 0.1)) {
-            ctx.fillStyle = '#0ff';
-            ctx.beginPath();
-            ctx.moveTo(-25 * s, 4 * s);
-            ctx.lineTo(-40 * s, 0);
-            ctx.lineTo(-25 * s, -4 * s);
-            ctx.fill();
-        }
-
-        // Static Weapons Visuals
-        if (this.staticWeapons.length > 0) {
-            ctx.fillStyle = '#0f0';
-            this.staticWeapons.forEach(w => {
-                ctx.save();
-                if (w.type === 'forward') ctx.rotate(0);
-                if (w.type === 'side') {
-                    ctx.fillRect(10 * s, -10 * s, 4, 8);
-                    ctx.fillRect(10 * s, 10 * s, 4, 8);
-                }
-                if (w.type === 'rear') ctx.rotate(Math.PI);
-
-                if (w.type !== 'side') ctx.fillRect(10 * s, -2, 8, 4);
-                ctx.restore();
-            });
-        }
-
-        ctx.shadowBlur = 0;
-        if (this.hp < 10) {
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            const count = Math.ceil((10 - this.hp) / 2);
-            for (let i = 0; i < count; i++) {
-                const x1 = (Math.random() - 0.5) * 15;
-                const y1 = (Math.random() - 0.5) * 15;
-                const x2 = x1 + (Math.random() - 0.5) * 10;
-                const y2 = y1 + (Math.random() - 0.5) * 10;
-                ctx.moveTo(x1, y1);
-                ctx.lineTo(x2, y2);
-            }
-            ctx.stroke();
-        }
-        ctx.restore();
-
-        ctx.save();
-        ctx.rotate(this.turretAngle);
-        ctx.fillStyle = '#000';
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-
-        const sT = 1.2;
-        if (this.stats.multiShot >= 2) {
-            // Draw parallel barrels
-            const spacing = 12 * sT; // Spacing for visual barrels
-            const shots = this.stats.multiShot;
-            for (let i = 0; i < shots; i++) {
-                const offset = (i - (shots - 1) / 2) * spacing;
-                ctx.beginPath();
-                ctx.rect(0, -3 * sT + offset, 25 * sT, 6 * sT);
-                ctx.fill();
-                ctx.stroke();
-            }
-        } else {
-            ctx.beginPath(); ctx.rect(0, -3 * sT, 25 * sT, 6 * sT); ctx.fill(); ctx.stroke();
-        }
-
-        ctx.beginPath();
-        ctx.arc(0, 0, 8, 0, Math.PI * 2);
-        ctx.fillStyle = '#033';
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(0, -4); ctx.lineTo(6, 0); ctx.lineTo(0, 4);
-        ctx.fillStyle = '#0ff';
-        ctx.fill();
-
-        ctx.restore();
-        ctx.restore();
     }
 }
 
@@ -3496,16 +3338,29 @@ class Shockwave extends Entity {
         }
     }
     draw(ctx) {
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.beginPath();
-        ctx.arc(0, 0, this.currentRadius, 0, Math.PI * 2);
-        const alpha = Math.max(0, 1 - (this.currentRadius / this.maxRadius));
-        ctx.strokeStyle = this.color;
-        ctx.lineWidth = 8;
-        ctx.globalAlpha = alpha;
-        ctx.stroke();
-        ctx.restore();
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
+
+        const rPos = this.getRenderPos(renderAlpha);
+
+        if (pixiVectorLayer) {
+            let g = this._pixiGfx;
+            if (!g) {
+                g = new PIXI.Graphics();
+                pixiVectorLayer.addChild(g);
+                this._pixiGfx = g;
+            }
+            g.clear();
+            const alpha = Math.max(0, 1 - (this.currentRadius / this.maxRadius));
+            g.lineStyle(8, colorToPixi(this.color), alpha);
+            g.drawCircle(0, 0, this.currentRadius);
+            g.position.set(rPos.x, rPos.y);
+            return;
+        }
+
+        // Canvas fallback removed
     }
 }
 
@@ -3533,6 +3388,8 @@ class CruiserMineBomb extends Entity {
         this.pos.y += Math.sin(angle) * off;
         this.startX = this.pos.x;
         this.startY = this.pos.y;
+
+        this._pixiGfx = null;
     }
     update() {
         this.t++;
@@ -3563,6 +3420,7 @@ class CruiserMineBomb extends Entity {
     explode() {
         if (this.dead) return;
         this.dead = true;
+        pixiCleanupObject(this);
         playSound('explode');
         spawnParticles(this.pos.x, this.pos.y, 40, '#fa0');
         shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.damage, this.blastRadius, {
@@ -3573,29 +3431,31 @@ class CruiserMineBomb extends Entity {
         }));
     }
     draw(ctx) {
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.rotate(this.t * 0.1);
+        if (this.dead) return;
 
-        // Glow Halo (Optimized)
-        ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.4;
-        ctx.fillStyle = '#fa0';
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius * 1.4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        const rPos = this.getRenderPos(renderAlpha);
 
-        // Main Body
-        ctx.fillStyle = '#fa0';
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
+        if (pixiBulletLayer) {
+            let g = this._pixiGfx;
+            if (!g) {
+                g = new PIXI.Graphics();
+                // Glow Halo
+                g.beginFill(0xffaa00, 0.4);
+                g.drawCircle(0, 0, this.radius * 1.4);
+                g.endFill();
+                // Main Body
+                g.lineStyle(2, 0xffffff, 1);
+                g.beginFill(0xffaa00, 1);
+                g.drawCircle(0, 0, this.radius);
+                g.endFill();
+
+                pixiBulletLayer.addChild(g);
+                this._pixiGfx = g;
+            }
+            g.position.set(rPos.x, rPos.y);
+            g.rotation = this.t * 0.1;
+            return;
+        }
     }
 }
 
@@ -3757,82 +3617,69 @@ class FlagshipGuidedMissile extends Entity {
     }
 
     draw(ctx) {
-        if (this.dead) return;
-        const z = currentZoom || ZOOM_LEVEL;
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.rotate(this.angle);
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
 
-        const len = 64;
-        const w = 18;
+        const rPos = this.getRenderPos(renderAlpha);
 
-        const grad = ctx.createLinearGradient(-len / 2, 0, len / 2, 0);
-        grad.addColorStop(0, '#fff');
-        grad.addColorStop(0.35, '#ff6');
-        grad.addColorStop(1, '#f80');
+        if (pixiBulletLayer) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                pixiBulletLayer.addChild(container);
 
-        ctx.fillStyle = grad;
-        ctx.strokeStyle = '#111';
-        ctx.lineWidth = 2 / z;
+                // Setup graphics (One-time)
+                const g = new PIXI.Graphics();
+                const len = 64;
+                const w = 18;
 
-        // Path definition
-        ctx.beginPath();
-        ctx.moveTo(len / 2, 0);
-        ctx.lineTo(-len / 2 + 10, w / 2);
-        ctx.lineTo(-len / 2, 0);
-        ctx.lineTo(-len / 2 + 10, -w / 2);
-        ctx.closePath();
+                // Glow Halo
+                g.beginFill(0xffaa00, 0.4);
+                g.drawEllipse(0, 0, len * 1.2 / 2, w * 1.4 / 2); // Approximate
+                g.endFill();
 
-        // Glow pass (Optimized)
-        ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.shadowBlur = 0; // Ensure off
-        ctx.globalAlpha = 0.4;
-        ctx.fillStyle = '#fa0';
-        ctx.scale(1.2, 1.4); // Larger halo
-        ctx.fill();
-        ctx.restore();
+                // Main Body (Gradient approximation)
+                g.beginFill(0xffaa00); // Solid color as gradient is hard in Graphics
+                g.lineStyle(2, 0x111111);
+                g.moveTo(len / 2, 0);
+                g.lineTo(-len / 2 + 10, w / 2);
+                g.lineTo(-len / 2, 0);
+                g.lineTo(-len / 2 + 10, -w / 2);
+                g.closePath();
+                g.endFill();
 
-        // Main Body
-        ctx.fill();
-        ctx.stroke();
+                // Fins
+                g.lineStyle(0);
+                g.beginFill(0xcc3333);
+                // Fin 1
+                g.moveTo(-len / 2 + 14, w / 2);
+                g.lineTo(-len / 2 - 2, w / 2 + 8);
+                g.lineTo(-len / 2 + 8, w / 2 - 2);
+                g.closePath();
+                // Fin 2
+                g.moveTo(-len / 2 + 14, -w / 2);
+                g.lineTo(-len / 2 - 2, -w / 2 - 8);
+                g.lineTo(-len / 2 + 8, -w / 2 + 2);
+                g.closePath();
+                g.endFill();
 
-        // Fins
-        ctx.fillStyle = '#c33';
-        ctx.beginPath();
-        ctx.moveTo(-len / 2 + 14, w / 2);
-        ctx.lineTo(-len / 2 - 2, w / 2 + 8);
-        ctx.lineTo(-len / 2 + 8, w / 2 - 2);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(-len / 2 + 14, -w / 2);
-        ctx.lineTo(-len / 2 - 2, -w / 2 - 8);
-        ctx.lineTo(-len / 2 + 8, -w / 2 + 2);
-        ctx.closePath();
-        ctx.fill();
+                // Engine Glow
+                g.beginFill(0xff7800, 0.8);
+                g.drawRect(-len / 2 - 10, -5, 14, 10);
+                g.endFill();
 
-        // Engine glow
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = `rgba(255, 120, 0, ${0.35 + Math.random() * 0.45})`;
-        ctx.fillRect(-len / 2 - 10, -5, 14, 10);
-        ctx.globalAlpha = 1;
+                container.addChild(g);
+                this._pixiGfx = g; // Keep ref if needed
+            }
 
-        // HP ring
-        const pct = this.maxHp > 0 ? Math.max(0, this.hp / this.maxHp) : 0;
-        ctx.save();
-        ctx.rotate(-this.angle);
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#ff0';
-        ctx.strokeStyle = 'rgba(255,255,0,0.6)';
-        ctx.lineWidth = 3 / z;
-        ctx.beginPath();
-        ctx.arc(0, 0, 34, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
-        ctx.stroke();
-        ctx.restore();
-
-        ctx.restore();
+            container.position.set(rPos.x, rPos.y);
+            container.rotation = this.angle;
+            // No easy HP ring update in this structure without redraw, skipping or could add another Gfx
+            return;
+        }
     }
 }
 
@@ -3855,6 +3702,7 @@ class ShootingStar extends Entity {
         this.radius = 40;
         this.damage = 10;
         this.life = 300; // 5 seconds at 60fps
+        this._pixiGfx = null;
     }
 
     update() {
@@ -3876,21 +3724,31 @@ class ShootingStar extends Entity {
     }
 
     draw(ctx) {
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
 
-        // Glowing head
-        const grad = ctx.createRadialGradient(0, 0, 10, 0, 0, 40);
-        grad.addColorStop(0, '#fff');
-        grad.addColorStop(0.4, '#ffaa00');
-        grad.addColorStop(1, 'rgba(255, 100, 0, 0)');
+        const rPos = this.getRenderPos(renderAlpha);
 
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(0, 0, 40, 0, Math.PI * 2);
-        ctx.fill();
+        if (pixiBulletLayer) {
+            let g = this._pixiGfx;
+            if (!g) {
+                g = new PIXI.Graphics();
+                // Simple glowing ball
+                g.beginFill(0xffffff, 0.2); // Outer
+                g.drawCircle(0, 0, 40);
+                g.beginFill(0xffaa00, 0.4); // Mid
+                g.drawCircle(0, 0, 25);
+                g.beginFill(0xffffff, 0.8); // Core
+                g.drawCircle(0, 0, 10);
 
-        ctx.restore();
+                pixiBulletLayer.addChild(g);
+                this._pixiGfx = g;
+            }
+            g.position.set(rPos.x, rPos.y);
+            return;
+        }
     }
 }
 
@@ -3975,17 +3833,31 @@ class Bullet extends Entity {
         // Interpolate position for smooth rendering on high refresh displays
         const rPos = this.getRenderPos(renderAlpha);
 
-        // Pixi path (skip for missile shape to keep glow)
-        if (!this.isMissile && pixiBulletLayer && pixiBulletTextures.glow) {
+        // Pixi Rendering
+        if (pixiBulletLayer && pixiBulletTextures.glow) {
             let spr = this.sprite;
-            const size = (this.radius || 4) * 2;
-            const isLaser = (!this.isEnemy && this.shape !== 'square');
-            const texture = this.shape === 'square'
-                ? pixiBulletTextures.square
-                : (isLaser ? pixiBulletTextures.laser : pixiBulletTextures.glow);
+            let texture = pixiBulletTextures.glow;
+            let size = (this.radius || 4) * 2;
+            const isLaser = (!this.isEnemy && this.shape !== 'square' && !this.isMissile);
+
+            if (this.isMissile) {
+                texture = pixiBulletTextures.missile;
+                size = 20; // Fixed size for missile sprite
+            } else if (this.shape === 'square') {
+                texture = pixiBulletTextures.square;
+            } else if (isLaser) {
+                texture = pixiBulletTextures.laser;
+            }
+
             if (!spr) {
-                spr = allocPixiSprite(pixiBulletSpritePool, pixiBulletLayer, texture, size);
-                this.sprite = spr;
+                // Ensure we have a valid texture before alloc
+                if (texture) {
+                    spr = allocPixiSprite(pixiBulletSpritePool, pixiBulletLayer, texture, size);
+                    this.sprite = spr;
+                    this._poolType = 'bullet'; // Tag for cleanup to know which pool to return to
+                } else {
+                    if (Math.random() < 0.01) console.warn('[BULLET DRAW] No texture selected!', this);
+                }
             }
             if (spr) {
                 spr.texture = texture;
@@ -3994,71 +3866,28 @@ class Bullet extends Entity {
                 spr.position.set(rPos.x, rPos.y);
                 spr.rotation = this.angle;
                 spr.blendMode = PIXI.BLEND_MODES.ADD;
-                if (isLaser) {
+
+                if (this.isMissile) {
+                    spr.width = size;
+                    spr.height = size;
+                    // Missiles act like they have their own colors usually, but apply tint just in case
+                    spr.tint = 0xffffff;
+                } else if (isLaser) {
                     spr.width = size * 6;
                     spr.height = size * 3.5;
+                    spr.tint = colorToPixi(this.color || (this.isEnemy ? '#f00' : '#ff0'));
                 } else {
                     spr.width = size * 4;
                     spr.height = size * 4;
+                    spr.tint = colorToPixi(this.color || (this.isEnemy ? '#f00' : '#ff0'));
                 }
-                spr.tint = colorToPixi(this.color || (this.isEnemy ? '#f00' : '#ff0'));
                 spr.alpha = 1;
                 return;
+            } else {
+                if (Math.random() < 0.01) console.error('[BULLET DRAW] Sprite alloc failed or missing!', this);
             }
         }
-
-        ctx.save();
-        ctx.translate(rPos.x, rPos.y);
-
-        if (this.isMissile) {
-            ctx.rotate(this.angle);
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = '#fa0';
-            ctx.fillStyle = '#f80';
-            ctx.beginPath();
-            ctx.moveTo(6, 0);
-            ctx.lineTo(-4, 4);
-            ctx.lineTo(-4, -4);
-            ctx.fill();
-            // Engine glow
-            ctx.fillStyle = `rgba(255, 100, 0, ${0.5 + Math.random() * 0.5})`;
-            ctx.fillRect(-6, -2, 4, 4);
-            ctx.restore();
-            return;
-        }
-
-        if (this.color) {
-            ctx.fillStyle = this.color;
-        } else {
-            ctx.fillStyle = this.isEnemy ? '#f44' : '#ff0';
-        }
-
-        if (this.shape === 'square') {
-            const size = this.radius * 2;
-            ctx.shadowBlur = 6;
-            ctx.shadowColor = ctx.fillStyle;
-            ctx.fillRect(-size / 2, -size / 2, size, size);
-            ctx.shadowBlur = 0;
-        } else if (!this.isEnemy) {
-            // Laser look
-            ctx.rotate(this.angle);
-            const w = this.radius * 2;
-            const l = w * 5;
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = ctx.fillStyle;
-            ctx.beginPath();
-            ctx.rect(-l / 2, -this.radius, l, w);
-            ctx.fill();
-            ctx.shadowBlur = 0;
-        } else {
-            ctx.beginPath();
-            ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-            ctx.shadowBlur = 5;
-            ctx.shadowColor = ctx.fillStyle;
-            ctx.fill();
-            ctx.shadowBlur = 0;
-        }
-        ctx.restore();
+        // No Canvas fallback intended for final release. 
     }
 }
 
@@ -4910,298 +4739,7 @@ class Enemy extends Entity {
                 this._pixiNameText = null;
             }
 
-            // Skip Canvas hull rendering when Pixi is active (fallback remains below).
-            if (tex) return;
         }
-
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        if (this.modifier === 'stealth') {
-            const alpha = 0.4 + Math.abs(Math.sin(Date.now() * 0.003)) * 0.4;
-            ctx.globalAlpha = alpha;
-        }
-        if (this.shieldSegments.length > 0) {
-            if (this.freezeTimer > 0) {
-                ctx.strokeStyle = '#0ff';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
-            }
-            ctx.save();
-            ctx.rotate(this.shieldRotation);
-            const segCount = this.shieldSegments.length;
-            const segAngle = (Math.PI * 2) / segCount;
-            ctx.lineWidth = 2;
-            for (let i = 0; i < segCount; i++) {
-                if (this.shieldSegments[i] > 0) {
-                    ctx.strokeStyle = this.isCruiser
-                        ? '#8ff'
-                        : (this.isGunboat
-                            ? (this.gunboatLevel === 1 ? '#f55' : '#fa0')
-                            : (this.type === 'hunter' ? '#fa0' : '#f55'));
-                    ctx.beginPath();
-                    ctx.arc(0, 0, this.shieldRadius, i * segAngle, (i + 1) * segAngle - 0.2);
-                    ctx.stroke();
-                }
-            }
-            ctx.restore();
-        }
-        if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
-            ctx.save();
-            const innerRot = typeof this.innerShieldRotation === 'number' ? this.innerShieldRotation : -this.shieldRotation;
-            ctx.rotate(innerRot);
-            const innerCount = this.innerShieldSegments.length;
-            const innerAngle = (Math.PI * 2) / innerCount;
-            const innerRadius = this.innerShieldRadius || Math.max(10, this.shieldRadius - 20);
-            ctx.lineWidth = 2;
-            for (let i = 0; i < innerCount; i++) {
-                if (this.innerShieldSegments[i] > 0) {
-                    ctx.strokeStyle = this.isCruiser
-                        ? '#8ff'
-                        : (this.isGunboat
-                            ? (this.gunboatLevel === 1 ? '#f88' : '#ff0')
-                            : (this.type === 'hunter' ? '#fd5' : '#f88'));
-                    ctx.beginPath();
-                    ctx.arc(0, 0, innerRadius, i * innerAngle + 0.05, (i + 1) * innerAngle - 0.15);
-                    ctx.stroke();
-                }
-            }
-            ctx.restore();
-        }
-
-        ctx.save();
-        ctx.rotate(this.angle);
-        if (this.freezeTimer > 0) {
-            ctx.fillStyle = '#0aa';
-            ctx.strokeStyle = '#0ff';
-        }
-        else {
-            if (this.isGunboat) {
-                // Gunboat / Boss hull styling
-                const s = this.gunboatScale || 1.4;
-                if (this.isCruiser) {
-                    ctx.fillStyle = '#2b2f33';
-                    ctx.strokeStyle = '#c7ced6';
-                    ctx.shadowBlur = 10;
-                    ctx.shadowColor = '#8899aa';
-                } else {
-                    ctx.fillStyle = this.gunboatLevel === 1 ? '#211' : '#321';
-                    ctx.strokeStyle = this.gunboatLevel === 1 ? '#f55' : '#fb0';
-                }
-                ctx.lineWidth = 2;
-                // path is built below
-            } else if (this.type === 'elite_roamer') {
-                ctx.fillStyle = '#303';
-                ctx.strokeStyle = '#f0f';
-            } else if (this.type === 'hunter') {
-                ctx.fillStyle = '#420';
-                ctx.strokeStyle = '#fa0';
-            } else if (this.type === 'defender') {
-                ctx.fillStyle = '#611';
-                ctx.strokeStyle = '#f88';
-            } else {
-                ctx.fillStyle = '#411';
-                ctx.strokeStyle = '#f55';
-            }
-        }
-        ctx.lineWidth = 2;
-        ctx.shadowBlur = this.isCruiser ? 10 : 5;
-        ctx.shadowColor = this.isCruiser ? '#8899aa' : '#f00';
-
-        let drewEnemyHullImage = false;
-        if (this.isCruiser && cruiserLoaded && cruiserImage && cruiserImage.naturalWidth > 0) {
-            const desired = this.radius * 2;
-            const denom = Math.max(1, Math.max(cruiserImage.naturalWidth || 1, cruiserImage.naturalHeight || 1));
-            const scale = desired / denom;
-            const rot = (cruiserImage.naturalHeight > cruiserImage.naturalWidth) ? (Math.PI / 2) : 0;
-            ctx.save();
-            ctx.rotate(rot);
-            ctx.scale(scale, scale);
-            ctx.drawImage(cruiserImage, -cruiserImage.naturalWidth / 2, -cruiserImage.naturalHeight / 2);
-            ctx.restore();
-            drewEnemyHullImage = true;
-        } else if (this.isGunboat && !this.isCruiser && gunboatStarshipLoaded && gunboatStarshipImage && gunboatStarshipImage.naturalWidth > 0) {
-            const s = this.gunboatScale || 1.4;
-            const desiredLen = 70 * 2.5 * (s / 1.4);
-            const scale = desiredLen / Math.max(1, gunboatStarshipImage.naturalHeight || 1);
-            ctx.save();
-            // Art faces "up"; model faces +X.
-            ctx.rotate(Math.PI / 2);
-            ctx.scale(scale, scale);
-            ctx.drawImage(gunboatStarshipImage, -gunboatStarshipImage.naturalWidth / 2, -gunboatStarshipImage.naturalHeight / 2);
-            ctx.restore();
-            drewEnemyHullImage = true;
-        }
-
-        if (!drewEnemyHullImage) ctx.beginPath();
-        if (this.isGunboat) {
-            const s = this.gunboatScale || 1.4;
-            if (this.isCruiser) {
-                // Battlestar-inspired: long armored hull + twin flight pods
-                const L = 28 * s;
-                const H = 7.5 * s;
-                const nose = 6 * s;
-                const tail = 7 * s;
-
-                // Main hull
-                ctx.moveTo(L, 0);
-                ctx.lineTo(L - nose, H);
-                ctx.lineTo(-L + tail, H);
-                ctx.lineTo(-L, 0);
-                ctx.lineTo(-L + tail, -H);
-                ctx.lineTo(L - nose, -H);
-            } else {
-                // reuse player silhouette
-                ctx.moveTo(25 * s, 0);
-                ctx.lineTo(-10 * s, 10 * s);
-                ctx.lineTo(-20 * s, 20 * s);
-                ctx.lineTo(-20 * s, 5 * s);
-                ctx.lineTo(-25 * s, 5 * s);
-                ctx.lineTo(-25 * s, -5 * s);
-                ctx.lineTo(-20 * s, -5 * s);
-                ctx.lineTo(-20 * s, -20 * s);
-                ctx.lineTo(-10 * s, -10 * s);
-            }
-        } else if (this.type === 'elite_roamer') {
-            ctx.moveTo(25, 0);
-            ctx.lineTo(-15, 18);
-            ctx.lineTo(-5, 0);
-            ctx.lineTo(-15, -18);
-        } else if (this.type === 'hunter') {
-            ctx.moveTo(30, 0);
-            ctx.lineTo(-15, 12);
-            ctx.lineTo(-10, 0);
-            ctx.lineTo(-15, -12);
-        } else {
-            ctx.moveTo(18, 0);
-            ctx.lineTo(-12, 12);
-            ctx.lineTo(-6, 0);
-            ctx.lineTo(-12, -12);
-        }
-        if (!drewEnemyHullImage) {
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-        }
-
-        // Cruiser detailing (pods/lines/engines) after base hull fill
-        if (this.isCruiser) {
-            const s = this.gunboatScale || 1.4;
-            const L = 28 * s;
-            const H = 7.5 * s;
-            const nose = 6 * s;
-            const tail = 7 * s;
-            const podL = 10 * s;
-            const podH = 3.2 * s;
-            const podX = 16.5 * s;
-            const podY = 10.0 * s;
-
-            // Flight pods
-            ctx.shadowBlur = 0;
-            ctx.fillStyle = '#1b1f23';
-            ctx.strokeStyle = '#c7ced6';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.rect(podX, podY - podH, podL, podH * 2);
-            ctx.rect(podX, -podY - podH, podL, podH * 2);
-            ctx.fill();
-            ctx.stroke();
-
-            // Deck lines
-            ctx.globalAlpha = 0.35;
-            ctx.strokeStyle = '#8aa0b3';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(-L + tail + 8 * s, 0);
-            ctx.lineTo(L - nose - 10 * s, 0);
-            ctx.moveTo(-L + tail + 8 * s, H * 0.55);
-            ctx.lineTo(L - nose - 14 * s, H * 0.55);
-            ctx.moveTo(-L + tail + 8 * s, -H * 0.55);
-            ctx.lineTo(L - nose - 14 * s, -H * 0.55);
-            ctx.stroke();
-            ctx.globalAlpha = 1;
-
-            // Engine glow
-            ctx.fillStyle = '#0ff';
-            ctx.shadowBlur = 12;
-            ctx.shadowColor = '#0ff';
-            ctx.beginPath();
-            ctx.arc(-L + 5 * s, 0, 2.8 * s, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.shadowBlur = 0;
-        }
-
-        ctx.shadowBlur = 0;
-        if (this.hp < (this.type === 'elite_roamer' ? 5 : 5) && this.type !== 'roamer') {
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            const count = (5 - this.hp);
-            for (let i = 0; i < count; i++) {
-                const x1 = (Math.random() - 0.5) * 15;
-                const y1 = (Math.random() - 0.5) * 15;
-                const x2 = x1 + (Math.random() - 0.5) * 10;
-                const y2 = y1 + (Math.random() - 0.5) * 10;
-                ctx.moveTo(x1, y1);
-                ctx.lineTo(x2, y2);
-            }
-            ctx.stroke();
-        }
-        ctx.restore();
-
-        let aimAngle = 0;
-        if (player && !player.dead) aimAngle = this.getAimAngle();
-        ctx.save();
-        ctx.rotate(aimAngle);
-        ctx.fillStyle = '#000';
-        ctx.strokeStyle = '#f55';
-
-        if (this.isGunboat) {
-            if (this.isCruiser) {
-                ctx.beginPath();
-                ctx.fillStyle = '#111';
-                ctx.strokeStyle = '#c7ced6';
-                ctx.rect(0, -6, 36, 12);
-                ctx.fill();
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.fillStyle = '#0ff';
-                ctx.rect(10, -2, 18, 4);
-                ctx.fill();
-            } else {
-                ctx.beginPath(); ctx.rect(0, -5, 28, 10); ctx.fillStyle = '#0ff'; ctx.fill(); ctx.stroke();
-            }
-        } else if (this.type === 'elite_roamer' || this.type === 'hunter') {
-            ctx.beginPath(); ctx.rect(0, -4, 25, 8); ctx.fill(); ctx.stroke();
-        } else {
-            ctx.beginPath();
-            ctx.rect(0, -3, 20, 6);
-            ctx.fill();
-            ctx.stroke();
-        }
-
-        ctx.beginPath();
-        ctx.arc(0, 0, 5, 0, Math.PI * 2);
-        ctx.fillStyle = '#500';
-        ctx.fill();
-        ctx.strokeStyle = '#f00';
-        ctx.stroke();
-        ctx.restore();
-
-        if (this.nameTag) {
-            ctx.save();
-            ctx.translate(0, -this.radius - 15);
-            ctx.fillStyle = '#ff0';
-            ctx.font = 'bold 14px Courier New';
-            ctx.textAlign = 'center';
-            ctx.shadowBlur = 6;
-            ctx.shadowColor = '#f00';
-            ctx.fillText(this.nameTag, 0, 0);
-            ctx.shadowBlur = 0;
-            ctx.restore();
-        }
-
-        ctx.globalAlpha = 1;
-        ctx.restore();
     }
 }
 
@@ -5583,304 +5121,7 @@ class Base extends Entity {
 
             return;
         }
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        if (this.hp <= 2) ctx.translate((Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2);
 
-        let shieldColor = '#0ff';
-        if (this.type === 'heavy') shieldColor = '#fa0';
-        if (this.type === 'rapid') shieldColor = '#08f';
-
-        ctx.save();
-        ctx.rotate(this.shieldRotation);
-        ctx.lineWidth = 4;
-        const segCount = this.shieldSegments.length;
-        const segAngle = (Math.PI * 2) / segCount;
-        for (let i = 0; i < segCount; i++) {
-            if (this.shieldSegments[i] > 0) {
-                ctx.strokeStyle = shieldColor;
-                ctx.globalAlpha = Math.min(1.0, this.shieldSegments[i] / (this.maxShieldHp * 0.5));
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = shieldColor;
-                ctx.beginPath();
-                ctx.arc(0, 0, this.shieldRadius, i * segAngle + 0.05, (i + 1) * segAngle - 0.05);
-                ctx.stroke();
-                ctx.globalAlpha = 1.0;
-                ctx.shadowBlur = 0;
-                ctx.globalAlpha = 1.0;
-            }
-        }
-        ctx.restore();
-
-        if (this.innerShieldSegments.length > 0) {
-            ctx.save();
-            ctx.rotate(this.innerShieldRotation);
-            ctx.lineWidth = 3;
-            const innerCount = this.innerShieldSegments.length;
-            const innerAngle = (Math.PI * 2) / innerCount;
-            let innerColor = '#f0f';
-            if (this.type === 'heavy') innerColor = '#f44';
-            if (this.type === 'rapid') innerColor = '#88f';
-            for (let i = 0; i < innerCount; i++) {
-                if (this.innerShieldSegments[i] > 0) {
-                    ctx.strokeStyle = innerColor;
-                    ctx.globalAlpha = Math.min(1.0, this.innerShieldSegments[i] / (this.maxShieldHp * 0.5));
-                    ctx.shadowBlur = 8;
-                    ctx.shadowColor = innerColor;
-                    ctx.beginPath();
-                    ctx.arc(0, 0, this.innerShieldRadius, i * innerAngle + 0.05, (i + 1) * innerAngle - 0.05);
-                    ctx.stroke();
-                    ctx.shadowBlur = 0;
-                    ctx.globalAlpha = 1.0;
-                }
-            }
-            ctx.restore();
-        }
-
-        ctx.lineWidth = 3;
-        if (this.isCruiser) {
-            // Battlestar-ish cruiser hull (rotated 180° via visualAngleOffset)
-            ctx.save();
-            const hs = this.cruiserHullScale || this.gunboatScale || 6;
-            const ang = this.angle + (this.visualAngleOffset || 0);
-            ctx.rotate(ang);
-            const rr = (x, y, w, h, r) => {
-                if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, w, h, r);
-                else ctx.rect(x, y, w, h);
-            };
-
-            const moving = (this.vel && this.vel.mag && this.vel.mag() > 0.18);
-            const bodyLen = 40 * hs;
-            const bodyWid = 12 * hs;
-
-            // Main hull (long slab with ridges)
-            ctx.shadowBlur = 16;
-            ctx.shadowColor = '#66ffff';
-            ctx.fillStyle = '#1a2230';
-            ctx.strokeStyle = '#66ffff';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            rr(-bodyLen * 0.55, -bodyWid * 0.55, bodyLen * 1.1, bodyWid * 1.1, 10 * hs);
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.shadowBlur = 0;
-            ctx.globalAlpha = 0.65;
-            ctx.strokeStyle = '#88aaff';
-            for (let i = -2; i <= 2; i++) {
-                ctx.beginPath();
-                ctx.moveTo(-bodyLen * 0.45, i * bodyWid * 0.18);
-                ctx.lineTo(bodyLen * 0.55, i * bodyWid * 0.18);
-                ctx.stroke();
-            }
-            ctx.globalAlpha = 1;
-
-            // Nose plate
-            ctx.fillStyle = '#0d131d';
-            ctx.strokeStyle = '#aaf';
-            ctx.beginPath();
-            rr(bodyLen * 0.38, -bodyWid * 0.38, bodyLen * 0.25, bodyWid * 0.76, 8 * hs);
-            ctx.fill();
-            ctx.stroke();
-
-            // Two engine pods
-            const podX = -bodyLen * 0.52;
-            const podY = bodyWid * 0.55;
-            const podLen = 18 * hs;
-            const podWid = 8 * hs;
-            const pods = [
-                { x: podX, y: -podY },
-                { x: podX, y: podY }
-            ];
-
-            for (const p of pods) {
-                ctx.save();
-                ctx.translate(p.x, p.y);
-                ctx.fillStyle = '#121a26';
-                ctx.strokeStyle = '#ffcc66';
-                ctx.shadowBlur = 14;
-                ctx.shadowColor = '#ffcc66';
-                ctx.beginPath();
-                rr(-podLen * 0.5, -podWid * 0.5, podLen, podWid, 6 * hs);
-                ctx.fill();
-                ctx.stroke();
-
-                // Thruster nozzle
-                ctx.shadowBlur = 0;
-                ctx.fillStyle = '#222';
-                ctx.strokeStyle = '#888';
-                ctx.beginPath();
-                rr(-podLen * 0.68, -podWid * 0.25, podLen * 0.25, podWid * 0.5, 4 * hs);
-                ctx.fill();
-                ctx.stroke();
-
-                // Flame when moving
-                if (moving) {
-                    const flicker = 0.75 + Math.random() * 0.35;
-                    const flameLen = (28 * hs) * flicker;
-                    const flameWid = (10 * hs) * flicker;
-                    const baseX = -podLen * 0.78;
-
-                    const grad = ctx.createLinearGradient(baseX, 0, baseX - flameLen, 0);
-                    grad.addColorStop(0, 'rgba(255,255,180,0.95)');
-                    grad.addColorStop(0.25, 'rgba(255,220,0,0.95)');
-                    grad.addColorStop(0.6, 'rgba(255,80,0,0.9)');
-                    grad.addColorStop(1, 'rgba(255,0,0,0)');
-
-                    ctx.shadowBlur = 26;
-                    ctx.shadowColor = '#ff6600';
-                    ctx.fillStyle = grad;
-                    ctx.beginPath();
-                    ctx.moveTo(baseX, 0);
-                    ctx.lineTo(baseX - flameLen, -flameWid);
-                    ctx.lineTo(baseX - flameLen * 0.88, 0);
-                    ctx.lineTo(baseX - flameLen, flameWid);
-                    ctx.closePath();
-                    ctx.fill();
-
-                    ctx.shadowBlur = 18;
-                    ctx.shadowColor = '#ff0';
-                    ctx.fillStyle = 'rgba(255,255,255,0.8)';
-                    ctx.beginPath();
-                    ctx.moveTo(baseX, 0);
-                    ctx.lineTo(baseX - flameLen * 0.55, -flameWid * 0.35);
-                    ctx.lineTo(baseX - flameLen * 0.72, 0);
-                    ctx.lineTo(baseX - flameLen * 0.55, flameWid * 0.35);
-                    ctx.closePath();
-                    ctx.fill();
-                }
-                ctx.restore();
-            }
-
-            ctx.restore();
-        } else if (this.type === 'heavy') {
-            // 70s sci-fi monolith style
-            ctx.save();
-            ctx.rotate(this.angle);
-
-            let drewBaseImage = false;
-            if (base2Loaded && base2Image && base2Image.naturalWidth > 0) {
-                const desired = 140;
-                const denom = Math.max(1, Math.max(base2Image.naturalWidth || 1, base2Image.naturalHeight || 1));
-                const scale = desired / denom;
-                ctx.save();
-                ctx.scale(scale, scale);
-                ctx.drawImage(base2Image, -base2Image.naturalWidth / 2, -base2Image.naturalHeight / 2);
-                ctx.restore();
-                drewBaseImage = true;
-            }
-
-            if (!drewBaseImage) {
-                ctx.fillStyle = '#221122';
-                ctx.strokeStyle = '#ff8800';
-                ctx.shadowBlur = 15; ctx.shadowColor = '#ff8800';
-
-                ctx.beginPath();
-                ctx.rect(-60, -40, 120, 80);
-                ctx.fill(); ctx.stroke();
-
-                // glowing fins
-                ctx.strokeStyle = '#ffaa55';
-                ctx.lineWidth = 3;
-                for (let i = -1; i <= 1; i++) {
-                    ctx.beginPath();
-                    ctx.moveTo(-60, i * 20);
-                    ctx.lineTo(60, i * 20);
-                    ctx.stroke();
-                }
-            }
-            ctx.restore();
-        }
-        else if (this.type === 'rapid') {
-            // 70s neon satellite
-            ctx.save();
-            ctx.rotate(this.angle);
-
-            let drewBaseImage = false;
-            if (base3Loaded && base3Image && base3Image.naturalWidth > 0) {
-                const desired = 140;
-                const denom = Math.max(1, Math.max(base3Image.naturalWidth || 1, base3Image.naturalHeight || 1));
-                const scale = desired / denom;
-                ctx.save();
-                ctx.scale(scale, scale);
-                ctx.drawImage(base3Image, -base3Image.naturalWidth / 2, -base3Image.naturalHeight / 2);
-                ctx.restore();
-                drewBaseImage = true;
-            }
-
-            if (!drewBaseImage) {
-                ctx.fillStyle = '#112244'; ctx.strokeStyle = '#66ffff';
-                ctx.shadowBlur = 12; ctx.shadowColor = '#66ffff';
-
-                ctx.beginPath();
-                for (let i = 0; i < 5; i++) {
-                    const a = i * Math.PI * 2 / 5;
-                    ctx.lineTo(Math.cos(a) * 65, Math.sin(a) * 65);
-                    ctx.lineTo(Math.cos(a + 0.25) * 20, Math.sin(a + 0.25) * 20);
-                }
-                ctx.closePath();
-                ctx.fill(); ctx.stroke();
-            }
-            ctx.restore();
-        }
-        else {
-            // Standard retro ringed station
-            ctx.save();
-            ctx.rotate(this.angle);
-
-            let drewBaseImage = false;
-            if (base1Loaded && base1Image && base1Image.naturalWidth > 0) {
-                const desired = 140; // match ~2*radius
-                const denom = Math.max(1, Math.max(base1Image.naturalWidth || 1, base1Image.naturalHeight || 1));
-                const scale = desired / denom;
-                ctx.save();
-                ctx.scale(scale, scale);
-                ctx.drawImage(base1Image, -base1Image.naturalWidth / 2, -base1Image.naturalHeight / 2);
-                ctx.restore();
-                drewBaseImage = true;
-            }
-
-            if (!drewBaseImage) {
-                ctx.fillStyle = '#1a0f2d'; ctx.strokeStyle = '#ff77ff';
-                ctx.shadowBlur = 12; ctx.shadowColor = '#ff77ff';
-                ctx.lineWidth = 3;
-
-                ctx.beginPath();
-                ctx.arc(0, 0, 75, 0, Math.PI * 2);
-                ctx.fill(); ctx.stroke();
-                ctx.beginPath();
-                ctx.arc(0, 0, 40, 0, Math.PI * 2);
-                ctx.strokeStyle = '#ffaaee';
-                ctx.stroke();
-
-                // fins
-                for (let i = 0; i < 4; i++) {
-                    const a = i * Math.PI / 2;
-                    ctx.beginPath();
-                    ctx.moveTo(Math.cos(a) * 40, Math.sin(a) * 40);
-                    ctx.lineTo(Math.cos(a) * 90, Math.sin(a) * 90);
-                    ctx.strokeStyle = '#ffcc88';
-                    ctx.stroke();
-                }
-            }
-
-            ctx.restore();
-        }
-
-        if (this.hp < 10) {
-            ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath();
-            const damage = 10 - this.hp;
-            for (let i = 0; i < damage * 3; i++) {
-                const x1 = (Math.random() - 0.5) * this.radius * 1.2;
-                const y1 = (Math.random() - 0.5) * this.radius * 1.2;
-                const x2 = x1 + (Math.random() - 0.5) * 20;
-                const y2 = y1 + (Math.random() - 0.5) * 20;
-                ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-            }
-            ctx.stroke();
-        }
-
-        ctx.restore();
     }
 }
 
@@ -5949,33 +5190,7 @@ class GateKey extends Entity {
                 return;
             }
         }
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.rotate(this.t * 0.08);
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = '#ff0';
-        ctx.strokeStyle = '#fff';
-        ctx.fillStyle = '#ff0';
-        ctx.lineWidth = 2;
 
-        // simple key icon
-        ctx.beginPath();
-        ctx.arc(0, 0, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(8, 0);
-        ctx.lineTo(22, 0);
-        ctx.lineTo(22, 6);
-        ctx.lineTo(18, 6);
-        ctx.lineTo(18, 2);
-        ctx.lineTo(8, 2);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.shadowBlur = 0;
-        ctx.restore();
     }
 }
 
@@ -6018,36 +5233,60 @@ class WarpGate extends Entity {
         }
     }
     draw(ctx) {
-        if (this.dead) return;
-        const z = currentZoom || ZOOM_LEVEL;
-        const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.45;
-        const gateColor = '#f80';
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.lineWidth = 6 / z;
-        ctx.shadowBlur = 24;
-        ctx.shadowColor = gateColor;
-        ctx.strokeStyle = `rgba(255,140,0,${0.35 + pulse})`;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 0.08;
-        ctx.fillStyle = gateColor;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
 
-        ctx.fillStyle = '#fff';
-        ctx.font = `bold ${Math.round(16 / z)}px Courier New`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.shadowColor = '#000';
-        ctx.shadowBlur = 8;
-        ctx.fillText(this.mode === 'exit' ? 'EXIT' : 'WARP', 0, 0);
-        ctx.shadowBlur = 0;
-        ctx.restore();
+        if (pixiWorldRoot) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                pixiWorldRoot.addChildAt(container, 1); // Add behind players/enemies ideally
+
+                const g = new PIXI.Graphics();
+                container.addChild(g);
+                this._pixiGfx = g;
+
+                const text = new PIXI.Text('', {
+                    fontFamily: 'Courier New',
+                    fontSize: 16,
+                    fontWeight: 'bold',
+                    fill: '#ffffff',
+                    align: 'center',
+                    dropShadow: true,
+                    dropShadowColor: '#000000',
+                    dropShadowBlur: 4,
+                    dropShadowDistance: 0
+                });
+                text.anchor.set(0.5);
+                container.addChild(text);
+                this._pixiText = text;
+            }
+            container.visible = true;
+            container.position.set(this.pos.x, this.pos.y);
+
+            const g = this._pixiGfx;
+            g.clear();
+            const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.45;
+            const gateColor = 0xff8800;
+
+            // Glow Ring
+            g.lineStyle(6, gateColor, 0.35 + pulse);
+            g.drawCircle(0, 0, this.radius);
+
+            // Inner Fill
+            g.beginFill(gateColor, 0.08);
+            g.drawCircle(0, 0, this.radius);
+            g.endFill();
+
+            // Text
+            const t = this._pixiText;
+            t.text = this.mode === 'exit' ? 'EXIT' : 'WARP';
+
+            return;
+        }
     }
 }
 
@@ -6059,7 +5298,10 @@ class FlagshipWarpZone extends Entity {
         this.activated = false;
     }
     update() {
-        if (this.dead) return;
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
         this.t++;
         if (!player || player.dead) return;
         if (warpZone && warpZone.active) return;
@@ -6078,29 +5320,53 @@ class FlagshipWarpZone extends Entity {
         }
     }
     draw(ctx) {
-        if (this.dead) return;
-        const z = currentZoom || ZOOM_LEVEL;
-        const pulse = 0.45 + Math.abs(Math.sin(this.t * 0.02)) * 0.35;
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.lineWidth = 8 / z;
-        ctx.shadowBlur = 22;
-        ctx.shadowColor = '#f0f';
-        ctx.strokeStyle = `rgba(255,0,255,${0.25 + pulse})`;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
 
-        ctx.fillStyle = '#fff';
-        ctx.font = `bold ${Math.round(22 / z)}px Courier New`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.shadowColor = '#000';
-        ctx.shadowBlur = 10;
-        ctx.fillText("FLAGSHIP", 0, -this.radius - (48 / z));
-        ctx.shadowBlur = 0;
-        ctx.restore();
+        if (pixiWorldRoot) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                pixiWorldRoot.addChildAt(container, 0); // Very bottom
+
+                const g = new PIXI.Graphics();
+                container.addChild(g);
+                this._pixiGfx = g;
+
+                const text = new PIXI.Text('FLAGSHIP', {
+                    fontFamily: 'Courier New',
+                    fontSize: 22,
+                    fontWeight: 'bold',
+                    fill: '#ffffff',
+                    align: 'center',
+                    dropShadow: true,
+                    dropShadowColor: '#000000',
+                    dropShadowBlur: 4,
+                    dropShadowDistance: 0
+                });
+                text.anchor.set(0.5);
+                container.addChild(text);
+                this._pixiText = text;
+            }
+            container.visible = true;
+            container.position.set(this.pos.x, this.pos.y);
+
+            const pulse = 0.45 + Math.abs(Math.sin(this.t * 0.02)) * 0.35;
+            const g = this._pixiGfx;
+            g.clear();
+
+            // Ring
+            g.lineStyle(8, 0xff00ff, 0.25 + pulse);
+            g.drawCircle(0, 0, this.radius);
+
+            // Text Position (top)
+            this._pixiText.position.set(0, -this.radius - 48);
+
+            return;
+        }
     }
 }
 
@@ -6569,87 +5835,173 @@ class CaveWallTurret extends Entity {
     }
 
     draw(ctx) {
-        if (this.dead) return;
-        const z = currentZoom || ZOOM_LEVEL;
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
+
         const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.rotate(aim);
-        ctx.fillStyle = '#101018';
-        ctx.strokeStyle = '#88f';
-        ctx.lineWidth = 2 / z;
-        ctx.shadowBlur = 12;
-        ctx.shadowColor = '#88f';
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.shadowBlur = 0;
 
-        ctx.fillStyle = '#88f';
-        ctx.fillRect(this.radius * 0.2, -4 / z, this.radius * 1.35, 8 / z);
+        // Pixi Rendering
+        if (caveLevel && caveLevel._pixiContainer) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                caveLevel._pixiContainer.addChild(container);
 
-        // Armored cable weakpoint 
-        if (this.armored && (this.armorHp > 0 || this.weakpointHp > 0)) {
-            const wp = this.weakpointPos();
-            ctx.save();
-            ctx.rotate(-aim);
-            ctx.globalAlpha = 0.9;
-            ctx.strokeStyle = '#0ff';
-            ctx.lineWidth = 2 / z;
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(wp.x - this.pos.x, wp.y - this.pos.y);
-            ctx.stroke();
-            ctx.fillStyle = '#0ff';
-            ctx.beginPath();
-            ctx.arc(wp.x - this.pos.x, wp.y - this.pos.y, 6 / z, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
+                // Base Gfx (Staticish)
+                const g = new PIXI.Graphics();
+                g.name = 'base';
+                container.addChild(g);
+                this._pixiGfx = g;
+
+                // Overlay Gfx (Beams/Trackers)
+                const overlay = new PIXI.Graphics();
+                overlay.name = 'overlay';
+                container.addChild(overlay);
+                this._pixiOverlay = overlay;
+
+                // Label/UI if needed (none for turret)
+            }
+
+            container.visible = true; // Managed by caller ideally, but ensure true if called
+            container.position.set(this.pos.x, this.pos.y);
+
+            const z = currentZoom || ZOOM_LEVEL;
+            const g = this._pixiGfx;
+            const overlay = this._pixiOverlay;
+
+            // Redraw every frame for now due to dynamic rotation/state. 
+            // Optimization: Cache base, only rotate gun?
+            // For now, full redraw is safer for migration.
+            g.clear();
+            overlay.clear();
+
+            // Turret Base/Gun
+            g.beginFill(0x101018);
+            g.lineStyle(2, 0x8888ff, 1);
+            // Shadow not maintained in Pixi Gfx easily without filters, skipping shadow for perf
+            g.drawCircle(0, 0, this.radius);
+            g.endFill();
+
+            // Gun Barrel
+            g.beginFill(0x8888ff);
+            g.drRect = { x: this.radius * 0.2, y: -4, w: this.radius * 1.35, h: 8 };
+            // Rotate manually for barrel? No, rotate Graphics? 
+            // Turret rotates to aim.
+            // Base is round, so rotating container is fine.
+            container.rotation = aim;
+
+            g.drawRect(this.radius * 0.2, -4, this.radius * 1.35, 8);
+            g.endFill();
+
+            // Weakpoint (Armored Cable) - drawn in world space relative to turret? 
+            // Weakpoint is calculated by weakpointPos(), usually offset.
+            // If I rotate container by `aim`, local (0,0) is center.
+            // weakpointPos() logic: nx * (radius+16), y random.
+            // That logic is constant in *world* space? No, weakpointPos uses `nx` based on `centerXAt`.
+            // The turret base (round) is at `pos`.
+            // The weakpoint is at `pos + offset`.
+            // The gun rotates `aim`.
+            // So if I rotate `container` by `aim`, the *weakpoint* (attached to wall) would rotate too!
+            // Incorrect.
+
+            // Correction: Container should NOT rotate. Only the Gun Barrel should rotate.
+            container.rotation = 0;
+
+            // Redraw Base (Circle) - No rotation needed.
+            g.beginFill(0x101018);
+            g.lineStyle(2, 0x8888ff);
+            g.drawCircle(0, 0, this.radius);
+            g.endFill();
+
+            // Draw Gun Barrel (Rotated)
+            const barrX = Math.cos(aim);
+            const barrY = Math.sin(aim);
+            // Rotated rect points
+            // Start at offset *0.2
+            // Since we are doing geometry, maybe use a sub-container for gun?
+            // Let's use drawing matrix or just trig.
+            // Gun rect: x:0.2*r, y:-4, w:1.35*r, h:8.
+            // It's easier to add a 'gun' child Container.
+            if (!this._pixiGun) {
+                const gun = new PIXI.Graphics();
+                gun.beginFill(0x8888ff);
+                gun.drawRect(this.radius * 0.2, -4, this.radius * 1.35, 8);
+                gun.endFill();
+                container.addChild(gun);
+                this._pixiGun = gun;
+            }
+            this._pixiGun.rotation = aim;
+
+            // Weakpoint
+            if (this.armored && (this.armorHp > 0 || this.weakpointHp > 0)) {
+                // We draw lines from (0,0) to weakpoint offset
+                const wp = this.weakpointPos();
+                const lx = wp.x - this.pos.x;
+                const ly = wp.y - this.pos.y;
+
+                g.lineStyle(2, 0x00ffff, 0.9);
+                g.moveTo(0, 0);
+                g.lineTo(lx, ly);
+
+                g.beginFill(0x00ffff);
+                g.lineStyle(0);
+                g.drawCircle(lx, ly, 6);
+                g.endFill();
+            }
+
+            // Overlay (Beams, Trackers)
+            // Tracker
+            if (this.mode === 'tracker' && (this.trackerLock > 0 || this.trackerBurst > 0)) {
+                // Dashed line from center to aim
+                // LineDash not native in v5 Graphics easily without plugins, simulate dots?
+                // Or just solid line with low alpha
+                overlay.lineStyle(2, 0x00ffff, 0.35);
+                // Draw manual dash?
+                const angle = this.trackerAngle;
+                const tx = Math.cos(angle) * 2600;
+                const ty = Math.sin(angle) * 2600;
+                overlay.moveTo(0, 0);
+                overlay.lineTo(tx, ty);
+            }
+            // Beam
+            if (this.mode === 'beam' && this.beamCharge > 0) {
+                overlay.lineStyle(2, 0xffff00, 0.35);
+                const angle = this.beamAngle;
+                const bx = Math.cos(angle) * 2600;
+                const by = Math.sin(angle) * 2600;
+                overlay.moveTo(0, 0);
+                overlay.lineTo(bx, by);
+            }
+
+            // HP Ring
+            const pct = this.maxHp > 0 ? Math.max(0, this.hp / this.maxHp) : 0;
+            overlay.lineStyle(3, 0xffff66, 0.75);
+            overlay.drawCircle(0, 0, this.radius + 8);
+            // drawCircle is full circle. Canvas was partial arc based on pct.
+            // Graphics.arc(cx, cy, radius, startAngle, endAngle)
+            overlay.clear();
+            if (this.mode === 'tracker' && (this.trackerLock > 0 || this.trackerBurst > 0)) {
+                overlay.lineStyle(2, 0x00ffff, 0.35);
+                const angle = this.trackerAngle;
+                overlay.moveTo(0, 0);
+                overlay.lineTo(Math.cos(angle) * 2600, Math.sin(angle) * 2600);
+            }
+            if (this.mode === 'beam' && this.beamCharge > 0) {
+                overlay.lineStyle(2, 0xffff00, 0.35);
+                const angle = this.beamAngle;
+                overlay.moveTo(0, 0);
+                overlay.lineTo(Math.cos(angle) * 2600, Math.sin(angle) * 2600);
+            }
+            overlay.lineStyle(3, 0xffff66, 0.75);
+            overlay.arc(0, 0, this.radius + 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
+
+            return;
         }
 
-        if (this.mode === 'tracker' && (this.trackerLock > 0 || this.trackerBurst > 0)) {
-            ctx.save();
-            ctx.rotate(this.trackerAngle - aim);
-            ctx.globalAlpha = 0.35;
-            ctx.strokeStyle = '#0ff';
-            ctx.lineWidth = 2 / z;
-            ctx.setLineDash([6 / z, 10 / z]);
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(2600, 0);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.globalAlpha = 1;
-            ctx.restore();
-        }
-
-        if (this.mode === 'beam' && this.beamCharge > 0) {
-            ctx.save();
-            ctx.rotate(this.beamAngle - aim);
-            ctx.globalAlpha = 0.35;
-            ctx.strokeStyle = '#ff0';
-            ctx.lineWidth = 2 / z;
-            ctx.setLineDash([6 / z, 10 / z]);
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(2600, 0);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.globalAlpha = 1;
-            ctx.restore();
-        }
-
-        const pct = this.maxHp > 0 ? Math.max(0, this.hp / this.maxHp) : 0;
-        ctx.globalAlpha = 0.75;
-        ctx.strokeStyle = '#ff6';
-        ctx.lineWidth = 3 / z;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius + (8 / z), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-
-        ctx.restore();
+        // Canvas Fallback Removed
     }
 }
 
@@ -6672,6 +6024,7 @@ class CaveWallSwitch extends Entity {
         playSound('hit');
         if (this.hp <= 0) {
             this.dead = true;
+            pixiCleanupObject(this);
             for (let i = 0; i < this.doorIds.length; i++) {
                 try { if (caveLevel) caveLevel.toggleDoor(this.doorIds[i]); } catch (e) { }
             }
@@ -6682,27 +6035,48 @@ class CaveWallSwitch extends Entity {
     }
     update() { this.t++; }
     draw(ctx) {
-        if (this.dead) return;
-        const z = currentZoom || ZOOM_LEVEL;
-        const pulse = 0.45 + Math.abs(Math.sin(this.t * 0.04)) * 0.35;
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = '#0ff';
-        ctx.fillStyle = `rgba(0,255,255,${0.25 + pulse})`;
-        ctx.strokeStyle = '#0ff';
-        ctx.lineWidth = 2 / z;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#000';
-        ctx.font = `bold ${Math.round(16 / z)}px Courier New`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText("SW", 0, 0);
-        ctx.restore();
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
+
+        if (caveLevel && caveLevel._pixiContainer) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                caveLevel._pixiContainer.addChild(container);
+
+                const g = new PIXI.Graphics();
+                container.addChild(g);
+                this._pixiGfx = g;
+
+                const text = new PIXI.Text('SW', {
+                    fontFamily: 'Courier New',
+                    fontSize: 16,
+                    fontWeight: 'bold',
+                    fill: '#000000',
+                    align: 'center'
+                });
+                text.anchor.set(0.5);
+                container.addChild(text);
+                this._pixiText = text;
+            }
+            container.visible = true;
+            container.position.set(this.pos.x, this.pos.y);
+
+            const pulse = 0.45 + Math.abs(Math.sin(this.t * 0.04)) * 0.35;
+            const g = this._pixiGfx;
+            g.clear();
+
+            // Halo
+            g.beginFill(0x00ffff, 0.25 + pulse);
+            g.lineStyle(2, 0x00ffff, 1);
+            g.drawCircle(0, 0, this.radius);
+            g.endFill();
+
+            return;
+        }
     }
 }
 
@@ -6733,28 +6107,43 @@ class CavePowerRelay extends Entity {
     }
     update() { this.t++; }
     draw(ctx) {
-        if (this.dead) return;
-        const z = currentZoom || ZOOM_LEVEL;
-        const pulse = 0.5 + Math.abs(Math.sin(this.t * 0.03)) * 0.35;
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.fillStyle = '#111';
-        ctx.strokeStyle = '#ff0';
-        ctx.lineWidth = 2 / z;
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = '#ff0';
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 0.5 + pulse * 0.3;
-        ctx.fillStyle = '#ff0';
-        ctx.beginPath();
-        ctx.arc(0, 0, 8 / z, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.restore();
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
+
+        if (caveLevel && caveLevel._pixiContainer) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                caveLevel._pixiContainer.addChild(container);
+
+                const g = new PIXI.Graphics();
+                container.addChild(g);
+                this._pixiGfx = g;
+            }
+            container.visible = true;
+            container.position.set(this.pos.x, this.pos.y);
+
+            const pulse = 0.5 + Math.abs(Math.sin(this.t * 0.03)) * 0.35;
+            const g = this._pixiGfx;
+            g.clear();
+
+            // Outer Ring
+            g.beginFill(0x111111);
+            g.lineStyle(2, 0xffff00);
+            g.drawCircle(0, 0, this.radius);
+            g.endFill();
+
+            // Inner Core
+            g.beginFill(0xffff00, 0.5 + pulse * 0.3);
+            g.lineStyle(0);
+            g.drawCircle(0, 0, 8);
+            g.endFill();
+
+            return;
+        }
     }
 }
 
@@ -6768,39 +6157,65 @@ class CaveRewardPickup extends Entity {
     }
     update() { this.t++; }
     draw(ctx) {
-        if (this.dead) return;
-        const z = currentZoom || ZOOM_LEVEL;
-        const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.035)) * 0.35;
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.lineWidth = 4 / z;
-        ctx.shadowBlur = 18;
-        const color = this.rewardType === 'upgrade'
-            ? '#f0f'
-            : (this.rewardType === 'shield'
-                ? '#0ff'
-                : (this.rewardType === 'fragment'
-                    ? '#ff0'
-                    : (this.rewardType === 'nugs' ? '#fa0' : '#0f0')));
-        ctx.shadowColor = color;
-        ctx.strokeStyle = `rgba(255,255,255,${0.15 + pulse})`;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = color;
-        ctx.font = `bold ${Math.round(14 / z)}px Courier New`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const label = this.rewardType === 'upgrade'
-            ? 'UP'
-            : (this.rewardType === 'shield'
-                ? 'SH'
-                : (this.rewardType === 'fragment'
-                    ? 'KF'
-                    : (this.rewardType === 'nugs' ? 'NG' : '$')));
-        ctx.fillText(label, 0, 0);
-        ctx.restore();
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
+
+        if (caveLevel && caveLevel._pixiContainer) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                caveLevel._pixiContainer.addChild(container);
+
+                const g = new PIXI.Graphics();
+                container.addChild(g);
+                this._pixiGfx = g;
+
+                const text = new PIXI.Text('', {
+                    fontFamily: 'Courier New',
+                    fontSize: 14,
+                    fontWeight: 'bold',
+                    fill: '#ffffff',
+                    align: 'center'
+                });
+                text.anchor.set(0.5);
+                container.addChild(text);
+                this._pixiText = text;
+            }
+            container.visible = true;
+            container.position.set(this.pos.x, this.pos.y);
+
+            const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.035)) * 0.35;
+            const colorVals = {
+                'upgrade': 0xff00ff,
+                'shield': 0x00ffff,
+                'fragment': 0xffff00,
+                'nugs': 0xffaa00,
+                'coins': 0x00ff00
+            };
+            const col = colorVals[this.rewardType] || 0x00ff00;
+            const labelVals = {
+                'upgrade': 'UP',
+                'shield': 'SH',
+                'fragment': 'KF',
+                'nugs': 'NG',
+                'coins': '$'
+            };
+
+            const g = this._pixiGfx;
+            g.clear();
+
+            g.lineStyle(4, 0xffffff, 0.15 + pulse);
+            g.drawCircle(0, 0, this.radius);
+
+            const txt = this._pixiText;
+            txt.text = labelVals[this.rewardType] || '$';
+            txt.style.fill = col;
+
+            return;
+        }
     }
 }
 
@@ -6814,7 +6229,10 @@ class CaveGasVent extends Entity {
         this.damageCd = 0;
     }
     update() {
-        if (this.dead) return;
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
         this.t++;
         this.timer--;
         if (this.timer <= 0) {
@@ -6840,26 +6258,43 @@ class CaveGasVent extends Entity {
         }
     }
     draw(ctx) {
-        if (this.dead) return;
-        const z = currentZoom || ZOOM_LEVEL;
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.35;
-        if (this.state === 'warn') {
-            ctx.strokeStyle = 'rgba(120,255,120,0.35)';
-            ctx.lineWidth = 3 / z;
-            ctx.setLineDash([10 / z, 12 / z]);
-            ctx.beginPath();
-            ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.setLineDash([]);
-        } else if (this.state === 'on') {
-            ctx.fillStyle = `rgba(80,255,80,${0.08 + pulse * 0.10})`;
-            ctx.beginPath();
-            ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-            ctx.fill();
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
         }
-        ctx.restore();
+
+        if (caveLevel && caveLevel._pixiContainer) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                caveLevel._pixiContainer.addChild(container);
+
+                const g = new PIXI.Graphics();
+                container.addChild(g);
+                this._pixiGfx = g;
+            }
+            container.visible = true;
+            container.position.set(this.pos.x, this.pos.y);
+
+            const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.35;
+            const g = this._pixiGfx;
+            g.clear();
+
+            if (this.state === 'warn') {
+                g.lineStyle(3, 0x78ff78, 0.35);
+                // Dashed? Simulate with dots or low alpha solid
+                g.drawCircle(0, 0, this.radius);
+            } else if (this.state === 'on') {
+                g.beginFill(0x50ff50, 0.08 + pulse * 0.10);
+                g.drawCircle(0, 0, this.radius);
+                g.endFill();
+            } else {
+                container.visible = false;
+            }
+
+            return;
+        }
     }
 }
 
@@ -6924,39 +6359,67 @@ class CaveRockfall extends Entity {
         }
     }
     draw(ctx) {
-        const z = currentZoom || ZOOM_LEVEL;
-        if (this.state === 'warn') {
-            ctx.save();
-            ctx.translate(this.pos.x, this.pos.y);
-            ctx.globalAlpha = 0.25 + Math.abs(Math.sin(this.t * 0.2)) * 0.25;
-            ctx.strokeStyle = '#ff0';
-            ctx.lineWidth = 3 / z;
-            ctx.setLineDash([10 / z, 10 / z]);
-            ctx.beginPath();
-            ctx.moveTo(-900, 0);
-            ctx.lineTo(900, 0);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.restore();
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
         }
-        if (this.state === 'fallen' && this.segments && this.segments.length) {
-            ctx.save();
-            ctx.lineWidth = 16 / z;
-            ctx.strokeStyle = 'rgba(0, 55, 100, 0.90)';
-            ctx.shadowBlur = 0;
-            ctx.beginPath();
-            for (let i = 0; i < this.segments.length; i++) {
-                const s = this.segments[i];
-                ctx.moveTo(s.x0, s.y0);
-                ctx.lineTo(s.x1, s.y1);
+
+        if (caveLevel && caveLevel._pixiContainer) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                caveLevel._pixiContainer.addChild(container);
+
+                const g = new PIXI.Graphics();
+                container.addChild(g);
+                this._pixiGfx = g;
             }
-            ctx.stroke();
-            ctx.shadowBlur = 18;
-            ctx.shadowColor = '#0ff';
-            ctx.lineWidth = 3 / z;
-            ctx.strokeStyle = 'rgba(140, 240, 255, 0.75)';
-            ctx.stroke();
-            ctx.restore();
+            container.visible = true;
+            container.position.set(this.pos.x, this.pos.y);
+
+            const z = currentZoom || ZOOM_LEVEL;
+            const g = this._pixiGfx;
+            g.clear();
+
+            if (this.state === 'warn') {
+                g.lineStyle(3, 0xffff00, 0.25 + Math.abs(Math.sin(this.t * 0.2)) * 0.25);
+                // Simulate dashed line
+                // g.moveTo(-900, 0); g.lineTo(900, 0);
+                // Manual dash
+                let dx = -900;
+                while (dx < 900) {
+                    g.moveTo(dx, 0);
+                    g.lineTo(Math.min(900, dx + 20), 0);
+                    dx += 40;
+                }
+            }
+            else if (this.state === 'fallen' && this.segments && this.segments.length) {
+                // Thick blue background
+                g.lineStyle(16, 0x003764, 0.9);
+                for (let i = 0; i < this.segments.length; i++) {
+                    const s = this.segments[i];
+                    // Segments coordinates are world space (x0, y0).
+                    // Container is at this.pos.x, this.pos.y.
+                    // Need to transform to local.
+                    g.moveTo(s.x0 - this.pos.x, s.y0 - this.pos.y);
+                    g.lineTo(s.x1 - this.pos.x, s.y1 - this.pos.y);
+                }
+
+                // Neon glow
+                // Pixi allows multiple line styles on one path? No.
+                // Re-iterate for glow pass.
+                g.lineStyle(3, 0x8cf0ff, 0.75); // rgba(140, 240, 255, 0.75)
+                for (let i = 0; i < this.segments.length; i++) {
+                    const s = this.segments[i];
+                    g.moveTo(s.x0 - this.pos.x, s.y0 - this.pos.y);
+                    g.lineTo(s.x1 - this.pos.x, s.y1 - this.pos.y);
+                }
+            } else {
+                container.visible = false;
+            }
+
+            return;
         }
     }
 }
@@ -6985,35 +6448,54 @@ class CaveDraftZone extends Entity {
         for (let i = 0; i < enemies.length; i++) apply(enemies[i]);
     }
     draw(ctx) {
-        const z = currentZoom || ZOOM_LEVEL;
-        const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.35;
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        // Fill the zone so it stands out from the background grid.
-        const aFill = 0.08 + pulse * 0.06;
-        const grad = ctx.createLinearGradient(0, -this.h / 2, 0, this.h / 2);
-        grad.addColorStop(0, `rgba(0, 255, 255, ${aFill * 0.55})`);
-        grad.addColorStop(1, `rgba(0, 120, 255, ${aFill})`);
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = grad;
-        ctx.fillRect(-this.w / 2, -this.h / 2, this.w, this.h);
+        if (caveLevel && caveLevel._pixiContainer) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                caveLevel._pixiContainer.addChild(container);
 
-        ctx.globalAlpha = 0.55;
-        ctx.strokeStyle = `rgba(0,255,255,${0.10 + pulse * 0.12})`;
-        ctx.lineWidth = 2 / z;
-        ctx.strokeRect(-this.w / 2, -this.h / 2, this.w, this.h);
+                const g = new PIXI.Graphics();
+                container.addChild(g);
+                this._pixiGfx = g;
+            }
+            container.visible = true;
+            container.position.set(this.pos.x, this.pos.y);
 
-        ctx.globalAlpha = 0.22;
-        ctx.strokeStyle = `rgba(255,255,255,${0.10 + pulse * 0.10})`;
-        for (let i = -2; i <= 2; i++) {
-            const y = (i * 120) + Math.sin(this.t * 0.06 + i) * 30;
-            ctx.beginPath();
-            ctx.moveTo(-this.w / 2 + 20, y);
-            ctx.lineTo(this.w / 2 - 20, y);
-            ctx.stroke();
+            const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.35;
+            const g = this._pixiGfx;
+            g.clear();
+
+            // Background Fill (Simulate Gradient with solid color)
+            const aFill = 0.08 + pulse * 0.06;
+            g.beginFill(0x0078ff, aFill);
+            g.drawRect(-this.w / 2, -this.h / 2, this.w, this.h);
+            g.endFill();
+
+            // Outline
+            g.lineStyle(2, 0x00ffff, 0.10 + pulse * 0.12);
+            g.drawRect(-this.w / 2, -this.h / 2, this.w, this.h);
+
+            // Wavy lines
+            g.lineStyle(1, 0xffffff, 0.10 + pulse * 0.10);
+            for (let i = -2; i <= 2; i++) {
+                // Draw wavy line. Since Pixi Gfx path building is fast, we can calc points.
+                // 5 lines spaced 120px apart (vertical offset).
+                // x goes from -w/2+20 to w/2-20.
+                const basePathY = (i * 120);
+                const startX = -this.w / 2 + 20;
+                const endX = this.w / 2 - 20;
+
+                // Draw sine wave? Original used single lineTo:
+                // ctx.moveTo(-this.w / 2 + 20, y); ctx.lineTo(this.w / 2 - 20, y);
+                // The 'y' was modulated by sin(t + i). So it's a moving horizontal line.
+                const y = basePathY + Math.sin(this.t * 0.06 + i) * 30;
+                g.moveTo(startX, y);
+                g.lineTo(endX, y);
+            }
+
+            return;
         }
-        ctx.globalAlpha = 1;
-        ctx.restore();
     }
 }
 
@@ -7043,305 +6525,38 @@ class CaveCritter extends Entity {
         checkWallCollision(this, 0.35);
     }
     draw(ctx) {
-        if (this.dead) return;
-        const z = currentZoom || ZOOM_LEVEL;
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#6f6';
-        ctx.fillStyle = '#3c3';
-        ctx.strokeStyle = '#0a0';
-        ctx.lineWidth = 2 / z;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.restore();
-    }
-}
-
-class CaveGateBoss extends Entity {
-    constructor(x, y, gateIndex = 0) {
-        super(x, y);
-        this.gateIndex = gateIndex;
-        this.name = `GATE SENTINEL ${gateIndex + 1}`;
-        this.radius = 128;
-        this.maxHp = 140 + gateIndex * 70;
-        this.hp = this.maxHp;
-        this.t = 0;
-        this.anchorY = y;
-        this.despawnImmune = true;
-
-        this.reload = 18;
-        this.missileCooldown = 200;
-        this.summonCooldown = 320;
-
-        this.beamCooldown = 240;
-        this.beamCharge = 0;
-        this.beamChargeTotal = 70;
-        this.beamFire = 0;
-        this.beamFireTotal = 18;
-        this.beamAngle = 0;
-        this.beamLen = 5200;
-        this.beamWidth = 32;
-        this.beamSweep = 1.1;
-        this.beamHitThisShot = false;
-    }
-
-    phase2() {
-        return this.hp <= this.maxHp * 0.5;
-    }
-
-    applyDamageToPlayer(amount) {
-        if (!player || player.dead) return;
-        if (player.invulnerable > 0) return;
-        let remaining = Math.max(0, Math.ceil(amount));
-
-        if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
-            for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
-                if (player.outerShieldSegments[i] > 0) {
-                    player.outerShieldSegments[i] = 0;
-                    remaining -= 1;
-                }
-            }
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
         }
 
-        if (player.shieldSegments && player.shieldSegments.length > 0) {
-            for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
-                const absorb = Math.min(remaining, player.shieldSegments[i]);
-                player.shieldSegments[i] -= absorb;
-                remaining -= absorb;
+        if (caveLevel && caveLevel._pixiContainer) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                caveLevel._pixiContainer.addChild(container);
+
+                const g = new PIXI.Graphics();
+                container.addChild(g);
+                this._pixiGfx = g;
             }
+            container.visible = true;
+            container.position.set(this.pos.x, this.pos.y);
+
+            const z = currentZoom || ZOOM_LEVEL;
+            const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.35;
+
+            const g = this._pixiGfx;
+            g.clear();
+
+            // Fill
+            g.beginFill(0x33cc33);
+            g.lineStyle(2, 0x00aa00);
+            g.drawCircle(0, 0, this.radius);
+            g.endFill();
+
         }
-
-        if (remaining > 0) {
-            player.hp -= remaining;
-            spawnParticles(player.pos.x, player.pos.y, 14, '#f00');
-            playSound('hit');
-            updateHealthUI();
-            if (player.hp <= 0) killPlayer();
-        } else {
-            playSound('shield_hit');
-            spawnParticles(player.pos.x, player.pos.y, 10, '#ff0');
-        }
-        player.invulnerable = 45;
-    }
-
-    applyPlayerBulletHit(b) {
-        if (this.dead) return false;
-        const dist = Math.hypot(b.pos.x - this.pos.x, b.pos.y - this.pos.y);
-        if (dist >= this.radius + b.radius) return false;
-
-        this.hp -= b.damage;
-        playSound('hit');
-        spawnParticles(b.pos.x, b.pos.y, 10, '#f0f');
-        if (this.hp <= 0) this.kill();
-        return true;
-    }
-
-    kill() {
-        if (this.dead) return;
-        this.dead = true;
-        playSound('base_explode');
-        spawnParticles(this.pos.x, this.pos.y, 120, '#f0f');
-        awardCoinsInstant(18 * 6, { noSound: false, sound: 'coin', color: '#ff0' });
-        for (let i = 0; i < 4; i++) nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 160, this.pos.y + (Math.random() - 0.5) * 160, 1));
-        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
-        try { if (caveLevel && caveLevel.active) caveLevel.openGate(this.gateIndex); } catch (e) { }
-        bossActive = false;
-        if (boss) pixiCleanupObject(boss);
-        boss = null;
-        showOverlayMessage(`${this.name} DESTROYED`, '#0f0', 2600, 3);
-        if (musicEnabled) setMusicMode('normal');
-    }
-
-    update() {
-        if (this.dead) return;
-        if (!player || player.dead) return;
-        if (!caveMode || !caveLevel || !caveLevel.active) return;
-        this.t++;
-
-        const phase2 = this.phase2();
-        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
-
-        // Keep the boss near its checkpoint with slight weaving.
-        const bounds = caveLevel.boundsAt(this.pos.y);
-        let tx = caveLevel.centerXAt(this.pos.y) + Math.sin(this.t * 0.01 + this.gateIndex) * (phase2 ? 520 : 360);
-        const pad = this.radius + 140;
-        tx = Math.max(bounds.left + pad, Math.min(bounds.right - pad, tx));
-        const ty = this.anchorY + Math.sin(this.t * 0.008 + this.gateIndex) * (phase2 ? 210 : 140);
-
-        const ax = (tx - this.pos.x) * 0.006;
-        const ay = (ty - this.pos.y) * 0.006;
-        this.vel.x = (this.vel.x + ax) * 0.92;
-        this.vel.y = (this.vel.y + ay) * 0.92;
-        const vmax = phase2 ? 6.2 : 4.6;
-        const v = Math.hypot(this.vel.x, this.vel.y);
-        if (v > vmax) { this.vel.x = (this.vel.x / v) * vmax; this.vel.y = (this.vel.y / v) * vmax; }
-        // Save prevPos for interpolation
-        this.prevPos.x = this.pos.x;
-        this.prevPos.y = this.pos.y;
-        this.pos.add(this.vel);
-
-        // Beam sweep (telegraphed, heavy damage).
-        if (this.beamFire > 0) {
-            this.beamFire--;
-            const t = 1 - (this.beamFire / Math.max(1, this.beamFireTotal));
-            const a0 = this.beamAngle - this.beamSweep * 0.5;
-            const a = a0 + this.beamSweep * t;
-            if (!this.beamHitThisShot) {
-                const ex = this.pos.x + Math.cos(a) * this.beamLen;
-                const ey = this.pos.y + Math.sin(a) * this.beamLen;
-                const cp = closestPointOnSegment(player.pos.x, player.pos.y, this.pos.x, this.pos.y, ex, ey);
-                const d = Math.hypot(player.pos.x - cp.x, player.pos.y - cp.y);
-                const hitDist = (this.beamWidth * 0.5) + (player.radius * 0.55);
-                if (d <= hitDist) {
-                    this.beamHitThisShot = true;
-                    this.applyDamageToPlayer(phase2 ? 5 : 4);
-                    shakeMagnitude = Math.max(shakeMagnitude, 10);
-                    shakeTimer = Math.max(shakeTimer, 10);
-                }
-            }
-        } else if (this.beamCharge > 0) {
-            this.beamCharge--;
-            if (this.beamCharge === 0) {
-                this.beamFire = this.beamFireTotal;
-                this.beamHitThisShot = false;
-                playSound('heavy_shoot');
-            }
-        } else {
-            this.beamCooldown--;
-            if (this.beamCooldown <= 0) {
-                this.beamAngle = aim;
-                this.beamSweep = phase2 ? 1.6 : 1.15;
-                this.beamCharge = this.beamChargeTotal;
-                this.beamFire = 0;
-                this.beamCooldown = (phase2 ? 220 : 300) + Math.floor(Math.random() * 160);
-                this.beamHitThisShot = false;
-            }
-        }
-
-        // Missile pressure.
-        this.missileCooldown--;
-        if (this.missileCooldown <= 0) {
-            const count = 1;
-            for (let k = 0; k < count; k++) {
-                guidedMissiles.push(new CaveGuidedMissile(this, { hp: phase2 ? 7 : 5, radius: phase2 ? 22 : 20, speed: phase2 ? 12.5 : 11.5, turnRate: phase2 ? 0.14 : 0.12 }));
-            }
-            spawnParticles(this.pos.x, this.pos.y, 10, '#fa0');
-            playSound('heavy_shoot');
-            this.missileCooldown = (phase2 ? 320 : 460) + Math.floor(Math.random() * 180);
-        }
-
-        // Rapid bullets to force dodging in the tunnel.
-        this.reload--;
-        if (this.reload <= 0) {
-            const muzzleX = this.pos.x + Math.cos(aim) * (this.radius + 10);
-            const muzzleY = this.pos.y + Math.sin(aim) * (this.radius + 10);
-            bullets.push(new Bullet(muzzleX, muzzleY, aim, true, 2, 16, 4, '#f0f'));
-            if (phase2) {
-                bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.12, true, 1, 15, 4, '#f0f'));
-                bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.12, true, 1, 15, 4, '#f0f'));
-            }
-            this.reload = (phase2 ? 12 : 18) + Math.floor(Math.random() * 8);
-        }
-
-        // Summon defenders to make each checkpoint feel guarded.
-        this.summonCooldown--;
-        if (this.summonCooldown <= 0) {
-            const spawnY = this.pos.y + 420 + Math.random() * 480;
-            const b = caveLevel.boundsAt(spawnY);
-            const sx = (b.left + b.right) * 0.5 + (Math.random() - 0.5) * (phase2 ? 900 : 700);
-            const types = phase2 ? ['defender', 'hunter', 'defender'] : ['defender', 'defender'];
-            for (let i = 0; i < types.length; i++) {
-                enemies.push(new Enemy(types[i], { x: sx + (Math.random() - 0.5) * 240, y: spawnY + i * 80 }, null));
-            }
-            showOverlayMessage("REINFORCEMENTS", '#f0f', 1000, 2);
-            this.summonCooldown = (phase2 ? 300 : 420) + Math.floor(Math.random() * 260);
-        }
-    }
-
-    drawBossHud(ctx) {
-        if (!bossActive || this.dead) return;
-        const w = canvas.width;
-        const barW = Math.min(560, w - 40);
-        const x = (w - barW) / 2;
-        const y = 14;
-        const pct = Math.max(0, this.hp / this.maxHp);
-        const phase = this.phase2() ? 'PHASE 2' : 'PHASE 1';
-
-        ctx.save();
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.fillRect(x - 4, y - 4, barW + 8, 20);
-        ctx.strokeStyle = '#f0f';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x - 4, y - 4, barW + 8, 20);
-        ctx.fillStyle = '#f0f';
-        ctx.fillRect(x, y, barW * pct, 12);
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 12px Courier New';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillText(`${this.name}  (${phase})`, w / 2, y + 12);
-        ctx.restore();
-    }
-
-    draw(ctx) {
-        if (this.dead) return;
-        const z = currentZoom || ZOOM_LEVEL;
-        const phase2 = this.phase2();
-        const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
-
-        // Interpolate position
-        const rPos = this.getRenderPos(renderAlpha);
-
-        ctx.save();
-        ctx.translate(rPos.x, rPos.y);
-        ctx.rotate(aim);
-        ctx.fillStyle = '#120018';
-        ctx.strokeStyle = phase2 ? '#ff0' : '#f0f';
-        ctx.lineWidth = 3 / z;
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = ctx.strokeStyle;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Cannon
-        ctx.fillStyle = ctx.strokeStyle;
-        ctx.fillRect(this.radius * 0.25, -6 / z, this.radius * 1.55, 12 / z);
-
-        // Beam charge telegraph
-        if (this.beamCharge > 0) {
-            ctx.save();
-            ctx.rotate(this.beamAngle - aim);
-            ctx.globalAlpha = 0.35;
-            ctx.strokeStyle = '#ff0';
-            ctx.lineWidth = 2 / z;
-            ctx.setLineDash([8 / z, 12 / z]);
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(2800, 0);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.globalAlpha = 1;
-            ctx.restore();
-        }
-
-        // HP ring
-        const pct = this.maxHp > 0 ? Math.max(0, this.hp / this.maxHp) : 0;
-        ctx.globalAlpha = 0.75;
-        ctx.strokeStyle = '#0ff';
-        ctx.lineWidth = 4 / z;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius + (14 / z), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-
-        ctx.restore();
     }
 }
 
@@ -7353,6 +6568,13 @@ class CaveLevel {
         this.endY = -220000; // ~10 minutes of flight at stock speeds 
         this.stepY = 240;
         this.baseWidth = 3000;
+        // Pixi Rendering
+        this._pixiContainer = null;
+        this._pixiBackGfx = null;
+        this._pixiFrontGfx = null;
+        this._pixiBlockerGfx = null;
+        this._pixiReady = false;
+
         this.buckets = [];
         this.leftPts = [];
         this.rightPts = [];
@@ -7641,6 +6863,169 @@ class CaveLevel {
         }
         this.exitSeal = { y: exitY, segments: exitSegs, sideSegments: exitSideSegs, leftX: exitLeftX, rightX: exitRightX };
         this.exitUnlocked = false;
+    }
+
+    initPixi() {
+        if (this._pixiReady && this._pixiContainer) return;
+
+        // Container for all cave geometry
+        this._pixiContainer = new PIXI.Container();
+        this._pixiContainer.sortableChildren = true; // Ensure layers order
+
+        // Layer 1: Back elements (thick dark lines)
+        this._pixiBackGfx = new PIXI.Graphics();
+        this._pixiContainer.addChild(this._pixiBackGfx);
+
+        // Layer 2: Front elements (thin neon lines)
+        this._pixiFrontGfx = new PIXI.Graphics();
+        this._pixiFrontGfx.blendMode = PIXI.BLEND_MODES.ADD;
+        this._pixiContainer.addChild(this._pixiFrontGfx);
+
+        // Layer 3: Blockers (gates, seals)
+        this._pixiBlockerGfx = new PIXI.Graphics();
+        this._pixiBlockerGfx.blendMode = PIXI.BLEND_MODES.ADD;
+        this._pixiContainer.addChild(this._pixiBlockerGfx);
+
+        if (pixiWorldRoot) {
+            pixiWorldRoot.addChildAt(this._pixiContainer, 0); // Add at bottom
+        }
+        this._pixiReady = true;
+    }
+
+    cleanupPixi() {
+        if (this._pixiContainer) {
+            if (this._pixiContainer.parent) this._pixiContainer.parent.removeChild(this._pixiContainer);
+            this._pixiContainer.destroy({ children: true });
+        }
+        this._pixiContainer = null;
+        this._pixiBackGfx = null;
+        this._pixiFrontGfx = null;
+        this._pixiBlockerGfx = null;
+        this._pixiReady = false;
+    }
+
+    updatePixi() {
+        if (!this.active) {
+            if (this._pixiContainer) this._pixiContainer.visible = false;
+            return;
+        }
+
+        if (!this._pixiReady) this.initPixi();
+        this._pixiContainer.visible = true;
+
+        if (!player || !this._pixiBackGfx || !this._pixiFrontGfx || !this._pixiBlockerGfx) return;
+
+        const z = currentZoom || ZOOM_LEVEL;
+        const sh = canvas.height / z;
+        // Determine visible range (slightly expanded to prevent popping)
+        const y0 = player.pos.y - (sh * 0.5) - 1500;
+        const y1 = player.pos.y + (sh * 0.5) + 1500;
+
+        let i0 = this.bucketIndexForY(y1);
+        let i1 = this.bucketIndexForY(y0);
+        if (!isFinite(i0) || !isFinite(i1)) {
+            i0 = 0;
+            i1 = Math.max(0, (this.buckets ? this.buckets.length - 1 : 0));
+        }
+        const minIdx = Math.max(0, i0 - 1);
+        const maxIdx = Math.min(this.buckets.length - 1, i1 + 1);
+
+        const visibleSegments = [];
+        const visibleOuter = [];
+        const visibleInner = [];
+        const segFinite = (s) => (s && isFinite(s.x0) && isFinite(s.y0) && isFinite(s.x1) && isFinite(s.y1));
+
+        // Collect visible static segments
+        for (let i = minIdx; i <= maxIdx; i++) {
+            const b = this.buckets[i];
+            if (!b) continue;
+            for (let j = 0; j < b.length; j++) {
+                const s = b[j];
+                if (!segFinite(s)) continue;
+                if (s.kind === 'outer') visibleOuter.push(s);
+                else visibleInner.push(s);
+            }
+        }
+
+        // Clear graphics
+        this._pixiBackGfx.clear();
+        this._pixiFrontGfx.clear();
+        this._pixiBlockerGfx.clear();
+
+        // 1. Draw Outer Walls
+        // Back (Thick Dark)
+        this._pixiBackGfx.lineStyle(18, 0x004678, 0.85);
+        for (let s of visibleOuter) {
+            this._pixiBackGfx.moveTo(s.x0, s.y0);
+            this._pixiBackGfx.lineTo(s.x1, s.y1);
+        }
+        // Front (Thin Neon)
+        this._pixiFrontGfx.lineStyle(3, 0x8cf0ff, 0.9);
+        for (let s of visibleOuter) {
+            this._pixiFrontGfx.moveTo(s.x0, s.y0);
+            this._pixiFrontGfx.lineTo(s.x1, s.y1);
+        }
+
+        // 2. Draw Inner Walls
+        // Back (Thick Dark)
+        this._pixiBackGfx.lineStyle(8, 0x003c6e, 0.85);
+        for (let s of visibleInner) {
+            this._pixiBackGfx.moveTo(s.x0, s.y0);
+            this._pixiBackGfx.lineTo(s.x1, s.y1);
+        }
+        // Front (Thin Neon)
+        this._pixiFrontGfx.lineStyle(3, 0x00ffff, 0.85);
+        for (let s of visibleInner) {
+            this._pixiFrontGfx.moveTo(s.x0, s.y0);
+            this._pixiFrontGfx.lineTo(s.x1, s.y1);
+        }
+
+        // 3. Draw Blockers (Gates, Seals, Rockfalls)
+        this._pixiBlockerGfx.lineStyle(14, 0x003764, 0.95);
+        const blockerSegs = [];
+
+        // Helper to add segments
+        const addIfVisible = (segs) => {
+            if (!segs) return;
+            for (let s of segs) {
+                if (segFinite(s) && s.y0 >= y0 && s.y0 <= y1) blockerSegs.push(s);
+            }
+        };
+
+        // Gates
+        for (let gate of this.gates) {
+            if (gate && !gate.open && gate.segments) addIfVisible(gate.segments);
+        }
+        // Doors
+        for (let door of this.doors) {
+            if (door && !door.open && door.segments) addIfVisible(door.segments);
+        }
+        // Entrance Seal
+        if (this.entranceSeal) {
+            addIfVisible(this.entranceSeal.segments);
+            addIfVisible(this.entranceSeal.sideSegments);
+        }
+        // Exit Seal
+        if (!this.exitUnlocked && this.exitSeal) {
+            addIfVisible(this.exitSeal.segments);
+            addIfVisible(this.exitSeal.sideSegments);
+        }
+        // Rockfalls
+        for (let r of this.rockfalls) {
+            if (r && !r.dead && r.state === 'fallen' && r.segments) addIfVisible(r.segments);
+        }
+
+        // Draw Blockers Back
+        for (let s of blockerSegs) {
+            this._pixiBlockerGfx.moveTo(s.x0, s.y0);
+            this._pixiBlockerGfx.lineTo(s.x1, s.y1);
+        }
+        // Draw Blockers Front
+        this._pixiBlockerGfx.lineStyle(3, 0x00ffff, 0.95);
+        for (let s of blockerSegs) {
+            this._pixiBlockerGfx.moveTo(s.x0, s.y0);
+            this._pixiBlockerGfx.lineTo(s.x1, s.y1);
+        }
     }
 
     bucketIndexForY(y) {
@@ -8092,7 +7477,7 @@ class CaveLevel {
         }
     }
 
-    draw(ctx, camX, camY, height, zoom) {
+    drawEntities(ctx, camX, camY, height, zoom) {
         if (!this.active) return;
         let z = zoom || (currentZoom || ZOOM_LEVEL);
         if (!isFinite(z) || z <= 0) z = ZOOM_LEVEL;
@@ -8100,191 +7485,17 @@ class CaveLevel {
         const safeCamY = (isFinite(camY) ? camY : (player ? player.pos.y - (canvas.height / (2 * z)) : 0));
         const y0 = safeCamY - 1200;
         const y1 = safeCamY + (height / z) + 1200;
-        let i0 = this.bucketIndexForY(y1);
-        let i1 = this.bucketIndexForY(y0);
-        if (!isFinite(i0) || !isFinite(i1)) {
-            i0 = 0;
-            i1 = Math.max(0, (this.buckets ? this.buckets.length - 1 : 0));
-        }
-        const segFinite = (s) => (s && isFinite(s.x0) && isFinite(s.y0) && isFinite(s.x1) && isFinite(s.y1));
 
-        ctx.save();
-        // Re-apply the world transform in case a draw routine left the canvas in a bad state.
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.scale(z, z);
-        ctx.translate(-safeCamX, -safeCamY);
-        // Defensive reset: cave walls are drawn last and must not inherit corrupted state.
-        ctx.globalAlpha = 1;
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.shadowBlur = 0;
-        ctx.shadowColor = 'transparent';
-        try { ctx.setLineDash([]); } catch (e) { }
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        // Thick outer boundary (reads as a solid wall) 
-        ctx.shadowBlur = 0;
-        ctx.lineWidth = 18 / z;
-        ctx.strokeStyle = 'rgba(0, 70, 120, 0.85)';
-        ctx.beginPath();
-        for (let i = Math.max(0, i0 - 1); i <= Math.min(this.buckets.length - 1, i1 + 1); i++) {
-            const b = this.buckets[i];
-            if (!b) continue;
-            for (let j = 0; j < b.length; j++) {
-                const s = b[j];
-                if (s.kind !== 'outer' || !segFinite(s)) continue;
-                ctx.moveTo(s.x0, s.y0);
-                ctx.lineTo(s.x1, s.y1);
-            }
-        }
-        ctx.stroke();
-
-        // Neon edge highlight (outer boundary) 
-        ctx.shadowBlur = 22;
-        ctx.shadowColor = '#0ff';
-        ctx.lineWidth = 3 / z;
-        ctx.strokeStyle = 'rgba(140, 240, 255, 0.90)';
-        ctx.beginPath();
-        for (let i = Math.max(0, i0 - 1); i <= Math.min(this.buckets.length - 1, i1 + 1); i++) {
-            const b = this.buckets[i];
-            if (!b) continue;
-            for (let j = 0; j < b.length; j++) {
-                const s = b[j];
-                if (s.kind !== 'outer' || !segFinite(s)) continue;
-                ctx.moveTo(s.x0, s.y0);
-                ctx.lineTo(s.x1, s.y1);
-            }
-        }
-        ctx.stroke();
-
-        // Interior cave geometry (glowing walls) 
-        const addInterior = () => {
-            for (let i = Math.max(0, i0 - 1); i <= Math.min(this.buckets.length - 1, i1 + 1); i++) {
-                const b = this.buckets[i];
-                if (!b) continue;
-                for (let j = 0; j < b.length; j++) {
-                    const s = b[j];
-                    if (s.kind === 'outer' || !segFinite(s)) continue;
-                    ctx.moveTo(s.x0, s.y0);
-                    ctx.lineTo(s.x1, s.y1);
-                }
-            }
-        };
-        ctx.shadowBlur = 0;
-        ctx.lineWidth = 8 / z;
-        ctx.strokeStyle = 'rgba(0, 60, 110, 0.85)';
-        ctx.beginPath();
-        addInterior();
-        ctx.stroke();
-        ctx.shadowBlur = 16;
-        ctx.shadowColor = '#0ff';
-        ctx.lineWidth = 3 / z;
-        ctx.strokeStyle = 'rgba(0, 255, 255, 0.85)';
-        ctx.beginPath();
-        addInterior();
-        ctx.stroke();
-
-        // Closed gate barriers / entrance seal (glowing blockers)  
-        const addBlockers = () => {
-            for (let g = 0; g < this.gates.length; g++) {
-                const gate = this.gates[g];
-                if (!gate || gate.open || !gate.segments) continue;
-                if (gate.y < y0 - 2000 || gate.y > y1 + 2000) continue;
-                for (let j = 0; j < gate.segments.length; j++) {
-                    const s = gate.segments[j];
-                    if (!segFinite(s)) continue;
-                    ctx.moveTo(s.x0, s.y0);
-                    ctx.lineTo(s.x1, s.y1);
-                }
-            }
-            if (this.entranceSeal && this.entranceSeal.segments && this.entranceSeal.segments.length) {
-                if (this.entranceSeal.y >= y0 - 2400 && this.entranceSeal.y <= y1 + 2400) {
-                    for (let j = 0; j < this.entranceSeal.segments.length; j++) {
-                        const s = this.entranceSeal.segments[j];
-                        if (!segFinite(s)) continue;
-                        ctx.moveTo(s.x0, s.y0);
-                        ctx.lineTo(s.x1, s.y1);
-                    }
-                }
-            }
-            if (this.entranceSeal && this.entranceSeal.sideSegments && this.entranceSeal.sideSegments.length) {
-                for (let j = 0; j < this.entranceSeal.sideSegments.length; j++) {
-                    const s = this.entranceSeal.sideSegments[j];
-                    if (!segFinite(s)) continue;
-                    if (s.y0 < y0 - 2400 || s.y0 > y1 + 2400) continue;
-                    ctx.moveTo(s.x0, s.y0);
-                    ctx.lineTo(s.x1, s.y1);
-                }
-            }
-            if (!this.exitUnlocked && this.exitSeal && this.exitSeal.segments && this.exitSeal.segments.length) {
-                if (this.exitSeal.y >= y0 - 2600 && this.exitSeal.y <= y1 + 2600) {
-                    for (let j = 0; j < this.exitSeal.segments.length; j++) {
-                        const s = this.exitSeal.segments[j];
-                        if (!segFinite(s)) continue;
-                        ctx.moveTo(s.x0, s.y0);
-                        ctx.lineTo(s.x1, s.y1);
-                    }
-                }
-            }
-            if (!this.exitUnlocked && this.exitSeal && this.exitSeal.sideSegments && this.exitSeal.sideSegments.length) {
-                for (let j = 0; j < this.exitSeal.sideSegments.length; j++) {
-                    const s = this.exitSeal.sideSegments[j];
-                    if (!segFinite(s)) continue;
-                    if (s.y0 < y0 - 2600 || s.y0 > y1 + 2600) continue;
-                    ctx.moveTo(s.x0, s.y0);
-                    ctx.lineTo(s.x1, s.y1);
-                }
-            }
-        };
-        ctx.shadowBlur = 0;
-        ctx.lineWidth = 14 / z;
-        ctx.strokeStyle = 'rgba(0, 55, 100, 0.95)';
-        ctx.beginPath();
-        addBlockers();
-        ctx.stroke();
-        ctx.shadowBlur = 22;
-        ctx.shadowColor = '#0ff';
-        ctx.lineWidth = 3 / z;
-        ctx.strokeStyle = 'rgba(0, 255, 255, 0.95)';
-        ctx.beginPath();
-        addBlockers();
-        ctx.stroke();
-
-        // Doors + arena blockers 
-        const addDoorsArena = () => {
-            for (let d = 0; d < this.doors.length; d++) {
-                const door = this.doors[d];
-                if (!door || door.open || !door.segments) continue;
-                for (let j = 0; j < door.segments.length; j++) {
-                    const s = door.segments[j];
-                    if (!segFinite(s)) continue;
-                    if (s.y0 < y0 - 2000 || s.y0 > y1 + 2000) continue;
-                    ctx.moveTo(s.x0, s.y0);
-                    ctx.lineTo(s.x1, s.y1);
-                }
-            }
-        };
-        ctx.shadowBlur = 0;
-        ctx.lineWidth = 18 / z;
-        ctx.strokeStyle = 'rgba(0, 55, 100, 0.95)';
-        ctx.beginPath();
-        addDoorsArena();
-        ctx.stroke();
-        ctx.shadowBlur = 22;
-        ctx.shadowColor = '#0ff';
-        ctx.strokeStyle = 'rgba(0, 255, 255, 0.90)';
-        ctx.lineWidth = 6 / z;
-        ctx.beginPath();
-        addDoorsArena();
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.restore();
+        // Legacy Canvas Entity Drawing (To be migrated)
 
         // Wall turrets  
         for (let i = 0; i < this.wallTurrets.length; i++) {
             const t = this.wallTurrets[i];
             if (!t || t.dead) continue;
-            if (t.pos.y < y0 - 1600 || t.pos.y > y1 + 1600) continue;
+            if (t.pos.y < y0 - 1600 || t.pos.y > y1 + 1600) {
+                if (t._pixiContainer) t._pixiContainer.visible = false;
+                continue;
+            }
             t.draw(ctx);
         }
 
@@ -8292,43 +7503,64 @@ class CaveLevel {
         for (let i = 0; i < this.switches.length; i++) {
             const s = this.switches[i];
             if (!s || s.dead) continue;
-            if (s.pos.y < y0 - 1600 || s.pos.y > y1 + 1600) continue;
+            if (s.pos.y < y0 - 1600 || s.pos.y > y1 + 1600) {
+                if (s._pixiContainer) s._pixiContainer.visible = false;
+                continue;
+            }
             s.draw(ctx);
         }
         for (let i = 0; i < this.relays.length; i++) {
             const r = this.relays[i];
             if (!r || r.dead) continue;
-            if (r.pos.y < y0 - 1600 || r.pos.y > y1 + 1600) continue;
+            if (r.pos.y < y0 - 1600 || r.pos.y > y1 + 1600) {
+                if (r._pixiContainer) r._pixiContainer.visible = false;
+                continue;
+            }
             r.draw(ctx);
         }
         for (let i = 0; i < this.rewards.length; i++) {
             const r = this.rewards[i];
             if (!r || r.dead) continue;
-            if (r.pos.y < y0 - 1600 || r.pos.y > y1 + 1600) continue;
+            if (r.pos.y < y0 - 1600 || r.pos.y > y1 + 1600) {
+                if (r._pixiContainer) r._pixiContainer.visible = false;
+                continue;
+            }
             r.draw(ctx);
         }
         for (let i = 0; i < this.gasVents.length; i++) {
             const h = this.gasVents[i];
             if (!h || h.dead) continue;
-            if (h.pos.y < y0 - 2000 || h.pos.y > y1 + 2000) continue;
+            if (h.pos.y < y0 - 2000 || h.pos.y > y1 + 2000) {
+                if (h._pixiContainer) h._pixiContainer.visible = false;
+                continue;
+            }
             h.draw(ctx);
         }
         for (let i = 0; i < this.draftZones.length; i++) {
             const d = this.draftZones[i];
             if (!d) continue;
-            if (d.pos.y < y0 - 2600 || d.pos.y > y1 + 2600) continue;
+            if (d.pos.y < y0 - 2600 || d.pos.y > y1 + 2600) {
+                if (d._pixiContainer) d._pixiContainer.visible = false;
+                continue;
+            }
             d.draw(ctx);
         }
         for (let i = 0; i < this.rockfalls.length; i++) {
             const r = this.rockfalls[i];
             if (!r || r.dead) continue;
-            if (r.pos.y < y0 - 2600 || r.pos.y > y1 + 2600) continue;
+            if (r.pos.y < y0 - 2600 || r.pos.y > y1 + 2600) {
+                if (r._pixiContainer) r._pixiContainer.visible = false;
+                continue;
+            }
             r.draw(ctx);
         }
         for (let i = 0; i < this.critters.length; i++) {
             const c = this.critters[i];
             if (!c || c.dead) continue;
-            if (c.pos.y < y0 - 1600 || c.pos.y > y1 + 1600) continue;
+            if (c.pos.y < y0 - 1600 || c.pos.y > y1 + 1600) {
+                if (c._pixiContainer) c._pixiContainer.visible = false;
+                continue;
+            }
             c.draw(ctx);
         }
     }
@@ -10080,6 +9312,8 @@ class Cruiser extends Enemy {
                 spawnBarrelSmoke(p.x, p.y, a);
             }
         }
+        // DEBUG: Log fire attempt
+        if (Math.random() < 0.05) console.log(`[CRUISER] fireCannons. Shots: ${shots} Time: ${Date.now()}`);
         playSound('rapid_shoot');
     }
 
@@ -11761,7 +10995,11 @@ function compactArray(arr) {
             arr[alive++] = obj;
             continue;
         }
-        if (obj._poolType === 'bullet' && obj.sprite && pixiBulletSpritePool) destroyBulletSprite(obj);
+        // Explosion-specific cleanup - release particle sprites
+        if (obj instanceof Explosion && typeof obj.cleanup === 'function') {
+            obj.cleanup(window.cachedParticleRes);
+        }
+        else if (obj._poolType === 'bullet' && obj.sprite && pixiBulletSpritePool) destroyBulletSprite(obj);
         else pixiCleanupObject(obj);
     }
     arr.length = alive;
@@ -12614,6 +11852,12 @@ class GateRing extends Entity {
                 this.shieldsDirty = true;
             }
             if (!this._pixiGfx.parent) pixiVectorLayer.addChild(this._pixiGfx);
+
+            // Track active state changes to trigger visual update
+            if (this._wasActive !== active) {
+                this._wasActive = active;
+                this.shieldsDirty = true;
+            }
 
             if (this.shieldsDirty) {
                 this._pixiGfx.clear();
@@ -14655,6 +13899,7 @@ function mainLoop() {
         // Fixed-step simulation at 120 FPS; render at display refresh rate.
         const perfNow = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         if (!simLastPerfAt) {
+            console.log('[RESUME] First frame after resume - simLastPerfAt was 0, initializing');
             simLastPerfAt = perfNow;
             // Only init simNowMs if it's 0 (first run or reset), otherwise preserve it (resume)
             if (!simNowMs) simNowMs = Date.now();
@@ -14663,6 +13908,12 @@ function mainLoop() {
         let frameDt = perfNow - simLastPerfAt;
         simLastPerfAt = perfNow;
         if (!isFinite(frameDt) || frameDt < 0) frameDt = 0;
+        // Drop large frame times to prevent jitter (e.g., after upgrade menu closes)
+        // Instead of running multiple catch-up steps, just run one normal frame
+        if (frameDt > 50) {
+            console.log('[JITTER] Dropping large frameDt:', frameDt.toFixed(1), 'ms -> using', SIM_STEP_MS, 'ms');
+            frameDt = SIM_STEP_MS; // Just run one simulation step
+        }
         frameDt = Math.min(250, frameDt);
 
         simAccMs += frameDt;
@@ -14818,7 +14069,7 @@ function gameLoopLogic(opts = null) {
                 const pick = Math.random();
                 const target = findSpawnPointRelative(true, 6000, 9000);
 
-                if (pick < 0.4) {
+                if (pick < 0.45) {
                     // Scan Beacon
                     const beacon = new ContractBeacon(target.x, target.y, "SCAN BEACON");
                     contractEntities.beacons.push(beacon);
@@ -14834,7 +14085,7 @@ function gameLoopLogic(opts = null) {
                     };
                     showOverlayMessage("NEW CONTRACT: SCAN BEACON (STAY IN ZONE)", '#0f0', 2000, 2);
                     playSound('contract');
-                } else if (pick < 0.7) {
+                } else if (pick < 0.75) {
                     // Gate run puzzle
                     const gateCount = 5;
                     contractEntities.gates = [];
@@ -14858,23 +14109,6 @@ function gameLoopLogic(opts = null) {
                         rewardScore: 10000
                     };
                     showOverlayMessage("NEW CONTRACT: GATE RUN", '#0f0', 2000, 2);
-                    playSound('contract');
-                } else if (pick < 0.9) {
-                    // Anomaly maze zone
-                    const id = `C${contractSequence}`;
-                    activeContract = {
-                        id,
-                        type: 'anomaly',
-                        state: 'travel',
-                        title: 'ANOMALY',
-                        coreCollected: false,
-                        target: { x: target.x, y: target.y },
-                        rewardNugs: 7 + Math.floor(Math.random() * 5),
-                        rewardScore: 12000
-                    };
-                    const anomaly = new AnomalyZone(target.x, target.y, id);
-                    contractEntities.anomalies.push(anomaly);
-                    showOverlayMessage("NEW CONTRACT: INVESTIGATE ANOMALY", '#0f0', 2000, 2);
                     playSound('contract');
                 } else {
                     // Destroy Fortress
@@ -15128,6 +14362,7 @@ function gameLoopLogic(opts = null) {
         if (warpZone && warpZone.turrets) {
             for (let i = 0; i < warpZone.turrets.length; i++) targetGrid.insert(warpZone.turrets[i]);
         }
+        if (boss && !boss.dead) targetGrid.insert(boss);
 
         // Build bullet spatial hash for efficient collision detection
         rebuildBulletGrid(bullets);
@@ -15171,9 +14406,8 @@ function gameLoopLogic(opts = null) {
 
     // Dynamic zoom: zoom out during Cruiser arena fights
     const cruiserFight = !!(bossActive && boss && boss.isCruiser);
-    // Keep the dynamic zoom system in place, but make the default behavior "no change"
-    // (both normal gameplay and Cruiser fights use the same base zoom for now).
-    const CRUISER_ZOOM_OUT_FACTOR = 1.0;
+    // Zoom out 50% during arena fights for better battlefield visibility
+    const CRUISER_ZOOM_OUT_FACTOR = 1.5;
     const targetZoom = cruiserFight ? (ZOOM_LEVEL / CRUISER_ZOOM_OUT_FACTOR) : ZOOM_LEVEL;
     if (doUpdate) {
         currentZoom += (targetZoom - currentZoom) * 0.08;
@@ -15184,8 +14418,14 @@ function gameLoopLogic(opts = null) {
     const alpha = (opts && opts.alpha !== undefined) ? opts.alpha : 1.0;
     renderAlpha = alpha; // Set global for entity draw methods
     const renderPos = player.getRenderPos(alpha);
-    let camX = renderPos.x - width / (2 * zoom);
-    let camY = renderPos.y - height / (2 * zoom);
+    let camX, camY;
+    if (bossArena && bossArena.active) {
+        camX = bossArena.x - width / (2 * zoom);
+        camY = bossArena.y - height / (2 * zoom);
+    } else {
+        camX = renderPos.x - width / (2 * zoom);
+        camY = renderPos.y - height / (2 * zoom);
+    }
     if (shakeTimer > 0) {
         if (doUpdate) {
             shakeTimer--;
@@ -15274,11 +14514,14 @@ function gameLoopLogic(opts = null) {
     window.cachedPickupRes.layer = pixiPickupLayer; window.cachedPickupRes.textures = pixiTextures; window.cachedPickupRes.pool = pixiPickupSpritePool;
     const pickupRes = window.cachedPickupRes;
 
-    if (!window.cachedParticleRes) window.cachedParticleRes = { layer: null, whiteTexture: null, glowTexture: null, pool: null };
+    if (!window.cachedParticleRes) window.cachedParticleRes = { layer: null, whiteTexture: null, glowTexture: null, smokeTexture: null, warpTexture: null, pool: null };
     window.cachedParticleRes.layer = pixiParticleLayer;
     window.cachedParticleRes.whiteTexture = pixiTextureWhite;
     window.cachedParticleRes.glowTexture = pixiParticleGlowTexture;
+    window.cachedParticleRes.smokeTexture = pixiParticleSmokeTexture;
+    window.cachedParticleRes.warpTexture = pixiParticleWarpTexture;
     window.cachedParticleRes.pool = pixiParticleSpritePool;
+    // One-time pool identity check
     const particleRes = window.cachedParticleRes;
 
     const caveActive = (caveMode && caveLevel && caveLevel.active);
@@ -15437,20 +14680,34 @@ function gameLoopLogic(opts = null) {
     }
 
     // Particles - always update, cull drawing (high volume)
+    // Particles - always update, cull drawing (high volume)
     for (let i = 0, len = particles.length; i < len; i++) {
         const p = particles[i];
-        if (doUpdate) p.update();
-        if (doDraw) {
-            if (isInView(p.pos.x, p.pos.y, 20)) p.draw(ctx, particleRes, alpha);
-            else if (typeof p.cull === 'function') p.cull();
+        try {
+            if (doUpdate) p.update();
+            if (doDraw) {
+                if (isInView(p.pos.x, p.pos.y, 20)) p.draw(ctx, particleRes, alpha);
+                else if (typeof p.cull === 'function') p.cull();
+            }
+        } catch (e) {
+            // Particles are cheap, just kill on error
+            p.life = 0;
         }
     }
 
     // Explosions - always update, cull drawing
+    // Explosions - always update, cull drawing
     for (let i = 0, len = explosions.length; i < len; i++) {
         const ex = explosions[i];
-        if (doUpdate) ex.update();
-        if (doDraw && isInView(ex.pos.x, ex.pos.y)) ex.draw(ctx, alpha);
+        try {
+            if (doUpdate) ex.update();
+            if (doDraw && isInView(ex.pos.x, ex.pos.y)) ex.draw(ctx, particleRes, alpha);
+        } catch (e) {
+            console.error('[EXPLOSION ERROR]', e);
+            ex.dead = true;
+            if (typeof ex.cleanup === 'function') ex.cleanup(particleRes);
+            else if (typeof pixiCleanupObject === 'function') pixiCleanupObject(ex);
+        }
     }
 
     for (let i = 0; i < warpParticles.length; i++) {
@@ -15460,7 +14717,16 @@ function gameLoopLogic(opts = null) {
     }
     if (doUpdate) compactArray(warpParticles);
 
-    for (let i = 0; i < shockwaves.length; i++) { const s = shockwaves[i]; if (doUpdate) s.update(); if (doDraw) s.draw(ctx); }
+    for (let i = 0; i < shockwaves.length; i++) {
+        const s = shockwaves[i];
+        try {
+            if (doUpdate) s.update();
+            if (doDraw) s.draw(ctx);
+        } catch (e) {
+            console.error('[SHOCKWAVE ERROR]', e);
+            s.dead = true; // Kill corrupted shockwave
+        }
+    }
     if (doUpdate) compactArray(shockwaves);
     globalProfiler.end('Entities');
 
@@ -15901,38 +15167,51 @@ function gameLoopLogic(opts = null) {
 
                     // Only player bullets (!b.isEnemy) can hit the boss
                     if (!hit && !b.isEnemy && bossActive && boss && !boss.dead) {
-                        if (typeof boss.applyPlayerBulletHit === 'function') {
-                            if (boss.applyPlayerBulletHit(b)) {
+                        const dist = Math.hypot(b.pos.x - boss.pos.x, b.pos.y - boss.pos.y);
+
+                        // Check if shields have any segments up
+                        const outerShieldsUp = boss.shieldSegments && boss.shieldSegments.some(s => s > 0);
+                        const innerShieldsUp = boss.innerShieldSegments && boss.innerShieldSegments.length > 0 && boss.innerShieldSegments.some(s => s > 0);
+
+                        // Outer shield collision - bullet is within the shield radius
+                        if (!hit && !b.ignoreShields && outerShieldsUp && dist < boss.shieldRadius + b.radius) {
+                            let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.shieldRotation;
+                            while (angle < 0) angle += Math.PI * 2;
+                            const segCount = boss.shieldSegments.length;
+                            const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
+                            if (boss.shieldSegments[segIndex] > 0) {
+                                boss.shieldSegments[segIndex]--;
+                                boss.shieldsDirty = true;
                                 hit = true;
+                                playSound('shield_hit');
+                                spawnParticles(b.pos.x, b.pos.y, 3, '#0ff');
+                            }
+                        }
+                        // Inner shield collision - bullet is within the inner shield radius
+                        if (!hit && !b.ignoreShields && innerShieldsUp && dist < boss.innerShieldRadius + b.radius) {
+                            let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.innerShieldRotation;
+                            while (angle < 0) angle += Math.PI * 2;
+                            const count = boss.innerShieldSegments.length;
+                            const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                            if (boss.innerShieldSegments[segIndex] > 0) {
+                                boss.innerShieldSegments[segIndex]--;
+                                boss.shieldsDirty = true;
+                                hit = true;
+                                playSound('shield_hit');
+                                spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
                             }
                         }
 
-                        if (!hit) {
-                            const dist = Math.hypot(b.pos.x - boss.pos.x, b.pos.y - boss.pos.y);
-                            if (!b.ignoreShields && dist < boss.shieldRadius + 5 && dist > boss.shieldRadius - 15) {
-                                let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.shieldRotation;
-                                while (angle < 0) angle += Math.PI * 2;
-                                const segCount = boss.shieldSegments.length;
-                                const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
-                                if (boss.shieldSegments[segIndex] > 0) {
-                                    boss.shieldSegments[segIndex]--;
+                        // If shields are down, allow hardpoints and hull damage
+                        if (!hit && !outerShieldsUp && !innerShieldsUp) {
+                            // Hardpoints take damage when shields are down
+                            if (typeof boss.applyPlayerBulletHit === 'function') {
+                                if (boss.applyPlayerBulletHit(b)) {
                                     hit = true;
-                                    playSound('shield_hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 3, '#f00');
                                 }
                             }
-                            if (!hit && !b.ignoreShields && boss.innerShieldSegments.length > 0 && dist < boss.innerShieldRadius + 5 && dist > boss.innerShieldRadius - 15) {
-                                let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.innerShieldRotation;
-                                while (angle < 0) angle += Math.PI * 2;
-                                const count = boss.innerShieldSegments.length;
-                                const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                                if (boss.innerShieldSegments[segIndex] > 0) {
-                                    boss.innerShieldSegments[segIndex]--;
-                                    hit = true;
-                                    playSound('shield_hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 3, '#f00');
-                                }
-                            }
+
+                            // Hull damage
                             if (!hit && dist < boss.radius + b.radius) {
                                 const dmg = (boss.vulnerableTimer && boss.vulnerableTimer > 0) ? (b.damage * 2) : b.damage;
                                 boss.hp -= dmg;
@@ -15957,6 +15236,8 @@ function gameLoopLogic(opts = null) {
                     bullets.splice(i, 1);
                 }
             }
+        } catch (e) {
+            console.error('[BULLET LOGIC ERROR]', e);
         } finally {
             setProjectileImpactSoundContext(false);
             globalProfiler.end('BulletLogic');
@@ -15967,8 +15248,9 @@ function gameLoopLogic(opts = null) {
     if (doDraw) {
         globalProfiler.start('Draw');
         // Draw cave boundaries on top. 
-        if (caveActive) {
-            caveLevel.draw(ctx, camX, camY, height, zoom);
+        if (caveActive && caveLevel) {
+            caveLevel.updatePixi();
+            caveLevel.drawEntities(ctx, camX, camY, height, zoom);
         }
 
         ctx.restore();
@@ -16699,132 +15981,138 @@ function drawMinimap() {
     minimapCtx.restore();
 }
 
+
 function startGame() {
-    resetWarpState();
-    resetCaveState();
-    warpCompletedOnce = false;
-    // Always reset audio state to normal before a new run 
-    setMusicMode('normal');
-    gameMode = 'normal';
-    simNowMs = 0; // Reset simulation clock for new game logic
-    arcadeBoss = null;
-    arcadeWave = 0;
-    arcadeWaveNextAt = 0;
-    currentZoom = ZOOM_LEVEL;
-    stopMusic();
-    if (player) pixiCleanupObject(player);
-    player = new Spaceship();
-    score = 0;
-    difficultyTier = 1;
-    basesDestroyedTotal = 0;
-    bossActive = false;
-    if (boss) pixiCleanupObject(boss);
-    boss = null;
-    bossArena.active = false;
-    bossArena.growing = false;
-    cruiserEncounterCount = 0;
-    cruiserTimerPausedAt = null;
-    dreadManager.upgradesChosen = 0;
-    dreadManager.firstSpawnDone = false;
-    dreadManager.timerActive = true;
-    dreadManager.timerAt = Date.now() + dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
-    rerollTokens = metaProfile.purchases.rerollTokens || 0;
-    metaExtraLifeAvailable = !!metaProfile.purchases.extraLife;
+    console.log('[DEBUG] startGame() called');
+    try {
+        resetWarpState();
+        resetCaveState();
+        warpCompletedOnce = false;
+        // Always reset audio state to normal before a new run 
+        setMusicMode('normal');
+        gameMode = 'normal';
+        simNowMs = 0; // Reset simulation clock for new game logic
+        arcadeBoss = null;
+        arcadeWave = 0;
+        arcadeWaveNextAt = 0;
+        currentZoom = ZOOM_LEVEL;
+        stopMusic();
+        if (player) pixiCleanupObject(player);
+        player = new Spaceship();
+        score = 0;
+        difficultyTier = 1;
+        basesDestroyedTotal = 0;
+        bossActive = false;
+        if (boss) pixiCleanupObject(boss);
+        boss = null;
+        bossArena.active = false;
+        bossArena.growing = false;
+        cruiserEncounterCount = 0;
+        cruiserTimerPausedAt = null;
+        dreadManager.upgradesChosen = 0;
+        dreadManager.firstSpawnDone = false;
+        dreadManager.timerActive = true;
+        dreadManager.timerAt = Date.now() + dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
+        rerollTokens = metaProfile.purchases.rerollTokens || 0;
+        metaExtraLifeAvailable = !!metaProfile.purchases.extraLife;
 
-    // Reset player stats/inventory
-    player.fireDelay = 24;
+        // Reset player stats/inventory
+        player.fireDelay = 24;
 
-    player.turretLevel = 1;
-    player.canWarp = false;
-    player.shieldSegments = new Array(8).fill(2);
-    player.hp = player.maxHp;
-    player.inventory = {};
-    player.xp = 0;
-    player.level = 1;
-    player.nextLevelXp = 100;
-    player.stats = {
-        damageMult: 1.0,
-        fireRateMult: 1.0,
-        shotgunFireRateMult: 1.0,
-        rangeMult: 1.0,
-        multiShot: 1,
-        homing: 0,
-        shieldRegenRate: 8, // seconds per segment baseline
-        hpRegenAmount: 1,
-        hpRegenRate: 10,
-        speedMult: 1.0,
-        slowField: 0,
-        slowFieldDuration: 0
-    };
-    player.lastHpRegenTime = Date.now();
-    player.staticWeapons = [];
-    player.nukeMaxCooldown = 600;
-    player.magnetRadius = 150;
-    player.nukeUnlocked = false;
-    gameEnded = false;
-
-    // Apply meta bonuses
-    if (metaProfile.purchases.startDamage) {
-        player.stats.damageMult *= 1.2; // starter damage bump
-    }
-    if (metaProfile.purchases.passiveHp) {
-        player.maxHp += 10;
+        player.turretLevel = 1;
+        player.canWarp = false;
+        player.shieldSegments = new Array(8).fill(2);
         player.hp = player.maxHp;
+        player.inventory = {};
+        player.xp = 0;
+        player.level = 1;
+        player.nextLevelXp = 100;
+        player.stats = {
+            damageMult: 1.0,
+            fireRateMult: 1.0,
+            shotgunFireRateMult: 1.0,
+            rangeMult: 1.0,
+            multiShot: 1,
+            homing: 0,
+            shieldRegenRate: 8, // seconds per segment baseline
+            hpRegenAmount: 1,
+            hpRegenRate: 10,
+            speedMult: 1.0,
+            slowField: 0,
+            slowFieldDuration: 0
+        };
+        player.lastHpRegenTime = Date.now();
+        player.staticWeapons = [];
+        player.nukeMaxCooldown = 600;
+        player.magnetRadius = 150;
+        player.nukeUnlocked = false;
+        gameEnded = false;
+
+        // Apply meta bonuses
+        if (metaProfile.purchases.startDamage) {
+            player.stats.damageMult *= 1.2; // starter damage bump
+        }
+        if (metaProfile.purchases.passiveHp) {
+            player.maxHp += 10;
+            player.hp = player.maxHp;
+            updateHealthUI();
+        }
+        if (metaProfile.purchases.hullPlating) {
+            player.maxHp += 15;
+            player.hp = player.maxHp;
+        }
+        if (metaProfile.purchases.shieldCore) {
+            player.shieldSegments.push(2, 2);
+            player.maxShieldSegments = player.shieldSegments.length;
+        }
+        if (metaProfile.purchases.staticBlueprint) {
+            player.staticWeapons.push({ type: 'forward' });
+        }
+        if (metaProfile.purchases.missilePrimer) {
+            player.stats.homing = Math.max(player.stats.homing, 1);
+            player.missileTimer = 0;
+        }
+        if (metaProfile.purchases.magnetBooster) {
+            player.magnetRadius = Math.max(player.magnetRadius, 300);
+        }
+        if (metaProfile.purchases.warpPrecharge) {
+            player.canWarp = true;
+            player.warpCooldown = Math.floor(player.maxWarpCooldown / 2);
+        }
+        if (metaProfile.purchases.nukeCapacitor) {
+            player.nukeUnlocked = true;
+            player.nukeCooldown = 0;
+            player.nukeDamage = 5;
+            player.nukeRange = 500;
+        }
+        if (metaProfile.purchases.speedTuning) {
+            player.stats.speedMult *= 1.1;
+        }
+        if (metaProfile.purchases.droneFabricator) {
+            spawnDrone('shooter');
+        }
+        if (pendingProfile) {
+            applyProfile(pendingProfile);
+        }
         updateHealthUI();
-    }
-    if (metaProfile.purchases.hullPlating) {
-        player.maxHp += 15;
-        player.hp = player.maxHp;
-    }
-    if (metaProfile.purchases.shieldCore) {
-        player.shieldSegments.push(2, 2);
-        player.maxShieldSegments = player.shieldSegments.length;
-    }
-    if (metaProfile.purchases.staticBlueprint) {
-        player.staticWeapons.push({ type: 'forward' });
-    }
-    if (metaProfile.purchases.missilePrimer) {
-        player.stats.homing = Math.max(player.stats.homing, 1);
-        player.missileTimer = 0;
-    }
-    if (metaProfile.purchases.magnetBooster) {
-        player.magnetRadius = Math.max(player.magnetRadius, 300);
-    }
-    if (metaProfile.purchases.warpPrecharge) {
-        player.canWarp = true;
-        player.warpCooldown = Math.floor(player.maxWarpCooldown / 2);
-    }
-    if (metaProfile.purchases.nukeCapacitor) {
-        player.nukeUnlocked = true;
-        player.nukeCooldown = 0;
-        player.nukeDamage = 5;
-        player.nukeRange = 500;
-    }
-    if (metaProfile.purchases.speedTuning) {
-        player.stats.speedMult *= 1.1;
-    }
-    if (metaProfile.purchases.droneFabricator) {
-        spawnDrone('shooter');
-    }
-    if (pendingProfile) {
-        applyProfile(pendingProfile);
-    }
-    updateHealthUI();
 
-    document.getElementById('score').innerText = score;
-    document.getElementById('start-screen').style.display = 'none';
-    const endScreen = document.getElementById('end-screen');
-    if (endScreen) endScreen.style.display = 'none';
-    document.getElementById('pause-menu').style.display = 'none';
-    gameActive = true;
-    gamePaused = false;
+        document.getElementById('score').innerText = score;
+        document.getElementById('start-screen').style.display = 'none';
+        const endScreen = document.getElementById('end-screen');
+        if (endScreen) endScreen.style.display = 'none';
+        document.getElementById('pause-menu').style.display = 'none';
+        gameActive = true;
+        gamePaused = false;
 
-    setupGameWorld();
-    updateContractUI();
+        setupGameWorld();
+        updateContractUI();
 
-    if (musicEnabled) {
-        initAudio();
-        startMusic();
+        if (musicEnabled) {
+            initAudio();
+            startMusic();
+        }
+    } catch (e) {
+        console.error('[STARTGAME ERROR]', e);
     }
 }
 
