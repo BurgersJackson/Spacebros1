@@ -28,9 +28,6 @@ export function allocPixiSprite(pool, layer, texture = null, size = 2, anchor = 
     let spr = pool && pool.length > 0 ? pool.pop() : null;
     if (!spr) {
         spr = new PIXI.Sprite(texture);
-        if (Math.random() < 0.005) { // Sample logs
-            console.warn('[PIXI] Pool exhausted, creating new sprite. Pool length:', pool ? pool.length : 'null');
-        }
     }
 
     spr.texture = texture;

@@ -1528,7 +1528,6 @@ function destroyBulletSprite(b) {
     if (b && b.sprite && pixiBulletSpritePool) {
         releasePixiSprite(pixiBulletSpritePool, b.sprite);
         b.sprite = null;
-        if (Math.random() < 0.01) console.log('[BULLET CLEANUP] Pool size:', pixiBulletSpritePool.length);
     }
 }
 
