@@ -17,6 +17,7 @@ export class Explosion extends Entity {
         this.particles = [];
         this.life = 30;
         this.maxLife = 30;
+        this.cleaned = false; // Track cleanup state to prevent duplicate cleanup
         this.createParticles();
     }
 
@@ -71,18 +72,37 @@ export class Explosion extends Entity {
         }
     }
 
+    /**
+     * Release all particle sprites back to pool.
+     * Safe to call multiple times (uses cleaned flag to prevent duplicate cleanup).
+     */
     cleanup(pixiResources) {
+        if (this.cleaned) return; // Already cleaned, skip
         if (!pixiResources || !pixiResources.pool) return;
+
+        let releasedCount = 0;
         for (let i = 0; i < this.particles.length; i++) {
             const p = this.particles[i];
             if (p.sprite) {
-                releasePixiSprite(pixiResources.pool, p.sprite);
+                try {
+                    // Hide sprite first to prevent ghosting
+                    p.sprite.visible = false;
+                    releasePixiSprite(pixiResources.pool, p.sprite);
+                    releasedCount++;
+                } catch (e) {
+                    console.warn('[Explosion] Failed to release particle sprite:', e);
+                }
                 p.sprite = null;
             }
         }
+
+        this.cleaned = true;
     }
 
     draw(ctx, pixiResources = null, alpha = 1.0) {
+        // Don't draw if already cleaned up
+        if (this.cleaned) return;
+
         const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
 
         // PixiJS Rendering
@@ -92,6 +112,21 @@ export class Explosion extends Entity {
             for (let i = 0; i < this.particles.length; i++) {
                 const p = this.particles[i];
 
+                // Skip dead particles - don't allocate new sprites for them
+                if (p.life <= 0) {
+                    // Release sprite if it exists
+                    if (p.sprite) {
+                        try {
+                            p.sprite.visible = false;
+                            releasePixiSprite(pixiResources.pool, p.sprite);
+                        } catch (e) {
+                            // Ignore cleanup errors for individual particles
+                        }
+                        p.sprite = null;
+                    }
+                    continue;
+                }
+
                 if (!p.sprite) {
                     p.sprite = allocPixiSprite(pixiResources.pool, pixiResources.layer, tex, null, 0.5);
                 }
@@ -99,6 +134,7 @@ export class Explosion extends Entity {
                 const spr = p.sprite;
                 if (spr) {
                     if (!spr.parent) pixiResources.layer.addChild(spr);
+                    spr.visible = true;
 
                     const pRX = (typeof alpha === 'number' && p.prevX !== undefined) ? (p.prevX + (p.x - p.prevX) * alpha) : p.x;
                     const pRY = (typeof alpha === 'number' && p.prevY !== undefined) ? (p.prevY + (p.y - p.prevY) * alpha) : p.y;
@@ -123,3 +159,4 @@ export class Explosion extends Entity {
         }
     }
 }
+

@@ -6,6 +6,7 @@
 import { Entity } from '../Entity.js';
 import { colorToPixi } from '../../rendering/colors.js';
 import { allocPixiSprite, releasePixiSprite } from '../../rendering/sprite-pools.js';
+import { pixiPickupSpritePool } from '../../rendering/pixi-setup.js';
 
 /**
  * Premium currency pickup with magnetization.
@@ -74,6 +75,7 @@ export class SpaceNugget extends Entity {
                 spr.tint = 0xffffff;
                 spr.alpha = 1;
                 if (window.PIXI) spr.blendMode = PIXI.BLEND_MODES.ADD;
+                this.sprite = spr;
                 return;
             }
         }
@@ -84,7 +86,7 @@ export class SpaceNugget extends Entity {
         const scale = 1.0 + Math.sin(this.flash * 0.12) * 0.25;
         ctx.scale(scale, scale);
         ctx.rotate(this.flash * 0.05);
-        
+
         // Create gradient
         const grad = ctx.createLinearGradient(-10, -10, 10, 10);
         grad.addColorStop(0, '#ff0');
@@ -93,7 +95,7 @@ export class SpaceNugget extends Entity {
         ctx.fillStyle = grad;
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 2;
-        
+
         ctx.beginPath();
         ctx.moveTo(0, -10);
         ctx.lineTo(10, 0);
@@ -105,8 +107,7 @@ export class SpaceNugget extends Entity {
     }
 
     /**
-     * Cull nugget sprite if entity is dead.
-     * Call before removing from game arrays.
+     * Cull nugget sprite if entity is culled from view.
      */
     cull() {
         if (this.sprite) {
@@ -117,23 +118,22 @@ export class SpaceNugget extends Entity {
     /**
      * Cleanup sprite when entity is removed.
      * Ensures sprite is properly released to pool.
+     * @param {Array} pool - Optional sprite pool (uses default if not provided)
      */
-    kill() {
+    kill(pool = null) {
         if (this.dead) return;
         this.dead = true;
-        
-        // Hide sprite before cleanup
+
+        // Hide and release sprite
         if (this.sprite) {
             this.sprite.visible = false;
-        }
-        
-        // Release sprite to pool
-        if (this.sprite && pixiPickupSpritePool) {
-            try {
-                releasePixiSprite(pixiPickupSpritePool, this.sprite);
-                console.log(`[SpaceNugget] Released sprite at (${Math.round(this.pos.x)}, ${Math.round(this.pos.y)})`);
-            } catch (e) {
-                console.warn('[SpaceNugget] Failed to release sprite:', e);
+            const targetPool = pool || pixiPickupSpritePool;
+            if (targetPool) {
+                try {
+                    releasePixiSprite(targetPool, this.sprite);
+                } catch (e) {
+                    console.warn('[SpaceNugget] Failed to release sprite:', e);
+                }
             }
             this.sprite = null;
         }

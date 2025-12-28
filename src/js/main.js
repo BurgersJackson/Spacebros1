@@ -8933,15 +8933,15 @@ class DebrisFieldPOI extends SectorPOI {
         super.kill();
         // Clean up ALL Pixi graphics
         if (this._pixiProgressGfx) {
-            try { this._pixiProgressGfx.destroy({ children: true }); } catch (e) {}
+            try { this._pixiProgressGfx.destroy({ children: true }); } catch (e) { }
             this._pixiProgressGfx = null;
         }
         if (this._pixiGfx) {
-            try { this._pixiGfx.destroy({ children: true }); } catch (e) {}
+            try { this._pixiGfx.destroy({ children: true }); } catch (e) { }
             this._pixiGfx = null;
         }
         if (this._pixiNameText) {
-            try { this._pixiNameText.destroy(); } catch (e) {}
+            try { this._pixiNameText.destroy(); } catch (e) { }
             this._pixiNameText = null;
         }
     }
@@ -11365,7 +11365,7 @@ function compactParticles(arr) {
 // Safety cleanup function to force explosions to clean themselves
 function forceExplosionCleanup() {
     if (!particleRes || !particleRes.pool) return;
-    
+
     let forcedCount = 0;
     for (let i = explosions.length - 1; i >= 0; i--) {
         const ex = explosions[i];
@@ -11379,7 +11379,7 @@ function forceExplosionCleanup() {
             }
         }
     }
-    
+
     if (forcedCount > 0) {
         console.log(`[FORCED CLEANUP] Cleaned ${forcedCount} explosions`);
     }
@@ -12887,12 +12887,13 @@ function resolveEntityCollision() {
             if (c.dead) continue;
             const dist = Math.hypot(player.pos.x - c.pos.x, player.pos.y - c.pos.y);
             if (dist < player.radius + c.radius) {
-                // Collect
+                // Collect - call kill() to properly release sprite
                 playSound('coin');
                 score += c.value;
                 player.addXp(c.value);
                 addPickupFloatingText('gold', c.value, '#ff0');
-                c.dead = true;
+                if (typeof c.kill === 'function') c.kill();
+                else c.dead = true;
             }
         }
 
@@ -12904,7 +12905,9 @@ function resolveEntityCollision() {
                 spaceNuggets += n.value;
                 updateNuggetUI();
                 addPickupFloatingText('nugs', n.value, '#ff0');
-                n.dead = true;
+                // Call kill() to properly release sprite
+                if (typeof n.kill === 'function') n.kill();
+                else n.dead = true;
             }
         }
 
@@ -12916,7 +12919,9 @@ function resolveEntityCollision() {
                 player.hp = Math.min(player.hp + 10, player.maxHp);
                 updateHealthUI();
                 showOverlayMessage("HEALTH RESTORED", '#0f0', 1000);
-                p.dead = true;
+                // Call kill() to properly release sprite
+                if (typeof p.kill === 'function') p.kill();
+                else p.dead = true;
             }
         }
 
@@ -12938,111 +12943,113 @@ function resolveEntityCollision() {
                         updateContractUI();
                     }
                 }
-                c.dead = true;
-            }
-        }
-    }
-
-    // Shooting Star Collisions
-    for (let s of shootingStars) {
-        if (s.dead) continue;
-
-        // Vs Player
-        if (player && !player.dead && !player.invulnerable) {
-            const dist = Math.hypot(s.pos.x - player.pos.x, s.pos.y - player.pos.y);
-            if (dist < s.radius + player.radius) {
-                player.hp -= s.damage;
-                updateHealthUI();
-                playSound('explode');
-                spawnParticles(player.pos.x, player.pos.y, 20, '#f00');
-                showOverlayMessage("HIT BY SHOOTING STAR!", '#f00', 2000);
-                s.dead = true;
-                if (player.hp <= 0) killPlayer();
-                continue;
+                // Call kill() to properly clean up PIXI graphics
+                if (typeof c.kill === 'function') c.kill();
+                else c.dead = true;
             }
         }
 
-        // Vs Enemies / Bases / Boss / Station
-        let hitEntity = false;
-        for (let e of enemies) {
-            if (!e || e.dead) continue;
-            const dist = Math.hypot(s.pos.x - e.pos.x, s.pos.y - e.pos.y);
-            if (dist < s.radius + e.radius) {
-                e.hp -= s.damage;
-                spawnParticles(e.pos.x, e.pos.y, 14, '#fa0');
-                playSound('explode');
-                if (e.hp <= 0) e.kill();
-                hitEntity = true;
-                break;
-            }
-        }
-        if (!hitEntity) {
-            for (let b of bases) {
-                if (!b || b.dead) continue;
-                const dist = Math.hypot(s.pos.x - b.pos.x, s.pos.y - b.pos.y);
-                if (dist < s.radius + b.radius) {
-                    b.hp -= s.damage;
-                    b.aggro = true;
-                    spawnParticles(b.pos.x, b.pos.y, 18, '#fa0');
+        // Shooting Star Collisions
+        for (let s of shootingStars) {
+            if (s.dead) continue;
+
+            // Vs Player
+            if (player && !player.dead && !player.invulnerable) {
+                const dist = Math.hypot(s.pos.x - player.pos.x, s.pos.y - player.pos.y);
+                if (dist < s.radius + player.radius) {
+                    player.hp -= s.damage;
+                    updateHealthUI();
                     playSound('explode');
-                    if (b.hp <= 0) {
-                        b.dead = true;
-                        playSound('base_explode');
-                        spawnParticles(b.pos.x, b.pos.y, 50, '#f0f');
-                        for (let i = 0; i < 6; i++) coins.push(new Coin(b.pos.x + (Math.random() - 0.5) * 50, b.pos.y + (Math.random() - 0.5) * 50, 5));
-                        nuggets.push(new SpaceNugget(b.pos.x, b.pos.y, 1));
-                        basesDestroyed++;
-                        basesDestroyedTotal++;
-                        difficultyTier = 1 + Math.floor(basesDestroyedTotal / 6);
-                        score += 1000;
-                        document.getElementById('bases-display').innerText = `${basesDestroyedTotal}`;
-                        enemies.forEach(e => { if (e.assignedBase === b) e.type = 'roamer'; });
-                        const delay = 5000 + Math.random() * 5000;
-                        baseRespawnTimers.push(Date.now() + delay);
-                    }
+                    spawnParticles(player.pos.x, player.pos.y, 20, '#f00');
+                    showOverlayMessage("HIT BY SHOOTING STAR!", '#f00', 2000);
+                    s.dead = true;
+                    if (player.hp <= 0) killPlayer();
+                    continue;
+                }
+            }
+
+            // Vs Enemies / Bases / Boss / Station
+            let hitEntity = false;
+            for (let e of enemies) {
+                if (!e || e.dead) continue;
+                const dist = Math.hypot(s.pos.x - e.pos.x, s.pos.y - e.pos.y);
+                if (dist < s.radius + e.radius) {
+                    e.hp -= s.damage;
+                    spawnParticles(e.pos.x, e.pos.y, 14, '#fa0');
+                    playSound('explode');
+                    if (e.hp <= 0) e.kill();
                     hitEntity = true;
                     break;
                 }
             }
-        }
-        if (!hitEntity && bossActive && boss && !boss.dead) {
-            const dist = Math.hypot(s.pos.x - boss.pos.x, s.pos.y - boss.pos.y);
-            if (dist < s.radius + boss.radius) {
-                boss.hp -= s.damage;
-                spawnParticles(boss.pos.x, boss.pos.y, 22, '#fa0');
-                playSound('explode');
-                if (boss.hp <= 0) {
-                    boss.kill();
-                    score += 10000;
+            if (!hitEntity) {
+                for (let b of bases) {
+                    if (!b || b.dead) continue;
+                    const dist = Math.hypot(s.pos.x - b.pos.x, s.pos.y - b.pos.y);
+                    if (dist < s.radius + b.radius) {
+                        b.hp -= s.damage;
+                        b.aggro = true;
+                        spawnParticles(b.pos.x, b.pos.y, 18, '#fa0');
+                        playSound('explode');
+                        if (b.hp <= 0) {
+                            b.dead = true;
+                            playSound('base_explode');
+                            spawnParticles(b.pos.x, b.pos.y, 50, '#f0f');
+                            for (let i = 0; i < 6; i++) coins.push(new Coin(b.pos.x + (Math.random() - 0.5) * 50, b.pos.y + (Math.random() - 0.5) * 50, 5));
+                            nuggets.push(new SpaceNugget(b.pos.x, b.pos.y, 1));
+                            basesDestroyed++;
+                            basesDestroyedTotal++;
+                            difficultyTier = 1 + Math.floor(basesDestroyedTotal / 6);
+                            score += 1000;
+                            document.getElementById('bases-display').innerText = `${basesDestroyedTotal}`;
+                            enemies.forEach(e => { if (e.assignedBase === b) e.type = 'roamer'; });
+                            const delay = 5000 + Math.random() * 5000;
+                            baseRespawnTimers.push(Date.now() + delay);
+                        }
+                        hitEntity = true;
+                        break;
+                    }
                 }
-                hitEntity = true;
             }
-        }
-        if (!hitEntity && spaceStation) {
-            const dist = Math.hypot(s.pos.x - spaceStation.pos.x, s.pos.y - spaceStation.pos.y);
-            if (dist < s.radius + spaceStation.radius) {
-                spaceStation.hp -= s.damage;
-                spawnParticles(spaceStation.pos.x, spaceStation.pos.y, 22, '#fa0');
-                playSound('explode');
-                if (spaceStation.hp <= 0) handleSpaceStationDestroyed();
-                hitEntity = true;
+            if (!hitEntity && bossActive && boss && !boss.dead) {
+                const dist = Math.hypot(s.pos.x - boss.pos.x, s.pos.y - boss.pos.y);
+                if (dist < s.radius + boss.radius) {
+                    boss.hp -= s.damage;
+                    spawnParticles(boss.pos.x, boss.pos.y, 22, '#fa0');
+                    playSound('explode');
+                    if (boss.hp <= 0) {
+                        boss.kill();
+                        score += 10000;
+                    }
+                    hitEntity = true;
+                }
             }
-        }
-        if (hitEntity) {
-            s.dead = true;
-            continue;
-        }
+            if (!hitEntity && spaceStation) {
+                const dist = Math.hypot(s.pos.x - spaceStation.pos.x, s.pos.y - spaceStation.pos.y);
+                if (dist < s.radius + spaceStation.radius) {
+                    spaceStation.hp -= s.damage;
+                    spawnParticles(spaceStation.pos.x, spaceStation.pos.y, 22, '#fa0');
+                    playSound('explode');
+                    if (spaceStation.hp <= 0) handleSpaceStationDestroyed();
+                    hitEntity = true;
+                }
+            }
+            if (hitEntity) {
+                s.dead = true;
+                continue;
+            }
 
-        // Vs Asteroids
-        const nearby = asteroidGrid.query(s.pos.x, s.pos.y);
-        for (let ast of nearby) {
-            if (ast.dead) continue;
-            const dist = Math.hypot(s.pos.x - ast.pos.x, s.pos.y - ast.pos.y);
-            if (dist < s.radius + ast.radius) {
-                ast.break();
-                spawnParticles(ast.pos.x, ast.pos.y, 10, '#fa0');
-                playSound('hit');
-                // Star keeps going (pierces)
+            // Vs Asteroids
+            const nearby = asteroidGrid.query(s.pos.x, s.pos.y);
+            for (let ast of nearby) {
+                if (ast.dead) continue;
+                const dist = Math.hypot(s.pos.x - ast.pos.x, s.pos.y - ast.pos.y);
+                if (dist < s.radius + ast.radius) {
+                    ast.break();
+                    spawnParticles(ast.pos.x, ast.pos.y, 10, '#fa0');
+                    playSound('hit');
+                    // Star keeps going (pierces)
+                }
             }
         }
     }
@@ -13600,14 +13607,14 @@ function showLevelUpMenu() {
             // Smooth timing reset to prevent jitter on resume
             // We don't reset simLastPerfAt to 0 anymore - that causes a large frameDt spike
             // Instead, we let the frame accumulator naturally handle the pause
-            
+
             // Delay resume to allow browser layout/GC to settle
             requestAnimationFrame(() => {
                 // Force garbage collection if available (Chrome dev tools)
                 if (typeof window !== 'undefined' && window.gc && typeof window.gc === 'function') {
-                    try { window.gc(); } catch (e) {}
+                    try { window.gc(); } catch (e) { }
                 }
-                
+
                 setTimeout(() => {
                     // Force reset interpolation for all entities to prevent visual jumps
                     // if the first frame has weird timing.
@@ -13630,7 +13637,7 @@ function showLevelUpMenu() {
                     simAccMs = 0;
                     // Update simLastPerfAt to current time to prevent large delta
                     simLastPerfAt = performance.now();
-                    
+
                     gameActive = true;
                     if (musicEnabled) startMusic();
                 }, 100); // Reduced from 200ms for snappier resume
@@ -13945,7 +13952,7 @@ function killPlayer() {
 
 function mainLoop() {
     const perfNow = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    
+
     globalProfiler.update();
     animationId = requestAnimationFrame(mainLoop);
     // FPS counter (render-only).
@@ -13971,7 +13978,7 @@ function mainLoop() {
     if (gameActive && !gamePaused) {
         // Fixed-step simulation at 60 FPS; render at display refresh rate.
         const frameStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-        
+
         if (!simLastPerfAt) {
             console.log('[RESUME] First frame after resume - simLastPerfAt was 0, initializing');
             simLastPerfAt = frameStart;
@@ -13982,10 +13989,10 @@ function mainLoop() {
         let frameDt = frameStart - simLastPerfAt;
         simLastPerfAt = frameStart;
         if (!isFinite(frameDt) || frameDt < 0) frameDt = 0;
-        
+
         // Record frame time for jitter monitoring
         globalJitterMonitor.recordFrame(frameDt);
-        
+
         // Drop large frame times to prevent jitter (e.g., after upgrade menu closes)
         // Use a smoother transition instead of hard cutoff
         if (frameDt > 100) {
@@ -14822,10 +14829,10 @@ function gameLoopLogic(opts = null) {
 
     if (doUpdate) {
         globalProfiler.start('Cleanup');
-        
+
         // Process staggered cleanup queue (spreads cleanup across frames)
         globalStaggeredCleanup.process();
-        
+
         // Use immediate cleanup for critical arrays that need per-frame compacting
         // Use staggered cleanup for large arrays that can wait
         immediateCompactArray(bullets, (b) => {
@@ -14837,36 +14844,60 @@ function gameLoopLogic(opts = null) {
         immediateCompactArray(enemies);
         immediateCompactArray(bases);
         immediateCompactArray(environmentAsteroids);
+
+        // Explosion cleanup with safety check for uncleaned sprites
+        for (let i = explosions.length - 1; i >= 0; i--) {
+            const ex = explosions[i];
+            if (ex && ex.dead && !ex.cleaned && particleRes && particleRes.pool) {
+                // Force cleanup of dead explosions that weren't cleaned during draw
+                ex.cleanup(particleRes);
+            }
+        }
         immediateCompactArray(explosions);
+
         immediateCompactArray(floatingTexts);
         immediateCompactArray(coins);
-        
+
         // Safety: Force cleanup of dead pickups that didn't clean themselves
         for (let i = coins.length - 1; i >= 0; i--) {
             const coin = coins[i];
             if (coin && coin.dead && coin.sprite) {
-                console.warn('[COIN SAFETY] Cleaning dead coin with sprite');
                 coin.kill();
             }
         }
-        
+
         immediateCompactArray(nuggets);
-        immediateCompactArray(nuggets);
+
+        // Safety: Force cleanup of dead nuggets that didn't clean themselves
+        for (let i = nuggets.length - 1; i >= 0; i--) {
+            const nugget = nuggets[i];
+            if (nugget && nugget.dead && nugget.sprite) {
+                nugget.kill();
+            }
+        }
+
         immediateCompactArray(powerups);
-        
+
         // Safety: Force cleanup of dead pickups that didn't clean themselves
         for (let i = powerups.length - 1; i >= 0; i--) {
             const powerup = powerups[i];
             if (powerup && powerup.dead && powerup.sprite) {
-                console.warn('[POWERUP SAFETY] Cleaning dead powerup with sprite');
                 powerup.kill();
             }
         }
-        
+
         compactParticles(particles);
         immediateCompactArray(gateKeyItems);
         immediateCompactArray(shootingStars);
         immediateCompactArray(drones);
+
+        // Safety: Force cleanup of dead caches that didn't clean themselves
+        for (let i = caches.length - 1; i >= 0; i--) {
+            const cache = caches[i];
+            if (cache && cache.dead && cache._pixiGfx) {
+                if (typeof cache.kill === 'function') cache.kill();
+            }
+        }
         immediateCompactArray(caches);
         immediateCompactArray(pois);
         immediateCompactArray(contractEntities.beacons);
@@ -14874,10 +14905,10 @@ function gameLoopLogic(opts = null) {
         immediateCompactArray(contractEntities.anomalies);
         immediateCompactArray(contractEntities.fortresses);
         immediateCompactArray(contractEntities.wallTurrets);
-        
+
         // Particles often have many items, clean them carefully
         immediateCompactArray(particles);
-        
+
         globalProfiler.end('Cleanup');
 
         globalProfiler.start('EntityCollision');
@@ -16755,5 +16786,3 @@ document.getElementById('start-btn').focus();
 loadMetaProfile();
 updateMetaUI();
 mainLoop();
-
-
