@@ -55,13 +55,7 @@ export class Coin extends Entity {
      * @param {Object} pixiResources - PixiJS resources { pickupLayer, textures, pool }
      */
     draw(ctx, pixiResources = null) {
-        if (this.dead) {
-            if (this.sprite && pixiResources?.pool) {
-                releasePixiSprite(pixiResources.pool, this.sprite);
-                this.sprite = null;
-            }
-            return;
-        }
+        if (this.dead) return;
 
         // Try PixiJS rendering
         if (pixiResources?.layer && pixiResources?.textures) {
@@ -70,10 +64,8 @@ export class Coin extends Entity {
                 let spr = this.sprite;
                 if (!spr) {
                     spr = allocPixiSprite(pixiResources.pool, pixiResources.layer, tex, null, 0.5);
-                    this.sprite = spr;
                 }
                 if (spr) {
-                    spr.texture = tex;
                     if (!spr.parent) pixiResources.layer.addChild(spr);
                     spr.visible = true;
                     spr.position.set(this.pos.x, this.pos.y);
@@ -84,21 +76,75 @@ export class Coin extends Entity {
                     spr.tint = 0xffffff;
                     spr.alpha = 1;
                     if (window.PIXI) spr.blendMode = PIXI.BLEND_MODES.ADD;
-                    return;
                 }
+                this.sprite = spr;
             }
+            return;
         }
 
-
+        // Canvas fallback
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.2;
+        ctx.scale(scale, scale);
+        ctx.rotate(this.flash * 0.05);
+        
+        const color = this.value >= 10 ? '#ff0' : '#ffff00';
+        ctx.fillStyle = color;
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -8);
+        ctx.lineTo(8, 0);
+        ctx.lineTo(0, 8);
+        ctx.lineTo(-8, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
     }
 
+    /**
+     * Get appropriate texture based on coin value.
+     */
     _getTexture(textures) {
         if (this.value >= 10) return textures.coin10 || textures.coin1;
         if (this.value >= 5) return textures.coin5 || textures.coin1;
         return textures.coin1;
     }
 
+    /**
+     * Cleanup sprite when entity is removed.
+     * Ensures sprite is properly released to pool.
+     */
     cull() {
-        if (this.sprite) this.sprite.visible = false;
+        if (this.sprite) {
+            this.sprite.visible = false;
+        }
+    }
+
+    /**
+     * Cleanup sprite when entity is removed.
+     * Ensures sprite is properly released to pool.
+     */
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        
+        // Hide sprite before cleanup
+        if (this.sprite) {
+            this.sprite.visible = false;
+        }
+        
+        // Release sprite to pool
+        if (this.sprite && pixiPickupSpritePool) {
+            try {
+                releasePixiSprite(pixiPickupSpritePool, this.sprite);
+                console.log(`[Coin] Released sprite at (${Math.round(this.pos.x)}, ${Math.round(this.pos.y)})`);
+            } catch (e) {
+                console.warn('[Coin] Failed to release sprite:', e);
+            }
+            this.sprite = null;
+        }
     }
 }

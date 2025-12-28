@@ -3,7 +3,7 @@ export class Profiler {
         this.metrics = {};
         this.frameCount = 0;
         this.reportInterval = 300; // Report every 300 frames (approx 5s)
-        this.enabled = false;
+        this.enabled = true; // Enable profiler by default to identify performance issues
     }
 
     start(label) {
@@ -44,6 +44,10 @@ export class Profiler {
 
     report() {
         console.group('--- Performance Report (Avg per frame over last ' + this.reportInterval + ' frames) ---');
+        // Also log to screen for better visibility
+        if (typeof window !== 'undefined') {
+            window.lastPerfReport = this.metrics;
+        }
 
         // Sort by average time descending
         const sortedLabels = Object.keys(this.metrics).sort((a, b) => {

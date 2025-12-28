@@ -4,6 +4,7 @@
  */
 
 import { Entity } from '../Entity.js';
+import { colorToPixi } from '../../rendering/colors.js';
 import { allocPixiSprite, releasePixiSprite } from '../../rendering/sprite-pools.js';
 
 /**
@@ -22,7 +23,7 @@ export class HealthPowerUp extends Entity {
     }
 
     /**
-     * Update health pickup with magnetization.
+     * Update health pickup with magnetization toward player.
      * @param {Entity} player - Player entity
      */
     update(player) {
@@ -48,18 +49,12 @@ export class HealthPowerUp extends Entity {
     }
 
     /**
-     * Draw health pickup.
+     * Draw health pickup with PixiJS or Canvas fallback.
      * @param {CanvasRenderingContext2D} ctx - Canvas context
      * @param {Object} pixiResources - PixiJS resources
      */
     draw(ctx, pixiResources = null) {
-        if (this.dead) {
-            if (this.sprite && pixiResources?.pool) {
-                releasePixiSprite(pixiResources.pool, this.sprite);
-                this.sprite = null;
-            }
-            return;
-        }
+        if (this.dead) return;
 
         // Try PixiJS rendering
         if (pixiResources?.layer && pixiResources?.textures?.health) {
@@ -67,10 +62,8 @@ export class HealthPowerUp extends Entity {
             let spr = this.sprite;
             if (!spr) {
                 spr = allocPixiSprite(pixiResources.pool, pixiResources.layer, tex, null, 0.5);
-                this.sprite = spr;
             }
             if (spr) {
-                spr.texture = tex;
                 if (!spr.parent) pixiResources.layer.addChild(spr);
                 spr.visible = true;
                 spr.position.set(this.pos.x, this.pos.y);
@@ -85,10 +78,60 @@ export class HealthPowerUp extends Entity {
             }
         }
 
-
+        // Canvas fallback
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.2;
+        ctx.scale(scale, scale);
+        ctx.rotate(this.flash * 0.05);
+        
+        // Draw plus
+        ctx.fillStyle = '#0f0';
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -10);
+        ctx.lineTo(8, 0);
+        ctx.lineTo(0, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.restore();
     }
 
+    /**
+     * Cull health pickup sprite if entity is dead.
+     * Call before removing from game arrays.
+     */
     cull() {
-        if (this.sprite) this.sprite.visible = false;
+        if (this.sprite) {
+            this.sprite.visible = false;
+        }
+    }
+
+    /**
+     * Cleanup sprite when entity is removed.
+     * Ensures sprite is properly released to pool.
+     */
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        
+        // Hide sprite before cleanup
+        if (this.sprite) {
+            this.sprite.visible = false;
+        }
+        
+        // Release sprite to pool
+        if (this.sprite && pixiPickupSpritePool) {
+            try {
+                releasePixiSprite(pixiPickupSpritePool, this.sprite);
+                console.log(`[HealthPowerUp] Released sprite at (${Math.round(this.pos.x)}, ${Math.round(this.pos.y)})`);
+            } catch (e) {
+                console.warn('[HealthPowerUp] Failed to release sprite:', e);
+            }
+            this.sprite = null;
+        }
     }
 }

@@ -4,6 +4,7 @@
  */
 
 import { Entity } from '../Entity.js';
+import { colorToPixi } from '../../rendering/colors.js';
 import { allocPixiSprite, releasePixiSprite } from '../../rendering/sprite-pools.js';
 
 /**
@@ -28,8 +29,11 @@ export class SpaceNugget extends Entity {
      */
     update(player) {
         if (!player || player.dead) return;
+
         const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        if (dist < player.magnetRadius) this.magnetized = true;
+        if (dist < player.magnetRadius) {
+            this.magnetized = true;
+        }
 
         if (this.magnetized) {
             const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
@@ -50,13 +54,7 @@ export class SpaceNugget extends Entity {
      * @param {Object} pixiResources - PixiJS resources { layer, textures, pool }
      */
     draw(ctx, pixiResources = null) {
-        if (this.dead) {
-            if (this.sprite && pixiResources?.pool) {
-                releasePixiSprite(pixiResources.pool, this.sprite);
-                this.sprite = null;
-            }
-            return;
-        }
+        if (this.dead) return;
 
         // Try PixiJS rendering
         if (pixiResources?.layer && pixiResources?.textures?.nugget) {
@@ -64,15 +62,13 @@ export class SpaceNugget extends Entity {
             let spr = this.sprite;
             if (!spr) {
                 spr = allocPixiSprite(pixiResources.pool, pixiResources.layer, tex, null, 0.5);
-                this.sprite = spr;
             }
             if (spr) {
-                spr.texture = tex;
                 if (!spr.parent) pixiResources.layer.addChild(spr);
                 spr.visible = true;
                 spr.position.set(this.pos.x, this.pos.y);
                 const pulse = 1.0 + Math.sin(this.flash * 0.12) * 0.25;
-                const base = (this.radius * 2) / Math.max(1, Math.max(tex.width, tex.height));
+                const base = (this.radius * 2) / Math.max(1, tex.width, tex.height);
                 spr.scale.set(base * pulse);
                 spr.rotation = 0;
                 spr.tint = 0xffffff;
@@ -82,10 +78,64 @@ export class SpaceNugget extends Entity {
             }
         }
 
-
+        // Canvas fallback
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        const scale = 1.0 + Math.sin(this.flash * 0.12) * 0.25;
+        ctx.scale(scale, scale);
+        ctx.rotate(this.flash * 0.05);
+        
+        // Create gradient
+        const grad = ctx.createLinearGradient(-10, -10, 10, 10);
+        grad.addColorStop(0, '#ff0');
+        grad.addColorStop(0.5, '#ffa500');
+        grad.addColorStop(1, '#0ff');
+        ctx.fillStyle = grad;
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.moveTo(0, -10);
+        ctx.lineTo(10, 0);
+        ctx.lineTo(0, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
     }
 
+    /**
+     * Cull nugget sprite if entity is dead.
+     * Call before removing from game arrays.
+     */
     cull() {
-        if (this.sprite) this.sprite.visible = false;
+        if (this.sprite) {
+            this.sprite.visible = false;
+        }
+    }
+
+    /**
+     * Cleanup sprite when entity is removed.
+     * Ensures sprite is properly released to pool.
+     */
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        
+        // Hide sprite before cleanup
+        if (this.sprite) {
+            this.sprite.visible = false;
+        }
+        
+        // Release sprite to pool
+        if (this.sprite && pixiPickupSpritePool) {
+            try {
+                releasePixiSprite(pixiPickupSpritePool, this.sprite);
+                console.log(`[SpaceNugget] Released sprite at (${Math.round(this.pos.x)}, ${Math.round(this.pos.y)})`);
+            } catch (e) {
+                console.warn('[SpaceNugget] Failed to release sprite:', e);
+            }
+            this.sprite = null;
+        }
     }
 }

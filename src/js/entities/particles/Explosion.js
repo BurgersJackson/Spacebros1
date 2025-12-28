@@ -50,7 +50,7 @@ export class Explosion extends Entity {
 
     update() {
         this.life--;
-        // If the explosion itself is dead, particles should be cleaned up in draw.
+        // If explosion itself is dead, particles should be cleaned up in draw.
         if (this.life <= 0) {
             this.dead = true;
             return;
@@ -83,43 +83,21 @@ export class Explosion extends Entity {
     }
 
     draw(ctx, pixiResources = null, alpha = 1.0) {
-        // Cleanup if dead
-        if (this.dead) {
-            if (pixiResources && pixiResources.pool) {
-                for (let i = 0; i < this.particles.length; i++) {
-                    const p = this.particles[i];
-                    if (p.sprite) {
-                        releasePixiSprite(pixiResources.pool, p.sprite);
-                        p.sprite = null;
-                    }
-                }
-            }
-            return;
-        }
+        const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
 
         // PixiJS Rendering
         if (pixiResources && pixiResources.layer && pixiResources.pool) {
             const tex = pixiResources.glowTexture || pixiResources.whiteTexture;
-            const rPos = (this.getRenderPos && typeof alpha === 'number') ? this.getRenderPos(alpha) : this.pos;
 
             for (let i = 0; i < this.particles.length; i++) {
                 const p = this.particles[i];
-                if (p.life <= 0) {
-                    if (p.sprite) {
-                        releasePixiSprite(pixiResources.pool, p.sprite);
-                        p.sprite = null;
-                    }
-                    continue;
-                }
 
                 if (!p.sprite) {
-                    // Alloc sprite
                     p.sprite = allocPixiSprite(pixiResources.pool, pixiResources.layer, tex, null, 0.5);
                 }
 
                 const spr = p.sprite;
                 if (spr) {
-                    // Update sprite props
                     if (!spr.parent) pixiResources.layer.addChild(spr);
 
                     const pRX = (typeof alpha === 'number' && p.prevX !== undefined) ? (p.prevX + (p.x - p.prevX) * alpha) : p.x;

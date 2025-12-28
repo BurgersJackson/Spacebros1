@@ -1,6 +1,8 @@
 // --- Module Imports ---
 import { Vector, SpatialHash, _tempVec1, _tempVec2 } from './core/math.js';
 import { globalProfiler } from './core/profiler.js';
+import { globalJitterMonitor } from './core/jitter-monitor.js';
+import { globalStaggeredCleanup, immediateCompactArray } from './core/staggered-cleanup.js';
 import {
     updateViewBounds, viewBounds, isInView, entityInView,
     bulletGrid, rebuildBulletGrid, distSq, distLessThan
@@ -22,6 +24,9 @@ import {
     pixiBulletSpritePool, pixiParticleSpritePool, pixiEnemySpritePools,
     pixiPickupSpritePool, pixiAsteroidSpritePool, pixiStarSpritePool
 } from './rendering/pixi-setup.js';
+
+// --- Performance Debug (load after other modules) ---
+import './core/perf-debug.js';
 
 // --- Upgrade Data ---
 const UPGRADE_DATA = {
@@ -8285,6 +8290,19 @@ class MiniEventDefendCache extends Entity {
     kill() {
         if (this.dead) return;
         super.kill();
+        // Ensure all Pixi graphics are hidden before cleanup to prevent visual artifacts
+        if (this._pixiGfx && this._pixiGfx.visible !== false) {
+            this._pixiGfx.visible = false;
+        }
+        if (this._pixiProgressGfx && this._pixiProgressGfx.visible !== false) {
+            this._pixiProgressGfx.visible = false;
+        }
+        if (this._pixiLabelText && this._pixiLabelText.visible !== false) {
+            this._pixiLabelText.visible = false;
+        }
+        if (this._pixiTimerText && this._pixiTimerText.visible !== false) {
+            this._pixiTimerText.visible = false;
+        }
         pixiCleanupObject(this);
     }
     update() {
@@ -8472,6 +8490,22 @@ class MiniEventEscortDrone extends Entity {
     kill() {
         if (this.dead) return;
         super.kill();
+        // Ensure all Pixi graphics are hidden before cleanup to prevent visual artifacts
+        if (this._pixiWaypointGfx && this._pixiWaypointGfx.visible !== false) {
+            this._pixiWaypointGfx.visible = false;
+        }
+        if (this._pixiTetherGfx && this._pixiTetherGfx.visible !== false) {
+            this._pixiTetherGfx.visible = false;
+        }
+        if (this._pixiDroneGfx && this._pixiDroneGfx.visible !== false) {
+            this._pixiDroneGfx.visible = false;
+        }
+        if (this._pixiProgressGfx && this._pixiProgressGfx.visible !== false) {
+            this._pixiProgressGfx.visible = false;
+        }
+        if (this._pixiTimerText && this._pixiTimerText.visible !== false) {
+            this._pixiTimerText.visible = false;
+        }
         pixiCleanupObject(this);
     }
     update() {
@@ -8724,6 +8758,7 @@ class SectorPOI extends Entity {
     }
     draw(ctx) {
         if (this.dead || this.claimed) {
+            // Hide all Pixi graphics when dead or claimed
             if (this._pixiGfx) this._pixiGfx.visible = false;
             if (this._pixiNameText) this._pixiNameText.visible = false;
             return;
@@ -8847,7 +8882,16 @@ class DebrisFieldPOI extends SectorPOI {
     }
     draw(ctx) {
         if (this.dead || this.claimed) {
-            if (this._pixiProgressGfx) this._pixiProgressGfx.visible = false;
+            // Hide and cleanup all Pixi graphics when dead or claimed
+            if (this._pixiProgressGfx) {
+                this._pixiProgressGfx.visible = false;
+            }
+            if (this._pixiGfx) {
+                this._pixiGfx.visible = false;
+            }
+            if (this._pixiNameText) {
+                this._pixiNameText.visible = false;
+            }
             return;
         }
         super.draw(ctx);
@@ -8885,8 +8929,21 @@ class DebrisFieldPOI extends SectorPOI {
         ctx.restore();
     }
     kill() {
+        if (this.dead) return;
         super.kill();
-        if (this._pixiProgressGfx) { this._pixiProgressGfx.destroy(true); this._pixiProgressGfx = null; }
+        // Clean up ALL Pixi graphics
+        if (this._pixiProgressGfx) {
+            try { this._pixiProgressGfx.destroy({ children: true }); } catch (e) {}
+            this._pixiProgressGfx = null;
+        }
+        if (this._pixiGfx) {
+            try { this._pixiGfx.destroy({ children: true }); } catch (e) {}
+            this._pixiGfx = null;
+        }
+        if (this._pixiNameText) {
+            try { this._pixiNameText.destroy(); } catch (e) {}
+            this._pixiNameText = null;
+        }
     }
 }
 
@@ -11302,26 +11359,30 @@ function emitSmokeParticle(x, y, vx, vy) {
 }
 
 function compactParticles(arr) {
-    let alive = 0;
-    for (let i = 0; i < arr.length; i++) {
-        const p = arr[i];
-        if (p && !p.dead) {
-            arr[alive++] = p;
-            continue;
-        }
-        if (!p) continue;
-        if (p.sprite && pixiParticleSpritePool) {
-            if (p.sprite.parent) p.sprite.parent.removeChild(p.sprite);
-            if (pixiParticleSpritePool.length < PARTICLE_POOL_MAX) pixiParticleSpritePool.push(p.sprite);
-            p.sprite = null;
-        }
-        if (p._poolType === 'particle') {
-            if (particlePool.length < PARTICLE_POOL_MAX) particlePool.push(p);
-        } else if (p._poolType === 'smoke') {
-            if (smokeParticlePool.length < SMOKE_POOL_MAX) smokeParticlePool.push(p);
+    immediateCompactArray(arr);
+}
+
+// Safety cleanup function to force explosions to clean themselves
+function forceExplosionCleanup() {
+    if (!particleRes || !particleRes.pool) return;
+    
+    let forcedCount = 0;
+    for (let i = explosions.length - 1; i >= 0; i--) {
+        const ex = explosions[i];
+        if (ex && ex.dead && !ex.cleaned) {
+            try {
+                ex.cleanup(particleRes);
+                forcedCount++;
+                console.warn(`[FORCED CLEANUP] Cleaning explosion #${i} at (${Math.round(ex.pos.x)}, ${Math.round(ex.pos.y)})`);
+            } catch (e) {
+                console.error(`[FORCED CLEANUP ERROR] Failed to clean explosion #${i}:`, e);
+            }
         }
     }
-    arr.length = alive;
+    
+    if (forcedCount > 0) {
+        console.log(`[FORCED CLEANUP] Cleaned ${forcedCount} explosions`);
+    }
 }
 
 function spawnParticles(x, y, count = 10, color = '#fff') {
@@ -13532,15 +13593,21 @@ function showLevelUpMenu() {
         };
 
         card.onclick = () => {
-            // Reset timing immediately to prevent jitter on resume
-            simLastPerfAt = 0;
-            simAccMs = 0;
-
+            // Apply the upgrade first
             applyUpgrade(choice.id, nextTier);
             document.getElementById('levelup-screen').style.display = 'none';
 
-            // Delay resume to allow browser layout/GC to settle (increased to 200ms)
+            // Smooth timing reset to prevent jitter on resume
+            // We don't reset simLastPerfAt to 0 anymore - that causes a large frameDt spike
+            // Instead, we let the frame accumulator naturally handle the pause
+            
+            // Delay resume to allow browser layout/GC to settle
             requestAnimationFrame(() => {
+                // Force garbage collection if available (Chrome dev tools)
+                if (typeof window !== 'undefined' && window.gc && typeof window.gc === 'function') {
+                    try { window.gc(); } catch (e) {}
+                }
+                
                 setTimeout(() => {
                     // Force reset interpolation for all entities to prevent visual jumps
                     // if the first frame has weird timing.
@@ -13559,9 +13626,14 @@ function showLevelUpMenu() {
                     if (particles) particles.forEach(resetEnt);
                     if (floatingTexts) floatingTexts.forEach(resetEnt);
 
+                    // Reset simAccMs to zero to avoid catching up
+                    simAccMs = 0;
+                    // Update simLastPerfAt to current time to prevent large delta
+                    simLastPerfAt = performance.now();
+                    
                     gameActive = true;
                     if (musicEnabled) startMusic();
-                }, 200);
+                }, 100); // Reduced from 200ms for snappier resume
             });
         };
         container.appendChild(card);
@@ -13872,6 +13944,8 @@ function killPlayer() {
 }
 
 function mainLoop() {
+    const perfNow = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    
     globalProfiler.update();
     animationId = requestAnimationFrame(mainLoop);
     // FPS counter (render-only).
@@ -13895,25 +13969,34 @@ function mainLoop() {
     }
     updateGamepad();
     if (gameActive && !gamePaused) {
-        // Fixed-step simulation at 120 FPS; render at display refresh rate.
-        const perfNow = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        // Fixed-step simulation at 60 FPS; render at display refresh rate.
+        const frameStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        
         if (!simLastPerfAt) {
             console.log('[RESUME] First frame after resume - simLastPerfAt was 0, initializing');
-            simLastPerfAt = perfNow;
+            simLastPerfAt = frameStart;
             // Only init simNowMs if it's 0 (first run or reset), otherwise preserve it (resume)
             if (!simNowMs) simNowMs = Date.now();
             simAccMs = 0;
         }
-        let frameDt = perfNow - simLastPerfAt;
-        simLastPerfAt = perfNow;
+        let frameDt = frameStart - simLastPerfAt;
+        simLastPerfAt = frameStart;
         if (!isFinite(frameDt) || frameDt < 0) frameDt = 0;
+        
+        // Record frame time for jitter monitoring
+        globalJitterMonitor.recordFrame(frameDt);
+        
         // Drop large frame times to prevent jitter (e.g., after upgrade menu closes)
-        // Instead of running multiple catch-up steps, just run one normal frame
-        if (frameDt > 50) {
-            console.log('[JITTER] Dropping large frameDt:', frameDt.toFixed(1), 'ms -> using', SIM_STEP_MS, 'ms');
-            frameDt = SIM_STEP_MS; // Just run one simulation step
+        // Use a smoother transition instead of hard cutoff
+        if (frameDt > 100) {
+            console.log('[JITTER] Very large frameDt:', frameDt.toFixed(1), 'ms - likely caused by GC or menu transition');
+            // Smoothly ramp up instead of jumping
+            frameDt = 33.33; // Use 30fps worth of time as maximum
+        } else if (frameDt > 50) {
+            // Moderate spike - use a gradual approach
+            frameDt = frameDt * 0.5 + SIM_STEP_MS * 0.5;
         }
-        frameDt = Math.min(250, frameDt);
+        frameDt = Math.min(100, frameDt);
 
         simAccMs += frameDt;
 
@@ -14695,12 +14778,17 @@ function gameLoopLogic(opts = null) {
     }
 
     // Explosions - always update, cull drawing
-    // Explosions - always update, cull drawing
+    // Explosions are always updated and cleaned up even if off-screen
     for (let i = 0, len = explosions.length; i < len; i++) {
         const ex = explosions[i];
         try {
             if (doUpdate) ex.update();
-            if (doDraw && isInView(ex.pos.x, ex.pos.y)) ex.draw(ctx, particleRes, alpha);
+            if (doDraw && isInView(ex.pos.x, ex.pos.y)) {
+                ex.draw(ctx, particleRes, alpha);
+            } else if (ex.dead && particleRes && particleRes.pool) {
+                // Cleanup dead explosions even if not in view (prevents stuck particles)
+                ex.cleanup(particleRes);
+            }
         } catch (e) {
             console.error('[EXPLOSION ERROR]', e);
             ex.dead = true;
@@ -14734,28 +14822,62 @@ function gameLoopLogic(opts = null) {
 
     if (doUpdate) {
         globalProfiler.start('Cleanup');
-        compactArray(bullets);
-        compactArray(bossBombs);
-        compactArray(guidedMissiles);
-        compactArray(enemies);
-        compactArray(bases);
-        compactArray(environmentAsteroids);
+        
+        // Process staggered cleanup queue (spreads cleanup across frames)
+        globalStaggeredCleanup.process();
+        
+        // Use immediate cleanup for critical arrays that need per-frame compacting
+        // Use staggered cleanup for large arrays that can wait
+        immediateCompactArray(bullets, (b) => {
+            if (b._poolType === 'bullet' && b.sprite && pixiBulletSpritePool) destroyBulletSprite(b);
+            else pixiCleanupObject(b);
+        });
+        immediateCompactArray(bossBombs);
+        immediateCompactArray(guidedMissiles);
+        immediateCompactArray(enemies);
+        immediateCompactArray(bases);
+        immediateCompactArray(environmentAsteroids);
+        immediateCompactArray(explosions);
+        immediateCompactArray(floatingTexts);
+        immediateCompactArray(coins);
+        
+        // Safety: Force cleanup of dead pickups that didn't clean themselves
+        for (let i = coins.length - 1; i >= 0; i--) {
+            const coin = coins[i];
+            if (coin && coin.dead && coin.sprite) {
+                console.warn('[COIN SAFETY] Cleaning dead coin with sprite');
+                coin.kill();
+            }
+        }
+        
+        immediateCompactArray(nuggets);
+        immediateCompactArray(nuggets);
+        immediateCompactArray(powerups);
+        
+        // Safety: Force cleanup of dead pickups that didn't clean themselves
+        for (let i = powerups.length - 1; i >= 0; i--) {
+            const powerup = powerups[i];
+            if (powerup && powerup.dead && powerup.sprite) {
+                console.warn('[POWERUP SAFETY] Cleaning dead powerup with sprite');
+                powerup.kill();
+            }
+        }
+        
         compactParticles(particles);
-        compactArray(explosions);
-        compactArray(floatingTexts);
-        compactArray(coins);
-        compactArray(nuggets);
-        compactArray(powerups);
-        compactArray(gateKeyItems);
-        compactArray(shootingStars);
-        compactArray(drones);
-        compactArray(caches);
-        compactArray(pois);
-        compactArray(contractEntities.beacons);
-        compactArray(contractEntities.gates);
-        compactArray(contractEntities.anomalies);
-        compactArray(contractEntities.fortresses);
-        compactArray(contractEntities.wallTurrets);
+        immediateCompactArray(gateKeyItems);
+        immediateCompactArray(shootingStars);
+        immediateCompactArray(drones);
+        immediateCompactArray(caches);
+        immediateCompactArray(pois);
+        immediateCompactArray(contractEntities.beacons);
+        immediateCompactArray(contractEntities.gates);
+        immediateCompactArray(contractEntities.anomalies);
+        immediateCompactArray(contractEntities.fortresses);
+        immediateCompactArray(contractEntities.wallTurrets);
+        
+        // Particles often have many items, clean them carefully
+        immediateCompactArray(particles);
+        
         globalProfiler.end('Cleanup');
 
         globalProfiler.start('EntityCollision');
@@ -16633,4 +16755,5 @@ document.getElementById('start-btn').focus();
 loadMetaProfile();
 updateMetaUI();
 mainLoop();
+
 
