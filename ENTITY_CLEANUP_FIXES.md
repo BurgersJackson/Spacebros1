@@ -336,3 +336,6 @@ The fixes ensure:
 - Off-screen entities still get cleaned up
 - Particle arrays are cleared to prevent memory leaks
 
+
+
+

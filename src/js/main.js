@@ -11359,7 +11359,13 @@ function emitSmokeParticle(x, y, vx, vy) {
 }
 
 function compactParticles(arr) {
-    immediateCompactArray(arr);
+    immediateCompactArray(arr, (p) => {
+        // Release particle sprite back to pool when particle dies
+        if (p.sprite && pixiParticleSpritePool) {
+            releasePixiSprite(pixiParticleSpritePool, p.sprite);
+            p.sprite = null;
+        }
+    });
 }
 
 // Safety cleanup function to force explosions to clean themselves
@@ -14792,8 +14798,10 @@ function gameLoopLogic(opts = null) {
             if (doUpdate) ex.update();
             if (doDraw && isInView(ex.pos.x, ex.pos.y)) {
                 ex.draw(ctx, particleRes, alpha);
-            } else if (ex.dead && particleRes && particleRes.pool) {
-                // Cleanup dead explosions even if not in view (prevents stuck particles)
+            }
+            // Always cleanup dead explosions to release sprites back to pool
+            // This fixes a bug where sprites accumulated when explosions died while in view
+            if (ex.dead && !ex.cleaned && particleRes && particleRes.pool) {
                 ex.cleanup(particleRes);
             }
         } catch (e) {
@@ -14905,9 +14913,6 @@ function gameLoopLogic(opts = null) {
         immediateCompactArray(contractEntities.anomalies);
         immediateCompactArray(contractEntities.fortresses);
         immediateCompactArray(contractEntities.wallTurrets);
-
-        // Particles often have many items, clean them carefully
-        immediateCompactArray(particles);
 
         globalProfiler.end('Cleanup');
 

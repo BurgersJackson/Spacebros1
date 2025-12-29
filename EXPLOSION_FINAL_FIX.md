@@ -570,3 +570,6 @@ This is a comprehensive fix for explosion particle cleanup issues:
 
 If particles still accumulate, run `checkExplosions()` to diagnose the issue!
 
+
+
+

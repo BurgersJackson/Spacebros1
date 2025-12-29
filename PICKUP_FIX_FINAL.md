@@ -332,3 +332,6 @@ This is a **comprehensive, multi-layered fix** for pickup graphics issues:
 
 All pickups now have robust lifecycle management with multiple layers of protection.
 
+
+
+

@@ -429,3 +429,6 @@ If issues continue after these fixes:
   - Added comprehensive error handling
   - Particle array properly cleared
 
+
+
+

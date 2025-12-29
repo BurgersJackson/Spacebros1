@@ -177,3 +177,6 @@ Tips for smooth gameplay:
     console.log('🚀 Performance debug commands loaded. Type perfHelp() for commands.');
 }
 
+
+
+
