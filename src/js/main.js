@@ -1686,6 +1686,28 @@ function resetPixiOverlaySprites() {
     pixiAsteroidSpritePool.length = 0;
     pixiStarSpritePool.length = 0;
 }
+
+function cleanupPixiWorldRootExtras() {
+    if (!pixiWorldRoot) return;
+    const keep = new Set();
+    if (pixiAsteroidLayer) keep.add(pixiAsteroidLayer);
+    if (pixiPickupLayer) keep.add(pixiPickupLayer);
+    if (pixiPlayerLayer) keep.add(pixiPlayerLayer);
+    if (pixiBaseLayer) keep.add(pixiBaseLayer);
+    if (pixiEnemyLayer) keep.add(pixiEnemyLayer);
+    if (pixiBossLayer) keep.add(pixiBossLayer);
+    if (pixiVectorLayer) keep.add(pixiVectorLayer);
+    if (pixiBulletLayer) keep.add(pixiBulletLayer);
+    if (pixiParticleLayer) keep.add(pixiParticleLayer);
+
+    for (let i = pixiWorldRoot.children.length - 1; i >= 0; i--) {
+        const child = pixiWorldRoot.children[i];
+        if (!keep.has(child)) {
+            try { if (child.parent) child.parent.removeChild(child); } catch (e) { }
+            try { if (typeof child.destroy === 'function') child.destroy({ children: true }); } catch (e) { }
+        }
+    }
+}
 const healthFill = document.getElementById('health-fill');
 const overlayMessage = document.getElementById('overlay-message');
 const warpStatus = document.getElementById('warp-status');
@@ -9776,14 +9798,12 @@ class Flagship extends Cruiser {
         bossArena.growing = false;
         boss = null;
 
-        // Reset gate progression for next sector
-        gateKeys = 0;
-        clearArrayWithPixiCleanup(gateKeyItems);
+        // Keep gate progression/items intact after flagship kill
         flagshipSpawned = false;
         flagshipSpawnAt = 0;
 
         showOverlayMessage("FLAGSHIP DESTROYED - WARP CORE CHARGING", '#0ff', 3500, 2);
-        if (!sectorTransitionActive) startSectorTransition();
+        // Keep world entities intact; just drop the arena lock on flagship kill.
     }
 }
 
@@ -11096,6 +11116,10 @@ let gateKeyItems = [];
 let warpGate = null;
 let warpZone = null;
 let warpSnapshot = null;
+let warpExitPending = false;
+let warpExitEndsAt = 0;
+let warpExitStartedAt = 0;
+const WARP_EXIT_DELAY_MS = 1000;
 // Per-sector limiter: only allow entering the warp maze once per sector.
 let warpCompletedOnce = false;
 let flagshipWarpZone = null;
@@ -11355,7 +11379,7 @@ function resetCaveState() {
 }
 
 function exitWarpMaze() {
-    if (!warpSnapshot) return;
+    if (!warpSnapshot || warpExitPending) return;
     const completedRun = !!(warpZone && warpZone.exitUnlocked);
     if (warpZone && warpZone.active) warpZone.active = false;
 
@@ -11485,6 +11509,13 @@ function exitWarpMaze() {
 
     // Clear Pixi overlay sprites (includes warp zone walls/gates)
     resetPixiOverlaySprites();
+    cleanupPixiWorldRootExtras();
+
+    // Start warp exit countdown before restoring the snapshot.
+    warpExitPending = true;
+    warpExitStartedAt = Date.now();
+    warpExitEndsAt = warpExitStartedAt + WARP_EXIT_DELAY_MS;
+    return;
 
     // Restore world from snapshot.
     bullets = warpSnapshot.bullets;
@@ -11584,6 +11615,117 @@ function exitWarpMaze() {
     warpZone = null;
     warpGate = null;
     warpSnapshot = null;
+    showOverlayMessage("RETURNED FROM WARP", '#0ff', 1800, 2);
+}
+
+function finalizeWarpExit() {
+    if (!warpSnapshot) return;
+    // Restore world from snapshot.
+    bullets = warpSnapshot.bullets;
+    bossBombs = warpSnapshot.bossBombs;
+    staggeredBombExplosions = warpSnapshot.staggeredBombExplosions || [];
+    staggeredParticleBursts = warpSnapshot.staggeredParticleBursts || [];
+    guidedMissiles = warpSnapshot.guidedMissiles;
+    enemies = warpSnapshot.enemies;
+    bases = warpSnapshot.bases;
+    particles = warpSnapshot.particles;
+    explosions = warpSnapshot.explosions || [];
+    floatingTexts = warpSnapshot.floatingTexts;
+    coins = warpSnapshot.coins;
+    nuggets = warpSnapshot.nuggets;
+    powerups = warpSnapshot.powerups;
+    shootingStars = warpSnapshot.shootingStars;
+    drones = warpSnapshot.drones;
+    caches = warpSnapshot.caches;
+    pois = warpSnapshot.pois;
+    gateKeyItems = warpSnapshot.gateKeyItems;
+    environmentAsteroids = warpSnapshot.environmentAsteroids;
+
+    asteroidRespawnTimers = warpSnapshot.asteroidRespawnTimers;
+    baseRespawnTimers = warpSnapshot.baseRespawnTimers;
+
+    radiationStorm = warpSnapshot.radiationStorm;
+    nextRadiationStormAt = warpSnapshot.nextRadiationStormAt;
+    miniEvent = warpSnapshot.miniEvent;
+    nextMiniEventAt = warpSnapshot.nextMiniEventAt;
+
+    activeContract = warpSnapshot.activeContract;
+    nextContractAt = warpSnapshot.nextContractAt;
+    contractSequence = warpSnapshot.contractSequence;
+    contractEntities = warpSnapshot.contractEntities;
+
+    boss = warpSnapshot.boss;
+    bossActive = warpSnapshot.bossActive;
+    bossArena = { ...warpSnapshot.bossArena };
+
+    spaceStation = warpSnapshot.spaceStation;
+    pendingStations = warpSnapshot.pendingStations;
+    nextSpaceStationTime = warpSnapshot.nextSpaceStationTime;
+
+    roamerRespawnQueue = warpSnapshot.roamerRespawnQueue;
+    maxRoamers = warpSnapshot.maxRoamers;
+    gunboatRespawnAt = warpSnapshot.gunboatRespawnAt;
+    dreadManager = { ...warpSnapshot.dreadManager };
+    // Pause all absolute-time timers while inside the warp zone (game time played continues).
+    const warpDt = warpSnapshot && warpSnapshot.warpEnteredAt ? Math.max(0, Date.now() - warpSnapshot.warpEnteredAt) : 0;
+    if (warpDt > 0) {
+        const shiftIfNumber = (val) => (typeof val === 'number' && isFinite(val) && val > 0) ? (val + warpDt) : val;
+        const shiftArrayNumbers = (arr) => {
+            if (!Array.isArray(arr)) return arr;
+            for (let i = 0; i < arr.length; i++) {
+                if (typeof arr[i] === 'number' && isFinite(arr[i]) && arr[i] > 0) arr[i] += warpDt;
+            }
+            return arr;
+        };
+
+        nextRadiationStormAt = shiftIfNumber(nextRadiationStormAt);
+        nextMiniEventAt = shiftIfNumber(nextMiniEventAt);
+        nextContractAt = shiftIfNumber(nextContractAt);
+        nextSpaceStationTime = shiftIfNumber(nextSpaceStationTime);
+        nextShootingStarTime = shiftIfNumber(nextShootingStarTime);
+        nextIntensityBreakAt = shiftIfNumber(nextIntensityBreakAt);
+        gunboatRespawnAt = shiftIfNumber(gunboatRespawnAt);
+
+        asteroidRespawnTimers = shiftArrayNumbers(asteroidRespawnTimers);
+        baseRespawnTimers = shiftArrayNumbers(baseRespawnTimers);
+
+        if (dreadManager && dreadManager.timerActive && typeof dreadManager.timerAt === 'number') {
+            dreadManager.timerAt += warpDt;
+        }
+
+        if (radiationStorm && typeof radiationStorm.endsAt === 'number') {
+            radiationStorm.endsAt += warpDt;
+        }
+        if (miniEvent) {
+            if (typeof miniEvent.expiresAt === 'number') miniEvent.expiresAt += warpDt;
+            if (typeof miniEvent.nextWaveAt === 'number') miniEvent.nextWaveAt += warpDt;
+            if (typeof miniEvent.lastUpdateAt === 'number') miniEvent.lastUpdateAt = Date.now();
+        }
+        if (activeContract) {
+            if (typeof activeContract.endsAt === 'number') activeContract.endsAt += warpDt;
+        }
+    }
+
+    nextShootingStarTime = warpSnapshot.nextShootingStarTime;
+    nextIntensityBreakAt = warpSnapshot.nextIntensityBreakAt;
+    intensityBreakActive = warpSnapshot.intensityBreakActive;
+
+    // Player returns.
+    player.pos.x = warpSnapshot.playerPos.x;
+    player.pos.y = warpSnapshot.playerPos.y;
+    player.vel.x = warpSnapshot.playerVel.x;
+    player.vel.y = warpSnapshot.playerVel.y;
+
+    warpZone = null;
+    warpGate = null;
+    warpSnapshot = null;
+    warpExitPending = false;
+    warpExitEndsAt = 0;
+    warpExitStartedAt = 0;
+    resetPixiOverlaySprites();
+    cleanupPixiWorldRootExtras();
+    if (pixiWorldRoot) pixiWorldRoot.visible = true;
+    if (pixiScreenRoot) pixiScreenRoot.visible = true;
     showOverlayMessage("RETURNED FROM WARP", '#0ff', 1800, 2);
 }
 
@@ -14489,6 +14631,28 @@ function gameLoopLogic(opts = null) {
     const now = Date.now();
     frameNow = now;
     const warpActive = !!(warpZone && warpZone.active);
+
+    if (warpExitPending) {
+        if (doUpdate && now >= warpExitEndsAt) {
+            finalizeWarpExit();
+        }
+        if (warpExitPending && doDraw) {
+            if (pixiWorldRoot) pixiWorldRoot.visible = false;
+            if (pixiScreenRoot) pixiScreenRoot.visible = false;
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+            const remaining = Math.max(0, Math.ceil((warpExitEndsAt - now) / 1000));
+            ctx.fillStyle = '#0ff';
+            ctx.font = 'bold 36px Courier New';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`RETURNING IN ${remaining}`, width / 2, height / 2);
+            ctx.font = 'bold 16px Courier New';
+            ctx.fillText('EXITING WARP', width / 2, height / 2 + 32);
+        }
+        if (warpExitPending) return;
+    }
 
     if (doUpdate) {
         globalProfiler.start('Update');
