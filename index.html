@@ -353,6 +353,28 @@
             flex-direction: column;
             align-items: center;
             gap: 10px;
+            max-height: calc(80vh - 120px); /* Account for header and padding */
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-right: 10px; /* Space for scrollbar */
+        }
+
+        .meta-shop::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .meta-shop::-webkit-scrollbar-track {
+            background: rgba(0, 20, 0, 0.3);
+            border-radius: 4px;
+        }
+
+        .meta-shop::-webkit-scrollbar-thumb {
+            background: #0f0;
+            border-radius: 4px;
+        }
+
+        .meta-shop::-webkit-scrollbar-thumb:hover {
+            background: #4f4;
         }
 
         .meta-grid {
@@ -365,6 +387,12 @@
         .meta-item button {
             width: 100%;
             box-sizing: border-box;
+        }
+
+        .meta-item.selected {
+            background: rgba(0, 255, 0, 0.2);
+            border: 2px solid #0f0;
+            box-shadow: 0 0 10px #0f0;
         }
 
         .meta-item span {
@@ -543,6 +571,12 @@
             </div>
         </div>
         <button id="new-profile-btn">NEW PROFILE</button>
+    </div>
+
+    <div id="upgrades-menu"
+        style="display: none; position: absolute; top: 10%; left: 50%; transform: translateX(-50%); width: 800px; max-height: 80vh; background: rgba(0, 10, 20, 0.95); border: 2px solid #ff0; padding: 20px; z-index: 100; text-align: center;">
+        <h2 style="color: #ff0; margin-top: 0; font-family: 'Courier New', monospace;">META SHOP</h2>
+        <button id="upgrades-back-btn" style="position: absolute; top: 10px; right: 10px; padding: 5px 15px; border-color: #ff0; color: #fff; background: rgba(255, 0, 0, 0.3); z-index: 101;">BACK</button>
         <div id="meta-shop" class="meta-shop">
             <div>Meta Nuggets: <span id="meta-bank">0</span></div>
             <div class="meta-grid">
@@ -574,14 +608,6 @@
                 <div class="meta-item"><button id="buy-drone">DRONE FABRICATOR</button><span id="meta-drone"></span>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <div id="upgrades-menu"
-        style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; background: rgba(0, 10, 20, 0.95); border: 2px solid #ff0; padding: 20px; z-index: 100; text-align: center;">
-        <h2 style="color: #ff0; margin-top: 0; font-family: 'Courier New', monospace;">UPGRADES</h2>
-        <div id="upgrades-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px;">
-            <button id="upgrades-back-btn" style="padding: 5px 15px; border-color: #ff0; color: #fff; background: rgba(255, 0, 0, 0.3);">BACK</button>
         </div>
     </div>
 

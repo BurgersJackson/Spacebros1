@@ -13989,11 +13989,13 @@ function updateGamepad() {
         if (activeElements.length > 0) {
             let change = 0;
 
+            // Use simple linear navigation for all menus (same as main menu)
+            // Standard menu navigation (linear)
             // Vertical (Up/Down) - Standard Menus
             if (gp.axes[1] < -0.5 || gp.buttons[12].pressed) change = -1;
             if (gp.axes[1] > 0.5 || gp.buttons[13].pressed) change = 1;
 
-            // Horizontal (Left/Right) - Upgrade Cards
+            // Horizontal (Left/Right) - also wraps around like main menu
             if (gp.axes[0] < -0.5 || gp.buttons[14].pressed) change = -1;
             if (gp.axes[0] > 0.5 || gp.buttons[15].pressed) change = 1;
 
@@ -14001,6 +14003,9 @@ function updateGamepad() {
                 menuSelectionIndex += change;
                 if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
                 if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
+            }
+
+            if (change !== 0 || change === 'grid') {
                 updateMenuVisuals(activeElements);
                 menuDebounce = now;
             }
@@ -14041,10 +14046,30 @@ function updateMenuVisuals(elements) {
     elements.forEach((el, idx) => {
         if (idx === menuSelectionIndex) {
             el.classList.add('selected');
-            if (el.tagName === 'BUTTON') el.focus();
+            if (el.tagName === 'BUTTON') {
+                el.focus();
+                // For shop buttons, also highlight the parent meta-item and scroll into view
+                const metaItem = el.closest('.meta-item');
+                if (metaItem) {
+                    metaItem.classList.add('selected');
+                    // Scroll the selected item into view
+                    metaItem.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'nearest',
+                        inline: 'nearest'
+                    });
+                }
+            }
         } else {
             el.classList.remove('selected');
-            if (el.tagName === 'BUTTON') el.blur();
+            if (el.tagName === 'BUTTON') {
+                el.blur();
+                // For shop buttons, also remove highlight from parent meta-item
+                const metaItem = el.closest('.meta-item');
+                if (metaItem) {
+                    metaItem.classList.remove('selected');
+                }
+            }
         }
     });
 }
@@ -16574,6 +16599,7 @@ if (loadBtn) loadBtn.addEventListener('click', () => {
 });
 
 const upgradesBtn = document.getElementById('upgrades-btn');
+const upgradesBackBtn = document.getElementById('upgrades-back-btn');
 if (upgradesBtn) {
     upgradesBtn.addEventListener('click', () => {
         initAudio();
@@ -16581,66 +16607,65 @@ if (upgradesBtn) {
         showUpgradesMenu();
     });
 }
+if (upgradesBackBtn) {
+    upgradesBackBtn.addEventListener('click', () => {
+        // Hide upgrades menu
+        document.getElementById('upgrades-menu').style.display = 'none';
+        document.getElementById('upgrades-menu').style.visibility = 'hidden';
+
+        // Show start screen
+        document.getElementById('start-screen').style.display = 'block';
+        document.getElementById('start-screen').style.visibility = 'visible';
+
+        // Clear all menu selections
+        const allMenuElements = document.querySelectorAll('button, .upgrade-card, .meta-item');
+        allMenuElements.forEach(el => {
+            el.classList.remove('selected');
+            if (el.tagName === 'BUTTON') el.blur();
+        });
+
+// Wait one frame then setup start screen navigation
+requestAnimationFrame(() => {
+    menuSelectionIndex = 0;
+    const active = getActiveMenuElements();
+    if (active.length > 0) {
+        updateMenuVisuals(active);
+        active[0].focus();
+    }
+    // Prevent input during menu transition
+    menuDebounce = Date.now() + 300;
+});
+    });
+}
 
 function showUpgradesMenu() {
-    // Use same upgrade menu logic but for browsing from start menu
-    const container = document.getElementById('upgrade-container');
-    const parent = container.parentElement;
-    const existingReroll = document.getElementById('reroll-btn');
-    if (existingReroll) existingReroll.remove();
+    // Hide all menus first
+    document.getElementById('levelup-screen').style.display = 'none';
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('upgrades-menu').style.display = 'block';
 
-    // Filter Valid Upgrades
-    const validUpgrades = [];
-    UPGRADE_DATA.categories.forEach(cat => {
-        cat.upgrades.forEach(up => {
-            const currentTier = player.inventory[up.id] || 0;
-            if (currentTier < 3) {
-                validUpgrades.push({ ...up, category: cat.name });
-            }
-        });
+    // Clear any previous menu selections
+    const allMenuElements = document.querySelectorAll('button, .upgrade-card, .meta-item');
+    allMenuElements.forEach(el => {
+        el.classList.remove('selected');
+        if (el.tagName === 'BUTTON') el.blur();
     });
 
-    // Pick 3 Random
-    const choices = [];
-    const count = Math.min(3, validUpgrades.length);
-    for (let i = 0; i < count; i++) {
-        const idx = Math.floor(Math.random() * validUpgrades.length);
-        choices.push(validUpgrades[idx]);
-        validUpgrades.splice(idx, 1);
+    // Update meta UI to show current values
+    updateMetaUI();
+
+// Wait one frame to ensure DOM has updated, then setup navigation
+requestAnimationFrame(() => {
+    menuSelectionIndex = 0;
+    const active = getActiveMenuElements();
+    if (active.length > 0) {
+        updateMenuVisuals(active);
+        // Force focus on the first button
+        active[0].focus();
     }
-
-    // Create DOM (similar to showLevelUpMenu)
-    choices.forEach((choice, index) => {
-        const currentTier = player.inventory[choice.id] || 0;
-        const nextTier = currentTier + 1;
-        const desc = choice[`tier${nextTier}`];
-
-        const card = document.createElement('div');
-        card.className = 'upgrade-card';
-        card.innerHTML = `
-                    <div class="upgrade-title">${choice.name}</div>
-                    <div style="color:#aaa; font-size:12px; margin-bottom:10px">${choice.category}</div>
-                    <div class="upgrade-desc">${desc}</div>
-                    <div style="font-size:12px; color:#888; margin-top:10px">${choice.notes}</div>
-                `;
-
-        card.onmouseenter = () => {
-            menuSelectionIndex = index;
-            const active = getActiveMenuElements();
-            updateMenuVisuals(active);
-        };
-
-        card.onclick = () => {
-            applyUpgrade(choice.id, nextTier);
-            // Return to start menu (don't resume game, just show updates)
-            document.getElementById('levelup-screen').style.display = 'none';
-            document.getElementById('upgrades-menu').style.display = 'none';
-            document.getElementById('start-screen').style.display = 'block';
-        };
-        container.appendChild(card);
-    });
-
-    document.getElementById('levelup-screen').style.display = 'flex';
+    // Prevent input during menu transition
+    menuDebounce = Date.now() + 300;
+});
 }
 const newProfileBtn = document.getElementById('new-profile-btn');
 if (newProfileBtn) newProfileBtn.addEventListener('click', () => {
@@ -16957,7 +16982,26 @@ if (settingsBtn) {
     }
 }
 
-document.getElementById('start-btn').focus();
+// Robust menu initialization for start screen
+document.getElementById('levelup-screen').style.display = 'none';
+document.getElementById('upgrades-menu').style.display = 'none';
+document.getElementById('start-screen').style.display = 'block';
+
+const allMenuElements = document.querySelectorAll('button, .upgrade-card, .meta-item');
+allMenuElements.forEach(el => {
+    el.classList.remove('selected');
+    if (el.tagName === 'BUTTON') el.blur();
+});
+
+requestAnimationFrame(() => {
+    menuSelectionIndex = 0;
+    const initialActiveElements = getActiveMenuElements();
+    if (initialActiveElements.length > 0) {
+        updateMenuVisuals(initialActiveElements);
+        initialActiveElements[0].focus();
+    }
+});
+
 loadMetaProfile();
 updateMetaUI();
 mainLoop();
