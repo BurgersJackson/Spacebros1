@@ -8,6 +8,8 @@ export const ZOOM_LEVEL = 0.4;
 export const SPRITE_RENDER_SCALE = 2.5; // Compensate for low zoom level
 
 // --- Simulation Constants ---
+// Game now uses variable timestep instead of fixed 60fps
+// SIM_FPS is kept for backwards compatibility but not used for timing
 export const SIM_FPS = 60;
 export const SIM_STEP_MS = 1000 / SIM_FPS;
 export const SIM_MAX_STEPS_PER_FRAME = 4; // Prevent spiral-of-death (fewer steps needed at 60Hz)

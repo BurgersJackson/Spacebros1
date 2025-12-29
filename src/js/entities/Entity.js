@@ -27,11 +27,15 @@ export class Entity {
 
     /**
      * Update entity position based on velocity.
+     * @param {number} deltaTime - Time elapsed since last update in milliseconds
      */
-    update() {
+    update(deltaTime = 16.67) {
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
-        this.pos.add(this.vel);
+        // Scale velocity by deltaTime to maintain consistent movement across different frame rates
+        const scale = deltaTime / 16.67; // 16.67ms = 1/60th second
+        this.pos.x += this.vel.x * scale;
+        this.pos.y += this.vel.y * scale;
     }
 
     /**
