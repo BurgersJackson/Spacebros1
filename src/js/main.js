@@ -14031,6 +14031,9 @@ function getActiveMenuElements() {
         const cards = Array.from(document.querySelectorAll('.upgrade-card'));
         return elements.concat(cards);
     }
+    if (document.getElementById('upgrades-menu').style.display !== 'none') {
+        return Array.from(document.querySelectorAll('#upgrades-menu button'));
+    }
     return [];
 }
 
@@ -16591,6 +16594,76 @@ if (loadBtn) loadBtn.addEventListener('click', () => {
     initAudio();
     loadGameFromStorage();
 });
+
+const upgradesBtn = document.getElementById('upgrades-btn');
+if (upgradesBtn) {
+    upgradesBtn.addEventListener('click', () => {
+        initAudio();
+        // Show upgrades menu (similar to levelup menu but from start menu)
+        showUpgradesMenu();
+    });
+}
+
+function showUpgradesMenu() {
+    // Use same upgrade menu logic but for browsing from start menu
+    const container = document.getElementById('upgrade-container');
+    const parent = container.parentElement;
+    const existingReroll = document.getElementById('reroll-btn');
+    if (existingReroll) existingReroll.remove();
+
+    // Filter Valid Upgrades
+    const validUpgrades = [];
+    UPGRADE_DATA.categories.forEach(cat => {
+        cat.upgrades.forEach(up => {
+            const currentTier = player.inventory[up.id] || 0;
+            if (currentTier < 3) {
+                validUpgrades.push({ ...up, category: cat.name });
+            }
+        });
+    });
+
+    // Pick 3 Random
+    const choices = [];
+    const count = Math.min(3, validUpgrades.length);
+    for (let i = 0; i < count; i++) {
+        const idx = Math.floor(Math.random() * validUpgrades.length);
+        choices.push(validUpgrades[idx]);
+        validUpgrades.splice(idx, 1);
+    }
+
+    // Create DOM (similar to showLevelUpMenu)
+    choices.forEach((choice, index) => {
+        const currentTier = player.inventory[choice.id] || 0;
+        const nextTier = currentTier + 1;
+        const desc = choice[`tier${nextTier}`];
+
+        const card = document.createElement('div');
+        card.className = 'upgrade-card';
+        card.innerHTML = `
+                    <div class="upgrade-title">${choice.name}</div>
+                    <div style="color:#aaa; font-size:12px; margin-bottom:10px">${choice.category}</div>
+                    <div class="upgrade-desc">${desc}</div>
+                    <div style="font-size:12px; color:#888; margin-top:10px">${choice.notes}</div>
+                `;
+
+        card.onmouseenter = () => {
+            menuSelectionIndex = index;
+            const active = getActiveMenuElements();
+            updateMenuVisuals(active);
+        };
+
+        card.onclick = () => {
+            applyUpgrade(choice.id, nextTier);
+            // Return to start menu (don't resume game, just show updates)
+            document.getElementById('levelup-screen').style.display = 'none';
+            document.getElementById('upgrades-menu').style.display = 'none';
+            document.getElementById('start-screen').style.display = 'block';
+        };
+        container.appendChild(card);
+    });
+
+    document.getElementById('levelup-screen').style.display = 'flex';
+}
 const newProfileBtn = document.getElementById('new-profile-btn');
 if (newProfileBtn) newProfileBtn.addEventListener('click', () => {
     if (confirm("Reset profile? This clears all nugs/stats and saved profiles.")) {

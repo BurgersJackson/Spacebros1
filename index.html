@@ -502,6 +502,7 @@
         <button id="resume-btn-start">RESUME GAME</button>
         <button id="start-btn">INITIATE LAUNCH</button>
         <button id="load-btn">LOAD DATA</button>
+        <button id="upgrades-btn" style="margin-top: 10px;">UPGRADES</button>
         <button id="settings-btn" style="margin-top: 10px;">SETTINGS</button>
         <button id="desktop-quit-start-btn" style="margin-top: 10px;">QUIT TO DESKTOP</button>
         <div id="settings-menu"
@@ -573,6 +574,14 @@
                 <div class="meta-item"><button id="buy-drone">DRONE FABRICATOR</button><span id="meta-drone"></span>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div id="upgrades-menu"
+        style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; background: rgba(0, 10, 20, 0.95); border: 2px solid #ff0; padding: 20px; z-index: 100; text-align: center;">
+        <h2 style="color: #ff0; margin-top: 0; font-family: 'Courier New', monospace;">UPGRADES</h2>
+        <div id="upgrades-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px;">
+            <button id="upgrades-back-btn" style="padding: 5px 15px; border-color: #ff0; color: #fff; background: rgba(255, 0, 0, 0.3);">BACK</button>
         </div>
     </div>
 
