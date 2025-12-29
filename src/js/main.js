@@ -13000,7 +13000,8 @@ function resolveEntityCollision() {
                         if (b.hp <= 0) {
                             b.dead = true;
                             playSound('base_explode');
-                            spawnParticles(b.pos.x, b.pos.y, 50, '#f0f');
+                            const boomScale = Math.max(0.9, Math.min(2.6, (b.radius || 30) / 40));
+                            spawnFieryExplosion(b.pos.x, b.pos.y, boomScale);
                             for (let i = 0; i < 6; i++) coins.push(new Coin(b.pos.x + (Math.random() - 0.5) * 50, b.pos.y + (Math.random() - 0.5) * 50, 5));
                             nuggets.push(new SpaceNugget(b.pos.x, b.pos.y, 1));
                             basesDestroyed++;
@@ -15169,7 +15170,8 @@ function gameLoopLogic(opts = null) {
                                     if (e.hp <= 0) {
                                         e.dead = true;
                                         playSound('base_explode');
-                                        spawnParticles(e.pos.x, e.pos.y, 50, '#f0f');
+                                        const boomScale = Math.max(0.9, Math.min(2.6, (e.radius || 30) / 40));
+                                        spawnFieryExplosion(e.pos.x, e.pos.y, boomScale);
 
                                         // DROP COINS
                                         const caveActive = (caveMode && caveLevel && caveLevel.active);
