@@ -1,0 +1,29 @@
+SPACEBROS1 - GAME CONTROLS & SHORTCUTS
+
+MOVEMENT & COMBAT
+=================
+W / w             : Move Forward / Thrust
+A / a             : Rotate Left
+S / s             : Move Backward / Brake
+D / d             : Rotate Right
+Space             : Fire Primary Weapon
+E / e             : Turbo Boost (Requires 'Turbo Boost' upgrade)
+Shift             : Warp / Phase Jump (Requires 'Warp Pre-charge' upgrade)
+Escape            : Pause / Resume Game
+Mouse Move        : Aim Turret
+Left Click        : Fire Primary Weapon (Alternative to Space)
+
+MENU NAVIGATION
+===============
+Mouse Hover       : Select menu items / Upgrade cards
+Mouse Click       : Activate selected item
+Tab / Enter       : Standard browser navigation (Select / Activate)
+Gamepad Support   : D-Pad/Left Stick to navigate, 'A' to select
+
+DEBUG SHORTCUTS (Ctrl + Shift + Key)
+====================================
+Ctrl + Shift + 3  : Spawn Cruiser boss instantly
+Ctrl + Shift + K  : Instantly destroy current Space Station
+Ctrl + Shift + 2  : Warp directly to Sector 2 Cave
+Ctrl + Shift + W  : Enter Warp Maze instantly
+Ctrl + Shift + Q  : Exit Warp Maze (Placeholder)

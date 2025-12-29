@@ -253,3 +253,5 @@ For any future warp-specific entities:
 - `PICKUP_FIX_FINAL.md` - Pickup sprite cleanup
 - `JITTER_FIXES.md` - Jitter monitoring and fixes
 
+
+

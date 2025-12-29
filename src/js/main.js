@@ -1046,26 +1046,6 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
         pixiTextures.coin5 = makeCoin(0xffff00);  // All coins are gold
         pixiTextures.coin10 = makeCoin(0xffff00); // All coins are gold
 
-        const makeGateKey = () => {
-            const g = new PIXI.Graphics();
-            g.lineStyle(2, 0xffffff, 1);
-            g.beginFill(0xffff00, 1);
-            g.drawCircle(0, 0, 8);
-            g.endFill();
-            // key shaft
-            g.beginFill(0xffff00, 1);
-            g.drawPolygon([8, 0, 22, 0, 22, 6, 18, 6, 18, 2, 8, 2]);
-            g.endFill();
-            g.lineStyle(2, 0xffffff, 1);
-            g.drawCircle(0, 0, 8);
-            g.drawPolygon([8, 0, 22, 0, 22, 6, 18, 6, 18, 2, 8, 2]);
-            // glow
-            g.lineStyle(14, 0xffff00, 0.10);
-            g.drawCircle(0, 0, 8);
-            return genTexture(g).tex;
-        };
-        pixiTextures.gateKey = makeGateKey();
-
         const makeHealth = () => {
             const g = new PIXI.Graphics();
             // glow behind
@@ -1734,6 +1714,7 @@ let width, height;
 let animationId;
 let gameActive = false;
 let gamePaused = false;
+let canResumeGame = false; // Only true after quitting to menu from pause menu
 
 // ZOOM_LEVEL imported from ./core/constants.js
 let currentZoom = ZOOM_LEVEL;
@@ -2097,14 +2078,10 @@ function completeSectorWarp() {
     nextMiniEventAt = Date.now() + 120000;
     scheduleNextMiniEvent(Date.now() + 20000);
     clearArrayWithPixiCleanup(pois);
-    gateKeys = 0;
-    clearArrayWithPixiCleanup(gateKeyItems);
-    flagshipWarpZone = null;
     warpCompletedOnce = false;
     caveMode = false;
     caveLevel = null;
-    flagshipSpawned = false;
-    flagshipSpawnAt = 0;
+    warpGateUnlocked = false;
 
     // Avoid rebuilding stars/nebula when entering Sector 2 cave (background is hidden there).
     if (sectorIndex !== 2) initStars(); // update nebula palette
@@ -2143,6 +2120,7 @@ function endGame(elapsedMs) {
     gameEnded = true;
     gameActive = false;
     gamePaused = false;
+    canResumeGame = false; // Game ended - can't resume
     stopMusic();
     try {
         depositMetaNuggets();
@@ -2163,6 +2141,11 @@ function endGame(elapsedMs) {
         const btn = document.getElementById('restart-btn');
         if (btn) btn.focus();
     }, 100);
+
+    // Update resume button state
+    if (window.updateResumeButtonState) {
+        window.updateResumeButtonState();
+    }
 }
 
 function handleSpaceStationDestroyed() {
@@ -2173,10 +2156,10 @@ function handleSpaceStationDestroyed() {
     spawnParticles(sx, sy, 200, '#fff');
     for (let k = 0; k < 50; k++) coins.push(new Coin(sx + (Math.random() - 0.5) * 200, sy + (Math.random() - 0.5) * 200, 10));
     for (let k = 0; k < 25; k++) nuggets.push(new SpaceNugget(sx + (Math.random() - 0.5) * 220, sy + (Math.random() - 0.5) * 220, 1));
-    gateKeyItems.push(new GateKey(sx, sy));
     showOverlayMessage("SPACE STATION DESTROYED", '#0f0', 5000);
     pixiCleanupObject(spaceStation);
     spaceStation = null;
+    warpGateUnlocked = true;
     score += 50000;
     if (pendingStations > 0 && !sectorTransitionActive) nextSpaceStationTime = Date.now() + 7000;
 }
@@ -4056,7 +4039,7 @@ class Enemy extends Entity {
             if (this.shieldRadius) this.shieldRadius = Math.round(this.shieldRadius * sizeMult);
         }
 
-        this.turnSpeed = (Math.PI * 2) / (8 * 60);
+        this.turnSpeed = (Math.PI * 2) / (4 * 60);
         this.smoothDir = new Vector(Math.random(), Math.random());
 
         this.aiState = 'SEEK';
@@ -5237,79 +5220,12 @@ class Base extends Entity {
 
 // SpaceNugget imported from ./entities/index.js
 
-class GateKey extends Entity {
+class WarpGate extends Entity {
     constructor(x, y) {
         super(x, y);
-        this._pixiPool = 'pickup';
-        this.radius = 14;
-        this.sprite = null;
-        this.vel.x = (Math.random() - 0.5) * 0.8;
-        this.vel.y = (Math.random() - 0.5) * 0.8;
-        this.magnetized = false;
-        this.t = 0;
-    }
-    update() {
-        if (!player || player.dead) return;
-        this.t++;
-        const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        if (dist < player.magnetRadius) this.magnetized = true;
-        if (this.magnetized) {
-            const a = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
-            const speed = 9 + (900 / Math.max(10, dist));
-            this.vel.x = Math.cos(a) * speed;
-            this.vel.y = Math.sin(a) * speed;
-        } else {
-            this.vel.mult(0.985);
-        }
-        this.pos.add(this.vel);
-
-        if (dist < player.radius + this.radius) {
-            this.dead = true;
-            gateKeys = Math.min(99, gateKeys + 1);
-            showOverlayMessage(`GATE KEY ACQUIRED (${gateKeys}/3)`, '#ff0', 1600);
-            playSound('powerup');
-            player.addXp(15);
-        }
-    }
-    draw(ctx) {
-        if (this.dead) {
-            if (this.sprite && pixiPickupSpritePool) {
-                releasePixiSprite(pixiPickupSpritePool, this.sprite);
-                this.sprite = null;
-            }
-            return;
-        }
-        if (pixiPickupLayer && pixiTextures && pixiTextures.gateKey) {
-            const tex = pixiTextures.gateKey;
-            let spr = this.sprite;
-            if (!spr) {
-                spr = allocPixiSprite(pixiPickupSpritePool, pixiPickupLayer, tex, null, 0.5);
-                this.sprite = spr;
-            }
-            if (spr) {
-                spr.texture = tex;
-                if (!spr.parent) pixiPickupLayer.addChild(spr);
-                spr.visible = true;
-                spr.position.set(this.pos.x, this.pos.y);
-                const base = (this.radius * 2) / Math.max(1, Math.max(tex.width, tex.height));
-                spr.scale.set(base);
-                spr.rotation = this.t * 0.08;
-                spr.tint = 0xffffff;
-                spr.alpha = 1;
-                spr.blendMode = PIXI.BLEND_MODES.ADD;
-                return;
-            }
-        }
-
-    }
-}
-
-class WarpGate extends Entity {
-    constructor(x, y, mode = 'entry') {
-        super(x, y);
-        this.mode = mode; // 'entry' (world) | 'exit' (warp)
         this.radius = 140;
         this.t = 0;
+        this.mode = 'entry';
     }
     update() {
         if (!player || player.dead) return;
@@ -5317,30 +5233,14 @@ class WarpGate extends Entity {
         const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
         if (dist > this.radius + player.radius) return;
 
-        if (this.mode === 'entry') {
-            if (warpCompletedOnce) {
-                showOverlayMessage("WARP ALREADY USED THIS SECTOR", '#f80', 1200, 2);
-                return;
-            }
-            if (gateKeys < 2) {
-                showOverlayMessage("WARP GATE LOCKED (NEED 2 KEYS)", '#ff0', 1200);
-                return;
-            }
-            if (warpZone && warpZone.active) return;
-            showOverlayMessage("WARP INITIATED", '#0ff', 1400, 3);
-            playSound('contract');
-            enterWarpMaze();
-        } else if (this.mode === 'exit') {
-            if (!warpZone || !warpZone.active) return;
-            const bossEngaged = (warpZone.state === 'boss') || (bossActive && boss && boss.isWarpBoss && !boss.dead);
-            if (bossEngaged && !warpZone.exitUnlocked) {
-                showOverlayMessage("EXIT SEALED - DEFEAT THE SENTINEL", '#f0f', 1400, 3);
-                return;
-            }
-            showOverlayMessage(bossEngaged ? "WARP EXIT STABILIZED" : "RETREATING FROM WARP", '#0ff', 1200, 3);
-            playSound('contract');
-            exitWarpMaze();
+        if (warpCompletedOnce) {
+            showOverlayMessage("WARP ALREADY USED THIS SECTOR", '#f80', 1200, 2);
+            return;
         }
+        if (warpZone && warpZone.active) return;
+        showOverlayMessage("WARP INITIATED", '#0ff', 1400, 3);
+        playSound('contract');
+        enterWarpMaze();
     }
     draw(ctx) {
         if (this.dead) {
@@ -5400,91 +5300,8 @@ class WarpGate extends Entity {
     }
 }
 
-class FlagshipWarpZone extends Entity {
-    constructor(x, y) {
-        super(x, y);
-        this.radius = 3200;
-        this.t = 0;
-        this.activated = false;
-    }
-    update() {
-        if (this.dead) {
-            pixiCleanupObject(this);
-            return;
-        }
-        this.t++;
-        if (!player || player.dead) return;
-        if (warpZone && warpZone.active) return;
-        if (sectorTransitionActive) return;
-        if (bossActive) return;
-
-        const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        if (!this.activated && d < this.radius + 900) {
-            this.activated = true;
-            showOverlayMessage("FLAGSHIP WARP ZONE - ENTER TO ENGAGE", '#f0f', 2200, 2);
-        }
-
-        if (d < this.radius) {
-            beginFlagshipFight(this.pos.x, this.pos.y, this.radius);
-            this.dead = true;
-        }
-    }
-    draw(ctx) {
-        if (this.dead) {
-            pixiCleanupObject(this);
-            return;
-        }
-
-        if (pixiWorldRoot) {
-            let container = this._pixiContainer;
-            if (!container) {
-                container = new PIXI.Container();
-                this._pixiContainer = container;
-                pixiWorldRoot.addChildAt(container, 0); // Very bottom
-
-                const g = new PIXI.Graphics();
-                container.addChild(g);
-                this._pixiGfx = g;
-
-                const text = new PIXI.Text('FLAGSHIP', {
-                    fontFamily: 'Courier New',
-                    fontSize: 22,
-                    fontWeight: 'bold',
-                    fill: '#ffffff',
-                    align: 'center',
-                    dropShadow: true,
-                    dropShadowColor: '#000000',
-                    dropShadowBlur: 4,
-                    dropShadowDistance: 0
-                });
-                text.anchor.set(0.5);
-                container.addChild(text);
-                this._pixiText = text;
-            }
-            container.visible = true;
-            container.position.set(this.pos.x, this.pos.y);
-
-            const pulse = 0.45 + Math.abs(Math.sin(this.t * 0.02)) * 0.35;
-            const g = this._pixiGfx;
-            g.clear();
-
-            // Ring
-            g.lineStyle(8, 0xff00ff, 0.25 + pulse);
-            g.drawCircle(0, 0, this.radius);
-
-            // Text Position (top)
-            this._pixiText.position.set(0, -this.radius - 48);
-
-            return;
-        }
-    }
-}
-
 function beginFlagshipFight(cx, cy, radius = 1875) {
     if (bossActive || sectorTransitionActive) return;
-    // Clear the zone marker.
-    try { if (flagshipWarpZone) flagshipWarpZone.dead = true; } catch (e) { }
-    flagshipWarpZone = null;
 
     // Start the fight without wiping the whole world (regular asteroids + roaming enemies remain).
     boss = new Flagship({ x: cx, y: cy - 2200 });
@@ -9291,8 +9108,6 @@ class Cruiser extends Enemy {
         for (let i = 0; i < 5; i++) {
             nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 1));
         }
-        // Gate key progression: each cruiser drops one key
-        gateKeyItems.push(new GateKey(this.pos.x, this.pos.y));
         powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
         bossActive = false;
         bossArena.active = false;
@@ -9798,10 +9613,6 @@ class Flagship extends Cruiser {
         bossArena.growing = false;
         boss = null;
 
-        // Keep gate progression/items intact after flagship kill
-        flagshipSpawned = false;
-        flagshipSpawnAt = 0;
-
         showOverlayMessage("FLAGSHIP DESTROYED - WARP CORE CHARGING", '#0ff', 3500, 2);
         // Keep world entities intact; just drop the arena lock on flagship kill.
     }
@@ -10172,13 +9983,10 @@ class WarpSentinelBoss extends Entity {
         // instead of exploding all bombs at once which causes sprite pool exhaustion
         scheduleStaggeredBombExplosions(this.pos.x, this.pos.y);
 
-        // Key reward for exiting the warp.
-        gateKeyItems.push(new GateKey(this.pos.x, this.pos.y));
-        if (warpZone && warpZone.active) {
-            warpZone.exitUnlocked = true;
-            warpZone.state = 'escape';
-        }
-        showOverlayMessage("SENTINEL DOWN - KEY DROPPED", '#ff0', 2600, 3);
+        // Start 10-second countdown to level 2
+        sectorTransitionActive = true;
+        warpCountdownAt = Date.now() + 10000; // 10 seconds
+        showOverlayMessage("SENTINEL DOWN - LEVEL 2 IN 10s", '#ff0', 2600, 3);
         bossActive = false;
         if (boss) pixiCleanupObject(boss);
         boss = null;
@@ -11111,22 +10919,13 @@ let nextRadiationStormAt = 0;
 let miniEvent = null;
 let nextMiniEventAt = 0;
 let pois = [];
-let gateKeys = 0;
-let gateKeyItems = [];
 let warpGate = null;
 let warpZone = null;
-let warpSnapshot = null;
-let warpExitPending = false;
-let warpExitEndsAt = 0;
-let warpExitStartedAt = 0;
-const WARP_EXIT_DELAY_MS = 1000;
+let warpGateUnlocked = false;
 // Per-sector limiter: only allow entering the warp maze once per sector.
 let warpCompletedOnce = false;
-let flagshipWarpZone = null;
 let caveMode = false;
 let caveLevel = null;
-let flagshipSpawned = false;
-let flagshipSpawnAt = 0;
 let nextShootingStarTime = 0;
 let nextIntensityBreakAt = 0;
 let intensityBreakActive = false;
@@ -11200,77 +10999,20 @@ function compactArray(arr) {
     arr.length = alive;
 }
 
-function snapshotWorldForWarp() {
-    return {
-        warpEnteredAt: Date.now(),
-        playerPos: { x: player.pos.x, y: player.pos.y },
-        playerVel: { x: player.vel.x, y: player.vel.y },
-
-        // Arrays / entities
-        bullets,
-        bossBombs,
-        staggeredBombExplosions, // Save staggered explosions state
-        staggeredParticleBursts, // Save staggered particle bursts
-        guidedMissiles,
-        enemies,
-        bases,
-        particles,
-        explosions,
-        floatingTexts,
-        coins,
-        nuggets,
-        powerups,
-        shootingStars,
-        drones,
-        caches,
-        pois,
-        gateKeyItems,
-        environmentAsteroids,
-        asteroidRespawnTimers,
-        baseRespawnTimers,
-
-        radiationStorm,
-        nextRadiationStormAt,
-        miniEvent,
-        nextMiniEventAt,
-
-        activeContract,
-        nextContractAt,
-        contractSequence,
-        contractEntities,
-
-        boss,
-        bossActive,
-        bossArena: { ...bossArena },
-
-        spaceStation,
-        pendingStations,
-        nextSpaceStationTime,
-
-        roamerRespawnQueue,
-        maxRoamers,
-        gunboatRespawnAt,
-        dreadManager: { ...dreadManager },
-
-        nextShootingStarTime,
-        nextIntensityBreakAt,
-        intensityBreakActive
-    };
-}
+// NOTE: snapshotWorldForWarp removed - we no longer save/restore level 1 state
+// Level 1 is deleted when entering warp zone
+// Level 1 is deleted when entering warp zone
 
 function enterWarpMaze() {
     if (warpZone && warpZone.active) return;
-    if (warpSnapshot) return;
     if (warpCompletedOnce) {
         showOverlayMessage("WARP ALREADY USED THIS SECTOR", '#f80', 1200, 2);
         return;
     }
     warpCompletedOnce = true;
-    warpSnapshot = snapshotWorldForWarp();
 
-    // Clear world to make a controlled encounter space.
+    // Clear world to make a controlled encounter space - NO SNAPSHOT, level 1 is deleted
     resetPixiOverlaySprites();
-    // Important: `warpSnapshot` holds references to the current arrays; do not clear them in-place.
     const detach = (arr) => {
         if (!arr || arr.length === 0) return;
         for (let i = 0; i < arr.length; i++) pixiCleanupObject(arr[i]);
@@ -11290,7 +11032,6 @@ function enterWarpMaze() {
     detach(drones);
     detach(caches);
     detach(pois);
-    detach(gateKeyItems);
     detach(environmentAsteroids);
 
     bullets = [];
@@ -11310,7 +11051,6 @@ function enterWarpMaze() {
     drones = [];
     caches = [];
     pois = [];
-    gateKeyItems = [];
     environmentAsteroids = [];
     asteroidRespawnTimers = [];
     baseRespawnTimers = [];
@@ -11336,9 +11076,9 @@ function enterWarpMaze() {
     maxRoamers = 0;
     gunboatRespawnAt = null;
 
-    // Spawn warp zone far away from the world origin to avoid any overlap.
-    const originX = warpSnapshot.playerPos.x + 120000;
-    const originY = warpSnapshot.playerPos.y + 120000;
+    // Spawn warp zone at origin since we're deleting level 1 anyway
+    const originX = 0;
+    const originY = 0;
     warpZone = new WarpMazeZone(originX, originY);
     warpZone.generate();
 
@@ -11355,18 +11095,12 @@ function enterWarpMaze() {
         seedTries++;
     }
 
-    if (warpGate) {
-        pixiCleanupObject(warpGate);
-        warpGate = null;
-    }
-    warpGate = new WarpGate(warpZone.exitPos.x, warpZone.exitPos.y, 'exit');
 }
 
 function resetWarpState() {
     // Hard-reset all warp state so a fresh run can't inherit "in-warp" flags. 
     try { if (warpZone) warpZone.active = false; } catch (e) { }
     warpZone = null;
-    warpSnapshot = null;
     if (warpGate) pixiCleanupObject(warpGate);
     warpGate = null;
 }
@@ -11379,7 +11113,7 @@ function resetCaveState() {
 }
 
 function exitWarpMaze() {
-    if (!warpSnapshot || warpExitPending) return;
+    if (!warpZone || !warpZone.active) return;
     const completedRun = !!(warpZone && warpZone.exitUnlocked);
     if (warpZone && warpZone.active) warpZone.active = false;
 
@@ -11473,7 +11207,6 @@ function exitWarpMaze() {
     cleanupWarpArray(drones, 'warp drones');
     cleanupWarpArray(caches, 'warp caches');
     cleanupWarpArray(pois, 'warp POIs');
-    cleanupWarpArray(gateKeyItems, 'warp gate key items');
     cleanupWarpArray(environmentAsteroids, 'warp asteroids');
     if (boss && boss.isWarpBoss) {
         try {
@@ -11504,230 +11237,20 @@ function exitWarpMaze() {
     drones.length = 0;
     caches.length = 0;
     pois.length = 0;
-    gateKeyItems.length = 0;
     environmentAsteroids.length = 0;
 
     // Clear Pixi overlay sprites (includes warp zone walls/gates)
     resetPixiOverlaySprites();
     cleanupPixiWorldRootExtras();
 
-    // Start warp exit countdown before restoring the snapshot.
-    warpExitPending = true;
-    warpExitStartedAt = Date.now();
-    warpExitEndsAt = warpExitStartedAt + WARP_EXIT_DELAY_MS;
-    return;
-
-    // Restore world from snapshot.
-    bullets = warpSnapshot.bullets;
-    bossBombs = warpSnapshot.bossBombs;
-    staggeredBombExplosions = warpSnapshot.staggeredBombExplosions || [];
-    staggeredParticleBursts = warpSnapshot.staggeredParticleBursts || [];
-    guidedMissiles = warpSnapshot.guidedMissiles;
-    enemies = warpSnapshot.enemies;
-    bases = warpSnapshot.bases;
-    particles = warpSnapshot.particles;
-    explosions = warpSnapshot.explosions || [];
-    floatingTexts = warpSnapshot.floatingTexts;
-    coins = warpSnapshot.coins;
-    nuggets = warpSnapshot.nuggets;
-    powerups = warpSnapshot.powerups;
-    shootingStars = warpSnapshot.shootingStars;
-    drones = warpSnapshot.drones;
-    caches = warpSnapshot.caches;
-    pois = warpSnapshot.pois;
-    gateKeyItems = warpSnapshot.gateKeyItems;
-    environmentAsteroids = warpSnapshot.environmentAsteroids;
-    asteroidRespawnTimers = warpSnapshot.asteroidRespawnTimers;
-    baseRespawnTimers = warpSnapshot.baseRespawnTimers;
-
-    radiationStorm = warpSnapshot.radiationStorm;
-    nextRadiationStormAt = warpSnapshot.nextRadiationStormAt;
-    miniEvent = warpSnapshot.miniEvent;
-    nextMiniEventAt = warpSnapshot.nextMiniEventAt;
-
-    activeContract = warpSnapshot.activeContract;
-    nextContractAt = warpSnapshot.nextContractAt;
-    contractSequence = warpSnapshot.contractSequence;
-    contractEntities = warpSnapshot.contractEntities;
-
-    boss = warpSnapshot.boss;
-    bossActive = warpSnapshot.bossActive;
-    bossArena = { ...warpSnapshot.bossArena };
-
-    spaceStation = warpSnapshot.spaceStation;
-    pendingStations = warpSnapshot.pendingStations;
-    nextSpaceStationTime = warpSnapshot.nextSpaceStationTime;
-
-    roamerRespawnQueue = warpSnapshot.roamerRespawnQueue;
-    maxRoamers = warpSnapshot.maxRoamers;
-    gunboatRespawnAt = warpSnapshot.gunboatRespawnAt;
-    dreadManager = { ...warpSnapshot.dreadManager };
-    // Pause all absolute-time timers while inside the warp zone (game time played continues).
-    const warpDt = warpSnapshot && warpSnapshot.warpEnteredAt ? Math.max(0, Date.now() - warpSnapshot.warpEnteredAt) : 0;
-    if (warpDt > 0) {
-        const shiftIfNumber = (val) => (typeof val === 'number' && isFinite(val) && val > 0) ? (val + warpDt) : val;
-        const shiftArrayNumbers = (arr) => {
-            if (!Array.isArray(arr)) return arr;
-            for (let i = 0; i < arr.length; i++) {
-                if (typeof arr[i] === 'number' && isFinite(arr[i]) && arr[i] > 0) arr[i] += warpDt;
-            }
-            return arr;
-        };
-
-        nextRadiationStormAt = shiftIfNumber(nextRadiationStormAt);
-        nextMiniEventAt = shiftIfNumber(nextMiniEventAt);
-        nextContractAt = shiftIfNumber(nextContractAt);
-        nextSpaceStationTime = shiftIfNumber(nextSpaceStationTime);
-        nextShootingStarTime = shiftIfNumber(nextShootingStarTime);
-        nextIntensityBreakAt = shiftIfNumber(nextIntensityBreakAt);
-        gunboatRespawnAt = shiftIfNumber(gunboatRespawnAt);
-
-        asteroidRespawnTimers = shiftArrayNumbers(asteroidRespawnTimers);
-        baseRespawnTimers = shiftArrayNumbers(baseRespawnTimers);
-
-        if (dreadManager && dreadManager.timerActive && typeof dreadManager.timerAt === 'number') {
-            dreadManager.timerAt += warpDt;
-        }
-
-        if (radiationStorm && typeof radiationStorm.endsAt === 'number') {
-            radiationStorm.endsAt += warpDt;
-        }
-        if (miniEvent) {
-            if (typeof miniEvent.expiresAt === 'number') miniEvent.expiresAt += warpDt;
-            if (typeof miniEvent.nextWaveAt === 'number') miniEvent.nextWaveAt += warpDt;
-            if (typeof miniEvent.lastUpdateAt === 'number') miniEvent.lastUpdateAt = Date.now();
-        }
-        if (activeContract) {
-            if (typeof activeContract.endsAt === 'number') activeContract.endsAt += warpDt;
-        }
-    }
-
-    nextShootingStarTime = warpSnapshot.nextShootingStarTime;
-    nextIntensityBreakAt = warpSnapshot.nextIntensityBreakAt;
-    intensityBreakActive = warpSnapshot.intensityBreakActive;
-
-    // Player returns.
-    player.pos.x = warpSnapshot.playerPos.x;
-    player.pos.y = warpSnapshot.playerPos.y;
-    player.vel.x = warpSnapshot.playerVel.x;
-    player.vel.y = warpSnapshot.playerVel.y;
+    // NOTE: No longer restoring snapshots - we transition directly to level 2 after boss defeat
+    // This entire function now just cleans up warp entities
+    // The actual transition to level 2 is handled by sectorTransitionActive countdown in gameLoopLogic
 
     warpZone = null;
     warpGate = null;
-    warpSnapshot = null;
-    showOverlayMessage("RETURNED FROM WARP", '#0ff', 1800, 2);
 }
-
-function finalizeWarpExit() {
-    if (!warpSnapshot) return;
-    // Restore world from snapshot.
-    bullets = warpSnapshot.bullets;
-    bossBombs = warpSnapshot.bossBombs;
-    staggeredBombExplosions = warpSnapshot.staggeredBombExplosions || [];
-    staggeredParticleBursts = warpSnapshot.staggeredParticleBursts || [];
-    guidedMissiles = warpSnapshot.guidedMissiles;
-    enemies = warpSnapshot.enemies;
-    bases = warpSnapshot.bases;
-    particles = warpSnapshot.particles;
-    explosions = warpSnapshot.explosions || [];
-    floatingTexts = warpSnapshot.floatingTexts;
-    coins = warpSnapshot.coins;
-    nuggets = warpSnapshot.nuggets;
-    powerups = warpSnapshot.powerups;
-    shootingStars = warpSnapshot.shootingStars;
-    drones = warpSnapshot.drones;
-    caches = warpSnapshot.caches;
-    pois = warpSnapshot.pois;
-    gateKeyItems = warpSnapshot.gateKeyItems;
-    environmentAsteroids = warpSnapshot.environmentAsteroids;
-
-    asteroidRespawnTimers = warpSnapshot.asteroidRespawnTimers;
-    baseRespawnTimers = warpSnapshot.baseRespawnTimers;
-
-    radiationStorm = warpSnapshot.radiationStorm;
-    nextRadiationStormAt = warpSnapshot.nextRadiationStormAt;
-    miniEvent = warpSnapshot.miniEvent;
-    nextMiniEventAt = warpSnapshot.nextMiniEventAt;
-
-    activeContract = warpSnapshot.activeContract;
-    nextContractAt = warpSnapshot.nextContractAt;
-    contractSequence = warpSnapshot.contractSequence;
-    contractEntities = warpSnapshot.contractEntities;
-
-    boss = warpSnapshot.boss;
-    bossActive = warpSnapshot.bossActive;
-    bossArena = { ...warpSnapshot.bossArena };
-
-    spaceStation = warpSnapshot.spaceStation;
-    pendingStations = warpSnapshot.pendingStations;
-    nextSpaceStationTime = warpSnapshot.nextSpaceStationTime;
-
-    roamerRespawnQueue = warpSnapshot.roamerRespawnQueue;
-    maxRoamers = warpSnapshot.maxRoamers;
-    gunboatRespawnAt = warpSnapshot.gunboatRespawnAt;
-    dreadManager = { ...warpSnapshot.dreadManager };
-    // Pause all absolute-time timers while inside the warp zone (game time played continues).
-    const warpDt = warpSnapshot && warpSnapshot.warpEnteredAt ? Math.max(0, Date.now() - warpSnapshot.warpEnteredAt) : 0;
-    if (warpDt > 0) {
-        const shiftIfNumber = (val) => (typeof val === 'number' && isFinite(val) && val > 0) ? (val + warpDt) : val;
-        const shiftArrayNumbers = (arr) => {
-            if (!Array.isArray(arr)) return arr;
-            for (let i = 0; i < arr.length; i++) {
-                if (typeof arr[i] === 'number' && isFinite(arr[i]) && arr[i] > 0) arr[i] += warpDt;
-            }
-            return arr;
-        };
-
-        nextRadiationStormAt = shiftIfNumber(nextRadiationStormAt);
-        nextMiniEventAt = shiftIfNumber(nextMiniEventAt);
-        nextContractAt = shiftIfNumber(nextContractAt);
-        nextSpaceStationTime = shiftIfNumber(nextSpaceStationTime);
-        nextShootingStarTime = shiftIfNumber(nextShootingStarTime);
-        nextIntensityBreakAt = shiftIfNumber(nextIntensityBreakAt);
-        gunboatRespawnAt = shiftIfNumber(gunboatRespawnAt);
-
-        asteroidRespawnTimers = shiftArrayNumbers(asteroidRespawnTimers);
-        baseRespawnTimers = shiftArrayNumbers(baseRespawnTimers);
-
-        if (dreadManager && dreadManager.timerActive && typeof dreadManager.timerAt === 'number') {
-            dreadManager.timerAt += warpDt;
-        }
-
-        if (radiationStorm && typeof radiationStorm.endsAt === 'number') {
-            radiationStorm.endsAt += warpDt;
-        }
-        if (miniEvent) {
-            if (typeof miniEvent.expiresAt === 'number') miniEvent.expiresAt += warpDt;
-            if (typeof miniEvent.nextWaveAt === 'number') miniEvent.nextWaveAt += warpDt;
-            if (typeof miniEvent.lastUpdateAt === 'number') miniEvent.lastUpdateAt = Date.now();
-        }
-        if (activeContract) {
-            if (typeof activeContract.endsAt === 'number') activeContract.endsAt += warpDt;
-        }
-    }
-
-    nextShootingStarTime = warpSnapshot.nextShootingStarTime;
-    nextIntensityBreakAt = warpSnapshot.nextIntensityBreakAt;
-    intensityBreakActive = warpSnapshot.intensityBreakActive;
-
-    // Player returns.
-    player.pos.x = warpSnapshot.playerPos.x;
-    player.pos.y = warpSnapshot.playerPos.y;
-    player.vel.x = warpSnapshot.playerVel.x;
-    player.vel.y = warpSnapshot.playerVel.y;
-
-    warpZone = null;
-    warpGate = null;
-    warpSnapshot = null;
-    warpExitPending = false;
-    warpExitEndsAt = 0;
-    warpExitStartedAt = 0;
-    resetPixiOverlaySprites();
-    cleanupPixiWorldRootExtras();
-    if (pixiWorldRoot) pixiWorldRoot.visible = true;
-    if (pixiScreenRoot) pixiScreenRoot.visible = true;
-    showOverlayMessage("RETURNED FROM WARP", '#0ff', 1800, 2);
-}
+// Instead, we transition directly to level 2 via sectorTransitionActive
 
 // --- Performance: particle pooling (render-only, no gameplay impact) ---
 const PARTICLE_POOL_MAX = 12000;
@@ -12210,19 +11733,6 @@ function clearMiniEvent() {
     }
     pixiCleanupObject(miniEvent);
     miniEvent = null;
-}
-
-function updateKeysUI() {
-    const el = document.getElementById('keys-display');
-    if (!el) return;
-    el.innerText = `KEYS: ${Math.max(0, Math.min(3, gateKeys))}/3`;
-    if (gateKeys >= 3) {
-        el.style.color = '#f00';
-        el.style.textShadow = '0 0 6px #f00';
-    } else {
-        el.style.color = '#ff0';
-        el.style.textShadow = '0 0 6px #ff0';
-    }
 }
 
 function completeContract(success = true) {
@@ -13744,7 +13254,7 @@ function updateXpUI() {
 
 function updateNuggetUI() {
     const el = document.getElementById('nugget-count');
-    if (el) el.innerText = spaceNuggets;
+    if (el) el.innerText = (metaProfile.bank || 0) + spaceNuggets;
 }
 
 // --- Profile Save / Load (player stats only) ---
@@ -13904,6 +13414,14 @@ function loadGameFromStorage() {
         if (player) applyProfile(data);
         localStorage.setItem(SAVE_LAST_KEY, slot);
         showOverlayMessage(`PROFILE LOADED (${slot})`, '#0f0', 1500);
+
+        // Loading a save is like starting fresh - can't resume until quitting to menu
+        canResumeGame = false;
+
+        // Update resume button state
+        if (window.updateResumeButtonState) {
+            window.updateResumeButtonState();
+        }
     } catch (e) {
         console.warn('load failed', e);
         showOverlayMessage("LOAD FAILED", '#f00', 1500);
@@ -13984,11 +13502,6 @@ function setupGameWorld() {
     clearMiniEvent();
     nextMiniEventAt = Date.now() + 120000;
     clearArrayWithPixiCleanup(pois);
-    gateKeys = 0;
-    clearArrayWithPixiCleanup(gateKeyItems);
-    flagshipWarpZone = null;
-    flagshipSpawned = false;
-    flagshipSpawnAt = 0;
     contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
     activeContract = null;
     nextContractAt = Date.now() + 30000; // first contract after ~30s
@@ -14013,6 +13526,7 @@ function setupGameWorld() {
     sectorIndex = 1;
     sectorTransitionActive = false;
     warpCountdownAt = null;
+    warpGateUnlocked = false;
     nextSpaceStationTime = Date.now() + 180000; // first station after 3 minutes
     gunboatRespawnAt = null;
     gunboatLevel2Unlocked = false;
@@ -14142,20 +13656,46 @@ function showLevelUpMenu() {
         validUpgrades.splice(idx, 1);
     }
 
-    // Optional reroll button if tokens available
-    if (rerollTokens > 0) {
-        const btn = document.createElement('button');
-        btn.id = 'reroll-btn';
-        btn.textContent = `REROLL OPTIONS (TOKENS: ${rerollTokens})`;
-        btn.style.marginTop = '10px';
-        btn.onclick = () => {
+    // Reroll button - uses tokens if available, otherwise costs 5 nuggets
+    const rerollBtn = document.createElement('button');
+    rerollBtn.id = 'reroll-btn';
+    rerollBtn.style.marginTop = '10px';
+    rerollBtn.style.padding = '12px 24px';
+    rerollBtn.style.fontSize = '16px';
+    rerollBtn.style.backgroundColor = '#4a2';
+    rerollBtn.style.color = '#fff';
+    rerollBtn.style.cursor = 'pointer';
+    
+    const updateRerollButton = () => {
+        if (rerollTokens > 0) {
+            rerollBtn.textContent = `REROLL OPTIONS (TOKENS: ${rerollTokens})`;
+            rerollBtn.style.backgroundColor = '#4a2';
+            rerollBtn.disabled = false;
+        } else {
+            rerollBtn.textContent = `REROLL (5 NUGGETS)`;
+            rerollBtn.style.backgroundColor = spaceNuggets >= 5 ? '#2a4' : '#333';
+            rerollBtn.disabled = spaceNuggets < 5;
+        }
+    };
+    
+    updateRerollButton();
+    
+    rerollBtn.onclick = () => {
+        if (rerollTokens > 0) {
+            // Use purchased reroll token
             rerollTokens--;
             metaProfile.purchases.rerollTokens = rerollTokens;
             saveMetaProfile();
-            showLevelUpMenu(); // regenerate
-        };
-        parent.insertBefore(btn, container);
-    }
+            showLevelUpMenu();
+        } else if (spaceNuggets >= 5) {
+            // Spend 5 nuggets
+            spaceNuggets -= 5;
+            updateNuggetUI();
+            showLevelUpMenu();
+        }
+    };
+    
+    parent.insertBefore(rerollBtn, container);
 
     // 3. Create DOM
     choices.forEach((choice, index) => {
@@ -14482,7 +14022,14 @@ function getActiveMenuElements() {
         return Array.from(document.querySelectorAll('#pause-menu button'));
     }
     if (document.getElementById('levelup-screen').style.display !== 'none') {
-        return Array.from(document.querySelectorAll('.upgrade-card'));
+        // Include reroll button first, then upgrade cards
+        const elements = [];
+        const rerollBtn = document.getElementById('reroll-btn');
+        if (rerollBtn) {
+            elements.push(rerollBtn);
+        }
+        const cards = Array.from(document.querySelectorAll('.upgrade-card'));
+        return elements.concat(cards);
     }
     return [];
 }
@@ -14632,28 +14179,6 @@ function gameLoopLogic(opts = null) {
     frameNow = now;
     const warpActive = !!(warpZone && warpZone.active);
 
-    if (warpExitPending) {
-        if (doUpdate && now >= warpExitEndsAt) {
-            finalizeWarpExit();
-        }
-        if (warpExitPending && doDraw) {
-            if (pixiWorldRoot) pixiWorldRoot.visible = false;
-            if (pixiScreenRoot) pixiScreenRoot.visible = false;
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, width, height);
-            const remaining = Math.max(0, Math.ceil((warpExitEndsAt - now) / 1000));
-            ctx.fillStyle = '#0ff';
-            ctx.font = 'bold 36px Courier New';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(`RETURNING IN ${remaining}`, width / 2, height / 2);
-            ctx.font = 'bold 16px Courier New';
-            ctx.fillText('EXITING WARP', width / 2, height / 2 + 32);
-        }
-        if (warpExitPending) return;
-    }
-
     if (doUpdate) {
         globalProfiler.start('Update');
         globalProfiler.start('GameLogic');
@@ -14712,54 +14237,19 @@ function gameLoopLogic(opts = null) {
             }
         }
 
-        // World warp gate (opens after the 2nd cruiser key, once per sector).
-        if (!warpActive && !bossActive && !sectorTransitionActive && !warpCompletedOnce && !caveMode) {
-            if (gateKeys >= 2) {
-                if (!warpGate || warpGate.mode !== 'entry') {
-                    const gx = player.pos.x + 900;
-                    const gy = player.pos.y;
-                    warpGate = new WarpGate(gx, gy, 'entry');
-                    showOverlayMessage("WARP GATE OPEN", '#f80', 1600);
-                }
-            } else {
-                if (warpGate && warpGate.mode === 'entry') {
-                    pixiCleanupObject(warpGate);
-                    warpGate = null;
-                }
+        // World warp gate (appears after space station is destroyed, once per sector).
+        if (!warpActive && !bossActive && !sectorTransitionActive && !warpCompletedOnce && !caveMode && !spaceStation && warpGateUnlocked) {
+            if (!warpGate || warpGate.mode !== 'entry') {
+                const gx = player.pos.x + 900;
+                const gy = player.pos.y;
+                warpGate = new WarpGate(gx, gy);
+                showOverlayMessage("WARP GATE OPEN", '#f80', 1600);
             }
         } else {
             if (warpGate && warpGate.mode === 'entry') {
                 pixiCleanupObject(warpGate);
                 warpGate = null;
             }
-        }
-        if (warpActive && warpZone) {
-            if (!warpGate || warpGate.mode !== 'exit') {
-                if (warpGate) {
-                    pixiCleanupObject(warpGate);
-                    warpGate = null;
-                }
-                warpGate = new WarpGate(warpZone.exitPos.x, warpZone.exitPos.y, 'exit');
-            } else {
-                warpGate.pos.x = warpZone.exitPos.x;
-                warpGate.pos.y = warpZone.exitPos.y;
-            }
-        }
-
-        // Flagship warp zone: appears once you have 3 keys; entering it starts the flagship fight.
-        if (!warpActive && !bossActive && !sectorTransitionActive && !caveMode) {
-            if (gateKeys >= 3) {
-                if (!flagshipWarpZone || flagshipWarpZone.dead) {
-                    const p = findSpawnPointRelative(true, 6500, 8500);
-                    flagshipWarpZone = new FlagshipWarpZone(p.x, p.y);
-                    showOverlayMessage("FLAGSHIP WARP ZONE DETECTED", '#f0f', 2200, 2);
-                }
-            } else {
-                if (flagshipWarpZone) flagshipWarpZone = null;
-            }
-        } else {
-            // Don't keep it around during warp/boss/transition.
-            if (flagshipWarpZone) flagshipWarpZone = null;
         }
 
         // Contracts: spawn and update (normal mode only, not during arena boss)
@@ -15229,8 +14719,6 @@ function gameLoopLogic(opts = null) {
     const wg = warpGate;
     if (wg && !wg.dead) { if (doUpdate) wg.update(); if (doDraw) wg.draw(ctx); }
     if (caveActive) { if (doUpdate) caveLevel.update(); }
-    const fwz = flagshipWarpZone;
-    if (fwz && !fwz.dead) { if (doUpdate) fwz.update(); if (doDraw) fwz.draw(ctx); }
 
     // Cave: full-screen grid background (no stars). 
     if (doDraw && caveActive) {
@@ -15266,7 +14754,6 @@ function gameLoopLogic(opts = null) {
             else if (typeof p.cull === 'function') p.cull();
         }
     });
-    gateKeyItems.forEach(k => { if (doUpdate) k.update(); if (doDraw) k.draw(ctx); });
     shootingStars.forEach(s => { if (doUpdate) s.update(); if (doDraw) s.draw(ctx); });
     caches.forEach(c => { if (doUpdate) c.update(); if (doDraw) c.draw(ctx, pickupRes); });
     pois.forEach(p => { if (doUpdate) p.update(); if (doDraw) p.draw(ctx); });
@@ -15505,7 +14992,6 @@ function gameLoopLogic(opts = null) {
         }
 
         compactParticles(particles);
-        immediateCompactArray(gateKeyItems);
         immediateCompactArray(shootingStars, pixiCleanupObject);
         immediateCompactArray(drones);
 
@@ -16043,12 +15529,10 @@ function gameLoopLogic(opts = null) {
 
         drawStationIndicator();
         drawWarpGateIndicator();
-        drawFlagshipWarpZoneIndicator();
         drawMinimap();
         drawContractIndicator();
         drawMiniEventIndicator();
         updateMiniEventUI();
-        updateKeysUI();
         if (bossActive && boss && typeof boss.drawBossHud === 'function') boss.drawBossHud(uiCtx);
 
         // Render Pixi overlay (MOVED from Update loop)
@@ -16207,75 +15691,7 @@ function drawWarpGateIndicator() {
     uiCtx.restore();
 }
 
-function drawFlagshipWarpZoneIndicator() {
-    if (!flagshipWarpZone || !player || player.dead || flagshipWarpZone.dead) return;
-
-    const screenW = canvas.width;
-    const screenH = canvas.height;
-    const z = currentZoom || ZOOM_LEVEL;
-    const camX = player.pos.x - screenW / (2 * z);
-    const camY = player.pos.y - screenH / (2 * z);
-    const viewW = screenW / z;
-    const viewH = screenH / z;
-
-    if (flagshipWarpZone.pos.x > camX && flagshipWarpZone.pos.x < camX + viewW &&
-        flagshipWarpZone.pos.y > camY && flagshipWarpZone.pos.y < camY + viewH) {
-        return;
-    }
-
-    const dx = flagshipWarpZone.pos.x - player.pos.x;
-    const dy = flagshipWarpZone.pos.y - player.pos.y;
-    const angle = Math.atan2(dy, dx);
-
-    const margin = 60;
-    const cx = screenW / 2;
-    const cy = screenH / 2;
-    const vx = Math.cos(angle);
-    const vy = Math.sin(angle);
-
-    const bx = cx - margin;
-    const by = cy - margin;
-    const tx = Math.abs(vx) > 0.001 ? bx / Math.abs(vx) : Infinity;
-    const ty = Math.abs(vy) > 0.001 ? by / Math.abs(vy) : Infinity;
-    const t = Math.min(tx, ty);
-
-    const arrowX = cx + vx * t;
-    const arrowY = cy + vy * t;
-
-    uiCtx.save();
-    uiCtx.translate(arrowX, arrowY);
-    uiCtx.rotate(angle);
-
-    const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
-    uiCtx.scale(pulse, pulse);
-
-    uiCtx.fillStyle = '#f0f';
-    uiCtx.strokeStyle = '#000';
-    uiCtx.lineWidth = 2;
-
-    uiCtx.beginPath();
-    uiCtx.moveTo(15, 0);
-    uiCtx.lineTo(-15, 12);
-    uiCtx.lineTo(-15, -12);
-    uiCtx.closePath();
-    uiCtx.fill();
-    uiCtx.stroke();
-
-    uiCtx.rotate(-angle);
-    uiCtx.fillStyle = '#f0f';
-    uiCtx.font = 'bold 14px Courier New';
-    uiCtx.textAlign = 'center';
-    uiCtx.textBaseline = 'middle';
-    uiCtx.shadowBlur = 4;
-    uiCtx.shadowColor = '#000';
-    uiCtx.fillText("FLAGSHIP", 0, -18);
-    const dist = Math.hypot(dx, dy);
-    uiCtx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
-    uiCtx.shadowBlur = 0;
-
-    uiCtx.restore();
-}
-
+// Flagship warp zone removed - no longer needed
 function drawContractIndicator() {
     if (!activeContract || !player || player.dead) return;
     let tx = null, ty = null;
@@ -16886,6 +16302,12 @@ function startGame() {
         document.getElementById('pause-menu').style.display = 'none';
         gameActive = true;
         gamePaused = false;
+        canResumeGame = false; // New game - can't resume yet
+
+        // Update resume button state
+        if (window.updateResumeButtonState) {
+            window.updateResumeButtonState();
+        }
 
         setupGameWorld();
         updateContractUI();
@@ -16940,10 +16362,27 @@ function shiftPausedTimers(pauseMs) {
     if (activeContract && typeof activeContract.endsAt === 'number') {
         activeContract.endsAt += pauseMs;
     }
-    if (warpSnapshot && typeof warpSnapshot.warpEnteredAt === 'number') {
-        warpSnapshot.warpEnteredAt += pauseMs;
-    }
 }
+
+// Global function to update resume button state
+// This is defined globally so it can be called from anywhere in the code
+const updateResumeButtonState = () => {
+    const resumeBtn = document.getElementById('resume-btn-start');
+    if (resumeBtn) {
+        if (canResumeGame) {
+            resumeBtn.disabled = false;
+            resumeBtn.style.opacity = '1';
+            resumeBtn.style.cursor = 'pointer';
+        } else {
+            resumeBtn.disabled = true;
+            resumeBtn.style.opacity = '0.5';
+            resumeBtn.style.cursor = 'not-allowed';
+        }
+    }
+};
+
+// Store globally so it can be called from anywhere in the code
+window.updateResumeButtonState = updateResumeButtonState;
 
 function togglePause() {
     if (!gameActive) return;
@@ -16971,21 +16410,42 @@ function togglePause() {
 }
 
 function quitGame() {
-    gameActive = false;
-    gamePaused = false;
-    stopMusic();
-    resetWarpState();
-    currentZoom = ZOOM_LEVEL;
-    activeContract = null;
-    contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+    // Pause the game and show the start menu overlay
+    if (!gamePaused) {
+        gamePaused = true;
+        pauseStartTime = Date.now();
+    }
     document.getElementById('pause-menu').style.display = 'none';
     document.getElementById('start-screen').style.display = 'block';
     const endScreen = document.getElementById('end-screen');
     if (endScreen) endScreen.style.display = 'none';
-    document.querySelector('#start-screen h1').innerText = "NEON SPACE";
+    document.querySelector('#start-screen h1').innerText = "PAUSED";
     document.getElementById('start-btn').innerText = "INITIATE LAUNCH";
-    setTimeout(() => document.getElementById('start-btn').focus(), 100);
+    setTimeout(() => document.getElementById('resume-btn-start').focus(), 100);
     menuSelectionIndex = 0;
+
+    // Mark that we can resume this game
+    canResumeGame = gameActive;
+
+    // Update resume button state based on whether we can resume
+    const updateResumeButtonState = () => {
+        const resumeBtn = document.getElementById('resume-btn-start');
+        if (resumeBtn) {
+            if (canResumeGame) {
+                resumeBtn.disabled = false;
+                resumeBtn.style.opacity = '1';
+                resumeBtn.style.cursor = 'pointer';
+            } else {
+                resumeBtn.disabled = true;
+                resumeBtn.style.opacity = '0.5';
+                resumeBtn.style.cursor = 'not-allowed';
+            }
+        }
+    };
+    updateResumeButtonState();
+
+    // Store the update function so it can be called when game starts/stops
+    window.updateResumeButtonState = updateResumeButtonState;
 }
 
 window.addEventListener('keydown', e => {
@@ -17035,7 +16495,6 @@ window.addEventListener('keydown', e => {
     if (e.ctrlKey && e.shiftKey && (e.key === 'q' || e.key === 'Q')) {
         e.preventDefault();
         if (!gameActive || !player) return;
-        if (warpSnapshot) exitWarpMaze();
     }
 });
 
@@ -17093,6 +16552,40 @@ document.getElementById('start-btn').addEventListener('click', () => {
     initAudio();
     startGame();
 });
+
+const resumeStartBtn = document.getElementById('resume-btn-start');
+if (resumeStartBtn) {
+    resumeStartBtn.addEventListener('click', () => {
+        initAudio();
+        // Hide start screen and resume the game
+        document.getElementById('start-screen').style.display = 'none';
+
+        // Unpause the game (same logic as togglePause)
+        if (gamePaused && pauseStartTime) {
+            const pauseMs = Date.now() - pauseStartTime;
+            pausedAccumMs += pauseMs;
+            shiftPausedTimers(pauseMs);
+            pauseStartTime = null;
+        }
+        gamePaused = false;
+
+        if (musicEnabled) startMusic();
+        showOverlayMessage("RESUMED", '#0f0', 1500);
+
+        // Once resumed, can't resume again until quitting to menu
+        canResumeGame = false;
+
+        // Update resume button state
+        if (window.updateResumeButtonState) {
+            window.updateResumeButtonState();
+        }
+    });
+
+    // Initialize resume button state on page load
+    // It should start disabled until you quit to menu from pause menu
+    window.updateResumeButtonState();
+}
+
 const loadBtn = document.getElementById('load-btn');
 if (loadBtn) loadBtn.addEventListener('click', () => {
     initAudio();

@@ -260,6 +260,50 @@ canvas {
     margin-top: 10px;
 }
 
+#reroll-btn {
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #fff;
+    background: linear-gradient(135deg, #4a2 0%, #3a2 100%);
+    border: 2px solid #6c4;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, border-color 0.2s;
+    box-shadow: 0 0 10px rgba(100, 200, 100, 0.3);
+    pointer-events: auto;
+}
+
+#reroll-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #6c4 0%, #5c3 100%);
+    border-color: #8e6;
+    box-shadow: 0 0 20px rgba(100, 200, 100, 0.5);
+    transform: translateY(-2px);
+}
+
+#reroll-btn:active:not(:disabled) {
+    transform: translateY(1px);
+    box-shadow: 0 0 5px rgba(100, 200, 100, 0.3);
+}
+
+#reroll-btn:disabled {
+    background: linear-gradient(135deg, #333 0%, #222 100%);
+    border-color: #555;
+    color: #888;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+#reroll-btn.selected,
+#reroll-btn:focus {
+    background: linear-gradient(135deg, #8e6 0%, #6c4 100%);
+    border-color: #ff0;
+    box-shadow: 0 0 20px #ff0;
+    transform: translateY(-2px);
+}
+
 #start-screen {
     display: block;
 }
