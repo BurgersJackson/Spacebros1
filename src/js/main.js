@@ -10497,19 +10497,19 @@ class SpaceStation extends Entity {
                     this.fireTurrets();
                     this.turretReload = 10; // halved for 60Hz
                 }
-                this.manageDefenders();
+                this.manageDefenders(deltaTime);
             }
         }
     }
 
-    manageDefenders() {
+    manageDefenders(deltaTime = 16.67) {
         let myDefenderCount = 0;
         for (let i = 0; i < enemies.length; i++) {
             const e = enemies[i];
             if (e && !e.dead && e.assignedBase === this) myDefenderCount++;
         }
         if (myDefenderCount < 4) {
-            if (this.defenderSpawnTimer <= 0) {
+                if (this.defenderSpawnTimer <= 0) {
                 const angle = Math.random() * Math.PI * 2;
                 const d = this.radius + 70;
                 const sx = this.pos.x + Math.cos(angle) * d;
@@ -14020,13 +14020,31 @@ function updateGamepad() {
 }
 
 function getActiveMenuElements() {
-    if (document.getElementById('start-screen').style.display !== 'none') {
-        return Array.from(document.querySelectorAll('#start-screen button'));
+    const isVisible = (el) => {
+        if (!el) return false;
+        if (typeof window === 'undefined' || !window.getComputedStyle) {
+            return el.style.display !== 'none' && el.style.visibility !== 'hidden';
+        }
+        const style = window.getComputedStyle(el);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+    };
+
+    const upgradesMenu = document.getElementById('upgrades-menu');
+    if (isVisible(upgradesMenu)) {
+        const shopButtons = Array.from(document.querySelectorAll('#meta-shop .meta-item button'));
+        const backBtn = document.getElementById('upgrades-back-btn');
+        const result = [];
+        if (shopButtons.length) {
+            result.push(...shopButtons);
+        }
+        if (backBtn) {
+            result.push(backBtn);
+        }
+        return result.length ? result : (backBtn ? [backBtn] : []);
     }
-    if (document.getElementById('pause-menu').style.display !== 'none') {
-        return Array.from(document.querySelectorAll('#pause-menu button'));
-    }
-    if (document.getElementById('levelup-screen').style.display !== 'none') {
+
+    const levelupScreen = document.getElementById('levelup-screen');
+    if (isVisible(levelupScreen)) {
         // Include reroll button first, then upgrade cards
         const elements = [];
         const rerollBtn = document.getElementById('reroll-btn');
@@ -14036,9 +14054,17 @@ function getActiveMenuElements() {
         const cards = Array.from(document.querySelectorAll('.upgrade-card'));
         return elements.concat(cards);
     }
-    if (document.getElementById('upgrades-menu').style.display !== 'none') {
-        return Array.from(document.querySelectorAll('#upgrades-menu button'));
+
+    const pauseMenu = document.getElementById('pause-menu');
+    if (isVisible(pauseMenu)) {
+        return Array.from(document.querySelectorAll('#pause-menu button'));
     }
+
+    const startScreen = document.getElementById('start-screen');
+    if (isVisible(startScreen)) {
+        return Array.from(document.querySelectorAll('#start-screen button'));
+    }
+
     return [];
 }
 
@@ -16640,9 +16666,18 @@ requestAnimationFrame(() => {
 
 function showUpgradesMenu() {
     // Hide all menus first
-    document.getElementById('levelup-screen').style.display = 'none';
-    document.getElementById('start-screen').style.display = 'none';
-    document.getElementById('upgrades-menu').style.display = 'block';
+    const levelupScreen = document.getElementById('levelup-screen');
+    if (levelupScreen) levelupScreen.style.display = 'none';
+    const startScreen = document.getElementById('start-screen');
+    if (startScreen) {
+        startScreen.style.display = 'none';
+        startScreen.style.visibility = 'hidden';
+    }
+    const upgradesMenu = document.getElementById('upgrades-menu');
+    if (upgradesMenu) {
+        upgradesMenu.style.display = 'block';
+        upgradesMenu.style.visibility = 'visible';
+    }
 
     // Clear any previous menu selections
     const allMenuElements = document.querySelectorAll('button, .upgrade-card, .meta-item');
@@ -16654,17 +16689,17 @@ function showUpgradesMenu() {
     // Update meta UI to show current values
     updateMetaUI();
 
+    menuSelectionIndex = 0;
+    menuDebounce = Date.now() + 300;
+
 // Wait one frame to ensure DOM has updated, then setup navigation
 requestAnimationFrame(() => {
-    menuSelectionIndex = 0;
     const active = getActiveMenuElements();
     if (active.length > 0) {
         updateMenuVisuals(active);
         // Force focus on the first button
         active[0].focus();
     }
-    // Prevent input during menu transition
-    menuDebounce = Date.now() + 300;
 });
 }
 const newProfileBtn = document.getElementById('new-profile-btn');
