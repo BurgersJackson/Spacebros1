@@ -3424,6 +3424,18 @@ class CruiserMineBomb extends Entity {
     explode() {
         if (this.dead) return;
         this.dead = true;
+
+        // FIX: Clean up shield graphics BEFORE calling pixiCleanupObject
+        // This prevents pixiCleanupObject from missing these
+        if (this._pixiInnerGfx) {
+            try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+            this._pixiInnerGfx = null;
+        }
+        if (this._pixiGfx) {
+            try { this._pixiGfx.destroy(true); } catch (e) { }
+            this._pixiGfx = null;
+        }
+
         pixiCleanupObject(this);
         playSound('explode');
         spawnParticles(this.pos.x, this.pos.y, 40, '#fa0');
@@ -4019,8 +4031,24 @@ class Enemy extends Entity {
     }
 
     kill() {
+        if (this.dead) return;
         this.dead = true;
+
+        // FIX: Clean up shield graphics BEFORE calling pixiCleanupObject
+        // This prevents pixiCleanupObject from missing these
+        if (this._pixiInnerGfx) {
+            try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+            this._pixiInnerGfx = null;
+        }
+        if (this._pixiGfx) {
+            try { this._pixiGfx.destroy(true); } catch (e) { }
+            this._pixiGfx = null;
+        }
+
         pixiCleanupObject(this);
+
+        if (this.isGunboat) playSound('base_explode');
+        else playSound('explode');
         if (this._pixiGfx) {
             try { this._pixiGfx.destroy(true); } catch (e) { }
             this._pixiGfx = null;
@@ -4033,8 +4061,12 @@ class Enemy extends Entity {
             try { this._pixiNameText.destroy(true); } catch (e) { }
             this._pixiNameText = null;
         }
+
+        // FIX: Mark as dead FIRST before doing anything else
+        // This prevents draw() from trying to recreate graphics after cleanup
         if (this.isGunboat) playSound('base_explode');
         else playSound('explode');
+
         const boomScale = Math.max(0.9, Math.min(2.6, (this.radius || 30) / 40));
         spawnFieryExplosion(this.pos.x, this.pos.y, boomScale);
 
@@ -5374,7 +5406,7 @@ class FlagshipWarpZone extends Entity {
     }
 }
 
-function beginFlagshipFight(cx, cy, radius = 3200) {
+function beginFlagshipFight(cx, cy, radius = 1875) {
     if (bossActive || sectorTransitionActive) return;
     // Clear the zone marker.
     try { if (flagshipWarpZone) flagshipWarpZone.dead = true; } catch (e) { }
@@ -8152,6 +8184,15 @@ class RadiationStorm extends Entity {
             this.kill();
             return;
         }
+
+        // FIX: Ensure storm is nullified after kill to prevent drawing dead storm
+        if (this.dead) {
+            if (radiationStorm === this) {
+                radiationStorm = null;
+            }
+            return;
+        }
+
         const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
         const inside = d < this.radius;
         if (inside) {
@@ -8206,7 +8247,8 @@ class RadiationStorm extends Entity {
             // Outer Ring
             const innerColor = 0xffdc00;
             const alpha = 0.35 + pulse;
-            this._pixiGfx.lineStyle(6 / (currentZoom || 1), innerColor, alpha);
+            const lineWidth = 6 / Math.max(0.5, currentZoom || ZOOM_LEVEL);
+            this._pixiGfx.lineStyle(lineWidth, innerColor, alpha);
             this._pixiGfx.drawCircle(0, 0, this.radius);
 
             // Haze Fill
@@ -10034,6 +10076,7 @@ class WarpSentinelBoss extends Entity {
     kill() {
         if (this.dead) return;
         this.dead = true;
+
         pixiCleanupObject(this);
         if (this._pixiInnerGfx) {
             try { this._pixiInnerGfx.destroy(true); } catch (e) { }
@@ -10043,9 +10086,20 @@ class WarpSentinelBoss extends Entity {
             try { this._pixiGfx.destroy(true); } catch (e) { }
             this._pixiGfx = null;
         }
-        playSound('base_explode');
-        spawnParticles(this.pos.x, this.pos.y, 140, '#f0f');
-        clearArrayWithPixiCleanup(bossBombs);
+
+        // PERFORMANCE MONITORING: Track boss death frame time
+        const killStartTime = performance.now();
+        const bombCount = bossBombs.length;
+        console.log(`[BOSS KILL] Starting death sequence with ${bombCount} bombs`);
+
+        // PERFORMANCE FIX: Staggered particle spawning to prevent frame spikes
+        // Instead of 140 particles at once, spread them over ~20 frames
+        scheduleParticleBursts(this.pos.x, this.pos.y, 140, '#f0f', 20);
+
+        // PERFORMANCE FIX: Stagger bomb explosions over multiple frames
+        // instead of exploding all bombs at once which causes sprite pool exhaustion
+        scheduleStaggeredBombExplosions(this.pos.x, this.pos.y);
+
         // Key reward for exiting the warp.
         gateKeyItems.push(new GateKey(this.pos.x, this.pos.y));
         if (warpZone && warpZone.active) {
@@ -10056,6 +10110,13 @@ class WarpSentinelBoss extends Entity {
         bossActive = false;
         if (boss) pixiCleanupObject(boss);
         boss = null;
+
+        // PERFORMANCE MONITORING: Log completion time
+        const killDuration = performance.now() - killStartTime;
+        console.log(`[BOSS KILL] Death sequence setup completed in ${killDuration.toFixed(2)}ms`);
+        if (killDuration > 16.67) {
+            console.warn(`[BOSS KILL] Frame time spike detected (${killDuration.toFixed(2)}ms)`);
+        }
     }
 
     update() {
@@ -10958,6 +11019,8 @@ class SpaceStation extends Entity {
 let player;
 let bullets = [];
 let bossBombs = [];
+let staggeredBombExplosions = []; // Queue for staggered bomb explosions
+let staggeredParticleBursts = []; // Queue for staggered particle bursts
 let guidedMissiles = [];
 let enemies = [];
 let bases = [];
@@ -11070,6 +11133,8 @@ function snapshotWorldForWarp() {
         // Arrays / entities
         bullets,
         bossBombs,
+        staggeredBombExplosions, // Save staggered explosions state
+        staggeredParticleBursts, // Save staggered particle bursts
         guidedMissiles,
         enemies,
         bases,
@@ -11154,6 +11219,8 @@ function enterWarpMaze() {
 
     bullets = [];
     bossBombs = [];
+    staggeredBombExplosions = [];
+    staggeredParticleBursts = [];
     guidedMissiles = [];
     enemies = [];
     bases = [];
@@ -11234,12 +11301,128 @@ function exitWarpMaze() {
     if (!warpSnapshot) return;
     const completedRun = !!(warpZone && warpZone.exitUnlocked);
     if (warpZone && warpZone.active) warpZone.active = false;
-    // Clear any warp-only Pixi sprites before restoring the world snapshot.
+
+    // CLEANUP FIX: Properly clean up all warp entities before restoring snapshot
+    // This prevents frozen sprites appearing on screen after warp exit
+    console.log('[WARP EXIT] Cleaning up warp entities before restoring snapshot...');
+
+    // Clean up warp gate if it exists
+    if (warpGate) {
+        pixiCleanupObject(warpGate);
+        warpGate = null;
+        console.log('[WARP EXIT] Cleaned warp gate');
+    }
+
+    // Clean up warp zone and its entities
+    if (warpZone) {
+        // Clean up warp turrets
+        if (warpZone.turrets && warpZone.turrets.length > 0) {
+            for (let i = 0; i < warpZone.turrets.length; i++) {
+                const turret = warpZone.turrets[i];
+                if (turret) {
+                    try {
+                        pixiCleanupObject(turret);
+                    } catch (e) {
+                        console.warn('[WARP EXIT] Failed to clean turret:', e);
+                    }
+                }
+            }
+            warpZone.turrets = [];
+            console.log('[WARP EXIT] Cleaned warp turrets');
+        }
+
+        // Clean up warp zone graphics
+        if (warpZone._pixiGfx) {
+            try { warpZone._pixiGfx.destroy(true); } catch (e) { }
+            warpZone._pixiGfx = null;
+        }
+    }
+
+    // Clean up warp particles (separate array from regular particles)
+    if (warpParticles && warpParticles.length > 0) {
+        for (let i = 0; i < warpParticles.length; i++) {
+            const p = warpParticles[i];
+            if (p && p.sprite) {
+                try {
+                    releasePixiSprite(pixiParticleSpritePool, p.sprite);
+                    p.sprite = null;
+                } catch (e) {
+                    console.warn('[WARP EXIT] Failed to clean warp particle sprite:', e);
+                }
+            }
+        }
+        warpParticles.length = 0;
+        console.log('[WARP EXIT] Cleaned warp particles');
+    }
+
+    // Clean up all current warp entities (these will be replaced by snapshot)
+    const cleanupWarpArray = (arr, name) => {
+        if (!arr || arr.length === 0) return;
+        let cleaned = 0;
+        for (let i = 0; i < arr.length; i++) {
+            const entity = arr[i];
+            if (entity) {
+                try {
+                    pixiCleanupObject(entity);
+                    cleaned++;
+                } catch (e) {
+                    console.warn(`[WARP EXIT] Failed to clean ${name}[${i}]:`, e);
+                }
+            }
+        }
+        console.log(`[WARP EXIT] Cleaned ${cleaned} ${name}`);
+    };
+
+    // Clean up all warp-specific entities
+    cleanupWarpArray(bullets, 'warp bullets');
+    cleanupWarpArray(bossBombs, 'warp boss bombs');
+    cleanupWarpArray(staggeredBombExplosions, 'staggered bomb explosions');
+    cleanupWarpArray(staggeredParticleBursts, 'staggered particle bursts');
+    cleanupWarpArray(guidedMissiles, 'warp guided missiles');
+    cleanupWarpArray(enemies, 'warp enemies');
+    cleanupWarpArray(bases, 'warp bases');
+    cleanupWarpArray(particles, 'warp particles');
+    cleanupWarpArray(explosions, 'warp explosions');
+    cleanupWarpArray(floatingTexts, 'warp floating texts');
+    cleanupWarpArray(coins, 'warp coins');
+    cleanupWarpArray(nuggets, 'warp nuggets');
+    cleanupWarpArray(powerups, 'warp powerups');
+    cleanupWarpArray(shootingStars, 'warp shooting stars');
+    cleanupWarpArray(drones, 'warp drones');
+    cleanupWarpArray(caches, 'warp caches');
+    cleanupWarpArray(pois, 'warp POIs');
+    cleanupWarpArray(gateKeyItems, 'warp gate key items');
+    cleanupWarpArray(environmentAsteroids, 'warp asteroids');
+
+    // Clear the arrays
+    bullets.length = 0;
+    bossBombs.length = 0;
+    staggeredBombExplosions.length = 0;
+    staggeredParticleBursts.length = 0;
+    guidedMissiles.length = 0;
+    enemies.length = 0;
+    bases.length = 0;
+    particles.length = 0;
+    explosions.length = 0;
+    floatingTexts.length = 0;
+    coins.length = 0;
+    nuggets.length = 0;
+    powerups.length = 0;
+    shootingStars.length = 0;
+    drones.length = 0;
+    caches.length = 0;
+    pois.length = 0;
+    gateKeyItems.length = 0;
+    environmentAsteroids.length = 0;
+
+    // Clear Pixi overlay sprites (includes warp zone walls/gates)
     resetPixiOverlaySprites();
 
-    // Restore world.
+    // Restore world from snapshot.
     bullets = warpSnapshot.bullets;
     bossBombs = warpSnapshot.bossBombs;
+    staggeredBombExplosions = warpSnapshot.staggeredBombExplosions || [];
+    staggeredParticleBursts = warpSnapshot.staggeredParticleBursts || [];
     guidedMissiles = warpSnapshot.guidedMissiles;
     enemies = warpSnapshot.enemies;
     bases = warpSnapshot.bases;
@@ -11393,6 +11576,143 @@ function forceExplosionCleanup() {
 
 function spawnParticles(x, y, count = 10, color = '#fff') {
     for (let i = 0; i < count; i++) emitParticle(x, y, null, null, color, 30);
+}
+
+/**
+ * Schedule particle bursts to be spread across multiple frames
+ * This prevents sprite pool exhaustion when many particles need to spawn at once
+ * @param {number} x - X position
+ * @param {number} y - Y position
+ * @param {number} totalCount - Total particles to spawn
+ * @param {string} color - Particle color
+ * @param {number} spreadFrames - Number of frames to spread the spawn over
+ */
+function scheduleParticleBursts(x, y, totalCount, color, spreadFrames = 10) {
+    const particlesPerFrame = Math.max(1, Math.floor(totalCount / spreadFrames));
+
+    for (let frame = 0; frame < spreadFrames; frame++) {
+        staggeredParticleBursts.push({
+            x: x + (Math.random() - 0.5) * 100, // Add some position variation
+            y: y + (Math.random() - 0.5) * 100,
+            count: particlesPerFrame + (frame === spreadFrames - 1 ? totalCount % spreadFrames : 0),
+            color: color,
+            delayFrames: frame * 2, // Spawn every 2 frames
+            processed: false
+        });
+    }
+}
+
+/**
+ * Process staggered particle bursts
+ * Call this every frame to handle queued particle spawning
+ */
+function processStaggeredParticleBursts() {
+    if (staggeredParticleBursts.length === 0) return;
+
+    for (let i = staggeredParticleBursts.length - 1; i >= 0; i--) {
+        const burst = staggeredParticleBursts[i];
+
+        if (burst.processed) {
+            staggeredParticleBursts.splice(i, 1);
+            continue;
+        }
+
+        if (burst.delayFrames <= 0) {
+            burst.processed = true;
+            spawnParticles(burst.x, burst.y, burst.count, burst.color);
+        } else {
+            burst.delayFrames--;
+        }
+    }
+}
+
+/**
+ * Schedule bomb explosions to be spread across multiple frames
+ * This prevents sprite pool exhaustion and frame spikes when many bombs explode at once
+ * @param {number} sourceX - X position to spawn effects at
+ * @param {number} sourceY - Y position to spawn effects at
+ */
+function scheduleStaggeredBombExplosions(sourceX, sourceY) {
+    const bombCount = bossBombs.length;
+    if (bombCount === 0) {
+        clearArrayWithPixiCleanup(bossBombs);
+        return;
+    }
+
+    console.log(`[BOSS KILL] Scheduling ${bombCount} bomb explosions over multiple frames`);
+
+    // Clear the bombs array but keep the explosion queue
+    const bombsToExplode = [...bossBombs];
+    bossBombs.length = 0;
+
+    // Schedule explosions spread across frames
+    // Explode up to 3 bombs per frame to prevent sprite pool exhaustion
+    const bombsPerFrame = Math.min(3, Math.ceil(bombCount / 10)); // Spread over at least 10 frames
+
+    for (let i = 0; i < bombCount; i++) {
+        const bomb = bombsToExplode[i];
+        // Calculate delay in frames
+        const delayFrames = Math.floor(i / bombsPerFrame);
+
+        staggeredBombExplosions.push({
+            bomb: bomb,
+            pos: { x: bomb.pos.x, y: bomb.pos.y },
+            delayFrames: delayFrames,
+            processed: false
+        });
+    }
+}
+
+/**
+ * Process staggered bomb explosions
+ * Call this every frame to handle queued bomb explosions
+ */
+function processStaggeredBombExplosions() {
+    if (staggeredBombExplosions.length === 0) return;
+
+    const frameTime = performance.now();
+    const explosionsThisFrame = [];
+
+    for (let i = staggeredBombExplosions.length - 1; i >= 0; i--) {
+        const queued = staggeredBombExplosions[i];
+
+        if (queued.processed) {
+            staggeredBombExplosions.splice(i, 1);
+            continue;
+        }
+
+        if (queued.delayFrames <= 0) {
+            // Explode this bomb now
+            queued.processed = true;
+            explosionsThisFrame.push(queued);
+        } else {
+            queued.delayFrames--;
+        }
+    }
+
+    // Execute explosions for this frame
+    // Limit to prevent overwhelming the system
+    const maxPerFrame = 4;
+    const actualExplosions = explosionsThisFrame.slice(0, maxPerFrame);
+
+    for (const queued of actualExplosions) {
+        const bomb = queued.bomb;
+        if (bomb && !bomb.dead) {
+            bomb.dead = true;
+            pixiCleanupObject(bomb);
+            playSound('explode');
+            spawnParticles(bomb.pos.x, bomb.pos.y, 40, '#fa0');
+            shockwaves.push(new Shockwave(bomb.pos.x, bomb.pos.y, bomb.damage, bomb.blastRadius, {
+                damagePlayer: true,
+                damageBases: true,
+                ignoreEntity: bomb.owner,
+                color: '#fa0'
+            }));
+        }
+    }
+
+    // If we couldn't process all explosions this frame, keep them for next frame
+    // (they're already marked as processed, so they won't be re-exploded)
 }
 
 function spawnFieryExplosion(x, y, scale = 1) {
@@ -12066,7 +12386,11 @@ class ContractFortress extends Entity {
     }
 
     draw(ctx) {
-        if (this.dead) return;
+        if (this.dead) {
+            // FIX: Ensure dead fortresses don't draw
+            pixiCleanupObject(this);
+            return;
+        }
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
 
@@ -12121,7 +12445,8 @@ class ContractFortress extends Entity {
                         if (ring.segments[i] <= 0) continue;
                         const hpRatio = ring.segments[i] / ring.segHp;
                         const alpha = 0.35 + 0.30 * hpRatio;
-                        g.lineStyle(10, 0x00ff00, alpha); // Green
+                        const lineWidth = 10 / Math.max(0.5, currentZoom || ZOOM_LEVEL);
+                        g.lineStyle(lineWidth, 0x00ff00, alpha); // Green
 
                         const a0 = i * step;
                         const a1 = a0 + step * 0.82;
@@ -14789,6 +15114,13 @@ function gameLoopLogic(opts = null) {
             // Particles are cheap, just kill on error
             p.life = 0;
         }
+    }
+
+    // Staggered bomb explosions - process queued explosions over multiple frames
+    // This prevents sprite pool exhaustion and frame spikes when boss dies
+    if (doUpdate) {
+        processStaggeredBombExplosions();
+        processStaggeredParticleBursts();
     }
 
     // Explosions - always update, cull drawing
