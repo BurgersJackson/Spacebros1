@@ -52,8 +52,9 @@ export class Particle extends Entity {
             let spr = this.sprite;
             if (!spr) {
                 const tex = (this.glow && pixiResources.glowTexture) ? pixiResources.glowTexture : pixiResources.whiteTexture;
-                // For glowing particles, use a slightly larger sprite to accommodate the glow
-                const size = this.glow ? 8 : 2;
+                // Use particle size for visibility; glow defaults to a larger base size.
+                const baseSize = this.glow ? 8 : 2;
+                const size = Math.max(baseSize, this.size || baseSize);
                 spr = allocPixiSprite(pixiResources.pool, pixiResources.layer, tex, size);
                 this.sprite = spr;
             }
@@ -83,7 +84,7 @@ export class Particle extends Entity {
  * Smoke particle with rotation and size growth.
  */
 export class SmokeParticle extends Entity {
-    constructor(x, y, vx, vy) {
+    constructor(x, y, vx, vy, color = '#aaa') {
         super(x, y);
         this._poolType = 'smoke';
         this.vel.x = vx || (Math.random() - 0.5) * 1;
@@ -91,9 +92,10 @@ export class SmokeParticle extends Entity {
         this.life = 60 + Math.random() * 30;
         this.maxLife = this.life;
         this.size = 2 + Math.random() * 4;
+        this.color = color;
     }
 
-    reset(x, y, vx, vy) {
+    reset(x, y, vx, vy, color = '#aaa') {
         this.pos.x = x;
         this.pos.y = y;
         if (this.prevPos) { this.prevPos.x = x; this.prevPos.y = y; }
@@ -102,6 +104,7 @@ export class SmokeParticle extends Entity {
         this.life = 60 + Math.random() * 30;
         this.maxLife = this.life;
         this.size = 2 + Math.random() * 4;
+        this.color = color;
         this.dead = false;
     }
 
@@ -136,7 +139,7 @@ export class SmokeParticle extends Entity {
                 const s = this.size / 32;
                 spr.scale.set(s);
                 spr.alpha = (this.life / this.maxLife) * 0.5;
-                spr.tint = 0xaaaaaa;
+                spr.tint = colorToPixi(this.color);
                 spr.blendMode = window.PIXI ? PIXI.BLEND_MODES.NORMAL : 0;
                 return;
             }

@@ -135,7 +135,7 @@ window.spawnCruiser = function () {
     bossArena.active = true;
     bossArena.growing = false;
     radiationStorm = null;
-    miniEvent = null;
+    clearMiniEvent();
     dreadManager.timerActive = false;
     dreadManager.firstSpawnDone = true;
     showOverlayMessage("DEBUG: CRUISER SPAWNED", '#ff0', 2000);
@@ -343,6 +343,35 @@ gunboat2Image.addEventListener('load', () => {
 });
 gunboat2Image.addEventListener('error', () => {
     gunboat2Loaded = false;
+});
+
+// Optional external sprite override for nugget pickups (also used by nugz caches).
+const NUGGET_URL = 'assets/nugget.png';
+const nuggetImage = new Image();
+nuggetImage.decoding = 'async';
+nuggetImage.src = NUGGET_URL;
+let nuggetTexture = null;
+let nuggetLoaded = false;
+
+const applyNuggetTexture = () => {
+    if (!nuggetLoaded || nuggetTexture || !window.PIXI || !pixiTextures) return;
+    try {
+        const tex = PIXI.Texture.from(nuggetImage);
+        try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+        try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+        nuggetTexture = tex;
+        pixiTextures.nugget = tex;
+    } catch (e) {
+        // Keep procedural nugget texture.
+    }
+};
+
+nuggetImage.addEventListener('load', () => {
+    nuggetLoaded = true;
+    applyNuggetTexture();
+});
+nuggetImage.addEventListener('error', () => {
+    nuggetLoaded = false;
 });
 
 // Optional external sprite overrides for roamers/defenders/hunters.
@@ -1085,6 +1114,7 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
             return PIXI.Texture.from(c);
         };
         pixiTextures.nugget = makeNugget();
+        applyNuggetTexture();
     }
 
     // Enemies (baked colors; per-instance alpha/tint for effects only)
@@ -1989,7 +2019,7 @@ function startSectorTransition() {
     pendingStations = 0;
     nextSpaceStationTime = null;
     radiationStorm = null;
-    miniEvent = null;
+    clearMiniEvent();
     gamePaused = false;
     gameActive = true;
     pendingTransitionClear = true; // clear arrays safely next frame
@@ -2041,7 +2071,7 @@ function completeSectorWarp() {
     nextContractAt = Date.now() + 30000;
     radiationStorm = null;
     scheduleNextRadiationStorm(Date.now() + 15000);
-    miniEvent = null;
+    clearMiniEvent();
     nextMiniEventAt = Date.now() + 120000;
     scheduleNextMiniEvent(Date.now() + 20000);
     clearArrayWithPixiCleanup(pois);
@@ -2212,6 +2242,8 @@ class EnvironmentAsteroid extends Entity {
         this.dead = true;
         pixiCleanupObject(this);
         // previously dropped a coin here; asteroid drops disabled
+        const boomScale = Math.max(0.7, Math.min(2.4, (this.radius || 50) / 60));
+        spawnAsteroidExplosion(this.pos.x, this.pos.y, boomScale);
 
         if (this.sizeLevel > 2) {
             const newSize = this.sizeLevel - 1;
@@ -3717,6 +3749,7 @@ class ShootingStar extends Entity {
 
         this.radius = 40;
         this.damage = 10;
+        this.hp = 3;
         this.life = 300; // 5 seconds at 60fps
         this._pixiGfx = null;
     }
@@ -3724,7 +3757,7 @@ class ShootingStar extends Entity {
     update() {
         this.pos.add(this.vel);
         this.life--;
-        if (this.life <= 0) this.dead = true;
+        if (this.life <= 0) this.kill(false);
 
         // Trail
         for (let i = 0; i < 5; i++) {
@@ -3736,6 +3769,25 @@ class ShootingStar extends Entity {
                 '#ffaa00',
                 30
             );
+        }
+    }
+
+    takeHit(dmg = 1) {
+        if (this.dead) return;
+        this.hp -= dmg;
+        if (this.hp <= 0) this.kill(true);
+    }
+
+    kill(dropNugz = false) {
+        if (this.dead) return;
+        this.dead = true;
+        pixiCleanupObject(this);
+        if (dropNugz) {
+            spawnAsteroidExplosion(this.pos.x, this.pos.y, 1.4);
+            const count = Math.floor(Math.random() * 7);
+            for (let i = 0; i < count; i++) {
+                nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 80, this.pos.y + (Math.random() - 0.5) * 80, 1));
+            }
         }
     }
 
@@ -7708,7 +7760,7 @@ function startCaveSector2() {
     nextContractAt = Date.now() + 999999999;
     radiationStorm = null;
     nextRadiationStormAt = Date.now() + 999999999;
-    miniEvent = null;
+    clearMiniEvent();
     nextMiniEventAt = Date.now() + 999999999;
     nextShootingStarTime = Date.now() + 999999999;
     intensityBreakActive = false;
@@ -8349,7 +8401,7 @@ class MiniEventDefendCache extends Entity {
     }
     update() {
         if (this.dead) return;
-        if (!player || player.dead) { this.dead = true; return; }
+        if (!player || player.dead) { this.fail(); return; }
         const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
         const dt = Math.min(120, Math.max(0, now - this.lastUpdateAt));
         this.lastUpdateAt = now;
@@ -8992,6 +9044,7 @@ class DebrisFieldPOI extends SectorPOI {
 class ExplorationCache extends Entity {
     constructor(x, y, contractId = null) {
         super(x, y);
+        this._pixiPool = 'pickup';
         this.contractId = contractId;
         this.radius = 12;
         this.vel.x = (Math.random() - 0.5) * 0.3;
@@ -8999,7 +9052,7 @@ class ExplorationCache extends Entity {
         this.magnetized = false;
         this.flash = 0;
         this.value = 2 + Math.floor(Math.random() * 3); // 2-4 nuggets
-        this._pixiGfx = null;
+        this.sprite = null;
     }
     kill() {
         if (this.dead) return;
@@ -9021,31 +9074,30 @@ class ExplorationCache extends Entity {
         this.pos.add(this.vel);
         this.flash++;
     }
-    draw(ctx) {
+    draw(ctx, pixiResources = null) {
         if (this.dead) return;
 
-        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
-            if (!this._pixiGfx) {
-                this._pixiGfx = new PIXI.Graphics();
-                pixiVectorLayer.addChild(this._pixiGfx);
-
-                // Static shape (diamond)
-                this._pixiGfx.lineStyle(2 / (currentZoom || 1), 0xffffff, 1.0);
-                this._pixiGfx.beginFill(0xffaa00, 1.0); // Gold
-                this._pixiGfx.moveTo(0, -12);
-                this._pixiGfx.lineTo(10, 0);
-                this._pixiGfx.lineTo(0, 12);
-                this._pixiGfx.lineTo(-10, 0);
-                this._pixiGfx.closePath();
-                this._pixiGfx.endFill();
+        if (pixiResources?.layer && pixiResources?.textures?.nugget) {
+            const tex = pixiResources.textures.nugget;
+            let spr = this.sprite;
+            if (!spr) {
+                spr = allocPixiSprite(pixiResources.pool, pixiResources.layer, tex, null, 0.5);
+                this.sprite = spr;
             }
-
-            const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.15;
-            this._pixiGfx.position.set(this.pos.x, this.pos.y);
-            this._pixiGfx.scale.set(scale, scale);
-            this._pixiGfx.rotation = this.flash * 0.05;
-            this._pixiGfx.visible = true;
-            return;
+            if (spr) {
+                if (!spr.parent) pixiResources.layer.addChild(spr);
+                spr.visible = true;
+                spr.position.set(this.pos.x, this.pos.y);
+                const pulse = 1.0 + Math.sin(this.flash * 0.1) * 0.15;
+                const targetRadius = 50; // Match smallest asteroid radius (50).
+                const base = (targetRadius * 2) / Math.max(1, Math.max(tex.width, tex.height));
+                spr.scale.set(base * pulse);
+                spr.rotation = this.flash * 0.05;
+                spr.tint = 0xffffff;
+                spr.alpha = 1;
+                if (window.PIXI) spr.blendMode = PIXI.BLEND_MODES.NORMAL;
+                return;
+            }
         }
 
         ctx.save();
@@ -11240,7 +11292,7 @@ function enterWarpMaze() {
     baseRespawnTimers = [];
 
     radiationStorm = null;
-    miniEvent = null;
+    clearMiniEvent();
 
     activeContract = null;
     contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
@@ -11279,6 +11331,10 @@ function enterWarpMaze() {
         seedTries++;
     }
 
+    if (warpGate) {
+        pixiCleanupObject(warpGate);
+        warpGate = null;
+    }
     warpGate = new WarpGate(warpZone.exitPos.x, warpZone.exitPos.y, 'exit');
 }
 
@@ -11287,6 +11343,7 @@ function resetWarpState() {
     try { if (warpZone) warpZone.active = false; } catch (e) { }
     warpZone = null;
     warpSnapshot = null;
+    if (warpGate) pixiCleanupObject(warpGate);
     warpGate = null;
 }
 
@@ -11363,6 +11420,7 @@ function exitWarpMaze() {
             const entity = arr[i];
             if (entity) {
                 try {
+                    entity.dead = true;
                     pixiCleanupObject(entity);
                     cleaned++;
                 } catch (e) {
@@ -11393,6 +11451,16 @@ function exitWarpMaze() {
     cleanupWarpArray(pois, 'warp POIs');
     cleanupWarpArray(gateKeyItems, 'warp gate key items');
     cleanupWarpArray(environmentAsteroids, 'warp asteroids');
+    if (boss && boss.isWarpBoss) {
+        try {
+            boss.dead = true;
+            pixiCleanupObject(boss);
+        } catch (e) {
+            console.warn('[WARP EXIT] Failed to clean warp boss:', e);
+        }
+        boss = null;
+        bossActive = false;
+    }
 
     // Clear the arrays
     bullets.length = 0;
@@ -11533,10 +11601,10 @@ function emitParticle(x, y, vx, vy, color = '#fff', life = 30) {
     return p;
 }
 
-function emitSmokeParticle(x, y, vx, vy) {
+function emitSmokeParticle(x, y, vx, vy, color = '#aaa') {
     let p = smokeParticlePool.length > 0 ? smokeParticlePool.pop() : null;
-    if (!p) p = new SmokeParticle(x, y, vx, vy);
-    else p.reset(x, y, vx, vy);
+    if (!p) p = new SmokeParticle(x, y, vx, vy, color);
+    else p.reset(x, y, vx, vy, color);
     particles.push(p);
     return p;
 }
@@ -11735,8 +11803,34 @@ function spawnFieryExplosion(x, y, scale = 1) {
     spawnSmoke(x, y, Math.max(1, Math.round(2 * s)));
 }
 
-function spawnSmoke(x, y, count = 1) {
-    for (let i = 0; i < count; i++) emitSmokeParticle(x, y, null, null);
+function spawnAsteroidExplosion(x, y, scale = 1) {
+    const s = Math.max(0.5, Math.min(2.6, scale || 1)) * 2;
+    const count = Math.max(8, Math.round(10 * s));
+    const colors = ['#fff'];
+    for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const speed = (0.6 + Math.random() * 1.6) * s;
+        const vx = Math.cos(a) * speed;
+        const vy = Math.sin(a) * speed;
+        const color = colors[(Math.random() * colors.length) | 0];
+        const life = 18 + Math.floor(Math.random() * 16);
+        const p = emitParticle(x, y, vx, vy, color, life);
+        p.size = (p.size || 2) * 3;
+        p.glow = true;
+    }
+    const smokeCount = Math.max(2, Math.round(4 * s));
+    for (let i = 0; i < smokeCount; i++) {
+        const sp = emitSmokeParticle(x, y, null, null, '#fff');
+        if (sp) {
+            sp.size *= 3;
+            sp.life = Math.round(sp.life * 1.4);
+            sp.maxLife = sp.life;
+        }
+    }
+}
+
+function spawnSmoke(x, y, count = 1, color = '#aaa') {
+    for (let i = 0; i < count; i++) emitSmokeParticle(x, y, null, null, color);
 }
 
 function spawnBarrelSmoke(x, y, angle) {
@@ -11965,6 +12059,17 @@ function updateMiniEventUI() {
     else el.innerText = 'EVENT: ACTIVE';
 }
 
+function clearMiniEvent() {
+    if (!miniEvent) return;
+    if (typeof miniEvent.kill === 'function') {
+        miniEvent.kill();
+    } else {
+        miniEvent.dead = true;
+    }
+    pixiCleanupObject(miniEvent);
+    miniEvent = null;
+}
+
 function updateKeysUI() {
     const el = document.getElementById('keys-display');
     if (!el) return;
@@ -12011,7 +12116,7 @@ function completeContract(success = true) {
 class ContractBeacon extends Entity {
     constructor(x, y, label = "SCAN") {
         super(x, y);
-        this.radius = 90;
+        this.radius = 135;
         this.label = label;
         this.t = 0;
         this.scanStartAt = null;
@@ -12064,8 +12169,8 @@ class ContractBeacon extends Entity {
                 this._pixiGfx.drawCircle(0, 0, this.radius);
                 // Crosshair
                 this._pixiGfx.lineStyle(2, 0x00ff00, 1.0);
-                this._pixiGfx.moveTo(-12, 0); this._pixiGfx.lineTo(12, 0);
-                this._pixiGfx.moveTo(0, -12); this._pixiGfx.lineTo(0, 12);
+                this._pixiGfx.moveTo(-18, 0); this._pixiGfx.lineTo(18, 0);
+                this._pixiGfx.moveTo(0, -18); this._pixiGfx.lineTo(0, 18);
                 this.shieldsDirty = false;
             }
             this._pixiGfx.position.set(this.pos.x, this.pos.y);
@@ -12152,8 +12257,8 @@ class ContractBeacon extends Entity {
         ctx.strokeStyle = '#0f0';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(-12, 0); ctx.lineTo(12, 0);
-        ctx.moveTo(0, -12); ctx.lineTo(0, 12);
+        ctx.moveTo(-18, 0); ctx.lineTo(18, 0);
+        ctx.moveTo(0, -18); ctx.lineTo(0, 18);
         ctx.stroke();
 
         // label
@@ -13734,7 +13839,7 @@ function setupGameWorld() {
     clearArrayWithPixiCleanup(caches);
     radiationStorm = null;
     nextRadiationStormAt = Date.now() + 90000;
-    miniEvent = null;
+    clearMiniEvent();
     nextMiniEventAt = Date.now() + 120000;
     clearArrayWithPixiCleanup(pois);
     gateKeys = 0;
@@ -14453,13 +14558,23 @@ function gameLoopLogic(opts = null) {
                     showOverlayMessage("WARP GATE OPEN", '#f80', 1600);
                 }
             } else {
-                if (warpGate && warpGate.mode === 'entry') warpGate = null;
+                if (warpGate && warpGate.mode === 'entry') {
+                    pixiCleanupObject(warpGate);
+                    warpGate = null;
+                }
             }
         } else {
-            if (warpGate && warpGate.mode === 'entry') warpGate = null;
+            if (warpGate && warpGate.mode === 'entry') {
+                pixiCleanupObject(warpGate);
+                warpGate = null;
+            }
         }
         if (warpActive && warpZone) {
             if (!warpGate || warpGate.mode !== 'exit') {
+                if (warpGate) {
+                    pixiCleanupObject(warpGate);
+                    warpGate = null;
+                }
                 warpGate = new WarpGate(warpZone.exitPos.x, warpZone.exitPos.y, 'exit');
             } else {
                 warpGate.pos.x = warpZone.exitPos.x;
@@ -14606,7 +14721,7 @@ function gameLoopLogic(opts = null) {
                 // Keep arena fights clean
                 radiationStorm = null;
                 scheduleNextRadiationStorm(Date.now() + 60000);
-                miniEvent = null;
+                clearMiniEvent();
                 scheduleNextMiniEvent(Date.now() + 90000);
                 dreadManager.timerActive = false;
                 dreadManager.firstSpawnDone = true;
@@ -14677,7 +14792,7 @@ function gameLoopLogic(opts = null) {
 
         // Mini-events
         if (!warpActive && !caveMode && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
-            if (miniEvent && miniEvent.dead) miniEvent = null;
+            if (miniEvent && miniEvent.dead) clearMiniEvent();
             if (!miniEvent && nextMiniEventAt && now >= nextMiniEventAt) {
                 spawnMiniEventRelative();
                 scheduleNextMiniEvent(now);
@@ -14772,6 +14887,7 @@ function gameLoopLogic(opts = null) {
         targetGrid.clear();
         for (let i = 0; i < enemies.length; i++) targetGrid.insert(enemies[i]);
         for (let i = 0; i < bases.length; i++) targetGrid.insert(bases[i]);
+        for (let i = 0; i < shootingStars.length; i++) targetGrid.insert(shootingStars[i]);
         if (contractEntities) {
             if (contractEntities.fortresses) {
                 for (let i = 0; i < contractEntities.fortresses.length; i++) targetGrid.insert(contractEntities.fortresses[i]);
@@ -14825,11 +14941,7 @@ function gameLoopLogic(opts = null) {
         // Arena ring is now static; no shrinking/growing
     }
 
-    // Dynamic zoom: zoom out during Cruiser arena fights
-    const cruiserFight = !!(bossActive && boss && boss.isCruiser);
-    // Zoom out 50% during arena fights for better battlefield visibility
-    const CRUISER_ZOOM_OUT_FACTOR = 1.5;
-    const targetZoom = cruiserFight ? (ZOOM_LEVEL / CRUISER_ZOOM_OUT_FACTOR) : ZOOM_LEVEL;
+    const targetZoom = ZOOM_LEVEL;
     if (doUpdate) {
         currentZoom += (targetZoom - currentZoom) * 0.08;
         if (Math.abs(currentZoom - targetZoom) < 0.001) currentZoom = targetZoom;
@@ -14840,7 +14952,8 @@ function gameLoopLogic(opts = null) {
     renderAlpha = alpha; // Set global for entity draw methods
     const renderPos = player.getRenderPos(alpha);
     let camX, camY;
-    if (bossArena && bossArena.active) {
+    const arenaLockActive = !!(bossArena && bossArena.active && !(boss && (boss.isCruiser || boss.isFlagship || boss.type === 'flagship')));
+    if (arenaLockActive) {
         camX = bossArena.x - width / (2 * zoom);
         camY = bossArena.y - height / (2 * zoom);
     } else {
@@ -14991,7 +15104,7 @@ function gameLoopLogic(opts = null) {
     });
     gateKeyItems.forEach(k => { if (doUpdate) k.update(); if (doDraw) k.draw(ctx); });
     shootingStars.forEach(s => { if (doUpdate) s.update(); if (doDraw) s.draw(ctx); });
-    caches.forEach(c => { if (doUpdate) c.update(); if (doDraw) c.draw(ctx); });
+    caches.forEach(c => { if (doUpdate) c.update(); if (doDraw) c.draw(ctx, pickupRes); });
     pois.forEach(p => { if (doUpdate) p.update(); if (doDraw) p.draw(ctx); });
     if (radiationStorm && !radiationStorm.dead) { if (doUpdate) radiationStorm.update(); if (doDraw) radiationStorm.draw(ctx); }
     if (miniEvent && !miniEvent.dead) { if (doUpdate) miniEvent.update(); if (doDraw) miniEvent.draw(ctx); }
@@ -15182,8 +15295,8 @@ function gameLoopLogic(opts = null) {
         });
         immediateCompactArray(bossBombs);
         immediateCompactArray(guidedMissiles);
-        immediateCompactArray(enemies);
-        immediateCompactArray(bases);
+        immediateCompactArray(enemies, pixiCleanupObject);
+        immediateCompactArray(bases, pixiCleanupObject);
         immediateCompactArray(environmentAsteroids);
 
         // Explosion cleanup with safety check for uncleaned sprites
@@ -15229,13 +15342,13 @@ function gameLoopLogic(opts = null) {
 
         compactParticles(particles);
         immediateCompactArray(gateKeyItems);
-        immediateCompactArray(shootingStars);
+        immediateCompactArray(shootingStars, pixiCleanupObject);
         immediateCompactArray(drones);
 
         // Safety: Force cleanup of dead caches that didn't clean themselves
         for (let i = caches.length - 1; i >= 0; i--) {
             const cache = caches[i];
-            if (cache && cache.dead && cache._pixiGfx) {
+            if (cache && cache.dead && cache.sprite) {
                 if (typeof cache.kill === 'function') cache.kill();
             }
         }
@@ -15346,6 +15459,21 @@ function gameLoopLogic(opts = null) {
                             if (e.dead) continue;
                             if (hit) break;
 
+                            // Shooting Star (Comet) Logic
+                            if (e instanceof ShootingStar) {
+                                if (b.isEnemy) continue;
+                                const dx = b.pos.x - e.pos.x;
+                                const dy = b.pos.y - e.pos.y;
+                                const distSq = dx * dx + dy * dy;
+                                const hitRadius = e.radius + b.radius;
+                                if (distSq < hitRadius * hitRadius) {
+                                    e.takeHit(b.damage);
+                                    hit = true;
+                                    b.dead = true;
+                                    spawnParticles(b.pos.x, b.pos.y, 4, '#fff');
+                                    break;
+                                }
+                            }
                             // Enemy Logic
                             if (e instanceof Enemy) {
                                 const dx = b.pos.x - e.pos.x;
