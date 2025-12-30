@@ -2771,15 +2771,15 @@ class Spaceship extends Entity {
             if (this.hp <= 0) {
                 killPlayer();
             } else {
-                // Halved for 60Hz: 45 frames = 0.75s
-                this.invulnerable = 45;
+                // Reduced by 50%: 22 frames = 0.37s
+                this.invulnerable = 22;
             }
         } else {
             // Shield absorbed all damage
             playSound('shield_hit');
             spawnParticles(this.pos.x, this.pos.y, 10, '#0ff');
             // Give a few i-frames to prevent projectile overlap instant-pop
-            this.invulnerable = 20;
+            this.invulnerable = 10;
         }
     }
 
@@ -2982,7 +2982,7 @@ class Spaceship extends Entity {
             if (this.invincibilityCycle.state === 'active') {
                 this.visible = true;
             } else {
-                this.visible = Math.floor(Date.now() / 100) % 2 === 0;
+                this.visible = true;
             }
         } else {
             this.visible = true;
@@ -3655,7 +3655,7 @@ class FlagshipGuidedMissile extends Entity {
             playSound('shield_hit');
             spawnParticles(player.pos.x, player.pos.y, 10, '#0ff');
         }
-        player.invulnerable = 45;
+        player.invulnerable = 22;
     }
 
     takeHit(damage) {
@@ -5492,7 +5492,7 @@ class CaveGuidedMissile extends Entity {
             playSound('shield_hit');
             spawnParticles(player.pos.x, player.pos.y, 8, '#0ff');
         }
-        player.invulnerable = 40;
+        player.invulnerable = 20;
     }
 
     update(deltaTime = 16.67) {
@@ -5812,7 +5812,7 @@ class CaveWallTurret extends Entity {
                     spawnParticles(player.pos.x, player.pos.y, 8, '#ff0');
                     playSound('shield_hit');
                 }
-                player.invulnerable = 40;
+                player.invulnerable = 20;
             };
 
             if (this.beamFire > 0) {
@@ -9810,7 +9810,7 @@ class SuperFlagshipBoss extends Flagship {
             playSound('shield_hit');
             spawnParticles(player.pos.x, player.pos.y, 10, '#0ff');
         }
-        player.invulnerable = 45;
+        player.invulnerable = 22;
     }
 
     update(deltaTime = 16.67) {
@@ -10294,7 +10294,7 @@ class WarpSentinelBoss extends Entity {
             for (let i = 0; i < count; i++) {
                 const a = (Math.PI * 2 / count) * i + (this.t * 0.01);
                 const maxTravel = 320 + Math.random() * 320;
-                const dmg = this.phase === 2 ? 3 : 2;
+                const dmg = 5;
                 const blastRadius = 620;
                 bossBombs.push(new CruiserMineBomb(this, a, maxTravel, dmg, blastRadius));
             }
@@ -10330,7 +10330,7 @@ class WarpSentinelBoss extends Entity {
         if (distToPlayer < this.radius + player.radius + 4) {
             if (player.invulnerable <= 0) {
                 player.hp -= 1;
-                player.invulnerable = 45;
+                player.invulnerable = 22;
                 spawnParticles(player.pos.x, player.pos.y, 10, '#f00');
                 playSound('hit');
                 updateHealthUI();
@@ -10589,10 +10589,26 @@ class SpaceStation extends Entity {
         this.minefieldTimer = 2500; // Deploy minefield every 2.5 seconds
         this.shieldsDirty = true;
         this._pixiInnerGfx = null;
+
+        // Telegraphed heavy laser (quick blast).
+        // Fire less frequently; extra lock delay improves readability.
+        this.laserCooldown = 560;
+        this.laserCharge = 0;
+        this.laserChargeTotal = 70;
+        this.laserDelay = 0;
+        this.laserDelayTotal = 15; // ~0.25s at 60fps after lock-in
+        this.laserFire = 0;
+        this.laserFireTotal = 5;
+        this.laserAngle = 0;
+        this.laserLen = 5200;
+        this.laserWidth = 44;
+        this.laserHitThisShot = false;
+        this.t = 0;
     }
 
     update(deltaTime = 16.67) {
         if (this.dead) return;
+        this.t++;
 
         // Keep station completely stationary (immovable)
         if (this.fixedPos) {
@@ -10623,6 +10639,8 @@ class SpaceStation extends Entity {
         // Check if player is within range to engage
         if (player && !player.dead) {
             const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+            const aimToPlayer = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+
             if (dist < 2800) { // Engagement range reduced by 20%
                 this.turretReload -= deltaTime; // deltaTime is in ms
                 if (this.turretReload <= 0) {
@@ -10635,6 +10653,87 @@ class SpaceStation extends Entity {
                 if (this.minefieldTimer <= 0) {
                     this.deployBombs();
                     this.minefieldTimer = 2500; // Reset to 2.5 seconds
+                }
+
+                // Telegraphed heavy laser (quick blast).
+                const applyBeamDamageToPlayer = (amount) => {
+                    if (!player || player.dead) return;
+                    if (player.invulnerable > 0) return;
+                    let remaining = Math.max(0, Math.ceil(amount));
+                    // Outer shield (if any): each segment is 0/1.
+                    if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
+                        for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
+                            if (player.outerShieldSegments[i] > 0) {
+                                player.outerShieldSegments[i] = 0;
+                                remaining -= 1;
+                            }
+                        }
+                    }
+                    // Inner shield: each segment can be 0..2.
+                    if (player.shieldSegments && player.shieldSegments.length > 0) {
+                        for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
+                            const absorb = Math.min(remaining, player.shieldSegments[i]);
+                            player.shieldSegments[i] -= absorb;
+                            remaining -= absorb;
+                        }
+                    }
+                    if (remaining > 0) {
+                        player.hp -= remaining;
+                        spawnParticles(player.pos.x, player.pos.y, 14, '#f00');
+                        playSound('hit');
+                        updateHealthUI();
+                        if (player.hp <= 0) killPlayer();
+                    } else {
+                        spawnParticles(player.pos.x, player.pos.y, 10, '#ff0');
+                        playSound('shield_hit');
+                    }
+                    player.invulnerable = 11;
+                };
+
+                if (this.laserFire > 0) {
+                    this.laserFire--;
+                    if (!this.laserHitThisShot) {
+                        const ex = this.pos.x + Math.cos(this.laserAngle) * this.laserLen;
+                        const ey = this.pos.y + Math.sin(this.laserAngle) * this.laserLen;
+                        const cp = closestPointOnSegment(player.pos.x, player.pos.y, this.pos.x, this.pos.y, ex, ey);
+                        const d = Math.hypot(player.pos.x - cp.x, player.pos.y - cp.y);
+                        const hitDist = (this.laserWidth * 0.5) + (player.radius * 0.55);
+                        if (d <= hitDist) {
+                            this.laserHitThisShot = true;
+                            const dmg = 8;
+                            applyBeamDamageToPlayer(dmg);
+                            shakeMagnitude = Math.max(shakeMagnitude, 14);
+                            shakeTimer = Math.max(shakeTimer, 14);
+                        }
+                    }
+                } else if (this.laserDelay > 0) {
+                    this.laserDelay--;
+                    if (this.laserDelay === 0) {
+                        this.laserFire = this.laserFireTotal;
+                        this.laserHitThisShot = false;
+                        playSound('heavy_shoot');
+                        spawnParticles(this.pos.x + Math.cos(this.laserAngle) * (this.radius + 10), this.pos.y + Math.sin(this.laserAngle) * (this.radius + 10), 18, '#ff0');
+                    }
+                } else if (this.laserCharge > 0) {
+                    this.laserCharge--;
+                    if (this.laserCharge === 0) {
+                        this.laserDelay = this.laserDelayTotal;
+                    }
+                } else {
+                    this.laserCooldown--;
+                    const cd = 560;
+                    const wantCharge = 70;
+                    if (this.laserCooldown <= 0 && dist < 3200 && dist > 450) {
+                        this.laserAngle = aimToPlayer;
+                        this.laserChargeTotal = wantCharge;
+                        this.laserCharge = this.laserChargeTotal;
+                        this.laserDelay = 0;
+                        this.laserFireTotal = 10;
+                        this.laserFire = 0;
+                        this.laserCooldown = cd;
+                        this.laserHitThisShot = false;
+                        showOverlayMessage("STATION LASER LOCK", '#ff0', 900, 2);
+                    }
                 }
 
                 this.manageDefenders(deltaTime);
@@ -10676,31 +10775,26 @@ class SpaceStation extends Entity {
             const angle = Math.atan2(player.pos.y - ty, player.pos.x - tx);
 
             // Single bullet per turret (radius 6 like gunboat bullets)
-            const b = new Bullet(tx, ty, angle, true, 2, 22, 6, '#f80');
+            const b = new Bullet(tx, ty, angle, true, 2, 14.96, 6, '#f80');
             bullets.push(b);
             spawnBarrelSmoke(tx, ty, angle);
         }
         playSound('rapid_shoot');
     }
 
-    // Deploy bombs in 8 directions (like warp boss) - explode after a few seconds
+    // Deploy bombs in 8 directions (like warp boss) - explode after traveling max distance
     deployBombs() {
         const bombCount = 8;
         for (let i = 0; i < bombCount; i++) {
             // 8 directions: 0, 45, 90, 135, 180, 225, 270, 315 degrees
             const angle = (i / bombCount) * Math.PI * 2;
-            const spawnDist = this.radius + 20;
-            const bx = this.pos.x + Math.cos(angle) * spawnDist;
-            const by = this.pos.y + Math.sin(angle) * spawnDist;
 
-            // Bombs shoot outward in fixed directions
-            const b = new Bullet(bx, by, angle, true, 0, 5, 12, '#f00'); // red bombs, no direct damage
-            b.life = 120; // 2 seconds before explosion
-            b.isBomb = true;
-            b.explosionRadius = 120;
-            b.explosionDamage = 8;
-            b.bombTimer = 120; // Countdown to explosion
-            bullets.push(b);
+            const maxTravel = 600 + Math.random() * 300;
+            const dmg = 5;
+            const blastRadius = 350;
+
+            const bomb = new CruiserMineBomb(this, angle, maxTravel, dmg, blastRadius);
+            bossBombs.push(bomb);
         }
         spawnParticles(this.pos.x, this.pos.y, 20, '#f00');
         playSound('boss_spawn');
@@ -10730,6 +10824,47 @@ class SpaceStation extends Entity {
         ctx.arc(0, 0, stationArena.radius, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
+
+        // Telegraphed heavy laser (charge line -> blast).
+        if ((this.laserCharge && this.laserCharge > 0) || (this.laserDelay && this.laserDelay > 0) || (this.laserFire && this.laserFire > 0)) {
+            const a = this.laserAngle;
+            const ex = Math.cos(a) * this.laserLen;
+            const ey = Math.sin(a) * this.laserLen;
+            const charging = (this.laserCharge && this.laserCharge > 0);
+            const locking = (this.laserDelay && this.laserDelay > 0);
+            const firing = (this.laserFire && this.laserFire > 0);
+            const pct = charging ? (1 - (this.laserCharge / (this.laserChargeTotal || 1))) : 1;
+            ctx.save();
+            ctx.translate(this.pos.x, this.pos.y);
+            const z = currentZoom || ZOOM_LEVEL;
+            ctx.lineWidth = (this.laserWidth / z);
+            if (charging || locking) {
+                ctx.setLineDash([12 / z, 10 / z]);
+                const lockPulse = locking ? (0.55 + 0.35 * Math.sin(this.t * 0.35)) : 1;
+                ctx.strokeStyle = `rgba(255, 220, 0, ${Math.min(0.75, (0.10 + pct * 0.35) * lockPulse + (locking ? 0.20 : 0))})`;
+                ctx.shadowBlur = 16;
+                ctx.shadowColor = '#ff0';
+            } else if (firing) {
+                ctx.setLineDash([]);
+                ctx.strokeStyle = 'rgba(255, 240, 0, 0.95)';
+                ctx.shadowBlur = 28;
+                ctx.shadowColor = '#ff0';
+            }
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(ex, ey);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.setLineDash([]);
+            // Endpoint flash
+            if (firing) {
+                ctx.fillStyle = 'rgba(255, 240, 0, 0.85)';
+                ctx.beginPath();
+                ctx.arc(ex, ey, (10 / z), 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
 
         // Pixi fast path (station hull + turrets + shields + nameplate)
         if (pixiBossLayer && pixiTextures && pixiTextures.station_hull) {
