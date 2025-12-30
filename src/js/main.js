@@ -154,20 +154,22 @@ document.addEventListener('keydown', function (e) {
     }
 });
 
-// DEBUG: Spawn station instantly
+// DEBUG: Spawn station instantly (Ctrl+Shift+4)
 window.spawnStation = function () {
     if (spaceStation) {
         console.log('[DEBUG] Station already active');
         return;
     }
     spaceStation = new SpaceStation();
-    pendingStations--;
+    // Only decrement if there are pending stations (debug bypass)
+    if (pendingStations > 0) pendingStations--;
     stationArena.x = spaceStation.pos.x;
     stationArena.y = spaceStation.pos.y;
     stationArena.radius = 2800;
     stationArena.active = false;
     showOverlayMessage("DEBUG: SPACE STATION SPAWNED", '#ff0', 2000);
     playSound('station_spawn');
+    console.log('[DEBUG] Station spawned at', spaceStation.pos.x.toFixed(0), spaceStation.pos.y.toFixed(0));
 };
 
 // toggleMusic wrapper that updates DOM button
@@ -2691,6 +2693,59 @@ class Spaceship extends Entity {
         showLevelUpMenu();
     }
 
+    takeHit(damage, ignoreShields = false) {
+        if (this.dead || this.invulnerable > 0) return;
+
+        let remaining = Math.max(0, Math.ceil(damage));
+
+        if (!ignoreShields) {
+            // Apply damage to outer shields first
+            if (this.outerShieldSegments && this.outerShieldSegments.length > 0) {
+                for (let i = 0; i < this.outerShieldSegments.length && remaining > 0; i++) {
+                    if (this.outerShieldSegments[i] > 0) {
+                        this.outerShieldSegments[i] = 0;
+                        remaining -= 1;
+                        this.shieldsDirty = true;
+                    }
+                }
+            }
+
+            // Apply damage to main inner shields
+            if (this.shieldSegments && this.shieldSegments.length > 0) {
+                for (let i = 0; i < this.shieldSegments.length && remaining > 0; i++) {
+                    const absorb = Math.min(remaining, this.shieldSegments[i]);
+                    this.shieldSegments[i] -= absorb;
+                    remaining -= absorb;
+                    this.shieldsDirty = true;
+                }
+            }
+        }
+
+        if (remaining > 0) {
+            this.hp -= remaining;
+            spawnParticles(this.pos.x, this.pos.y, 14, '#f00');
+            playSound('hit');
+            updateHealthUI();
+
+            // Screen shake (global variables)
+            if (typeof shakeMagnitude !== 'undefined') shakeMagnitude = 10;
+            if (typeof shakeTimer !== 'undefined') shakeTimer = 10;
+
+            if (this.hp <= 0) {
+                killPlayer();
+            } else {
+                // Halved for 60Hz: 45 frames = 0.75s
+                this.invulnerable = 45;
+            }
+        } else {
+            // Shield absorbed all damage
+            playSound('shield_hit');
+            spawnParticles(this.pos.x, this.pos.y, 10, '#0ff');
+            // Give a few i-frames to prevent projectile overlap instant-pop
+            this.invulnerable = 20;
+        }
+    }
+
     update(deltaTime = 16.67) {
         if (this.dead) return;
         this.shieldRotation += 0.02;
@@ -3341,36 +3396,7 @@ class Shockwave extends Entity {
             const dist = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
             if (dist < this.currentRadius + e.radius) {
                 if (e === player) {
-                    // Player uses shields + i-frames
-                    if (player.invulnerable > 0) {
-                        this.hitList.push(e);
-                        continue;
-                    }
-                    let remaining = Math.max(0, Math.ceil(this.damage));
-                    if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
-                        for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
-                            if (player.outerShieldSegments[i] > 0) {
-                                player.outerShieldSegments[i] = 0;
-                                remaining -= 1;
-                            }
-                        }
-                    }
-                    for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
-                        const absorb = Math.min(remaining, player.shieldSegments[i]);
-                        player.shieldSegments[i] -= absorb;
-                        remaining -= absorb;
-                    }
-                    if (remaining > 0) {
-                        player.hp -= remaining;
-                        player.invulnerable = 30;
-                        playSound('explode');
-                        spawnParticles(player.pos.x, player.pos.y, 12, '#f00');
-                        updateHealthUI();
-                        if (player.hp <= 0) killPlayer();
-                    } else {
-                        playSound('shield_hit');
-                        spawnParticles(player.pos.x, player.pos.y, 10, '#0ff');
-                    }
+                    player.takeHit(this.damage);
                     this.hitList.push(e);
                 } else {
                     e.hp -= this.damage;
@@ -3918,7 +3944,25 @@ class Bullet extends Entity {
         super.update(deltaTime);
         const scale = deltaTime / 16.67;
         this.life -= scale;
-        if (this.life <= 0) this.dead = true;
+
+        // Bomb explosion when life expires
+        if (this.life <= 0) {
+            if (this.isBomb && this.explosionRadius > 0) {
+                // Create explosion effect
+                spawnFieryExplosion(this.pos.x, this.pos.y, 1.5);
+                playSound('explode');
+
+                // Damage player if within explosion radius
+                if (player && !player.dead) {
+                    const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                    if (dist < this.explosionRadius) {
+                        const dmg = this.explosionDamage || 5;
+                        player.takeHit(dmg);
+                    }
+                }
+            }
+            this.dead = true;
+        }
     }
     draw(ctx) {
         if (this.dead) return;
@@ -4024,16 +4068,16 @@ class Enemy extends Entity {
         } else if (this.type === 'elite_roamer') {
             this.hp = 6 + (difficultyTier * 2);
             this.shieldSegments = new Array(6).fill(1);
-            this.shieldRadius = 35;
-            this.radius = 25;
+            this.shieldRadius = 26; // reduced 25%
+            this.radius = 19; // reduced 25% (was 25)
             this.maxSpeed *= 1.05;
         } else if (this.type === 'hunter') {
             this.hp = 12 + (difficultyTier * 3);
-            this.radius = Math.round(22 * 1.35);
+            this.radius = Math.round(22 * 1.35 * 0.75); // reduced 25%
             this.maxSpeed = 13.0 + (difficultyTier * 0.5); // doubled
             this.thrustPower = 1.2; // quadrupled (0.3 * 4)
             this.shieldSegments = new Array(4).fill(1);
-            this.shieldRadius = Math.round(30 * 1.35);
+            this.shieldRadius = Math.round(30 * 1.35 * 0.75); // reduced 25%
             this.shootTimer = 20; // 40 / 2
         } else {
             this.hp = 5 + (difficultyTier - 1) * 2;
@@ -4867,7 +4911,7 @@ class Base extends Entity {
         this.shootTimer = 75; // 150 / 2
         this.angle = 0;
         this.turretAngle = 0;
-        this.shieldRadius = 110;
+        this.shieldRadius = 130; // outer shield (moved out from 110)
         this.aggro = false;
 
         let outerCount = 24;
@@ -4902,7 +4946,7 @@ class Base extends Entity {
         this.shieldSegments = new Array(outerCount).fill(outerHp);
         this.shieldRotation = 0;
 
-        this.innerShieldRadius = 90;
+        this.innerShieldRadius = 95; // inner shield (moved out from 65 to clear ship radius 70)
         this.innerShieldSegments = [];
         if (innerCount > 0) {
             this.innerShieldSegments = new Array(innerCount).fill(innerHp);
@@ -10492,9 +10536,9 @@ class SpaceStation extends Entity {
         this.hp = 180;
         this.maxHp = 180;
 
-        // Two layers of shields
-        this.shieldRadius = Math.floor(570 * 0.65);
-        this.innerShieldRadius = Math.floor(520 * 0.65);
+        // Two layers of shields (increased gap to prevent overlap)
+        this.shieldRadius = Math.floor(600 * 0.65);    // outer: ~390
+        this.innerShieldRadius = Math.floor(500 * 0.65); // inner: ~325 (gap ~65px)
 
         // High segment count for "boss" feel
         this.shieldSegments = new Array(36).fill(5);
@@ -10503,8 +10547,9 @@ class SpaceStation extends Entity {
         this.shieldRotation = 0;
         this.innerShieldRotation = 0;
 
-        this.turretReload = 10; // halved (19 -> 10) for 60Hz
+        this.turretReload = 250; // 0.25 seconds in ms (2x faster)
         this.defenderSpawnTimer = 0;
+        this.minefieldTimer = 2500; // Deploy minefield every 2.5 seconds
         this.shieldsDirty = true;
         this._pixiInnerGfx = null;
     }
@@ -10533,19 +10578,28 @@ class SpaceStation extends Entity {
             }
         }
 
-        // Rotate shields in opposite directions for visual effect
-        this.shieldRotation += 0.006; // doubled for 60Hz
-        this.innerShieldRotation -= 0.009; // doubled for 60Hz
+        // Rotate shields in opposite directions for visual effect (scale by deltaTime)
+        const dtFactor = deltaTime / 16.67;
+        this.shieldRotation += 0.006 * dtFactor;
+        this.innerShieldRotation -= 0.009 * dtFactor;
 
         // Check if player is within range to engage
         if (player && !player.dead) {
             const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
             if (dist < 2800) { // Engagement range reduced by 20%
-                this.turretReload--;
+                this.turretReload -= deltaTime; // deltaTime is in ms
                 if (this.turretReload <= 0) {
                     this.fireTurrets();
-                    this.turretReload = 10; // halved for 60Hz
+                    this.turretReload = 250; // 0.25 seconds in ms (2x faster)
                 }
+
+                // Minefield attack
+                this.minefieldTimer -= deltaTime;
+                if (this.minefieldTimer <= 0) {
+                    this.deployBombs();
+                    this.minefieldTimer = 2500; // Reset to 2.5 seconds
+                }
+
                 this.manageDefenders(deltaTime);
             }
         }
@@ -10572,9 +10626,9 @@ class SpaceStation extends Entity {
         }
     }
 
-    // Fires 8 turrets mounted on the shield ring
+    // Fires 4 turrets mounted on the station (1 bullet each, every 0.5s)
     fireTurrets() {
-        const offsets = [0, Math.PI / 4, Math.PI / 2, 3 * Math.PI / 4, Math.PI, 5 * Math.PI / 4, 3 * Math.PI / 2, 7 * Math.PI / 4];
+        const offsets = [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2]; // 4 turrets at 90° intervals
         for (let i = 0; i < offsets.length; i++) {
             // Calculate turret position based on current rotation
             const angleOffset = offsets[i] + this.shieldRotation;
@@ -10584,12 +10638,35 @@ class SpaceStation extends Entity {
             // Aim at player
             const angle = Math.atan2(player.pos.y - ty, player.pos.x - tx);
 
-            // Rapid fire bullets
-            const b = new Bullet(tx, ty, angle, true, 2, 22, 220, '#f80');
+            // Single bullet per turret (radius 6 like gunboat bullets)
+            const b = new Bullet(tx, ty, angle, true, 2, 22, 6, '#f80');
             bullets.push(b);
             spawnBarrelSmoke(tx, ty, angle);
         }
         playSound('rapid_shoot');
+    }
+
+    // Deploy bombs in 8 directions (like warp boss) - explode after a few seconds
+    deployBombs() {
+        const bombCount = 8;
+        for (let i = 0; i < bombCount; i++) {
+            // 8 directions: 0, 45, 90, 135, 180, 225, 270, 315 degrees
+            const angle = (i / bombCount) * Math.PI * 2;
+            const spawnDist = this.radius + 20;
+            const bx = this.pos.x + Math.cos(angle) * spawnDist;
+            const by = this.pos.y + Math.sin(angle) * spawnDist;
+
+            // Bombs shoot outward in fixed directions
+            const b = new Bullet(bx, by, angle, true, 0, 5, 12, '#f00'); // red bombs, no direct damage
+            b.life = 120; // 2 seconds before explosion
+            b.isBomb = true;
+            b.explosionRadius = 120;
+            b.explosionDamage = 8;
+            b.bombTimer = 120; // Countdown to explosion
+            bullets.push(b);
+        }
+        spawnParticles(this.pos.x, this.pos.y, 20, '#f00');
+        playSound('boss_spawn');
     }
 
     draw(ctx) {
@@ -12935,45 +13012,19 @@ function resolveEntityCollision() {
                             // Trigger invuln? For now simpler logic: Just standard shield hit
                         }
 
-                        let shieldAbsorbed = false;
-                        if (player.outerShieldSegments && player.outerShieldSegments.some(s => s > 0)) {
-                            const outerIdx = player.outerShieldSegments.findIndex(s => s > 0);
-                            if (outerIdx !== -1) {
-                                player.outerShieldSegments[outerIdx] = 0;
-                                playSound('shield_hit');
-                                spawnParticles(player.pos.x, player.pos.y, 7, '#b0f');
-                                shieldAbsorbed = true;
-                            }
-                        }
-                        if (!shieldAbsorbed) {
-                            const activeSeg = player.shieldSegments.findIndex(s => s > 0);
-                            if (activeSeg !== -1) {
-                                player.shieldSegments[activeSeg]--;
-                                playSound('shield_hit');
-                                spawnParticles(player.pos.x, player.pos.y, 5, '#0ff');
-                                shieldAbsorbed = true;
-                            }
-                        }
-
-                        if (!shieldAbsorbed && player.invulnerable <= 0) {
+                        if (Date.now() - player.lastAsteroidHitTime > 1000) {
                             const asteroidDamage = sectorIndex >= 2 ? 2 : 1;
-                            player.hp -= asteroidDamage;
-                            player.invulnerable = 60;
-                            playSound('hit');
-                            spawnParticles(player.pos.x, player.pos.y, 5, '#f00');
-                            updateHealthUI();
-                            if (player.hp <= 0) killPlayer();
-                        }
-
-                        player.lastAsteroidHitTime = Date.now();
-                        if (!isIndestructibleWall) {
-                            ast.break();
-                            spawnParticles(ast.pos.x, ast.pos.y, 8, '#aa8');
-                            playSound('hit');
-                        } else {
-                            // Wall sparks (no breaking).
-                            spawnParticles(player.pos.x - nx * player.radius, player.pos.y - ny * player.radius, 6, '#08f');
-                            playSound('hit');
+                            player.takeHit(asteroidDamage);
+                            player.lastAsteroidHitTime = Date.now();
+                            if (!isIndestructibleWall) {
+                                ast.break();
+                                spawnParticles(ast.pos.x, ast.pos.y, 8, '#aa8');
+                                playSound('hit');
+                            } else {
+                                // Wall sparks (no breaking).
+                                spawnParticles(player.pos.x - nx * player.radius, player.pos.y - ny * player.radius, 6, '#08f');
+                                playSound('hit');
+                            }
                         }
                     }
                 }
@@ -12992,9 +13043,6 @@ function resolveEntityCollision() {
             if (e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter' || e.type === 'defender') {
                 const dist = Math.hypot(player.pos.x - e.pos.x, player.pos.y - e.pos.y);
                 if (dist < player.radius + e.radius) {
-                    // If invincible, no one takes damage and both survive
-                    if (player.invulnerable > 0) continue;
-
                     const ramDamage = Math.max(0, Math.ceil(e.hp));
                     // Larger, colorful burst on impact
                     spawnParticles(e.pos.x, e.pos.y, 20, '#f44');
@@ -13003,34 +13051,7 @@ function resolveEntityCollision() {
                     e.kill();
                     playSound('hit');
 
-                    let remaining = ramDamage;
-                    // Shields absorb first
-                    if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
-                        for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
-                            if (player.outerShieldSegments[i] > 0) {
-                                player.outerShieldSegments[i] = 0;
-                                remaining -= 1;
-                            }
-                        }
-                    }
-                    for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
-                        const absorb = Math.min(remaining, player.shieldSegments[i]);
-                        player.shieldSegments[i] -= absorb;
-                        remaining -= absorb;
-                    }
-                    if (remaining > 0) {
-                        player.hp -= remaining;
-                        player.invulnerable = 60; // brief i-frames to prevent instant double hits
-                        spawnParticles(player.pos.x, player.pos.y, 8, '#f00');
-                        updateHealthUI();
-                        if (player.hp <= 0) {
-                            killPlayer();
-                            break;
-                        }
-                    } else {
-                        // Optional light shield hit effect
-                        spawnParticles(player.pos.x, player.pos.y, 5, '#0ff');
-                    }
+                    player.takeHit(ramDamage);
                 }
             }
         }
@@ -14083,6 +14104,16 @@ function updateGamepad() {
 
     gpState.warp = gp.buttons[0].pressed;
     gpState.turbo = gp.buttons[2].pressed; // Button 2 (X/Square)
+
+    // DEBUG: Y button (button 3) spawns space station
+    if (gp.buttons[3].pressed && !gpState.yPressed) {
+        gpState.yPressed = true;
+        if (typeof window.spawnStation === 'function') {
+            window.spawnStation();
+        }
+    } else if (!gp.buttons[3].pressed) {
+        gpState.yPressed = false;
+    }
 
     // Menu Navigation Support
     if ((!gameActive || gamePaused) && now - menuDebounce > 150) {
@@ -15218,14 +15249,8 @@ function gameLoopLogic(opts = null) {
                             }
                             const hitDist = player.radius * 1.5 + b.radius * 1.5;
                             if (!hit && distSq < hitDist * hitDist) {
-                                player.hp -= b.damage;
+                                player.takeHit(b.damage, true); // Use ignoreShields=true as they were checked above
                                 hit = true;
-                                updateHealthUI();
-                                playSound('hit');
-                                shakeMagnitude = 10;
-                                shakeTimer = 10;
-                                spawnParticles(player.pos.x, player.pos.y, 5, '#f00');
-                                if (player.hp <= 0) killPlayer();
                             }
                         }
                     }

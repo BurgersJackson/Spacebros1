@@ -3,7 +3,7 @@ export class Profiler {
         this.metrics = {};
         this.frameCount = 0;
         this.reportInterval = 300; // Report every 300 frames (approx 5s)
-        this.enabled = true; // Enable profiler by default to identify performance issues
+        this.enabled = false; // Disabled - enable via perfEnable() if needed
     }
 
     start(label) {

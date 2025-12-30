@@ -24,6 +24,7 @@ DEBUG SHORTCUTS (Ctrl + Shift + Key)
 ====================================
 Ctrl + Shift + 3  : Spawn Cruiser boss instantly
 Ctrl + Shift + K  : Instantly destroy current Space Station
+Ctrl + Shift + S  : Spawn Space Station event instantly
 Ctrl + Shift + 2  : Warp directly to Sector 2 Cave
 Ctrl + Shift + W  : Enter Warp Maze instantly
 Ctrl + Shift + Q  : Exit Warp Maze (Placeholder)
