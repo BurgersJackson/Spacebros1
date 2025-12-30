@@ -309,6 +309,14 @@ let gunboat2Texture = null;
 let gunboat1Loaded = false;
 let gunboat2Loaded = false;
 
+// Space station external sprite
+const STATION1_URL = 'assets/station1.png';
+const station1Image = new Image();
+station1Image.decoding = 'async';
+station1Image.src = STATION1_URL;
+let station1Texture = null;
+let station1Loaded = false;
+
 const applyGunboatTextures = () => {
     if (!window.PIXI) return;
     try {
@@ -351,6 +359,25 @@ const applyGunboatTextures = () => {
     }
 };
 
+const applyStationTexture = () => {
+    if (!window.PIXI) return;
+    try {
+        if (station1Loaded && !station1Texture) {
+            const tex = PIXI.Texture.from(station1Image);
+            try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+            try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+            station1Texture = tex;
+        }
+
+        if (station1Texture) {
+            pixiTextures.station_hull = station1Texture;
+            pixiTextureAnchors.station_hull = 0.5;
+        }
+    } catch (e) {
+        // Keep procedural station texture.
+    }
+};
+
 gunboat1Image.addEventListener('load', () => {
     gunboat1Loaded = true;
     applyGunboatTextures();
@@ -364,6 +391,13 @@ gunboat2Image.addEventListener('load', () => {
 });
 gunboat2Image.addEventListener('error', () => {
     gunboat2Loaded = false;
+});
+station1Image.addEventListener('load', () => {
+    station1Loaded = true;
+    applyStationTexture();
+});
+station1Image.addEventListener('error', () => {
+    station1Loaded = false;
 });
 
 // Optional external sprite override for nugget pickups (also used by nugz caches).
@@ -1458,39 +1492,42 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
         applyBase1Texture();
         applyBase2Texture();
         applyBase3Texture();
+        applyStationTexture();
 
-        // Station hull
-        const makeStationHull = () => {
-            const g = new PIXI.Graphics();
-            const R = 340;
-            // Outer ring
-            g.lineStyle(20, 0x333333, 1);
-            g.drawCircle(0, 0, R - 30);
-            // Main body
-            g.beginFill(0x111111, 1);
-            g.drawCircle(0, 0, R * 0.75);
-            g.endFill();
-            g.lineStyle(5, 0x00ffff, 1);
-            g.drawCircle(0, 0, R * 0.75);
-            // Tech ring + spokes
-            g.lineStyle(2, 0x00ffff, 0.30);
-            g.drawCircle(0, 0, R * 0.5);
-            for (let i = 0; i < 8; i++) {
-                const a = i * (Math.PI / 4);
-                g.moveTo(Math.cos(a) * R * 0.25, Math.sin(a) * R * 0.25);
-                g.lineTo(Math.cos(a) * R * 0.75, Math.sin(a) * R * 0.75);
-            }
-            // Core housing
-            g.beginFill(0x000000, 1);
-            g.drawCircle(0, 0, R * 0.25);
-            g.endFill();
-            g.lineStyle(3, 0xff00ff, 1);
-            g.drawCircle(0, 0, R * 0.25);
-            return genTexture(g);
-        };
-        const sh = makeStationHull();
-        pixiTextures.station_hull = sh.tex;
-        pixiTextureAnchors.station_hull = sh.anchor;
+        // Station hull (procedural - used if external texture not available)
+        if (!station1Texture) {
+            const makeStationHull = () => {
+                const g = new PIXI.Graphics();
+                const R = 340;
+                // Outer ring
+                g.lineStyle(20, 0x333333, 1);
+                g.drawCircle(0, 0, R - 30);
+                // Main body
+                g.beginFill(0x111111, 1);
+                g.drawCircle(0, 0, R * 0.75);
+                g.endFill();
+                g.lineStyle(5, 0x00ffff, 1);
+                g.drawCircle(0, 0, R * 0.75);
+                // Tech ring + spokes
+                g.lineStyle(2, 0x00ffff, 0.30);
+                g.drawCircle(0, 0, R * 0.5);
+                for (let i = 0; i < 8; i++) {
+                    const a = i * (Math.PI / 4);
+                    g.moveTo(Math.cos(a) * R * 0.25, Math.sin(a) * R * 0.25);
+                    g.lineTo(Math.cos(a) * R * 0.75, Math.sin(a) * R * 0.75);
+                }
+                // Core housing
+                g.beginFill(0x000000, 1);
+                g.drawCircle(0, 0, R * 0.25);
+                g.endFill();
+                g.lineStyle(3, 0xff00ff, 1);
+                g.drawCircle(0, 0, R * 0.25);
+                return genTexture(g);
+            };
+            const sh = makeStationHull();
+            pixiTextures.station_hull = sh.tex;
+            pixiTextureAnchors.station_hull = sh.anchor;
+        }
 
         const makeStationCore = () => {
             const g = new PIXI.Graphics();
@@ -10538,7 +10575,7 @@ class SpaceStation extends Entity {
 
         // Two layers of shields (increased gap to prevent overlap)
         this.shieldRadius = Math.floor(600 * 0.65);    // outer: ~390
-        this.innerShieldRadius = Math.floor(500 * 0.65); // inner: ~325 (gap ~65px)
+        this.innerShieldRadius = Math.floor(560 * 0.65); // inner: ~364 (gap ~50px from hull)
 
         // High segment count for "boss" feel
         this.shieldSegments = new Array(36).fill(5);
@@ -10708,13 +10745,6 @@ class SpaceStation extends Entity {
                 container.addChild(hull);
                 this._pixiHullSpr = hull;
 
-                const core = new PIXI.Sprite(pixiTextures.station_core);
-                const ca = pixiTextureAnchors.station_core || { x: 0.5, y: 0.5 };
-                core.anchor.set((ca && ca.x != null) ? ca.x : 0.5, (ca && ca.y != null) ? ca.y : 0.5);
-                core.alpha = 0.9;
-                container.addChild(core);
-                this._pixiCoreSpr = core;
-
                 this._pixiTurrets = [];
                 for (let i = 0; i < 4; i++) {
                     const t = new PIXI.Sprite(pixiTextures.station_turret);
@@ -10731,10 +10761,8 @@ class SpaceStation extends Entity {
             container.position.set(this.pos.x, this.pos.y);
 
             const now = (typeof frameNow === 'number' && frameNow > 0) ? frameNow : Date.now();
-            const pulse = 1.0 + Math.sin(now * 0.005) * 0.15;
             const hullScale = (this.radius && isFinite(this.radius)) ? (this.radius / 340) : 1;
             if (this._pixiHullSpr) this._pixiHullSpr.scale.set(hullScale);
-            if (this._pixiCoreSpr) this._pixiCoreSpr.scale.set(hullScale * pulse);
 
             // Turrets (4 visuals)
             const offsets = [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2];
