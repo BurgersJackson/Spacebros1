@@ -26,9 +26,11 @@ export class HealthPowerUp extends Entity {
     /**
      * Update health pickup with magnetization toward player.
      * @param {Entity} player - Player entity
+     * @param {number} deltaTime - Time elapsed since last update in ms
      */
-    update(player) {
+    update(player, deltaTime = 16.67) {
         if (!player || player.dead) return;
+        const scale = deltaTime / 16.67;
 
         const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
 
@@ -42,11 +44,12 @@ export class HealthPowerUp extends Entity {
             this.vel.x = Math.cos(angle) * speed;
             this.vel.y = Math.sin(angle) * speed;
         } else {
-            this.vel.mult(0.95);
+            this.vel.mult(Math.pow(0.95, scale));
         }
 
-        this.pos.add(this.vel);
-        this.flash++;
+        this.pos.x += this.vel.x * scale;
+        this.pos.y += this.vel.y * scale;
+        this.flash += scale;
     }
 
     /**

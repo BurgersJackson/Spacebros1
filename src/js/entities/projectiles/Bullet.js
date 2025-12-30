@@ -35,9 +35,11 @@ export class Bullet extends Entity {
         this.style = opts.style || 'glow'; // 'glow', 'laser', 'square'
     }
 
-    update() {
-        this.pos.add(this.vel);
-        this.life--;
+    update(deltaTime = 16.67) {
+        const scale = deltaTime / 16.67;
+        this.pos.x += this.vel.x * scale;
+        this.pos.y += this.vel.y * scale;
+        this.life -= scale;
         if (this.life <= 0) this.dead = true;
     }
 
@@ -140,7 +142,9 @@ export class Missile extends Entity {
         this.maxSpeed = opts.maxSpeed ? opts.maxSpeed : speed * 1.5; // maxSpeed is already correctly set or scaled elsewhere if needed
     }
 
-    update() {
+    update(deltaTime = 16.67) {
+        const scale = deltaTime / 16.67;
+
         // Home toward target
         if (this.target && !this.target.dead) {
             const targetAngle = Math.atan2(
@@ -153,22 +157,24 @@ export class Missile extends Entity {
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-            // Turn toward target
-            if (Math.abs(angleDiff) < this.turnRate) {
+            // Turn toward target (scaled by deltaTime)
+            const turnAmount = this.turnRate * scale;
+            if (Math.abs(angleDiff) < turnAmount) {
                 this.angle = targetAngle;
             } else {
-                this.angle += Math.sign(angleDiff) * this.turnRate;
+                this.angle += Math.sign(angleDiff) * turnAmount;
             }
 
-            // Accelerate
-            this.speed = Math.min(this.maxSpeed, this.speed + this.acceleration);
+            // Accelerate (scaled by deltaTime)
+            this.speed = Math.min(this.maxSpeed, this.speed + this.acceleration * scale);
         }
 
         this.vel.x = Math.cos(this.angle) * this.speed;
         this.vel.y = Math.sin(this.angle) * this.speed;
-        this.pos.add(this.vel);
+        this.pos.x += this.vel.x * scale;
+        this.pos.y += this.vel.y * scale;
 
-        this.life--;
+        this.life -= scale;
         if (this.life <= 0) this.dead = true;
     }
 

@@ -5960,7 +5960,7 @@ class CaveWallSwitch extends Entity {
         }
         return true;
     }
-    update(deltaTime = 16.67) { this.t++; }
+    update(deltaTime = 16.67) { this.t += deltaTime / 16.67; }
     draw(ctx) {
         if (this.dead) {
             pixiCleanupObject(this);
@@ -6032,7 +6032,7 @@ class CavePowerRelay extends Entity {
         }
         return true;
     }
-    update(deltaTime = 16.67) { this.t++; }
+    update(deltaTime = 16.67) { this.t += deltaTime / 16.67; }
     draw(ctx) {
         if (this.dead) {
             pixiCleanupObject(this);
@@ -6082,7 +6082,7 @@ class CaveRewardPickup extends Entity {
         this.radius = 26;
         this.t = 0;
     }
-    update(deltaTime = 16.67) { this.t++; }
+    update(deltaTime = 16.67) { this.t += deltaTime / 16.67; }
     draw(ctx) {
         if (this.dead) {
             pixiCleanupObject(this);
@@ -10509,7 +10509,7 @@ class SpaceStation extends Entity {
             if (e && !e.dead && e.assignedBase === this) myDefenderCount++;
         }
         if (myDefenderCount < 4) {
-                if (this.defenderSpawnTimer <= 0) {
+            if (this.defenderSpawnTimer <= 0) {
                 const angle = Math.random() * Math.PI * 2;
                 const d = this.radius + 70;
                 const sx = this.pos.x + Math.cos(angle) * d;
@@ -13665,7 +13665,7 @@ function showLevelUpMenu() {
     rerollBtn.style.backgroundColor = '#4a2';
     rerollBtn.style.color = '#fff';
     rerollBtn.style.cursor = 'pointer';
-    
+
     const updateRerollButton = () => {
         if (rerollTokens > 0) {
             rerollBtn.textContent = `REROLL OPTIONS (TOKENS: ${rerollTokens})`;
@@ -13677,9 +13677,9 @@ function showLevelUpMenu() {
             rerollBtn.disabled = spaceNuggets < 5;
         }
     };
-    
+
     updateRerollButton();
-    
+
     rerollBtn.onclick = () => {
         if (rerollTokens > 0) {
             // Use purchased reroll token
@@ -13694,7 +13694,7 @@ function showLevelUpMenu() {
             showLevelUpMenu();
         }
     };
-    
+
     parent.insertBefore(rerollBtn, container);
 
     // 3. Create DOM
@@ -14766,21 +14766,21 @@ function gameLoopLogic(opts = null) {
     environmentAsteroids.forEach(a => { if (doUpdate) a.update(deltaTime); if (doDraw) a.draw(ctx); });
 
     coins.forEach(c => {
-        if (doUpdate) c.update(player);
+        if (doUpdate) c.update(player, deltaTime);
         if (doDraw) {
             if (isInView(c.pos.x, c.pos.y, 50)) c.draw(ctx, pickupRes);
             else if (typeof c.cull === 'function') c.cull();
         }
     });
     nuggets.forEach(n => {
-        if (doUpdate) n.update(player);
+        if (doUpdate) n.update(player, deltaTime);
         if (doDraw) {
             if (isInView(n.pos.x, n.pos.y, 50)) n.draw(ctx, pickupRes);
             else if (typeof n.cull === 'function') n.cull();
         }
     });
     powerups.forEach(p => {
-        if (doUpdate) p.update(player);
+        if (doUpdate) p.update(player, deltaTime);
         if (doDraw) {
             if (isInView(p.pos.x, p.pos.y, 60)) p.draw(ctx, pickupRes);
             else if (typeof p.cull === 'function') p.cull();
@@ -14892,7 +14892,7 @@ function gameLoopLogic(opts = null) {
     // Guided missiles - always update (tracking), cull drawing
     for (let i = 0, len = guidedMissiles.length; i < len; i++) {
         const m = guidedMissiles[i];
-        if (doUpdate) m.update();
+        if (doUpdate) m.update(deltaTime);
         if (doDraw && isInView(m.pos.x, m.pos.y)) m.draw(ctx);
     }
 
@@ -14901,7 +14901,7 @@ function gameLoopLogic(opts = null) {
     for (let i = 0, len = particles.length; i < len; i++) {
         const p = particles[i];
         try {
-            if (doUpdate) p.update();
+            if (doUpdate) p.update(deltaTime);
             if (doDraw) {
                 if (isInView(p.pos.x, p.pos.y, 20)) p.draw(ctx, particleRes, alpha);
                 else if (typeof p.cull === 'function') p.cull();
@@ -16650,17 +16650,17 @@ if (upgradesBackBtn) {
             if (el.tagName === 'BUTTON') el.blur();
         });
 
-// Wait one frame then setup start screen navigation
-requestAnimationFrame(() => {
-    menuSelectionIndex = 0;
-    const active = getActiveMenuElements();
-    if (active.length > 0) {
-        updateMenuVisuals(active);
-        active[0].focus();
-    }
-    // Prevent input during menu transition
-    menuDebounce = Date.now() + 300;
-});
+        // Wait one frame then setup start screen navigation
+        requestAnimationFrame(() => {
+            menuSelectionIndex = 0;
+            const active = getActiveMenuElements();
+            if (active.length > 0) {
+                updateMenuVisuals(active);
+                active[0].focus();
+            }
+            // Prevent input during menu transition
+            menuDebounce = Date.now() + 300;
+        });
     });
 }
 
@@ -16692,15 +16692,15 @@ function showUpgradesMenu() {
     menuSelectionIndex = 0;
     menuDebounce = Date.now() + 300;
 
-// Wait one frame to ensure DOM has updated, then setup navigation
-requestAnimationFrame(() => {
-    const active = getActiveMenuElements();
-    if (active.length > 0) {
-        updateMenuVisuals(active);
-        // Force focus on the first button
-        active[0].focus();
-    }
-});
+    // Wait one frame to ensure DOM has updated, then setup navigation
+    requestAnimationFrame(() => {
+        const active = getActiveMenuElements();
+        if (active.length > 0) {
+            updateMenuVisuals(active);
+            // Force focus on the first button
+            active[0].focus();
+        }
+    });
 }
 const newProfileBtn = document.getElementById('new-profile-btn');
 if (newProfileBtn) newProfileBtn.addEventListener('click', () => {

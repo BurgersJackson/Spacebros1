@@ -38,9 +38,10 @@ export class Particle extends Entity {
         this.sprite = null;
     }
 
-    update() {
-        super.update();
-        this.life--;
+    update(deltaTime = 16.67) {
+        super.update(deltaTime);
+        const scale = deltaTime / 16.67;
+        this.life -= scale;
         if (this.life <= 0) this.dead = true;
     }
 
@@ -108,12 +109,14 @@ export class SmokeParticle extends Entity {
         this.dead = false;
     }
 
-    update() {
+    update(deltaTime = 16.67) {
+        const scale = deltaTime / 16.67;
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
-        this.pos.add(this.vel);
-        this.size += 0.1;
-        this.life--;
+        this.pos.x += this.vel.x * scale;
+        this.pos.y += this.vel.y * scale;
+        this.size += 0.1 * scale;
+        this.life -= scale;
         if (this.life <= 0) this.dead = true;
     }
 
@@ -165,12 +168,14 @@ export class WarpParticle extends Entity {
         this.sprite = null;
     }
 
-    update() {
+    update(deltaTime = 16.67) {
+        const scale = deltaTime / 16.67;
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
-        this.pos.add(this.vel);
-        this.life--;
-        this.length += 5;
+        this.pos.x += this.vel.x * scale;
+        this.pos.y += this.vel.y * scale;
+        this.life -= scale;
+        this.length += 5 * scale;
         if (this.life <= 0) this.dead = true;
     }
 
