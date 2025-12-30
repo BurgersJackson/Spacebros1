@@ -2758,6 +2758,7 @@ class Spaceship extends Entity {
             }
         }
 
+        // Hull damage only happens when shields cannot absorb the full hit.
         if (remaining > 0) {
             this.hp -= remaining;
             spawnParticles(this.pos.x, this.pos.y, 14, '#f00');
@@ -4949,6 +4950,8 @@ class Base extends Entity {
         this.angle = 0;
         this.turretAngle = 0;
         this.shieldRadius = 130; // outer shield (moved out from 110)
+        const BASE_SHIELD_GAP = 35;
+        this.innerShieldRadius = Math.max(this.radius + 15, this.shieldRadius - BASE_SHIELD_GAP); // keep inner ring inside the outer shield with a fixed gap
         this.aggro = false;
 
         let outerCount = 24;
@@ -4983,7 +4986,6 @@ class Base extends Entity {
         this.shieldSegments = new Array(outerCount).fill(outerHp);
         this.shieldRotation = 0;
 
-        this.innerShieldRadius = 95; // inner shield (moved out from 65 to clear ship radius 70)
         this.innerShieldSegments = [];
         if (innerCount > 0) {
             this.innerShieldSegments = new Array(innerCount).fill(innerHp);
@@ -5273,8 +5275,8 @@ class Base extends Entity {
                                     // Draw at base angle 0
                                     const a0 = i * segAngle + 0.05;
                                     const a1 = (i + 1) * segAngle - 0.05;
-                                    gfx.moveTo(Math.cos(a0) * this.innerShieldRadius, Math.sin(a0) * this.innerShieldRadius);
-                                    gfx.arc(0, 0, this.innerShieldRadius, a0, a1);
+                            gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
+                            gfx.arc(0, 0, this.shieldRadius, a0, a1);
                                 }
                             }
                         }
@@ -5633,7 +5635,7 @@ class CaveWallTurret extends Entity {
         this.weakpointHp = Math.max(0, opts.weakpointHp || (this.armored ? 4 : 0));
         this.maxWeakpointHp = this.weakpointHp;
         this._weakOffset = null;
-        this.radius = 22;
+        this.radius = 66;
         this.hp = 6;
         this.maxHp = 6;
         this.t = 0;
@@ -5855,7 +5857,7 @@ class CaveWallTurret extends Entity {
         if (this.reload <= 0) {
             const muzzleX = this.pos.x + Math.cos(aim) * (this.radius + 6);
             const muzzleY = this.pos.y + Math.sin(aim) * (this.radius + 6);
-            bullets.push(new Bullet(muzzleX, muzzleY, aim, true, 1, 14, 100, '#8ff'));
+            bullets.push(new Bullet(muzzleX, muzzleY, aim, true, 1, 14, 4, '#8ff'));
             if (Math.random() < 0.25) bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.08, true, 1, 14, 4, '#8ff'));
             if (Math.random() < 0.25) bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.08, true, 1, 14, 4, '#8ff'));
             this.reload = 26 + Math.floor(Math.random() * 18);
@@ -13293,7 +13295,7 @@ function resolveEntityCollision() {
             if (player && !player.dead && !player.invulnerable) {
                 const dist = Math.hypot(s.pos.x - player.pos.x, s.pos.y - player.pos.y);
                 if (dist < s.radius + player.radius) {
-                    player.hp -= s.damage;
+                    player.takeHit(s.damage);
                     updateHealthUI();
                     playSound('explode');
                     spawnParticles(player.pos.x, player.pos.y, 20, '#f00');
@@ -14931,7 +14933,7 @@ function gameLoopLogic(opts = null) {
         // Arena ring is now static; no shrinking/growing
     }
 
-    const targetZoom = ZOOM_LEVEL;
+    const targetZoom = ZOOM_LEVEL * 0.85;
     if (doUpdate) {
         currentZoom += (targetZoom - currentZoom) * 0.08;
         if (Math.abs(currentZoom - targetZoom) < 0.001) currentZoom = targetZoom;
