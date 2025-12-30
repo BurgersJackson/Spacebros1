@@ -148,8 +148,27 @@ document.addEventListener('keydown', function (e) {
     if (e.ctrlKey && e.shiftKey && e.key === '3') {
         e.preventDefault();
         window.spawnCruiser();
+    } else if (e.ctrlKey && e.shiftKey && e.key === '4') {
+        e.preventDefault();
+        window.spawnStation();
     }
 });
+
+// DEBUG: Spawn station instantly
+window.spawnStation = function () {
+    if (spaceStation) {
+        console.log('[DEBUG] Station already active');
+        return;
+    }
+    spaceStation = new SpaceStation();
+    pendingStations--;
+    stationArena.x = spaceStation.pos.x;
+    stationArena.y = spaceStation.pos.y;
+    stationArena.radius = 2800;
+    stationArena.active = false;
+    showOverlayMessage("DEBUG: SPACE STATION SPAWNED", '#ff0', 2000);
+    playSound('station_spawn');
+};
 
 // toggleMusic wrapper that updates DOM button
 function toggleMusic() {
@@ -2107,10 +2126,10 @@ function completeSectorWarp() {
     dreadManager.timerAt = Date.now() + Math.max(firstCruiserGraceMs, baseDelay);
 
     // Stations for new sector
-    pendingStations = 2;
+    pendingStations = 0;
     if (spaceStation) pixiCleanupObject(spaceStation);
     spaceStation = null;
-    nextSpaceStationTime = (sectorIndex === 2) ? (Date.now() + 180000) : (Date.now() + 1000);
+    nextSpaceStationTime = null;
     scheduleNextShootingStar();
     showOverlayMessage("NEW SECTOR ENTERED", '#0ff', 3000);
 }
@@ -3896,8 +3915,9 @@ class Bullet extends Entity {
             }
         }
 
-        super.update();
-        this.life--;
+        super.update(deltaTime);
+        const scale = deltaTime / 16.67;
+        this.life -= scale;
         if (this.life <= 0) this.dead = true;
     }
     draw(ctx) {
@@ -5172,8 +5192,8 @@ class Base extends Entity {
                                     // Draw at base angle 0
                                     const a0 = i * segAngle + 0.05;
                                     const a1 = (i + 1) * segAngle - 0.05;
-                                    gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
-                                    gfx.arc(0, 0, this.shieldRadius, a0, a1);
+                                    gfx.moveTo(Math.cos(a0) * this.innerShieldRadius, Math.sin(a0) * this.innerShieldRadius);
+                                    gfx.arc(0, 0, this.innerShieldRadius, a0, a1);
                                 }
                             }
                         }
@@ -5754,7 +5774,7 @@ class CaveWallTurret extends Entity {
         if (this.reload <= 0) {
             const muzzleX = this.pos.x + Math.cos(aim) * (this.radius + 6);
             const muzzleY = this.pos.y + Math.sin(aim) * (this.radius + 6);
-            bullets.push(new Bullet(muzzleX, muzzleY, aim, true, 1, 14, 4, '#8ff'));
+            bullets.push(new Bullet(muzzleX, muzzleY, aim, true, 1, 14, 100, '#8ff'));
             if (Math.random() < 0.25) bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.08, true, 1, 14, 4, '#8ff'));
             if (Math.random() < 0.25) bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.08, true, 1, 14, 4, '#8ff'));
             this.reload = 26 + Math.floor(Math.random() * 18);
@@ -9112,7 +9132,13 @@ class Cruiser extends Enemy {
         bossActive = false;
         bossArena.active = false;
         bossArena.growing = false;
-        showOverlayMessage("CRUISER DESTROYED - ARENA UNLOCKED", '#0f0', 3000);
+        if (cruiserEncounterCount === 2) {
+            pendingStations = 1;
+            nextSpaceStationTime = Date.now() + 30000;
+            showOverlayMessage("CRUISER DESTROYED - SPACE STATION IN 30s", '#f80', 4000);
+        } else {
+            showOverlayMessage("CRUISER DESTROYED - ARENA UNLOCKED", '#0f0', 3000);
+        }
         if (musicEnabled) setMusicMode('normal');
         try {
             const delay = dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
@@ -10456,6 +10482,7 @@ class SpaceStation extends Entity {
         const angle = Math.random() * Math.PI * 2;
         const dist = 6000; // Spawn far away from player
         super(player.pos.x + Math.cos(angle) * dist, player.pos.y + Math.sin(angle) * dist);
+        this.fixedPos = { x: this.pos.x, y: this.pos.y }; // Lock position forever
 
         const names = ["OMEGA", "NOVA", "TITAN", "ORION", "PHOENIX", "AURORA", "ASTRA", "ZEUS", "HELIOS", "HYPERION"];
         const suffix = Math.floor(Math.random() * 999);
@@ -10484,6 +10511,28 @@ class SpaceStation extends Entity {
 
     update(deltaTime = 16.67) {
         if (this.dead) return;
+
+        // Keep station completely stationary (immovable)
+        if (this.fixedPos) {
+            this.pos.x = this.fixedPos.x;
+            this.pos.y = this.fixedPos.y;
+            this.vel.set(0, 0);
+            this.angleVel = 0;
+        }
+
+        // Arena lock activation
+        if (player && !player.dead && !stationArena.active) {
+            const pdx = player.pos.x - this.pos.x;
+            const pdy = player.pos.y - this.pos.y;
+            const pdist = Math.hypot(pdx, pdy);
+            if (pdist < stationArena.radius) {
+                stationArena.active = true;
+                showOverlayMessage("STATION DEFENSE FIELD - YOU ARE TRAPPED", '#f0f', 5000, 2);
+                playSound('boss_spawn');
+                if (typeof musicEnabled !== 'undefined' && musicEnabled) setMusicMode('cruiser');
+            }
+        }
+
         // Rotate shields in opposite directions for visual effect
         this.shieldRotation += 0.006; // doubled for 60Hz
         this.innerShieldRotation -= 0.009; // doubled for 60Hz
@@ -10536,8 +10585,7 @@ class SpaceStation extends Entity {
             const angle = Math.atan2(player.pos.y - ty, player.pos.x - tx);
 
             // Rapid fire bullets
-            const b = new Bullet(tx, ty, angle, true, 3, 16, 5, '#ff0');
-            b.life *= 1.04; // ~20% less range
+            const b = new Bullet(tx, ty, angle, true, 2, 22, 220, '#f80');
             bullets.push(b);
             spawnBarrelSmoke(tx, ty, angle);
         }
@@ -10553,6 +10601,21 @@ class SpaceStation extends Entity {
             }
             return;
         }
+
+        // Arena barrier draw (always canvas for visibility)
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        const arenaPulse = 0.5 + Math.sin(Date.now() * 0.008) * 0.3;
+        ctx.strokeStyle = stationArena.active ? `rgba(255,0,255,${0.5 + arenaPulse * 0.3})` : `rgba(255,255,0,${0.25 + arenaPulse * 0.15})`;
+        ctx.lineWidth = 12;
+        ctx.shadowBlur = stationArena.active ? 40 : 20;
+        ctx.shadowColor = stationArena.active ? '#f0f' : '#ff0';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.arc(0, 0, stationArena.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
 
         // Pixi fast path (station hull + turrets + shields + nameplate)
         if (pixiBossLayer && pixiTextures && pixiTextures.station_hull) {
@@ -10939,8 +11002,9 @@ let maxRoamers = 5;
 let boss = null;
 let bossActive = false;
 let spaceStation = null;
-let pendingStations = 1;
+let pendingStations = 0;
 let nextSpaceStationTime = null;
+let stationArena = { x: 0, y: 0, radius: 2800, active: false };
 let sectorTransitionActive = false;
 let warpCountdownAt = null;
 let gameEnded = false;
@@ -13164,7 +13228,7 @@ function checkWallCollision(entity, elasticity = 0) {
         if (dA < activeAnomalyZone.radius + 800) activeAnomalyZone.applyWallCollisions(entity, 0.95);
     }
 
-    // 4. Arena barrier only affects the player (enemies are exempt)
+    // Arena barriers only affect player/bullets (enemies exempt)
     if (bossArena.active && entity instanceof Enemy) return;
     if (bossArena.active) {
         const dx = entity.pos.x - bossArena.x;
@@ -13189,6 +13253,42 @@ function checkWallCollision(entity, elasticity = 0) {
             const angle = Math.atan2(dy, dx);
             entity.pos.x = bossArena.x + Math.cos(angle) * bossArena.radius;
             entity.pos.y = bossArena.y + Math.sin(angle) * bossArena.radius;
+
+            const nx = Math.cos(angle);
+            const ny = Math.sin(angle);
+            const dot = entity.vel.x * nx + entity.vel.y * ny;
+
+            if (dot > 0) {
+                entity.vel.x -= nx * dot * (1 + elasticity);
+                entity.vel.y -= ny * dot * (1 + elasticity);
+            }
+        }
+    }
+
+    // Station arena barrier
+    if (stationArena.active && entity instanceof Enemy) return;
+    if (stationArena.active) {
+        const dx = entity.pos.x - stationArena.x;
+        const dy = entity.pos.y - stationArena.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > stationArena.radius) {
+            if (entity === player) {
+                if (Date.now() - player.lastArenaDamageTime > 1000) {
+                    if (player.invulnerable <= 0) {
+                        player.hp -= 1;
+                        playSound('hit');
+                        updateHealthUI();
+                        spawnParticles(player.pos.x, player.pos.y, 5, '#f00');
+                        showOverlayMessage("STATION FIELD DAMAGE", '#f80', 1000);
+                        if (player.hp <= 0) killPlayer();
+                    }
+                    player.lastArenaDamageTime = Date.now();
+                }
+            }
+
+            const angle = Math.atan2(dy, dx);
+            entity.pos.x = stationArena.x + Math.cos(angle) * stationArena.radius;
+            entity.pos.y = stationArena.y + Math.sin(angle) * stationArena.radius;
 
             const nx = Math.cos(angle);
             const ny = Math.sin(angle);
@@ -13522,12 +13622,13 @@ function setupGameWorld() {
     spaceStation = null;
     bossActive = false;
     bossArena.active = false;
-    pendingStations = 1;
+    stationArena.active = false;
+    pendingStations = 0;
     sectorIndex = 1;
     sectorTransitionActive = false;
     warpCountdownAt = null;
     warpGateUnlocked = false;
-    nextSpaceStationTime = Date.now() + 180000; // first station after 3 minutes
+    // nextSpaceStationTime = Date.now() + 180000; // disabled, after second cruiser
     gunboatRespawnAt = null;
     gunboatLevel2Unlocked = false;
     initialSpawnDone = false;
@@ -14202,6 +14303,11 @@ function mainLoop() {
 
 function gameLoopLogic(opts = null) {
     globalProfiler.start('GameLoopLogic');
+
+    // Safety: deactivate station arena if station gone
+    if (stationArena.active && (!spaceStation || spaceStation.dead)) {
+        stationArena.active = false;
+    }
     const doDraw = !(opts && opts.doDraw === false);
     const doUpdate = !(opts && opts.doUpdate === false);
     const deltaTime = (opts && opts.deltaTime) || SIM_STEP_MS; // Default to 60fps step for backwards compatibility
@@ -14421,7 +14527,11 @@ function gameLoopLogic(opts = null) {
         if (!sectorTransitionActive && !warpActive && !caveMode && !spaceStation && pendingStations > 0 && nextSpaceStationTime && now >= nextSpaceStationTime) {
             spaceStation = new SpaceStation();
             pendingStations--;
-            showOverlayMessage("WARNING: SPACE STATION DETECTED", '#f00', 4000);
+            stationArena.x = spaceStation.pos.x;
+            stationArena.y = spaceStation.pos.y;
+            stationArena.radius = 2800;
+            stationArena.active = false;
+            showOverlayMessage("SPACE STATION SPAWNED - DESTROY THE BARRIER?", '#f80', 5000);
             playSound('station_spawn');
             nextSpaceStationTime = null;
         }
@@ -15073,14 +15183,14 @@ function gameLoopLogic(opts = null) {
 
                 if (!hit) {
                     if (b.isEnemy) {
-                        if (!player.dead && !player.invulnerable) {
+                        if (!player.dead && player.invulnerable <= 0) {
                             const dx = b.pos.x - player.pos.x;
                             const dy = b.pos.y - player.pos.y;
                             const distSq = dx * dx + dy * dy;
                             const dist = Math.sqrt(distSq); // Only calc sqrt if needed for specific range checks, but kept here for logic flow
 
                             if (!hit && player.outerShieldSegments && player.outerShieldSegments.some(s => s > 0) &&
-                                dist < player.outerShieldRadius + b.radius && dist > player.outerShieldRadius - 10) {
+                                dist < player.outerShieldRadius + b.radius * 1.5 && dist > player.outerShieldRadius - b.radius * 2) {
                                 let angle = Math.atan2(b.pos.y - player.pos.y, b.pos.x - player.pos.x) - player.outerShieldRotation;
                                 while (angle < 0) angle += Math.PI * 2;
                                 const count = player.outerShieldSegments.length;
@@ -15093,7 +15203,7 @@ function gameLoopLogic(opts = null) {
                                     spawnParticles(b.pos.x, b.pos.y, 7, '#b0f');
                                 }
                             }
-                            if (!hit && dist < player.shieldRadius + b.radius && dist > player.shieldRadius - 10) {
+                            if (!hit && dist < player.shieldRadius + b.radius * 1.5 && dist > player.shieldRadius - b.radius * 2) {
                                 let angle = Math.atan2(b.pos.y - player.pos.y, b.pos.x - player.pos.x) - player.shieldRotation;
                                 while (angle < 0) angle += Math.PI * 2;
                                 const count = player.shieldSegments.length;
@@ -15106,7 +15216,7 @@ function gameLoopLogic(opts = null) {
                                     spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
                                 }
                             }
-                            const hitDist = player.radius + b.radius;
+                            const hitDist = player.radius * 1.5 + b.radius * 1.5;
                             if (!hit && distSq < hitDist * hitDist) {
                                 player.hp -= b.damage;
                                 hit = true;
@@ -16253,6 +16363,7 @@ function startGame() {
         player.turretLevel = 1;
         player.canWarp = false;
         player.shieldSegments = new Array(8).fill(2);
+        player.outerShieldSegments = new Array(12).fill(2);
         player.hp = player.maxHp;
         player.inventory = {};
         player.xp = 0;
