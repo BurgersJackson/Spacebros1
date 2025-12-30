@@ -6630,6 +6630,7 @@ class CaveLevel {
     }
 
     generate() {
+        this.resetFireWall();
         const length = Math.abs(this.endY - this.startY);
         const count = Math.max(1, Math.ceil(length / this.stepY));
         this.buckets = new Array(count);
@@ -6893,6 +6894,44 @@ class CaveLevel {
         }
         this.exitSeal = { y: exitY, segments: exitSegs, sideSegments: exitSideSegs, leftX: exitLeftX, rightX: exitRightX };
         this.exitUnlocked = false;
+    }
+
+    resetFireWall(playerY = null) {
+        const gap = 400;
+        const baseY = (typeof playerY === 'number' && isFinite(playerY))
+            ? playerY
+            : (this.startY + 600);
+        this.fireWall = {
+            y: baseY + gap,
+            speed: 60, // units per second (five times faster)
+            damagePerSecond: 5,
+            damageTimer: 0,
+            minY: this.endY + 1200
+        };
+    }
+
+    updateFireWall(deltaTime = 16.67) {
+        if (!this.active || !this.fireWall) return;
+        const fire = this.fireWall;
+        const dtSec = Math.max(0, deltaTime) / 1000;
+        fire.y -= fire.speed * dtSec;
+        if (fire.minY !== undefined && fire.y < fire.minY) fire.y = fire.minY;
+        if (!player || player.dead) {
+            fire.damageTimer = 0;
+            return;
+        }
+        const inside = player.pos.y >= fire.y;
+        if (!inside) {
+            fire.damageTimer = 0;
+            return;
+        }
+        fire.damageTimer += deltaTime;
+        const ticks = Math.floor(fire.damageTimer / 1000);
+        if (ticks > 0) {
+            const damage = fire.damagePerSecond * ticks;
+            player.takeHit(damage);
+            fire.damageTimer -= ticks * 1000;
+        }
     }
 
     initPixi() {
@@ -7162,6 +7201,17 @@ class CaveLevel {
             const s = segs[i];
             resolveCircleSegment(entity, s.x0, s.y0, s.x1, s.y1, elasticity);
         }
+        this.applyFireWallCollision(entity);
+    }
+
+    applyFireWallCollision(entity) {
+        if (!this.fireWall || !entity || entity.dead) return;
+        const radius = entity.radius || 0;
+        const limitY = this.fireWall.y - radius;
+        if (entity.pos.y > limitY) {
+            entity.pos.y = limitY;
+            if (entity.vel && entity.vel.y > 0) entity.vel.y = 0;
+        }
     }
 
     bulletHitsWall(bullet) {
@@ -7295,9 +7345,42 @@ class CaveLevel {
         ctx.restore();
     }
 
+    drawFireWall(ctx, camX, camY, width, height, zoom) {
+        if (!this.fireWall) return;
+        const z = zoom || (currentZoom || ZOOM_LEVEL);
+        if (!isFinite(z) || z <= 0) return;
+        const viewTop = camY - 1200;
+        const viewBottom = camY + (height / z) + 1200;
+        const rangeTop = Math.min(this.startY, this.fireWall.y);
+        const rangeBottom = Math.max(this.startY, this.fireWall.y);
+        if (rangeBottom < viewTop || rangeTop > viewBottom) return;
+        const drawTop = Math.max(rangeTop, viewTop);
+        const drawBottom = Math.min(rangeBottom, viewBottom);
+        if (drawBottom <= drawTop) return;
+        const worldWidth = width / z;
+        const padding = 720;
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        const gradient = ctx.createLinearGradient(camX - padding, drawTop, camX - padding, drawBottom);
+        gradient.addColorStop(0, 'rgba(255,165,72,0.85)');
+        gradient.addColorStop(0.6, 'rgba(255,80,0,0.65)');
+        gradient.addColorStop(1, 'rgba(255,0,0,0.25)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(camX - padding, drawTop, worldWidth + padding * 2, drawBottom - drawTop);
+        ctx.strokeStyle = 'rgba(255,200,120,0.6)';
+        ctx.lineWidth = 3 / z;
+        ctx.beginPath();
+        ctx.moveTo(camX - padding, this.fireWall.y);
+        ctx.lineTo(camX + worldWidth + padding, this.fireWall.y);
+        ctx.stroke();
+        ctx.restore();
+    }
+
     update(deltaTime = 16.67) {
         if (!this.active) return;
         if (!player || player.dead) return;
+
+        this.updateFireWall(deltaTime);
 
         // Update hazards / drafts. 
         for (let i = 0; i < this.gasVents.length; i++) {
@@ -7727,6 +7810,8 @@ function startCaveSector2() {
     player.vel.y = 0;
     player.angle = -Math.PI / 2;
     player.turretAngle = -Math.PI / 2;
+
+    caveLevel.resetFireWall(player.pos.y);
 
     // Seed a few bases up the tunnel (they'll also respawn via the normal base timer loop).
     for (let i = 0; i < 3; i++) spawnNewBaseRelative(true);
@@ -13391,6 +13476,7 @@ function resolveEntityCollision() {
                 }
             }
         }
+
     }
 }
 
@@ -15064,6 +15150,7 @@ function gameLoopLogic(opts = null) {
         if (!(pixiCaveGridSprite && pixiApp && pixiApp.renderer)) {
             caveLevel.drawGridBackground(ctx, camX, camY, width, height, zoom);
         }
+        caveLevel.drawFireWall(ctx, camX, camY, width, height, zoom);
     }
 
     if (doUpdate) globalProfiler.end('LevelLogic');
