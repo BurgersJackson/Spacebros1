@@ -2862,15 +2862,13 @@ class Spaceship extends Entity {
             if (this.hp <= 0) {
                 killPlayer();
             } else {
-                // Reduced by 50%: 22 frames = 0.37s
-                this.invulnerable = 22;
+                this.invulnerable = 5;
             }
         } else {
             // Shield absorbed all damage
             playSound('shield_hit');
             spawnParticles(this.pos.x, this.pos.y, 10, '#0ff');
-            // Give a few i-frames to prevent projectile overlap instant-pop
-            this.invulnerable = 10;
+            this.invulnerable = 5;
         }
     }
 
@@ -3081,7 +3079,7 @@ class Spaceship extends Entity {
     }
 
     fireNuke() {
-        shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.nukeDamage, this.nukeRange, { damageAsteroids: true }));
+        shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.nukeDamage, this.nukeRange, { damageAsteroids: true, damageMissiles: true }));
         this.nukeCooldown = this.nukeMaxCooldown;
         //    showOverlayMessage("NUKE DEPLOYED", '#ff0', 1000);
     }
@@ -3506,6 +3504,7 @@ class Shockwave extends Entity {
         this.damagePlayer = !!opts.damagePlayer;
         this.damageBases = !!opts.damageBases;
         this.damageAsteroids = !!opts.damageAsteroids;
+        this.damageMissiles = !!opts.damageMissiles;
         this.ignoreEntity = opts.ignoreEntity || null;
         this.color = opts.color || '#ff0';
     }
@@ -3546,6 +3545,21 @@ class Shockwave extends Entity {
                     ast.break();
                     this.hitList.push(ast);
                     spawnParticles(ast.pos.x, ast.pos.y, 10, '#aa8');
+                    playSound('hit');
+                }
+            }
+        }
+
+        if (this.damageMissiles) {
+            for (let m of guidedMissiles) {
+                if (!m || m.dead) continue;
+                if (this.hitList.includes(m)) continue;
+                const dist = Math.hypot(m.pos.x - this.pos.x, m.pos.y - this.pos.y);
+                if (dist < this.currentRadius + (m.radius || 15)) {
+                    if (typeof m.explode === 'function') m.explode('#ff0');
+                    m.dead = true;
+                    this.hitList.push(m);
+                    spawnParticles(m.pos.x, m.pos.y, 8, '#f80');
                     playSound('hit');
                 }
             }
@@ -15248,7 +15262,7 @@ function applyUpgrade(id, tier) {
             break;
         case 'hull_strength':
             player.maxHp += 25;
-            player.hp = player.maxHp; // full heal on upgrade
+            player.hp = Math.min(player.hp + 25, player.maxHp); // restore 25 HP on upgrade
             updateHealthUI();
             break;
         case 'speed':
