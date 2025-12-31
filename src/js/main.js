@@ -11415,8 +11415,8 @@ class Destroyer extends Entity {
         this.chaseDistance = 8000;
 
         // Outer + inner shields for destroyer
-        this.shieldSegments = new Array(120).fill(1);
-        this.innerShieldSegments = new Array(120).fill(1);
+        this.shieldSegments = new Array(120).fill(3);
+        this.innerShieldSegments = new Array(120).fill(3);
         this.shieldRadius = Math.round(this.visualRadius * 0.92);
         this.innerShieldRadius = Math.round(this.visualRadius * 0.78);
         this.shieldRotation = 0;
@@ -11493,14 +11493,14 @@ class Destroyer extends Entity {
 
         // Shield regen: restore 1 segment every 5s (outer first, then inner)
         if (now - this.lastShieldRegenAt >= this.shieldRegenMs) {
-            const outerIdx = this.shieldSegments.findIndex(s => s < 1);
+            const outerIdx = this.shieldSegments.findIndex(s => s < 3);
             if (outerIdx !== -1) {
-                this.shieldSegments[outerIdx] = 1;
+                this.shieldSegments[outerIdx] = 3;
                 this.shieldsDirty = true;
             } else {
-                const innerIdx = this.innerShieldSegments.findIndex(s => s < 1);
+                const innerIdx = this.innerShieldSegments.findIndex(s => s < 3);
                 if (innerIdx !== -1) {
-                    this.innerShieldSegments[innerIdx] = 1;
+                    this.innerShieldSegments[innerIdx] = 3;
                     this.shieldsDirty = true;
                 }
             }
@@ -11648,11 +11648,12 @@ class Destroyer extends Entity {
                     gfx.clear();
                     const count = this.shieldSegments.length;
                     const arcLen = (Math.PI * 2) / count;
+                    const overlap = arcLen * 0.1; // Overlap to prevent gaps
                     gfx.lineStyle(6, 0x00ffff, 0.8);
                     for (let i = 0; i < count; i++) {
                         if (this.shieldSegments[i] > 0) {
-                            const a0 = i * arcLen + 0.02;
-                            const a1 = (i + 1) * arcLen - 0.02;
+                            const a0 = i * arcLen - overlap;
+                            const a1 = (i + 1) * arcLen + overlap;
                             gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
                             gfx.arc(0, 0, this.shieldRadius, a0, a1);
                         }
@@ -11680,11 +11681,12 @@ class Destroyer extends Entity {
                     innerGfx.clear();
                     const count = this.innerShieldSegments.length;
                     const arcLen = (Math.PI * 2) / count;
+                    const overlap = arcLen * 0.1; // Overlap to prevent gaps
                     innerGfx.lineStyle(6, 0xff00ff, 0.8);
                     for (let i = 0; i < count; i++) {
                         if (this.innerShieldSegments[i] > 0) {
-                            const a0 = i * arcLen + 0.02;
-                            const a1 = (i + 1) * arcLen - 0.02;
+                            const a0 = i * arcLen - overlap;
+                            const a1 = (i + 1) * arcLen + overlap;
                             innerGfx.moveTo(Math.cos(a0) * this.innerShieldRadius, Math.sin(a0) * this.innerShieldRadius);
                             innerGfx.arc(0, 0, this.innerShieldRadius, a0, a1);
                         }
@@ -11847,8 +11849,8 @@ class Destroyer2 extends Entity {
         this.chaseDistance = 8000;
 
         // Outer + inner shields for destroyer
-        this.shieldSegments = new Array(80).fill(1);
-        this.innerShieldSegments = new Array(80).fill(1);
+        this.shieldSegments = new Array(80).fill(3);
+        this.innerShieldSegments = new Array(80).fill(3);
         this.shieldRadius = Math.round(this.visualRadius * 0.92);
         this.innerShieldRadius = Math.round(this.visualRadius * 0.78);
         this.shieldRotation = 0;
@@ -11928,14 +11930,14 @@ class Destroyer2 extends Entity {
 
         // Shield regen: restore 1 segment every 5s (outer first, then inner)
         if (now - this.lastShieldRegenAt >= this.shieldRegenMs) {
-            const outerIdx = this.shieldSegments.findIndex(s => s < 1);
+            const outerIdx = this.shieldSegments.findIndex(s => s < 3);
             if (outerIdx !== -1) {
-                this.shieldSegments[outerIdx] = 1;
+                this.shieldSegments[outerIdx] = 3;
                 this.shieldsDirty = true;
             } else {
-                const innerIdx = this.innerShieldSegments.findIndex(s => s < 1);
+                const innerIdx = this.innerShieldSegments.findIndex(s => s < 3);
                 if (innerIdx !== -1) {
-                    this.innerShieldSegments[innerIdx] = 1;
+                    this.innerShieldSegments[innerIdx] = 3;
                     this.shieldsDirty = true;
                 }
             }
@@ -12086,11 +12088,12 @@ class Destroyer2 extends Entity {
                     gfx.clear();
                     const count = this.shieldSegments.length;
                     const arcLen = (Math.PI * 2) / count;
+                    const overlap = arcLen * 0.1; // Overlap to prevent gaps
                     gfx.lineStyle(6, 0x00ffff, 0.8);
                     for (let i = 0; i < count; i++) {
                         if (this.shieldSegments[i] > 0) {
-                            const a0 = i * arcLen + 0.02;
-                            const a1 = (i + 1) * arcLen - 0.02;
+                            const a0 = i * arcLen - overlap;
+                            const a1 = (i + 1) * arcLen + overlap;
                             gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
                             gfx.arc(0, 0, this.shieldRadius, a0, a1);
                         }
@@ -12118,11 +12121,12 @@ class Destroyer2 extends Entity {
                     innerGfx.clear();
                     const count = this.innerShieldSegments.length;
                     const arcLen = (Math.PI * 2) / count;
+                    const overlap = arcLen * 0.1; // Overlap to prevent gaps
                     innerGfx.lineStyle(6, 0xff00ff, 0.8);
                     for (let i = 0; i < count; i++) {
                         if (this.innerShieldSegments[i] > 0) {
-                            const a0 = i * arcLen + 0.02;
-                            const a1 = (i + 1) * arcLen - 0.02;
+                            const a0 = i * arcLen - overlap;
+                            const a1 = (i + 1) * arcLen + overlap;
                             innerGfx.moveTo(Math.cos(a0) * this.innerShieldRadius, Math.sin(a0) * this.innerShieldRadius);
                             innerGfx.arc(0, 0, this.innerShieldRadius, a0, a1);
                         }
