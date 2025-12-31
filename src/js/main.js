@@ -120,6 +120,14 @@ window.spawnCruiser = function () {
         return;
     }
     cruiserEncounterCount++;
+    if (destroyer) {
+        const idx = enemies.indexOf(destroyer);
+        if (idx !== -1) enemies.splice(idx, 1);
+    }
+    if (destroyer2) {
+        const idx = enemies.indexOf(destroyer2);
+        if (idx !== -1) enemies.splice(idx, 1);
+    }
     clearArrayWithPixiCleanup(enemies);
     clearArrayWithPixiCleanup(bases);
     baseRespawnTimers = [];
@@ -287,6 +295,11 @@ const pixiTextures = {
     station_core: null,
     station_turret: null,
 
+    // Destroyer ship
+    destroyer_hull: null,
+    destroyer_turret: null,
+    destroyer2_hull: null,
+
     // Asteroids
     asteroids: []
 };
@@ -316,6 +329,22 @@ station1Image.decoding = 'async';
 station1Image.src = STATION1_URL;
 let station1Texture = null;
 let station1Loaded = false;
+
+// Destroyer ship sprite
+const DESTROYER1_URL = 'assets/destroyer1.png';
+const destroyer1Image = new Image();
+destroyer1Image.decoding = 'async';
+destroyer1Image.src = DESTROYER1_URL;
+let destroyer1Texture = null;
+let destroyer1Loaded = false;
+
+// Destroyer 2 ship sprite
+const DESTROYER2_URL = 'assets/destroyer2.png';
+const destroyer2Image = new Image();
+destroyer2Image.decoding = 'async';
+destroyer2Image.src = DESTROYER2_URL;
+let destroyer2Texture = null;
+let destroyer2Loaded = false;
 
 const applyGunboatTextures = () => {
     if (!window.PIXI) return;
@@ -378,6 +407,44 @@ const applyStationTexture = () => {
     }
 };
 
+const applyDestroyerTexture = () => {
+    if (!window.PIXI) return;
+    try {
+        if (destroyer1Loaded && !destroyer1Texture) {
+            const tex = PIXI.Texture.from(destroyer1Image);
+            try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+            try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+            destroyer1Texture = tex;
+        }
+
+        if (destroyer1Texture) {
+            pixiTextures.destroyer_hull = destroyer1Texture;
+            pixiTextureAnchors.destroyer_hull = 0.5;
+        }
+    } catch (e) {
+        // Keep procedural destroyer texture.
+    }
+};
+
+const applyDestroyer2Texture = () => {
+    if (!window.PIXI) return;
+    try {
+        if (destroyer2Loaded && !destroyer2Texture) {
+            const tex = PIXI.Texture.from(destroyer2Image);
+            try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+            try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+            destroyer2Texture = tex;
+        }
+
+        if (destroyer2Texture) {
+            pixiTextures.destroyer2_hull = destroyer2Texture;
+            pixiTextureAnchors.destroyer2_hull = 0.5;
+        }
+    } catch (e) {
+        // Keep procedural destroyer texture.
+    }
+};
+
 gunboat1Image.addEventListener('load', () => {
     gunboat1Loaded = true;
     applyGunboatTextures();
@@ -398,6 +465,20 @@ station1Image.addEventListener('load', () => {
 });
 station1Image.addEventListener('error', () => {
     station1Loaded = false;
+});
+destroyer1Image.addEventListener('load', () => {
+    destroyer1Loaded = true;
+    applyDestroyerTexture();
+});
+destroyer1Image.addEventListener('error', () => {
+    destroyer1Loaded = false;
+});
+destroyer2Image.addEventListener('load', () => {
+    destroyer2Loaded = true;
+    applyDestroyer2Texture();
+});
+destroyer2Image.addEventListener('error', () => {
+    destroyer2Loaded = false;
 });
 
 // Optional external sprite override for nugget pickups (also used by nugz caches).
@@ -2169,6 +2250,15 @@ function completeSectorWarp() {
     if (spaceStation) pixiCleanupObject(spaceStation);
     spaceStation = null;
     nextSpaceStationTime = null;
+    if (destroyer) pixiCleanupObject(destroyer);
+    destroyer = null;
+    nextDestroyerSpawnTime = null;
+    if (destroyer2) pixiCleanupObject(destroyer2);
+    destroyer2 = null;
+    nextDestroyer2SpawnTime = null;
+    if (destroyer2) pixiCleanupObject(destroyer2);
+    destroyer2 = null;
+    nextDestroyer2SpawnTime = null;
     scheduleNextShootingStar();
     showOverlayMessage("NEW SECTOR ENTERED", '#0ff', 3000);
 }
@@ -3464,6 +3554,10 @@ class Shockwave extends Entity {
     draw(ctx) {
         if (this.dead) {
             pixiCleanupObject(this);
+            if (this._pixiPhaseGfx) {
+                try { this._pixiPhaseGfx.destroy(true); } catch (e) { }
+                this._pixiPhaseGfx = null;
+            }
             return;
         }
 
@@ -3606,7 +3700,7 @@ class FlagshipGuidedMissile extends Entity {
         // Updated for 60Hz: player speed is ~12, so missiles must be faster.
         this.speed = 11.0;
         this.turnRate = 0.085;
-        this.life = 900;
+        this.lifeMs = 5000;
         this.angle = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
 
         const off = (owner && owner.radius) ? (owner.radius * 0.85 + 14) : 60;
@@ -3618,7 +3712,8 @@ class FlagshipGuidedMissile extends Entity {
     }
 
     explode(color = '#fa0') {
-        if (this.dead) return;
+        if (this._exploded) return;
+        this._exploded = true;
         this.dead = true;
         playSound('explode');
         spawnParticles(this.pos.x, this.pos.y, 26, color);
@@ -3671,9 +3766,9 @@ class FlagshipGuidedMissile extends Entity {
     update(deltaTime = 16.67) {
         if (this.dead) return;
         this.t++;
-        this.life--;
-        if (this.life <= 0) { this.explode(); return; }
-        if (!player || player.dead) { this.dead = true; return; }
+        this.lifeMs -= deltaTime;
+        if (this.lifeMs <= 0) { this.explode(); return; }
+        if (!player || player.dead) { this.explode(); return; }
 
         const targetAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
         let angleDiff = targetAngle - this.angle;
@@ -3755,6 +3850,10 @@ class FlagshipGuidedMissile extends Entity {
     draw(ctx) {
         if (this.dead) {
             pixiCleanupObject(this);
+            if (this._pixiPhaseGfx) {
+                try { this._pixiPhaseGfx.destroy(true); } catch (e) { }
+                this._pixiPhaseGfx = null;
+            }
             return;
         }
 
@@ -3816,6 +3915,15 @@ class FlagshipGuidedMissile extends Entity {
             // No easy HP ring update in this structure without redraw, skipping or could add another Gfx
             return;
         }
+    }
+}
+
+class Destroyer2GuidedMissile extends FlagshipGuidedMissile {
+    constructor(owner) {
+        super(owner);
+        this.radius = Math.max(1, this.radius * 2);
+        this.hp = Math.max(1, this.hp * 2);
+        this.maxHp = this.hp;
     }
 }
 
@@ -3955,6 +4063,8 @@ class Bullet extends Entity {
             if (bossActive && boss && !boss.dead) consider(boss);
             if (bases && bases.length > 0) for (let b of bases) consider(b);
             if (spaceStation && !spaceStation.dead) consider(spaceStation);
+            if (destroyer && !destroyer.dead) consider(destroyer);
+            if (destroyer2 && !destroyer2.dead) consider(destroyer2);
             if (contractEntities && contractEntities.wallTurrets && contractEntities.wallTurrets.length > 0) {
                 for (let t of contractEntities.wallTurrets) consider(t);
             }
@@ -5447,7 +5557,8 @@ class CaveGuidedMissile extends Entity {
     }
 
     explode(color = '#fa0') {
-        if (this.dead) return;
+        if (this._exploded) return;
+        this._exploded = true;
         this.dead = true;
         playSound('explode');
         spawnParticles(this.pos.x, this.pos.y, 18, color);
@@ -5502,7 +5613,7 @@ class CaveGuidedMissile extends Entity {
         this.t++;
         this.life--;
         if (this.life <= 0) { this.explode(); return; }
-        if (!player || player.dead) { this.dead = true; return; }
+        if (!player || player.dead) { this.explode(); return; }
 
         const targetAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
         let angleDiff = targetAngle - this.angle;
@@ -7784,7 +7895,7 @@ function startCaveSector2() {
     contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
     nextContractAt = Date.now() + 999999999;
     radiationStorm = null;
-    nextRadiationStormAt = Date.now() + 999999999;
+    nextRadiationStormAt = null;
     clearMiniEvent();
     nextMiniEventAt = Date.now() + 999999999;
     nextShootingStarTime = Date.now() + 999999999;
@@ -10851,7 +10962,7 @@ class SpaceStation extends Entity {
 
     // Fires 4 turrets mounted on the station (1 bullet each, every 0.5s)
     fireTurrets() {
-        const offsets = [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2]; // 4 turrets at 90° intervals
+        const offsets = [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2]; // 4 turrets at 90A? intervals
         for (let i = 0; i < offsets.length; i++) {
             // Calculate turret position based on current rotation
             const angleOffset = offsets[i] + this.shieldRotation;
@@ -10967,14 +11078,6 @@ class SpaceStation extends Entity {
                 container.addChild(hull);
                 this._pixiHullSpr = hull;
 
-                this._pixiTurrets = [];
-                for (let i = 0; i < 4; i++) {
-                    const t = new PIXI.Sprite(pixiTextures.station_turret);
-                    const ta = pixiTextureAnchors.station_turret || { x: 0.5, y: 0.5 };
-                    t.anchor.set((ta && ta.x != null) ? ta.x : 0.5, (ta && ta.y != null) ? ta.y : 0.5);
-                    container.addChild(t);
-                    this._pixiTurrets.push(t);
-                }
             } else if (!container.parent) {
                 pixiBossLayer.addChild(container);
             }
@@ -10983,7 +11086,7 @@ class SpaceStation extends Entity {
             container.position.set(this.pos.x, this.pos.y);
 
             const now = (typeof frameNow === 'number' && frameNow > 0) ? frameNow : Date.now();
-            const hullScale = (this.radius && isFinite(this.radius)) ? (this.radius / 340) : 1;
+            const hullScale = (this.visualRadius && isFinite(this.visualRadius)) ? (this.visualRadius / 340) : 1;
             if (this._pixiHullSpr) this._pixiHullSpr.scale.set(hullScale);
 
             // Turrets (4 visuals)
@@ -11159,7 +11262,7 @@ class SpaceStation extends Entity {
         ctx.shadowColor = '#0ff';
 
         ctx.beginPath();
-        ctx.arc(0, 0, this.radius * 0.75, 0, Math.PI * 2);
+        ctx.arc(0, 0, this.visualRadius * 0.75, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
         ctx.shadowBlur = 0;
@@ -11285,6 +11388,876 @@ class SpaceStation extends Entity {
     }
 }
 
+// Destroyer ship class - roams the map and drops 20 nugz when defeated
+class Destroyer extends Entity {
+    constructor() {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 4000; // Spawn somewhat far from player
+        super(player.pos.x + Math.cos(angle) * dist, player.pos.y + Math.sin(angle) * dist);
+
+        this.displayName = "DESTROYER";
+
+        this.visualRadius = Math.floor(520 * 0.65) * 2 * 1.5; // 1.5x larger than Destroyer (visual scale)
+        this.radius = Math.round(this.visualRadius * 0.5); // Collision trimmed to hull, not PNG bounds
+        this.collisionRadius = this.radius;
+        this.hp = 300;
+        this.maxHp = 300;
+
+        // Movement properties for roaming
+        this.roamSpeed = 1.5; // Slow roaming speed
+        this.roamAngle = Math.random() * Math.PI * 2;
+        this.angle = this.roamAngle;
+        this.roamInterval = 900 + Math.floor(Math.random() * 600); // Rare direction changes (15-25s)
+        this.roamTimer = this.roamInterval;
+        this.turnSpeed = 0.008; // Slow turning per frame at 60fps
+        this.baseTurnSpeed = 0.008;
+        this.farTurnSpeed = 0.05;
+        this.chaseDistance = 8000;
+
+        // Outer + inner shields for destroyer
+        this.shieldSegments = new Array(120).fill(1);
+        this.innerShieldSegments = new Array(120).fill(1);
+        this.shieldRadius = Math.round(this.visualRadius * 0.92);
+        this.innerShieldRadius = Math.round(this.visualRadius * 0.78);
+        this.shieldRotation = 0;
+        this.innerShieldRotation = 0;
+        this.shieldsDirty = true;
+        this.shieldRegenMs = 5000;
+        this.lastShieldRegenAt = Date.now();
+        this.invulnerable = 0;
+        this.invincibilityCycle = {
+            unlocked: true,
+            state: 'ready', // ready, active, cooldown
+            timer: 0,
+            stats: { duration: 180, cooldown: 1200, regen: false } // 3s active / 20s CD
+        };
+
+        // Single turret fire
+        this.turretReload = 1000; // 1.0 seconds
+        this.t = 0;
+
+        this.turretLocalOffsets = [
+            { x: 0, y: -0.35 }
+        ];
+
+        this.guidedMissileTimer = 2000;
+    }
+
+    update(deltaTime = 16.67) {
+        if (this.dead) return;
+        this.t++;
+
+        const now = Date.now();
+
+        // Roaming movement - slowly move around the map, always moving forward
+        const dtFactor = deltaTime / 16.67;
+        this.roamTimer -= dtFactor;
+
+        const playerAlive = player && !player.dead;
+        const distToPlayer = playerAlive ? Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y) : 0;
+        if (playerAlive && distToPlayer > this.chaseDistance) {
+            this.roamAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+            this.turnSpeed = this.farTurnSpeed;
+        } else {
+            this.turnSpeed = this.baseTurnSpeed;
+            if (this.roamTimer <= 0) {
+                const drift = (Math.random() - 0.5) * 0.35;
+                this.roamAngle = (this.angle || 0) + drift;
+                this.roamTimer = this.roamInterval;
+            }
+        }
+
+        // Smoothly turn toward roamAngle instead of snapping
+        let angleDiff = this.roamAngle - (this.angle || 0);
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        const turnStep = this.turnSpeed * dtFactor;
+        if (Math.abs(angleDiff) < turnStep) this.angle = this.roamAngle;
+        else this.angle += Math.sign(angleDiff) * turnStep;
+
+        // Apply velocity for roaming (always move forward in the direction we're facing)
+        this.vel.x = Math.cos(this.angle || 0) * this.roamSpeed;
+        this.vel.y = Math.sin(this.angle || 0) * this.roamSpeed;
+        this.pos.x += this.vel.x;
+        this.pos.y += this.vel.y;
+
+        // Keep within reasonable bounds (stay within 15000 of center)
+        const distFromCenter = Math.hypot(this.pos.x, this.pos.y);
+        if (distFromCenter > 15000) {
+            this.roamAngle = Math.atan2(-this.pos.y, -this.pos.x);
+        }
+
+        // Outer/inner shield rotation (opposite directions)
+        this.shieldRotation += 0.004 * dtFactor;
+        this.innerShieldRotation -= 0.006 * dtFactor;
+
+        // Shield regen: restore 1 segment every 5s (outer first, then inner)
+        if (now - this.lastShieldRegenAt >= this.shieldRegenMs) {
+            const outerIdx = this.shieldSegments.findIndex(s => s < 1);
+            if (outerIdx !== -1) {
+                this.shieldSegments[outerIdx] = 1;
+                this.shieldsDirty = true;
+            } else {
+                const innerIdx = this.innerShieldSegments.findIndex(s => s < 1);
+                if (innerIdx !== -1) {
+                    this.innerShieldSegments[innerIdx] = 1;
+                    this.shieldsDirty = true;
+                }
+            }
+            this.lastShieldRegenAt = now;
+        }
+
+        // Auto-cycling invincibility phase shield
+        if (this.invincibilityCycle && this.invincibilityCycle.unlocked) {
+            this.invincibilityCycle.timer -= dtFactor;
+
+            if (this.invincibilityCycle.state === 'ready') {
+                this.invincibilityCycle.state = 'active';
+                this.invincibilityCycle.timer = this.invincibilityCycle.stats.duration;
+                playSound('powerup');
+            } else if (this.invincibilityCycle.state === 'active') {
+                this.invulnerable = 2;
+                if (this.invincibilityCycle.timer <= 0) {
+                    this.invincibilityCycle.state = 'cooldown';
+                    this.invincibilityCycle.timer = this.invincibilityCycle.stats.cooldown;
+                }
+            } else if (this.invincibilityCycle.state === 'cooldown') {
+                if (this.invincibilityCycle.timer <= 0) {
+                    this.invincibilityCycle.state = 'ready';
+                }
+            }
+        }
+
+        // Check if player is within range to engage with turrets
+        if (playerAlive) {
+            const dist = distToPlayer;
+
+            if (dist < 3200) { // Engagement range
+                this.turretReload -= deltaTime;
+                if (this.turretReload <= 0) {
+                    this.fireTurrets();
+                    this.turretReload = 1000; // 1.0 seconds in ms
+                }
+            }
+
+            this.guidedMissileTimer -= deltaTime;
+            if (this.guidedMissileTimer <= 0) {
+                guidedMissiles.push(new FlagshipGuidedMissile(this));
+                this.guidedMissileTimer = 2000;
+            }
+        }
+
+        if (this.invulnerable > 0) {
+            this.invulnerable -= dtFactor;
+        }
+    }
+
+    fireTurrets() {
+        const baseAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const muzzle = this.visualRadius * 0.45;
+        const tx = this.pos.x + Math.cos(baseAngle) * muzzle;
+        const ty = this.pos.y + Math.sin(baseAngle) * muzzle;
+        const b = new Bullet(tx, ty, baseAngle, true, 10, 14.96, 15, '#f80');
+        b.life = Math.round(b.life * 1.25);
+        bullets.push(b);
+        spawnBarrelSmoke(tx, ty, baseAngle);
+        playSound('rapid_shoot');
+    }
+
+    takeHit(dmg = 1) {
+        if (this.dead || this.invulnerable > 0) return false;
+        this.hp -= dmg;
+        playSound('hit');
+        if (this.hp <= 0) {
+            this.kill();
+            return true;
+        }
+        return false;
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        pixiCleanupObject(this);
+
+        // Drop 20 nuggets
+        for (let i = 0; i < 20; i++) {
+            nuggets.push(new SpaceNugget(
+                this.pos.x + (Math.random() - 0.5) * 200,
+                this.pos.y + (Math.random() - 0.5) * 200,
+                1
+            ));
+        }
+
+        spawnParticles(this.pos.x, this.pos.y, 60, '#0ff');
+        spawnFieryExplosion(this.pos.x, this.pos.y, 1.5);
+        playSound('base_explode');
+        showOverlayMessage("DESTROYER DESTROYED - 20 NUGGETS DROPPED", '#ff0', 2000, 2);
+
+        // Set respawn timer
+        nextDestroyer2SpawnTime = Date.now() + 60000; // 1 minute
+    }
+
+    draw(ctx) {
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
+
+        // Pixi fast path (destroyer hull + turrets)
+        if (pixiBossLayer && pixiTextures && pixiTextures.destroyer_hull) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                pixiBossLayer.addChild(container);
+
+                const hull = new PIXI.Sprite(pixiTextures.destroyer_hull);
+                const ha = pixiTextureAnchors.destroyer_hull || { x: 0.5, y: 0.5 };
+                hull.anchor.set((ha && ha.x != null) ? ha.x : 0.5, (ha && ha.y != null) ? ha.y : 0.5);
+                container.addChild(hull);
+                this._pixiHullSpr = hull;
+
+            } else if (!container.parent) {
+                pixiBossLayer.addChild(container);
+            }
+
+            container.visible = true;
+            container.position.set(this.pos.x, this.pos.y);
+            container.rotation = this.angle || 0;
+
+            const now = (typeof frameNow === 'number' && frameNow > 0) ? frameNow : Date.now();
+            const hullScale = (this.visualRadius && isFinite(this.visualRadius)) ? (this.visualRadius / 340) : 1;
+            if (this._pixiHullSpr) this._pixiHullSpr.scale.set(hullScale);
+
+            // Outer + inner shields (vector layer)
+            if (pixiVectorLayer && this.shieldSegments && this.shieldSegments.length > 0) {
+                let gfx = this._pixiGfx;
+                if (!gfx) {
+                    gfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(gfx);
+                    this._pixiGfx = gfx;
+                    this.shieldsDirty = true;
+                } else if (!gfx.parent) {
+                    pixiVectorLayer.addChild(gfx);
+                }
+
+                gfx.position.set(this.pos.x, this.pos.y);
+                gfx.rotation = this.shieldRotation || 0;
+                if (this.shieldsDirty) {
+                    gfx.clear();
+                    const count = this.shieldSegments.length;
+                    const arcLen = (Math.PI * 2) / count;
+                    gfx.lineStyle(6, 0x00ffff, 0.8);
+                    for (let i = 0; i < count; i++) {
+                        if (this.shieldSegments[i] > 0) {
+                            const a0 = i * arcLen + 0.02;
+                            const a1 = (i + 1) * arcLen - 0.02;
+                            gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
+                            gfx.arc(0, 0, this.shieldRadius, a0, a1);
+                        }
+                    }
+                }
+            } else if (this._pixiGfx) {
+                try { this._pixiGfx.destroy(true); } catch (e) { }
+                this._pixiGfx = null;
+            }
+
+            if (pixiVectorLayer && this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+                let innerGfx = this._pixiInnerGfx;
+                if (!innerGfx) {
+                    innerGfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(innerGfx);
+                    this._pixiInnerGfx = innerGfx;
+                    this.shieldsDirty = true;
+                } else if (!innerGfx.parent) {
+                    pixiVectorLayer.addChild(innerGfx);
+                }
+
+                innerGfx.position.set(this.pos.x, this.pos.y);
+                innerGfx.rotation = this.innerShieldRotation || 0;
+                if (this.shieldsDirty) {
+                    innerGfx.clear();
+                    const count = this.innerShieldSegments.length;
+                    const arcLen = (Math.PI * 2) / count;
+                    innerGfx.lineStyle(6, 0xff00ff, 0.8);
+                    for (let i = 0; i < count; i++) {
+                        if (this.innerShieldSegments[i] > 0) {
+                            const a0 = i * arcLen + 0.02;
+                            const a1 = (i + 1) * arcLen - 0.02;
+                            innerGfx.moveTo(Math.cos(a0) * this.innerShieldRadius, Math.sin(a0) * this.innerShieldRadius);
+                            innerGfx.arc(0, 0, this.innerShieldRadius, a0, a1);
+                        }
+                    }
+                }
+            } else if (this._pixiInnerGfx) {
+                try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+                this._pixiInnerGfx = null;
+            }
+
+            if (this.shieldsDirty) this.shieldsDirty = false;
+
+            if (pixiVectorLayer && this.invincibilityCycle && this.invincibilityCycle.state === 'active') {
+                let phaseGfx = this._pixiPhaseGfx;
+                if (!phaseGfx) {
+                    phaseGfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(phaseGfx);
+                    this._pixiPhaseGfx = phaseGfx;
+                } else if (!phaseGfx.parent) {
+                    pixiVectorLayer.addChild(phaseGfx);
+                }
+                phaseGfx.clear();
+                phaseGfx.position.set(this.pos.x, this.pos.y);
+                phaseGfx.lineStyle(3, 0xffdc00, 0.6);
+                phaseGfx.drawCircle(0, 0, (this.shieldRadius || this.radius || 0) + 14);
+            } else if (this._pixiPhaseGfx) {
+                try { this._pixiPhaseGfx.destroy(true); } catch (e) { }
+                this._pixiPhaseGfx = null;
+            }
+
+            // Nameplate
+            if (this.displayName && pixiVectorLayer) {
+                let txt = this._pixiNameText;
+                if (!txt) {
+                    txt = new PIXI.Text(this.displayName, {
+                        fontFamily: 'Courier New',
+                        fontSize: 18,
+                        fontWeight: 'bold',
+                        fill: 0xff8000
+                    });
+                    txt.anchor.set(0.5);
+                    txt.resolution = 2;
+                    pixiVectorLayer.addChild(txt);
+                    this._pixiNameText = txt;
+                } else if (txt.text !== this.displayName) {
+                    txt.text = this.displayName;
+                }
+                if (!txt.parent) pixiVectorLayer.addChild(txt);
+                txt.visible = true;
+                txt.position.set(this.pos.x, this.pos.y - this.visualRadius - 20);
+            }
+
+            return;
+        }
+
+        // Fallback canvas rendering
+        if (this.shieldSegments && this.shieldSegments.length > 0) {
+            ctx.save();
+            ctx.translate(this.pos.x, this.pos.y);
+            ctx.rotate(this.shieldRotation || 0);
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
+            ctx.lineWidth = 6;
+            const count = this.shieldSegments.length;
+            const arcLen = (Math.PI * 2) / count;
+            for (let i = 0; i < count; i++) {
+                if (this.shieldSegments[i] > 0) {
+                    const a0 = i * arcLen + 0.02;
+                    const a1 = (i + 1) * arcLen - 0.02;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.shieldRadius, a0, a1);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+        if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+            ctx.save();
+            ctx.translate(this.pos.x, this.pos.y);
+            ctx.rotate(this.innerShieldRotation || 0);
+            ctx.strokeStyle = 'rgba(255, 0, 255, 0.8)';
+            ctx.lineWidth = 6;
+            const count = this.innerShieldSegments.length;
+            const arcLen = (Math.PI * 2) / count;
+            for (let i = 0; i < count; i++) {
+                if (this.innerShieldSegments[i] > 0) {
+                    const a0 = i * arcLen + 0.02;
+                    const a1 = (i + 1) * arcLen - 0.02;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.innerShieldRadius, a0, a1);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+        if (this.invincibilityCycle && this.invincibilityCycle.state === 'active') {
+            ctx.save();
+            ctx.translate(this.pos.x, this.pos.y);
+            ctx.strokeStyle = 'rgba(255, 220, 0, 0.6)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, 0, (this.shieldRadius || this.radius || 0) + 14, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        ctx.rotate(this.angle || 0);
+
+        // Main hull
+        ctx.fillStyle = '#333';
+        ctx.strokeStyle = '#ff8000';
+        ctx.lineWidth = 4;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#ff8000';
+        ctx.beginPath();
+        ctx.arc(0, 0, this.visualRadius * 0.75, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Nameplate
+        ctx.restore();
+        if (this.displayName) {
+            ctx.fillStyle = '#ff8000';
+            ctx.font = 'bold 18px Courier New';
+            ctx.textAlign = 'center';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#000';
+            ctx.fillText(this.displayName, this.pos.x, this.pos.y - this.visualRadius - 20);
+            ctx.shadowBlur = 0;
+        }
+    }
+}
+
+
+class Destroyer2 extends Entity {
+    constructor() {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 4000; // Spawn somewhat far from player
+        super(player.pos.x + Math.cos(angle) * dist, player.pos.y + Math.sin(angle) * dist);
+
+        this.displayName = "DESTROYER II";
+
+        this.visualRadius = Math.floor(520 * 0.65) * 2 * 1.5; // Match Destroyer size (visual scale)
+        this.radius = Math.round(this.visualRadius * 0.5); // Collision trimmed to hull, not PNG bounds
+        this.collisionRadius = this.radius;
+        this.hp = 300;
+        this.maxHp = 300;
+
+        // Movement properties for roaming
+        this.roamSpeed = 1.5; // Slow roaming speed
+        this.roamAngle = Math.random() * Math.PI * 2;
+        this.angle = this.roamAngle;
+        this.roamInterval = 900 + Math.floor(Math.random() * 600); // Rare direction changes (15-25s)
+        this.roamTimer = this.roamInterval;
+        this.turnSpeed = 0.008; // Slow turning per frame at 60fps
+        this.baseTurnSpeed = 0.008;
+        this.farTurnSpeed = 0.05;
+        this.chaseDistance = 8000;
+
+        // Outer + inner shields for destroyer
+        this.shieldSegments = new Array(80).fill(1);
+        this.innerShieldSegments = new Array(80).fill(1);
+        this.shieldRadius = Math.round(this.visualRadius * 0.92);
+        this.innerShieldRadius = Math.round(this.visualRadius * 0.78);
+        this.shieldRotation = 0;
+        this.innerShieldRotation = 0;
+        this.shieldsDirty = true;
+        this.shieldRegenMs = 5000;
+        this.lastShieldRegenAt = Date.now();
+        this.invulnerable = 0;
+        this.invincibilityCycle = {
+            unlocked: true,
+            state: 'ready', // ready, active, cooldown
+            timer: 0,
+            stats: { duration: 180, cooldown: 1200, regen: false } // 3s active / 20s CD
+        };
+
+        // Turrets only (4 turrets like space station)
+        this.turretReload = 100; // 3x rate (0.1 seconds)
+        this.t = 0;
+
+        this.turretLocalOffsets = [
+            { x: -0.42, y: -0.02 },
+            { x: 0.42, y: -0.02 },
+            { x: -0.42, y: 0.24 },
+            { x: 0.42, y: 0.24 }
+        ];
+
+        this.guidedMissileTimer = 2000;
+    }
+
+    update(deltaTime = 16.67) {
+        if (this.dead) return;
+        this.t++;
+
+        const now = Date.now();
+
+        // Roaming movement - slowly move around the map, always moving forward
+        const dtFactor = deltaTime / 16.67;
+        this.roamTimer -= dtFactor;
+
+        const playerAlive = player && !player.dead;
+        const distToPlayer = playerAlive ? Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y) : 0;
+        if (playerAlive && distToPlayer > this.chaseDistance) {
+            this.roamAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+            this.turnSpeed = this.farTurnSpeed;
+        } else {
+            this.turnSpeed = this.baseTurnSpeed;
+            if (this.roamTimer <= 0) {
+                const drift = (Math.random() - 0.5) * 0.35;
+                this.roamAngle = (this.angle || 0) + drift;
+                this.roamTimer = this.roamInterval;
+            }
+        }
+
+        // Smoothly turn toward roamAngle instead of snapping
+        let angleDiff = this.roamAngle - (this.angle || 0);
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        const turnStep = this.turnSpeed * dtFactor;
+        if (Math.abs(angleDiff) < turnStep) this.angle = this.roamAngle;
+        else this.angle += Math.sign(angleDiff) * turnStep;
+
+        // Apply velocity for roaming (always move forward in the direction we're facing)
+        this.vel.x = Math.cos(this.angle || 0) * this.roamSpeed;
+        this.vel.y = Math.sin(this.angle || 0) * this.roamSpeed;
+        this.pos.x += this.vel.x;
+        this.pos.y += this.vel.y;
+
+        // Keep within reasonable bounds (stay within 15000 of center)
+        const distFromCenter = Math.hypot(this.pos.x, this.pos.y);
+        if (distFromCenter > 15000) {
+            this.roamAngle = Math.atan2(-this.pos.y, -this.pos.x);
+        }
+
+        // Outer/inner shield rotation (opposite directions)
+        this.shieldRotation += 0.004 * dtFactor;
+        this.innerShieldRotation -= 0.006 * dtFactor;
+
+        // Shield regen: restore 1 segment every 5s (outer first, then inner)
+        if (now - this.lastShieldRegenAt >= this.shieldRegenMs) {
+            const outerIdx = this.shieldSegments.findIndex(s => s < 1);
+            if (outerIdx !== -1) {
+                this.shieldSegments[outerIdx] = 1;
+                this.shieldsDirty = true;
+            } else {
+                const innerIdx = this.innerShieldSegments.findIndex(s => s < 1);
+                if (innerIdx !== -1) {
+                    this.innerShieldSegments[innerIdx] = 1;
+                    this.shieldsDirty = true;
+                }
+            }
+            this.lastShieldRegenAt = now;
+        }
+
+        // Auto-cycling invincibility phase shield
+        if (this.invincibilityCycle && this.invincibilityCycle.unlocked) {
+            this.invincibilityCycle.timer -= dtFactor;
+
+            if (this.invincibilityCycle.state === 'ready') {
+                this.invincibilityCycle.state = 'active';
+                this.invincibilityCycle.timer = this.invincibilityCycle.stats.duration;
+                playSound('powerup');
+            } else if (this.invincibilityCycle.state === 'active') {
+                this.invulnerable = 2;
+                if (this.invincibilityCycle.timer <= 0) {
+                    this.invincibilityCycle.state = 'cooldown';
+                    this.invincibilityCycle.timer = this.invincibilityCycle.stats.cooldown;
+                }
+            } else if (this.invincibilityCycle.state === 'cooldown') {
+                if (this.invincibilityCycle.timer <= 0) {
+                    this.invincibilityCycle.state = 'ready';
+                }
+            }
+        }
+
+        // Check if player is within range to engage with turrets
+        if (playerAlive) {
+            const dist = distToPlayer;
+
+            if (dist < 3200) { // Engagement range
+                this.turretReload -= deltaTime;
+                if (this.turretReload <= 0) {
+                    this.fireTurrets();
+                    this.turretReload = 100; // 0.1 seconds in ms
+                }
+            }
+
+            this.guidedMissileTimer -= deltaTime;
+            if (this.guidedMissileTimer <= 0) {
+                guidedMissiles.push(new Destroyer2GuidedMissile(this));
+                this.guidedMissileTimer = 2000;
+            }
+        }
+
+        if (this.invulnerable > 0) {
+            this.invulnerable -= dtFactor;
+        }
+    }
+
+    fireTurrets() {
+        const tx = this.pos.x;
+        const ty = this.pos.y;
+        const baseAngle = Math.atan2(player.pos.y - ty, player.pos.x - tx);
+        const spread = 0.06;
+        const angles = [baseAngle - spread, baseAngle + spread];
+        for (let i = 0; i < angles.length; i++) {
+            const angle = angles[i];
+            const b = new Bullet(tx, ty, angle, true, 2, 14.96, 6, '#f80');
+            bullets.push(b);
+            spawnBarrelSmoke(tx, ty, angle);
+        }
+        playSound('rapid_shoot');
+    }
+
+    takeHit(dmg = 1) {
+        if (this.dead || this.invulnerable > 0) return false;
+        this.hp -= dmg;
+        playSound('hit');
+        if (this.hp <= 0) {
+            this.kill();
+            return true;
+        }
+        return false;
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        pixiCleanupObject(this);
+
+        // Drop 20 nuggets
+        for (let i = 0; i < 20; i++) {
+            nuggets.push(new SpaceNugget(
+                this.pos.x + (Math.random() - 0.5) * 200,
+                this.pos.y + (Math.random() - 0.5) * 200,
+                1
+            ));
+        }
+
+        spawnParticles(this.pos.x, this.pos.y, 60, '#0ff');
+        spawnFieryExplosion(this.pos.x, this.pos.y, 1.5);
+        playSound('base_explode');
+        showOverlayMessage("DESTROYER II DESTROYED - 20 NUGGETS DROPPED", '#ff0', 2000, 2);
+
+        // Set respawn timer
+        nextDestroyer2SpawnTime = Date.now() + 60000; // 1 minute
+    }
+
+    draw(ctx) {
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
+
+        // Pixi fast path (destroyer hull + turrets)
+        if (pixiBossLayer && pixiTextures && pixiTextures.destroyer2_hull) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                pixiBossLayer.addChild(container);
+
+                const hull = new PIXI.Sprite(pixiTextures.destroyer2_hull);
+                const ha = pixiTextureAnchors.destroyer2_hull || { x: 0.5, y: 0.5 };
+                hull.anchor.set((ha && ha.x != null) ? ha.x : 0.5, (ha && ha.y != null) ? ha.y : 0.5);
+                container.addChild(hull);
+                this._pixiHullSpr = hull;
+
+            } else if (!container.parent) {
+                pixiBossLayer.addChild(container);
+            }
+
+            container.visible = true;
+            container.position.set(this.pos.x, this.pos.y);
+            container.rotation = this.angle || 0;
+
+            const now = (typeof frameNow === 'number' && frameNow > 0) ? frameNow : Date.now();
+            const hullScale = (this.visualRadius && isFinite(this.visualRadius)) ? (this.visualRadius / 340) : 1;
+            if (this._pixiHullSpr) this._pixiHullSpr.scale.set(hullScale);
+
+            // Outer + inner shields (vector layer)
+            if (pixiVectorLayer && this.shieldSegments && this.shieldSegments.length > 0) {
+                let gfx = this._pixiGfx;
+                if (!gfx) {
+                    gfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(gfx);
+                    this._pixiGfx = gfx;
+                    this.shieldsDirty = true;
+                } else if (!gfx.parent) {
+                    pixiVectorLayer.addChild(gfx);
+                }
+
+                gfx.position.set(this.pos.x, this.pos.y);
+                gfx.rotation = this.shieldRotation || 0;
+                if (this.shieldsDirty) {
+                    gfx.clear();
+                    const count = this.shieldSegments.length;
+                    const arcLen = (Math.PI * 2) / count;
+                    gfx.lineStyle(6, 0x00ffff, 0.8);
+                    for (let i = 0; i < count; i++) {
+                        if (this.shieldSegments[i] > 0) {
+                            const a0 = i * arcLen + 0.02;
+                            const a1 = (i + 1) * arcLen - 0.02;
+                            gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
+                            gfx.arc(0, 0, this.shieldRadius, a0, a1);
+                        }
+                    }
+                }
+            } else if (this._pixiGfx) {
+                try { this._pixiGfx.destroy(true); } catch (e) { }
+                this._pixiGfx = null;
+            }
+
+            if (pixiVectorLayer && this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+                let innerGfx = this._pixiInnerGfx;
+                if (!innerGfx) {
+                    innerGfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(innerGfx);
+                    this._pixiInnerGfx = innerGfx;
+                    this.shieldsDirty = true;
+                } else if (!innerGfx.parent) {
+                    pixiVectorLayer.addChild(innerGfx);
+                }
+
+                innerGfx.position.set(this.pos.x, this.pos.y);
+                innerGfx.rotation = this.innerShieldRotation || 0;
+                if (this.shieldsDirty) {
+                    innerGfx.clear();
+                    const count = this.innerShieldSegments.length;
+                    const arcLen = (Math.PI * 2) / count;
+                    innerGfx.lineStyle(6, 0xff00ff, 0.8);
+                    for (let i = 0; i < count; i++) {
+                        if (this.innerShieldSegments[i] > 0) {
+                            const a0 = i * arcLen + 0.02;
+                            const a1 = (i + 1) * arcLen - 0.02;
+                            innerGfx.moveTo(Math.cos(a0) * this.innerShieldRadius, Math.sin(a0) * this.innerShieldRadius);
+                            innerGfx.arc(0, 0, this.innerShieldRadius, a0, a1);
+                        }
+                    }
+                }
+            } else if (this._pixiInnerGfx) {
+                try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+                this._pixiInnerGfx = null;
+            }
+
+            if (this.shieldsDirty) this.shieldsDirty = false;
+
+            if (pixiVectorLayer && this.invincibilityCycle && this.invincibilityCycle.state === 'active') {
+                let phaseGfx = this._pixiPhaseGfx;
+                if (!phaseGfx) {
+                    phaseGfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(phaseGfx);
+                    this._pixiPhaseGfx = phaseGfx;
+                } else if (!phaseGfx.parent) {
+                    pixiVectorLayer.addChild(phaseGfx);
+                }
+                phaseGfx.clear();
+                phaseGfx.position.set(this.pos.x, this.pos.y);
+                phaseGfx.lineStyle(3, 0xffdc00, 0.6);
+                phaseGfx.drawCircle(0, 0, (this.shieldRadius || this.radius || 0) + 14);
+            } else if (this._pixiPhaseGfx) {
+                try { this._pixiPhaseGfx.destroy(true); } catch (e) { }
+                this._pixiPhaseGfx = null;
+            }
+
+            // Nameplate
+            if (this.displayName && pixiVectorLayer) {
+                let txt = this._pixiNameText;
+                if (!txt) {
+                    txt = new PIXI.Text(this.displayName, {
+                        fontFamily: 'Courier New',
+                        fontSize: 18,
+                        fontWeight: 'bold',
+                        fill: 0xff8000
+                    });
+                    txt.anchor.set(0.5);
+                    txt.resolution = 2;
+                    pixiVectorLayer.addChild(txt);
+                    this._pixiNameText = txt;
+                } else if (txt.text !== this.displayName) {
+                    txt.text = this.displayName;
+                }
+                if (!txt.parent) pixiVectorLayer.addChild(txt);
+                txt.visible = true;
+                txt.position.set(this.pos.x, this.pos.y - this.visualRadius - 20);
+            }
+
+            return;
+        }
+
+        // Fallback canvas rendering
+        if (this.shieldSegments && this.shieldSegments.length > 0) {
+            ctx.save();
+            ctx.translate(this.pos.x, this.pos.y);
+            ctx.rotate(this.shieldRotation || 0);
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
+            ctx.lineWidth = 6;
+            const count = this.shieldSegments.length;
+            const arcLen = (Math.PI * 2) / count;
+            for (let i = 0; i < count; i++) {
+                if (this.shieldSegments[i] > 0) {
+                    const a0 = i * arcLen + 0.02;
+                    const a1 = (i + 1) * arcLen - 0.02;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.shieldRadius, a0, a1);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+        if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+            ctx.save();
+            ctx.translate(this.pos.x, this.pos.y);
+            ctx.rotate(this.innerShieldRotation || 0);
+            ctx.strokeStyle = 'rgba(255, 0, 255, 0.8)';
+            ctx.lineWidth = 6;
+            const count = this.innerShieldSegments.length;
+            const arcLen = (Math.PI * 2) / count;
+            for (let i = 0; i < count; i++) {
+                if (this.innerShieldSegments[i] > 0) {
+                    const a0 = i * arcLen + 0.02;
+                    const a1 = (i + 1) * arcLen - 0.02;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.innerShieldRadius, a0, a1);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+        if (this.invincibilityCycle && this.invincibilityCycle.state === 'active') {
+            ctx.save();
+            ctx.translate(this.pos.x, this.pos.y);
+            ctx.strokeStyle = 'rgba(255, 220, 0, 0.6)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, 0, (this.shieldRadius || this.radius || 0) + 14, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        ctx.rotate(this.angle || 0);
+
+        // Main hull
+        ctx.fillStyle = '#333';
+        ctx.strokeStyle = '#ff8000';
+        ctx.lineWidth = 4;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#ff8000';
+        ctx.beginPath();
+        ctx.arc(0, 0, this.visualRadius * 0.75, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Nameplate
+        ctx.restore();
+        if (this.displayName) {
+            ctx.fillStyle = '#ff8000';
+            ctx.font = 'bold 18px Courier New';
+            ctx.textAlign = 'center';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#000';
+            ctx.fillText(this.displayName, this.pos.x, this.pos.y - this.visualRadius - 20);
+            ctx.shadowBlur = 0;
+        }
+    }
+}
+
 // --- Game State ---
 let player;
 let bullets = [];
@@ -11331,6 +12304,10 @@ let bossActive = false;
 let spaceStation = null;
 let pendingStations = 0;
 let nextSpaceStationTime = null;
+let destroyer = null;
+let nextDestroyerSpawnTime = null;
+let destroyer2 = null;
+let nextDestroyer2SpawnTime = null;
 let stationArena = { x: 0, y: 0, radius: 2800, active: false };
 let sectorTransitionActive = false;
 let warpCountdownAt = null;
@@ -13099,18 +14076,12 @@ function scheduleNextShootingStar() {
 }
 
 function scheduleNextRadiationStorm(fromNow = Date.now()) {
-    // Keep them impactful but not constant.
-    const min = 90000;   // 1.5m
-    const max = 170000;  // 2.8m
-    nextRadiationStormAt = fromNow + min + Math.floor(Math.random() * (max - min + 1));
+    nextRadiationStormAt = null;
+    radiationStorm = null;
 }
 
 function spawnRadiationStormRelative() {
-    if (!player) return;
-    const p = findSpawnPointRelative(true, 2400, 4200);
-    const radius = 820 + Math.random() * 320;
-    radiationStorm = new RadiationStorm(p.x, p.y, radius, 45000);
-    showOverlayMessage("RADIATION STORM FORMED", '#ff0', 2000);
+    return;
 }
 
 function scheduleNextMiniEvent(fromNow = Date.now()) {
@@ -13156,6 +14127,8 @@ function resolveEntityCollision() {
     const allEntities = [player, ...enemies, ...bases, ...(contractEntities.fortresses || [])].filter(e => e && !e.dead);
     if (boss && !boss.dead) allEntities.push(boss);
     if (spaceStation) allEntities.push(spaceStation);
+    if (destroyer && !destroyer.dead) allEntities.push(destroyer);
+    if (destroyer2 && !destroyer2.dead) allEntities.push(destroyer2);
 
     const activeAnomalyZone = (activeContract && activeContract.type === 'anomaly' && contractEntities && contractEntities.anomalies)
         ? contractEntities.anomalies.find(a => a && !a.dead && a.contractId === activeContract.id)
@@ -13173,11 +14146,13 @@ function resolveEntityCollision() {
             if ((e1 instanceof Base && e2 instanceof Enemy) || (e2 instanceof Base && e1 instanceof Enemy)) {
                 continue;
             }
-            let r1 = e1.radius;
-            let r2 = e2.radius;
+            let r1 = (e1 instanceof Destroyer || e1 instanceof Destroyer2) ? (e1.shieldRadius || e1.radius) : e1.radius;
+            let r2 = (e2 instanceof Destroyer || e2 instanceof Destroyer2) ? (e2.shieldRadius || e2.radius) : e2.radius;
 
             const isStatic1 = (e1 instanceof Base) || (e1 instanceof SpaceStation) || (e1 instanceof ContractFortress);
             const isStatic2 = (e2 instanceof Base) || (e2 instanceof SpaceStation) || (e2 instanceof ContractFortress);
+            const e1IsDestroyer = (e1 instanceof Destroyer || e1 instanceof Destroyer2);
+            const e2IsDestroyer = (e2 instanceof Destroyer || e2 instanceof Destroyer2);
 
             if (isStatic1 && e1.shieldSegments && e1.shieldSegments.some(s => s > 0)) r1 = e1.shieldRadius;
             if (isStatic2 && e2.shieldSegments && e2.shieldSegments.some(s => s > 0)) r2 = e2.shieldRadius;
@@ -13193,8 +14168,13 @@ function resolveEntityCollision() {
                 const ny = dy / dist;
                 const push = overlap * 0.5;
 
-                if (isStatic1) { e2.pos.x += nx * overlap; e2.pos.y += ny * overlap; }
+                if ((e1IsDestroyer && e2 instanceof Base) || (e2IsDestroyer && e1 instanceof Base)) {
+                    if (e1IsDestroyer) { e2.pos.x += nx * overlap; e2.pos.y += ny * overlap; }
+                    else { e1.pos.x -= nx * overlap; e1.pos.y -= ny * overlap; }
+                } else if (isStatic1) { e2.pos.x += nx * overlap; e2.pos.y += ny * overlap; }
                 else if (isStatic2) { e1.pos.x -= nx * overlap; e1.pos.y -= ny * overlap; }
+                else if (e1IsDestroyer && !e2IsDestroyer) { e2.pos.x += nx * overlap; e2.pos.y += ny * overlap; }
+                else if (e2IsDestroyer && !e1IsDestroyer) { e1.pos.x -= nx * overlap; e1.pos.y -= ny * overlap; }
                 else {
                     e1.pos.x -= nx * push; e1.pos.y -= ny * push;
                     e2.pos.x += nx * push; e2.pos.y += ny * push;
@@ -13209,6 +14189,8 @@ function resolveEntityCollision() {
     // Collision & Damage
     const damageable = [player, ...enemies, ...bases, ...(contractEntities.fortresses || [])];
     if (boss && bossActive && !boss.dead) damageable.push(boss);
+    if (destroyer && !destroyer.dead) damageable.push(destroyer);
+    if (destroyer2 && !destroyer2.dead) damageable.push(destroyer2);
     for (let entity of damageable) {
         if (entity.dead) continue;
         const nearbyAsteroids = asteroidGrid.query(entity.pos.x, entity.pos.y);
@@ -13217,7 +14199,8 @@ function resolveEntityCollision() {
             const dx = entity.pos.x - ast.pos.x;
             const dy = entity.pos.y - ast.pos.y;
             const distSq = dx * dx + dy * dy;
-            const minDist = entity.radius + ast.radius;
+            const entityRadius = (entity instanceof Destroyer || entity instanceof Destroyer2) ? (entity.shieldRadius || entity.radius) : entity.radius;
+            const minDist = entityRadius + ast.radius;
             const isIndestructibleWall = !!ast.unbreakable;
 
             if (distSq < minDist * minDist) {
@@ -13227,7 +14210,7 @@ function resolveEntityCollision() {
                 const nx = dx / dist;
                 const ny = dy / dist;
                 // Some large entities can smash normal asteroids, but indestructible contract walls should block everything.
-                if (!isIndestructibleWall && (entity instanceof Base || (entity instanceof Enemy && entity.isGunboat) || (entity instanceof Cruiser))) {
+                if (!isIndestructibleWall && (entity instanceof Base || (entity instanceof Enemy && entity.isGunboat) || (entity instanceof Cruiser) || (entity instanceof Destroyer) || (entity instanceof Destroyer2))) {
                     ast.break();
                     spawnParticles(ast.pos.x, ast.pos.y, 10, '#aa8');
                     continue;
@@ -13870,7 +14853,7 @@ function setupGameWorld() {
     clearArrayWithPixiCleanup(drones);
     clearArrayWithPixiCleanup(caches);
     radiationStorm = null;
-    nextRadiationStormAt = Date.now() + 90000;
+    nextRadiationStormAt = null;
     clearMiniEvent();
     nextMiniEventAt = Date.now() + 120000;
     clearArrayWithPixiCleanup(pois);
@@ -13892,6 +14875,9 @@ function setupGameWorld() {
     boss = null;
     if (spaceStation) pixiCleanupObject(spaceStation);
     spaceStation = null;
+    if (destroyer) pixiCleanupObject(destroyer);
+    destroyer = null;
+    nextDestroyerSpawnTime = null;
     bossActive = false;
     bossArena.active = false;
     stationArena.active = false;
@@ -13904,7 +14890,11 @@ function setupGameWorld() {
     gunboatRespawnAt = null;
     gunboatLevel2Unlocked = false;
     initialSpawnDone = false;
-    initialSpawnDelayAt = Date.now() + 5000;
+    gameStartTime = Date.now();
+    pauseStartTime = null;
+    pausedAccumMs = 0;
+
+    initialSpawnDelayAt = gameStartTime + 5000;
 
     generateMap();
     // Ensure the nebula palette matches Sector 1 when restarting after a Sector 2 cave run. 
@@ -13917,12 +14907,6 @@ function setupGameWorld() {
     updateTurboUI();
     updateXpUI();
     updateNuggetUI();
-    // Start / reset game timer
-    gameStartTime = Date.now();
-    pauseStartTime = null;
-    pausedAccumMs = 0;
-    const tEl = document.getElementById('game-timer');
-    if (tEl) tEl.innerText = '00:00';
 }
 
 function showFloatingText(x, y, amount, color = '#ff0', key = null) {
@@ -14019,6 +15003,26 @@ function showLevelUpMenu() {
             }
         });
     });
+
+    // Handle case when all upgrades are maxed out
+    if (validUpgrades.length === 0) {
+        // Show message that all upgrades are maxed
+        showOverlayMessage("ALL UPGRADES MAXED OUT!", '#0f0', 2000);
+
+        // Give bonus health as a reward for leveling up
+        if (player && !player.dead) {
+            player.hp = player.maxHp;
+            updateHealthUI();
+            playSound('powerup');
+        }
+
+        // Resume game immediately
+        setTimeout(() => {
+            gameActive = true;
+            if (musicEnabled) startMusic();
+        }, 100);
+        return;
+    }
 
     // 2. Pick 3 Random
     const choices = [];
@@ -14777,6 +15781,14 @@ function gameLoopLogic(opts = null) {
                 // Cruisers can spawn even if a station exists 
                 cruiserEncounterCount++;
                 // Arena boss fight: clear world threats; boss may call a few helpers.
+                if (destroyer) {
+                    const idx = enemies.indexOf(destroyer);
+                    if (idx !== -1) enemies.splice(idx, 1);
+                }
+                if (destroyer2) {
+                    const idx = enemies.indexOf(destroyer2);
+                    if (idx !== -1) enemies.splice(idx, 1);
+                }
                 clearArrayWithPixiCleanup(enemies);
                 clearArrayWithPixiCleanup(bases);
                 baseRespawnTimers = [];
@@ -14843,6 +15855,72 @@ function gameLoopLogic(opts = null) {
                     if (!level1Alive) gunboatRespawnAt = now + 20000;
                 } else {
                     if (!level1Alive || !level2Alive) gunboatRespawnAt = now + 20000;
+                }
+            }
+        }
+
+        // Destroyer spawn and respawn (only in level 1, only 1 at a time, respawns 1 min after death)
+        if (!warpActive && !caveMode && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone && !warpCompletedOnce) {
+            // Check if destroyer exists
+            const destroyerAlive = destroyer && !destroyer.dead;
+            if (!destroyerAlive) {
+                if (destroyer && destroyer.dead) {
+                    // Destroyer was killed, check respawn timer
+                    if (nextDestroyerSpawnTime && now >= nextDestroyerSpawnTime) {
+                        destroyer = new Destroyer();
+                        nextDestroyerSpawnTime = null;
+                        showOverlayMessage("NEW DESTROYER DETECTED", '#f80', 3000);
+                        playSound('boss_spawn');
+                    }
+                } else if (!nextDestroyerSpawnTime && initialSpawnDone) {
+                    // First spawn - after 30 seconds of gameplay
+                    if (now - gameStartTime - pausedAccumMs > 30000) {
+                        destroyer = new Destroyer();
+                        nextDestroyerSpawnTime = null;
+                        showOverlayMessage("DESTROYER DETECTED", '#f80', 3000);
+                        playSound('boss_spawn');
+                    }
+                }
+            }
+        }
+
+        // Destroyer II spawn and respawn (only in level 1, only 1 at a time, respawns 1 min after death)
+        if (!warpActive && !caveMode && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone && !warpCompletedOnce) {
+            const destroyer2Alive = destroyer2 && !destroyer2.dead;
+            const placeDestroyer2Away = (d2) => {
+                if (!destroyer || destroyer.dead || !player) return;
+                const dx = destroyer.pos.x - player.pos.x;
+                const dy = destroyer.pos.y - player.pos.y;
+                const angleFromPlayer = Math.atan2(dy, dx);
+                const spawnAngle = angleFromPlayer + Math.PI;
+                const dist = 4000;
+                d2.pos.x = player.pos.x + Math.cos(spawnAngle) * dist;
+                d2.pos.y = player.pos.y + Math.sin(spawnAngle) * dist;
+            };
+
+            if (!destroyer2Alive) {
+                if (destroyer2 && destroyer2.dead) {
+                    if (nextDestroyer2SpawnTime && now >= nextDestroyer2SpawnTime) {
+                        destroyer2 = new Destroyer2();
+                        if (destroyer && !destroyer.dead) {
+                            const d = Math.hypot(destroyer2.pos.x - destroyer.pos.x, destroyer2.pos.y - destroyer.pos.y);
+                            if (d < 3000) placeDestroyer2Away(destroyer2);
+                        }
+                        nextDestroyer2SpawnTime = null;
+                        showOverlayMessage("NEW DESTROYER II DETECTED", '#ff0', 3000);
+                        playSound('boss_spawn');
+                    }
+                } else if (!nextDestroyer2SpawnTime && initialSpawnDone) {
+                    if (now - gameStartTime - pausedAccumMs > 30000) {
+                        destroyer2 = new Destroyer2();
+                        if (destroyer && !destroyer.dead) {
+                            const d = Math.hypot(destroyer2.pos.x - destroyer.pos.x, destroyer2.pos.y - destroyer.pos.y);
+                            if (d < 3000) placeDestroyer2Away(destroyer2);
+                        }
+                        nextDestroyer2SpawnTime = null;
+                        showOverlayMessage("DESTROYER II DETECTED", '#ff0', 3000);
+                        playSound('boss_spawn');
+                    }
                 }
             }
         }
@@ -14978,6 +16056,8 @@ function gameLoopLogic(opts = null) {
             for (let i = 0; i < warpZone.turrets.length; i++) targetGrid.insert(warpZone.turrets[i]);
         }
         if (boss && !boss.dead) targetGrid.insert(boss);
+        if (destroyer && !destroyer.dead) targetGrid.insert(destroyer);
+        if (destroyer2 && !destroyer2.dead) targetGrid.insert(destroyer2);
 
         // Build bullet spatial hash for efficient collision detection
         rebuildBulletGrid(bullets);
@@ -15268,6 +16348,16 @@ function gameLoopLogic(opts = null) {
         if (doDraw && sContainer) sContainer.style.display = 'none';
     }
 
+    // Destroyer update and draw
+    if (destroyer) {
+        if (doUpdate) destroyer.update(deltaTime);
+        if (doDraw) destroyer.draw(ctx);
+    }
+    if (destroyer2) {
+        if (doUpdate) destroyer2.update(deltaTime);
+        if (doDraw) destroyer2.draw(ctx);
+    }
+
     // Bullets - always update (movement), cull drawing
     for (let i = 0, len = bullets.length; i < len; i++) {
         const b = bullets[i];
@@ -15370,7 +16460,12 @@ function gameLoopLogic(opts = null) {
             else pixiCleanupObject(b);
         });
         immediateCompactArray(bossBombs);
-        immediateCompactArray(guidedMissiles);
+        immediateCompactArray(guidedMissiles, (m) => {
+            if (m && m.dead && typeof m.explode === 'function' && !m._exploded) {
+                m.explode('#ff0');
+            }
+            pixiCleanupObject(m);
+        });
         immediateCompactArray(enemies, pixiCleanupObject);
         immediateCompactArray(bases, pixiCleanupObject);
         immediateCompactArray(environmentAsteroids);
@@ -15515,6 +16610,7 @@ function gameLoopLogic(opts = null) {
                             const hitRad = (m.radius || 0) + (b.radius || 0);
                             if (dx * dx + dy * dy < hitRad * hitRad) {
                                 if (typeof m.takeHit === 'function') m.takeHit(b.damage);
+                                else if (typeof m.explode === 'function') m.explode('#ff0');
                                 else m.dead = true;
                                 hit = true;
                                 b.dead = true;
@@ -15853,6 +16949,91 @@ function gameLoopLogic(opts = null) {
                         }
                     }
 
+                    // Only player bullets (!b.isEnemy) can hit destroyer
+                    if (!hit && !b.isEnemy && destroyer && !destroyer.dead) {
+                        if (destroyer.invulnerable > 0) continue;
+                        const dist = Math.hypot(b.pos.x - destroyer.pos.x, b.pos.y - destroyer.pos.y);
+                        const outerUp = destroyer.shieldSegments && destroyer.shieldSegments.some(s => s > 0);
+                        const innerUp = destroyer.innerShieldSegments && destroyer.innerShieldSegments.some(s => s > 0);
+                        if (!b.ignoreShields && outerUp && dist < destroyer.shieldRadius + b.radius) {
+                            let angle = Math.atan2(b.pos.y - destroyer.pos.y, b.pos.x - destroyer.pos.x) - destroyer.shieldRotation;
+                            while (angle < 0) angle += Math.PI * 2;
+                            const count = destroyer.shieldSegments.length;
+                            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                            if (destroyer.shieldSegments[idx] > 0) {
+                                destroyer.shieldSegments[idx]--;
+                                destroyer.shieldsDirty = true;
+                                hit = true;
+                                playSound('shield_hit');
+                                spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
+                            }
+                        }
+                        if (!hit && !b.ignoreShields && innerUp && dist < destroyer.innerShieldRadius + b.radius) {
+                            let angle = Math.atan2(b.pos.y - destroyer.pos.y, b.pos.x - destroyer.pos.x) - destroyer.innerShieldRotation;
+                            while (angle < 0) angle += Math.PI * 2;
+                            const count = destroyer.innerShieldSegments.length;
+                            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                            if (destroyer.innerShieldSegments[idx] > 0) {
+                                destroyer.innerShieldSegments[idx]--;
+                                destroyer.shieldsDirty = true;
+                                hit = true;
+                                playSound('shield_hit');
+                                spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
+                            }
+                        }
+                        if (!hit && dist < destroyer.radius + b.radius) {
+                            destroyer.hp -= b.damage;
+                            hit = true;
+                            playSound('hit');
+                            spawnParticles(b.pos.x, b.pos.y, 5, '#ff0');
+                            if (destroyer.hp <= 0) {
+                                destroyer.kill();
+                            }
+                        }
+                    }
+
+                    if (!hit && !b.isEnemy && destroyer2 && !destroyer2.dead) {
+                        if (destroyer2.invulnerable > 0) continue;
+                        const dist = Math.hypot(b.pos.x - destroyer2.pos.x, b.pos.y - destroyer2.pos.y);
+                        const outerUp = destroyer2.shieldSegments && destroyer2.shieldSegments.some(s => s > 0);
+                        const innerUp = destroyer2.innerShieldSegments && destroyer2.innerShieldSegments.some(s => s > 0);
+                        if (!b.ignoreShields && outerUp && dist < destroyer2.shieldRadius + b.radius) {
+                            let angle = Math.atan2(b.pos.y - destroyer2.pos.y, b.pos.x - destroyer2.pos.x) - destroyer2.shieldRotation;
+                            while (angle < 0) angle += Math.PI * 2;
+                            const count = destroyer2.shieldSegments.length;
+                            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                            if (destroyer2.shieldSegments[idx] > 0) {
+                                destroyer2.shieldSegments[idx]--;
+                                destroyer2.shieldsDirty = true;
+                                hit = true;
+                                playSound('shield_hit');
+                                spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
+                            }
+                        }
+                        if (!hit && !b.ignoreShields && innerUp && dist < destroyer2.innerShieldRadius + b.radius) {
+                            let angle = Math.atan2(b.pos.y - destroyer2.pos.y, b.pos.x - destroyer2.pos.x) - destroyer2.innerShieldRotation;
+                            while (angle < 0) angle += Math.PI * 2;
+                            const count = destroyer2.innerShieldSegments.length;
+                            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                            if (destroyer2.innerShieldSegments[idx] > 0) {
+                                destroyer2.innerShieldSegments[idx]--;
+                                destroyer2.shieldsDirty = true;
+                                hit = true;
+                                playSound('shield_hit');
+                                spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
+                            }
+                        }
+                        if (!hit && dist < destroyer2.radius + b.radius) {
+                            destroyer2.hp -= b.damage;
+                            hit = true;
+                            playSound('hit');
+                            spawnParticles(b.pos.x, b.pos.y, 5, '#ff0');
+                            if (destroyer2.hp <= 0) {
+                                destroyer2.kill();
+                            }
+                        }
+                    }
+
                     // Only player bullets (!b.isEnemy) can hit the boss
                     if (!hit && !b.isEnemy && bossActive && boss && !boss.dead) {
                         const dist = Math.hypot(b.pos.x - boss.pos.x, b.pos.y - boss.pos.y);
@@ -15947,6 +17128,8 @@ function gameLoopLogic(opts = null) {
         uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
 
         drawStationIndicator();
+        drawDestroyerIndicator();
+        drawDestroyer2Indicator();
         drawWarpGateIndicator();
         drawMinimap();
         drawContractIndicator();
@@ -16035,6 +17218,156 @@ function drawStationIndicator() {
     uiCtx.shadowColor = '#000';
     const dist = Math.hypot(dx, dy);
     uiCtx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
+    uiCtx.shadowBlur = 0;
+
+    uiCtx.restore();
+}
+
+function drawDestroyerIndicator() {
+    if (!destroyer || !player || destroyer.dead) return;
+
+    const screenW = canvas.width;
+    const screenH = canvas.height;
+
+    // Check if on screen (approximate bounds)
+    const z = currentZoom || ZOOM_LEVEL;
+    const camX = player.pos.x - screenW / (2 * z);
+    const camY = player.pos.y - screenH / (2 * z);
+    const viewW = screenW / z;
+    const viewH = screenH / z;
+
+    // If center of destroyer is within view (plus a bit of margin), don't draw arrow
+    if (destroyer.pos.x > camX && destroyer.pos.x < camX + viewW &&
+        destroyer.pos.y > camY && destroyer.pos.y < camY + viewH) {
+        return;
+    }
+
+    const dx = destroyer.pos.x - player.pos.x;
+    const dy = destroyer.pos.y - player.pos.y;
+    const angle = Math.atan2(dy, dx);
+
+    const margin = 60;
+    const cx = screenW / 2;
+    const cy = screenH / 2;
+
+    const vx = Math.cos(angle);
+    const vy = Math.sin(angle);
+
+    // Intersect ray from center with screen bounding box inset by margin
+    const bx = cx - margin;
+    const by = cy - margin;
+
+    const tx = Math.abs(vx) > 0.001 ? bx / Math.abs(vx) : Infinity;
+    const ty = Math.abs(vy) > 0.001 ? by / Math.abs(vy) : Infinity;
+    const t = Math.min(tx, ty);
+
+    const arrowX = cx + vx * t;
+    const arrowY = cy + vy * t;
+
+    uiCtx.save();
+    uiCtx.translate(arrowX, arrowY);
+    uiCtx.rotate(angle);
+
+    const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
+    uiCtx.scale(pulse, pulse);
+
+    uiCtx.fillStyle = '#ff8000';
+    uiCtx.strokeStyle = '#000';
+    uiCtx.lineWidth = 2;
+
+    uiCtx.beginPath();
+    uiCtx.moveTo(15, 0);
+    uiCtx.lineTo(-15, 12);
+    uiCtx.lineTo(-15, -12);
+    uiCtx.closePath();
+    uiCtx.fill();
+    uiCtx.stroke();
+
+    // Distance Text
+    uiCtx.rotate(-angle);
+    uiCtx.fillStyle = '#ff8000';
+    uiCtx.font = 'bold 14px Courier New';
+    uiCtx.textAlign = 'center';
+    uiCtx.textBaseline = 'middle';
+    uiCtx.shadowBlur = 4;
+    uiCtx.shadowColor = '#000';
+    const dist = Math.hypot(dx, dy);
+    uiCtx.fillText('DESTROYER ' + (dist / 1000).toFixed(1) + 'km', 0, 25);
+    uiCtx.shadowBlur = 0;
+
+    uiCtx.restore();
+}
+
+function drawDestroyer2Indicator() {
+    if (!destroyer2 || !player || destroyer2.dead) return;
+
+    const screenW = canvas.width;
+    const screenH = canvas.height;
+
+    // Check if on screen (approximate bounds)
+    const z = currentZoom || ZOOM_LEVEL;
+    const camX = player.pos.x - screenW / (2 * z);
+    const camY = player.pos.y - screenH / (2 * z);
+    const viewW = screenW / z;
+    const viewH = screenH / z;
+
+    // If center of destroyer is within view (plus a bit of margin), don't draw arrow
+    if (destroyer2.pos.x > camX && destroyer2.pos.x < camX + viewW &&
+        destroyer2.pos.y > camY && destroyer2.pos.y < camY + viewH) {
+        return;
+    }
+
+    const dx = destroyer2.pos.x - player.pos.x;
+    const dy = destroyer2.pos.y - player.pos.y;
+    const angle = Math.atan2(dy, dx);
+
+    const margin = 60;
+    const cx = screenW / 2;
+    const cy = screenH / 2;
+
+    const vx = Math.cos(angle);
+    const vy = Math.sin(angle);
+
+    // Intersect ray from center with screen bounding box inset by margin
+    const bx = cx - margin;
+    const by = cy - margin;
+
+    const tx = Math.abs(vx) > 0.001 ? bx / Math.abs(vx) : Infinity;
+    const ty = Math.abs(vy) > 0.001 ? by / Math.abs(vy) : Infinity;
+    const t = Math.min(tx, ty);
+
+    const arrowX = cx + vx * t;
+    const arrowY = cy + vy * t;
+
+    uiCtx.save();
+    uiCtx.translate(arrowX, arrowY);
+    uiCtx.rotate(angle);
+
+    const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
+    uiCtx.scale(pulse, pulse);
+
+    uiCtx.fillStyle = '#ff0';
+    uiCtx.strokeStyle = '#000';
+    uiCtx.lineWidth = 2;
+
+    uiCtx.beginPath();
+    uiCtx.moveTo(15, 0);
+    uiCtx.lineTo(-15, 12);
+    uiCtx.lineTo(-15, -12);
+    uiCtx.closePath();
+    uiCtx.fill();
+    uiCtx.stroke();
+
+    // Distance Text
+    uiCtx.rotate(-angle);
+    uiCtx.fillStyle = '#ff0';
+    uiCtx.font = 'bold 14px Courier New';
+    uiCtx.textAlign = 'center';
+    uiCtx.textBaseline = 'middle';
+    uiCtx.shadowBlur = 4;
+    uiCtx.shadowColor = '#000';
+    const dist = Math.hypot(dx, dy);
+    uiCtx.fillText('DESTROYER II ' + (dist / 1000).toFixed(1) + 'km', 0, 25);
     uiCtx.shadowBlur = 0;
 
     uiCtx.restore();
@@ -16538,6 +17871,46 @@ function drawMinimap() {
             minimapCtx.arc(mx, my, 6, 0, Math.PI * 2);
             minimapCtx.fill();
         }
+    }
+
+    // Destroyer indicator on minimap
+    if (!warpActive && player && destroyer && !destroyer.dead) {
+        const dx = destroyer.pos.x - player.pos.x;
+        const dy = destroyer.pos.y - player.pos.y;
+        const dist = Math.hypot(dx, dy);
+        const angle = Math.atan2(dy, dx);
+        minimapCtx.fillStyle = '#ff8000';
+
+        // Always draw an arrow; clamp to edge if target is out of range.
+        const inRange = (dist * scale <= 95);
+        const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
+        const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
+
+        minimapCtx.beginPath();
+        minimapCtx.moveTo(px + Math.cos(angle) * 10, py + Math.sin(angle) * 10);
+        minimapCtx.lineTo(px + Math.cos(angle + 2.5) * 8, py + Math.sin(angle + 2.5) * 8);
+        minimapCtx.lineTo(px + Math.cos(angle - 2.5) * 8, py + Math.sin(angle - 2.5) * 8);
+        minimapCtx.fill();
+    }
+
+    // Destroyer II indicator on minimap
+    if (!warpActive && player && destroyer2 && !destroyer2.dead) {
+        const dx = destroyer2.pos.x - player.pos.x;
+        const dy = destroyer2.pos.y - player.pos.y;
+        const dist = Math.hypot(dx, dy);
+        const angle = Math.atan2(dy, dx);
+        minimapCtx.fillStyle = '#ff0';
+
+        // Always draw an arrow; clamp to edge if target is out of range.
+        const inRange = (dist * scale <= 95);
+        const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
+        const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
+
+        minimapCtx.beginPath();
+        minimapCtx.moveTo(px + Math.cos(angle) * 10, py + Math.sin(angle) * 10);
+        minimapCtx.lineTo(px + Math.cos(angle + 2.5) * 8, py + Math.sin(angle + 2.5) * 8);
+        minimapCtx.lineTo(px + Math.cos(angle - 2.5) * 8, py + Math.sin(angle - 2.5) * 8);
+        minimapCtx.fill();
     }
 
     // Contract target indicator on minimap
