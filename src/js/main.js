@@ -39,7 +39,7 @@ const UPGRADE_DATA = {
                 { "id": "turret_range", "name": "Turret Range", "tier1": "+25% range", "tier2": "+50% total", "tier3": "+100% total", "notes": "Hits farther threats." },
                 { "id": "multi_shot", "name": "Multi-Shot", "tier1": "Fires 2 proj.", "tier2": "Fires 3 proj.", "tier3": "Fires 4 proj.", "notes": "Parallel fire." },
                 { "id": "shotgun", "name": "Flak Shotgun", "tier1": "Unlock: 5 Pellets", "tier2": "8 Pellets, +Range", "tier3": "12 Pellets", "notes": "Close-range burst." },
-                { "id": "static_weapons", "name": "Static Weapons", "tier1": "Unlock Forward Laser", "tier2": "Add Side Lasers", "tier3": "Add Rear Missiles", "notes": "Always-on turrets." },
+                { "id": "static_weapons", "name": "Static Weapons", "tier1": "Unlock Forward Laser", "tier2": "Add Side Lasers", "tier3": "Add Rear Laser", "tier4": "Dual Rear Stream", "tier5": "Dual Front Stream", "notes": "Always-on turrets." },
                 { "id": "homing_missiles", "name": "Homing Missiles", "tier1": "2x Missiles / 2s", "tier2": "4x Missiles / 2s", "tier3": "6x Missiles / 2s", "notes": "Shield-piercing swarm." }
             ]
         },
@@ -3172,7 +3172,15 @@ class Spaceship extends Entity {
                 bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI / 2, false, damage, bulletSpeed, 4, '#0f0'));
                 bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle - Math.PI / 2, false, damage, bulletSpeed, 4, '#0f0'));
             } else if (w.type === 'rear') {
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI, false, damage * 2, bulletSpeed * 0.8, 6, '#f00', 2)); // Rear missiles homing
+                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI, false, damage, bulletSpeed, 4, '#0f0')); // Rear laser
+            } else if (w.type === 'dual_rear') {
+                // Dual stream to the rear at angles
+                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI - Math.PI / 6, false, damage, bulletSpeed, 4, '#0f0'));
+                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI + Math.PI / 6, false, damage, bulletSpeed, 4, '#0f0'));
+            } else if (w.type === 'dual_front') {
+                // Dual stream to the front at angles
+                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle - Math.PI / 6, false, damage, bulletSpeed, 4, '#0f0'));
+                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI / 6, false, damage, bulletSpeed, 4, '#0f0'));
             } else { // Forward
                 bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle, false, damage, bulletSpeed, 4, '#0f0'));
             }
@@ -11429,9 +11437,10 @@ class Destroyer extends Entity {
         this.chaseDistance = 8000;
 
         // Outer + inner shields for destroyer
-        this.shieldSegments = new Array(120).fill(3);
-        this.innerShieldSegments = new Array(120).fill(3);
-        this.shieldRadius = Math.round(this.visualRadius * 0.92);
+        this.maxShieldHp = 3;
+        this.shieldSegments = new Array(80).fill(3);
+        this.innerShieldSegments = new Array(60).fill(3);
+        this.shieldRadius = Math.round(this.visualRadius * 0.85);
         this.innerShieldRadius = Math.round(this.visualRadius * 0.78);
         this.shieldRotation = 0;
         this.innerShieldRotation = 0;
@@ -11662,12 +11671,14 @@ class Destroyer extends Entity {
                     gfx.clear();
                     const count = this.shieldSegments.length;
                     const arcLen = (Math.PI * 2) / count;
-                    const overlap = arcLen * 0.1; // Overlap to prevent gaps
-                    gfx.lineStyle(6, 0x00ffff, 0.8);
+                    const gap = arcLen * 0.1; // 10% gap for outer shield
                     for (let i = 0; i < count; i++) {
-                        if (this.shieldSegments[i] > 0) {
-                            const a0 = i * arcLen - overlap;
-                            const a1 = (i + 1) * arcLen + overlap;
+                        const v = this.shieldSegments[i];
+                        if (v > 0) {
+                            const alpha = Math.min(1.0, v / (this.maxShieldHp * 0.5));
+                            gfx.lineStyle(6, 0x00ffff, alpha);
+                            const a0 = i * arcLen + gap;
+                            const a1 = (i + 1) * arcLen - gap;
                             gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
                             gfx.arc(0, 0, this.shieldRadius, a0, a1);
                         }
@@ -11695,12 +11706,14 @@ class Destroyer extends Entity {
                     innerGfx.clear();
                     const count = this.innerShieldSegments.length;
                     const arcLen = (Math.PI * 2) / count;
-                    const overlap = arcLen * 0.1; // Overlap to prevent gaps
-                    innerGfx.lineStyle(6, 0xff00ff, 0.8);
+                    const gap = arcLen * 0.05; // 5% gap for inner shield
                     for (let i = 0; i < count; i++) {
-                        if (this.innerShieldSegments[i] > 0) {
-                            const a0 = i * arcLen - overlap;
-                            const a1 = (i + 1) * arcLen + overlap;
+                        const v = this.innerShieldSegments[i];
+                        if (v > 0) {
+                            const alpha = Math.min(1.0, v / (this.maxShieldHp * 0.5));
+                            innerGfx.lineStyle(5, 0xff00ff, alpha);
+                            const a0 = i * arcLen + gap;
+                            const a1 = (i + 1) * arcLen - gap;
                             innerGfx.moveTo(Math.cos(a0) * this.innerShieldRadius, Math.sin(a0) * this.innerShieldRadius);
                             innerGfx.arc(0, 0, this.innerShieldRadius, a0, a1);
                         }
@@ -11761,14 +11774,17 @@ class Destroyer extends Entity {
             ctx.save();
             ctx.translate(this.pos.x, this.pos.y);
             ctx.rotate(this.shieldRotation || 0);
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
             ctx.lineWidth = 6;
             const count = this.shieldSegments.length;
             const arcLen = (Math.PI * 2) / count;
+            const gap = arcLen * 0.1; // 10% gap for outer shield
             for (let i = 0; i < count; i++) {
-                if (this.shieldSegments[i] > 0) {
-                    const a0 = i * arcLen + 0.02;
-                    const a1 = (i + 1) * arcLen - 0.02;
+                const v = this.shieldSegments[i];
+                if (v > 0) {
+                    const alpha = Math.min(1.0, v / (this.maxShieldHp * 0.5));
+                    ctx.strokeStyle = `rgba(0, 255, 255, ${alpha})`;
+                    const a0 = i * arcLen + gap;
+                    const a1 = (i + 1) * arcLen - gap;
                     ctx.beginPath();
                     ctx.arc(0, 0, this.shieldRadius, a0, a1);
                     ctx.stroke();
@@ -11780,14 +11796,17 @@ class Destroyer extends Entity {
             ctx.save();
             ctx.translate(this.pos.x, this.pos.y);
             ctx.rotate(this.innerShieldRotation || 0);
-            ctx.strokeStyle = 'rgba(255, 0, 255, 0.8)';
-            ctx.lineWidth = 6;
+            ctx.lineWidth = 5;
             const count = this.innerShieldSegments.length;
             const arcLen = (Math.PI * 2) / count;
+            const gap = arcLen * 0.05; // 5% gap for inner shield
             for (let i = 0; i < count; i++) {
-                if (this.innerShieldSegments[i] > 0) {
-                    const a0 = i * arcLen + 0.02;
-                    const a1 = (i + 1) * arcLen - 0.02;
+                const v = this.innerShieldSegments[i];
+                if (v > 0) {
+                    const alpha = Math.min(1.0, v / (this.maxShieldHp * 0.5));
+                    ctx.strokeStyle = `rgba(255, 0, 255, ${alpha})`;
+                    const a0 = i * arcLen + gap;
+                    const a1 = (i + 1) * arcLen - gap;
                     ctx.beginPath();
                     ctx.arc(0, 0, this.innerShieldRadius, a0, a1);
                     ctx.stroke();
@@ -11863,9 +11882,10 @@ class Destroyer2 extends Entity {
         this.chaseDistance = 8000;
 
         // Outer + inner shields for destroyer
+        this.maxShieldHp = 3;
         this.shieldSegments = new Array(80).fill(3);
-        this.innerShieldSegments = new Array(80).fill(3);
-        this.shieldRadius = Math.round(this.visualRadius * 0.92);
+        this.innerShieldSegments = new Array(60).fill(3);
+        this.shieldRadius = Math.round(this.visualRadius * 0.85);
         this.innerShieldRadius = Math.round(this.visualRadius * 0.78);
         this.shieldRotation = 0;
         this.innerShieldRotation = 0;
@@ -12102,12 +12122,14 @@ class Destroyer2 extends Entity {
                     gfx.clear();
                     const count = this.shieldSegments.length;
                     const arcLen = (Math.PI * 2) / count;
-                    const overlap = arcLen * 0.1; // Overlap to prevent gaps
-                    gfx.lineStyle(6, 0x00ffff, 0.8);
+                    const gap = arcLen * 0.1; // 10% gap for outer shield
                     for (let i = 0; i < count; i++) {
-                        if (this.shieldSegments[i] > 0) {
-                            const a0 = i * arcLen - overlap;
-                            const a1 = (i + 1) * arcLen + overlap;
+                        const v = this.shieldSegments[i];
+                        if (v > 0) {
+                            const alpha = Math.min(1.0, v / (this.maxShieldHp * 0.5));
+                            gfx.lineStyle(6, 0x00ffff, alpha);
+                            const a0 = i * arcLen + gap;
+                            const a1 = (i + 1) * arcLen - gap;
                             gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
                             gfx.arc(0, 0, this.shieldRadius, a0, a1);
                         }
@@ -12135,12 +12157,14 @@ class Destroyer2 extends Entity {
                     innerGfx.clear();
                     const count = this.innerShieldSegments.length;
                     const arcLen = (Math.PI * 2) / count;
-                    const overlap = arcLen * 0.1; // Overlap to prevent gaps
-                    innerGfx.lineStyle(6, 0xff00ff, 0.8);
+                    const gap = arcLen * 0.05; // 5% gap for inner shield
                     for (let i = 0; i < count; i++) {
-                        if (this.innerShieldSegments[i] > 0) {
-                            const a0 = i * arcLen - overlap;
-                            const a1 = (i + 1) * arcLen + overlap;
+                        const v = this.innerShieldSegments[i];
+                        if (v > 0) {
+                            const alpha = Math.min(1.0, v / (this.maxShieldHp * 0.5));
+                            innerGfx.lineStyle(5, 0xff00ff, alpha);
+                            const a0 = i * arcLen + gap;
+                            const a1 = (i + 1) * arcLen - gap;
                             innerGfx.moveTo(Math.cos(a0) * this.innerShieldRadius, Math.sin(a0) * this.innerShieldRadius);
                             innerGfx.arc(0, 0, this.innerShieldRadius, a0, a1);
                         }
@@ -12201,14 +12225,17 @@ class Destroyer2 extends Entity {
             ctx.save();
             ctx.translate(this.pos.x, this.pos.y);
             ctx.rotate(this.shieldRotation || 0);
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
             ctx.lineWidth = 6;
             const count = this.shieldSegments.length;
             const arcLen = (Math.PI * 2) / count;
+            const gap = arcLen * 0.1; // 10% gap for outer shield
             for (let i = 0; i < count; i++) {
-                if (this.shieldSegments[i] > 0) {
-                    const a0 = i * arcLen + 0.02;
-                    const a1 = (i + 1) * arcLen - 0.02;
+                const v = this.shieldSegments[i];
+                if (v > 0) {
+                    const alpha = Math.min(1.0, v / (this.maxShieldHp * 0.5));
+                    ctx.strokeStyle = `rgba(0, 255, 255, ${alpha})`;
+                    const a0 = i * arcLen + gap;
+                    const a1 = (i + 1) * arcLen - gap;
                     ctx.beginPath();
                     ctx.arc(0, 0, this.shieldRadius, a0, a1);
                     ctx.stroke();
@@ -12220,14 +12247,17 @@ class Destroyer2 extends Entity {
             ctx.save();
             ctx.translate(this.pos.x, this.pos.y);
             ctx.rotate(this.innerShieldRotation || 0);
-            ctx.strokeStyle = 'rgba(255, 0, 255, 0.8)';
-            ctx.lineWidth = 6;
+            ctx.lineWidth = 5;
             const count = this.innerShieldSegments.length;
             const arcLen = (Math.PI * 2) / count;
+            const gap = arcLen * 0.05; // 5% gap for inner shield
             for (let i = 0; i < count; i++) {
-                if (this.innerShieldSegments[i] > 0) {
-                    const a0 = i * arcLen + 0.02;
-                    const a1 = (i + 1) * arcLen - 0.02;
+                const v = this.innerShieldSegments[i];
+                if (v > 0) {
+                    const alpha = Math.min(1.0, v / (this.maxShieldHp * 0.5));
+                    ctx.strokeStyle = `rgba(255, 0, 255, ${alpha})`;
+                    const a0 = i * arcLen + gap;
+                    const a1 = (i + 1) * arcLen - gap;
                     ctx.beginPath();
                     ctx.arc(0, 0, this.innerShieldRadius, a0, a1);
                     ctx.stroke();
@@ -14895,6 +14925,8 @@ function setupGameWorld() {
     spaceStation = null;
     if (destroyer) pixiCleanupObject(destroyer);
     destroyer = null;
+    if (destroyer2) pixiCleanupObject(destroyer2);
+    destroyer2 = null;
     nextDestroyerSpawnTime = null;
     bossActive = false;
     bossArena.active = false;
@@ -15232,6 +15264,8 @@ function applyUpgrade(id, tier) {
             if (tier === 1) player.staticWeapons.push({ type: 'forward' });
             if (tier === 2) player.staticWeapons.push({ type: 'side' });
             if (tier === 3) player.staticWeapons.push({ type: 'rear' });
+            if (tier === 4) player.staticWeapons.push({ type: 'dual_rear' });
+            if (tier === 5) player.staticWeapons.push({ type: 'dual_front' });
             player.staticCannonCount = player.staticWeapons.length; // Vis only
             break;
         case 'homing_missiles':
@@ -18057,6 +18091,9 @@ function startGame() {
         player.magnetRadius = 150;
         player.nukeUnlocked = false;
         gameEnded = false;
+
+        // Setup game world (clear all entities)
+        setupGameWorld();
 
         // Apply meta bonuses
         if (metaProfile.purchases.startDamage) {
