@@ -3,7 +3,7 @@ export class Profiler {
         this.metrics = {};
         this.frameCount = 0;
         this.reportInterval = 300; // Report every 300 frames (approx 5s)
-        this.enabled = false; // Disabled - enable via perfEnable() if needed
+        this.enabled = true; // Disabled - enable via perfEnable() if needed
     }
 
     start(label) {

@@ -302,6 +302,28 @@
             z-index: 5;
         }
 
+        #arena-countdown {
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 48px;
+            color: #f00;
+            text-shadow: 0 0 20px #f00, 0 0 40px #f00;
+            font-weight: bold;
+            letter-spacing: 4px;
+            display: none;
+            width: 100%;
+            z-index: 6;
+            animation: pulse 0.5s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { transform: translate(-50%, -50%) scale(1); }
+            to { transform: translate(-50%, -50%) scale(1.1); }
+        }
+
         h1 {
             font-size: 48px;
             margin-bottom: 20px;
@@ -500,6 +522,7 @@
             </div>
 
             <div id="overlay-message"></div>
+            <div id="arena-countdown"></div>
 
             <div class="hud-left">
                 <div>LVL: <span id="level-display">1</span></div>

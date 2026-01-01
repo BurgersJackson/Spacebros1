@@ -4,7 +4,7 @@ import { globalProfiler } from './core/profiler.js';
 import { globalJitterMonitor } from './core/jitter-monitor.js';
 import { globalStaggeredCleanup, immediateCompactArray } from './core/staggered-cleanup.js';
 import {
-    updateViewBounds, viewBounds, isInView, entityInView,
+    updateViewBounds, viewBounds, isInView, isInViewRadius, entityInView,
     bulletGrid, rebuildBulletGrid, distSq, distLessThan
 } from './core/performance.js';
 import { colorToPixi } from './rendering/colors.js';
@@ -123,10 +123,10 @@ window.spawnCruiser = function () {
     if (destroyer) {
         const idx = enemies.indexOf(destroyer);
         if (idx !== -1) enemies.splice(idx, 1);
-    }
-    if (destroyer2) {
-        const idx = enemies.indexOf(destroyer2);
-        if (idx !== -1) enemies.splice(idx, 1);
+        if (destroyer.pixiCleanupObject && typeof destroyer.pixiCleanupObject === 'function') {
+            destroyer.pixiCleanupObject();
+        }
+        destroyer = null;
     }
     clearArrayWithPixiCleanup(enemies);
     clearArrayWithPixiCleanup(bases);
@@ -1845,6 +1845,7 @@ let fpsUiVisible = null;
 let simAccMs = 0;
 let simNowMs = 0;
 let simLastPerfAt = 0;
+const getGameNowMs = () => (typeof simNowMs === 'number' && simNowMs > 0) ? simNowMs : Date.now();
 let renderAlpha = 1.0; // Global render interpolation alpha (0-1)
 let shakeOffsetX = 0;
 let shakeOffsetY = 0;
@@ -2231,6 +2232,7 @@ function completeSectorWarp() {
         dreadManager.timerActive = false;
         dreadManager.timerAt = null;
         cruiserTimerPausedAt = null;
+        stopArenaCountdown();
         return;
     }
 
@@ -2253,12 +2255,6 @@ function completeSectorWarp() {
     if (destroyer) pixiCleanupObject(destroyer);
     destroyer = null;
     nextDestroyerSpawnTime = null;
-    if (destroyer2) pixiCleanupObject(destroyer2);
-    destroyer2 = null;
-    nextDestroyer2SpawnTime = null;
-    if (destroyer2) pixiCleanupObject(destroyer2);
-    destroyer2 = null;
-    nextDestroyer2SpawnTime = null;
     scheduleNextShootingStar();
     showOverlayMessage("NEW SECTOR ENTERED", '#0ff', 3000);
 }
@@ -2348,6 +2344,58 @@ function showOverlayMessage(text, color = '#0ff', duration = 2000, priority = 0)
         overlayPriority = 0;
         overlayLockUntil = 0;
     }, duration);
+}
+
+// Arena countdown system
+let arenaCountdownActive = false;
+let arenaCountdownInterval = null;
+let arenaCountdownTimeLeft = 0;
+
+function startArenaCountdown() {
+    if (arenaCountdownActive) return;
+
+    arenaCountdownActive = true;
+    arenaCountdownTimeLeft = 10;
+
+    updateArenaCountdownDisplay();
+}
+
+function updateArenaCountdownDisplay() {
+    const el = document.getElementById('arena-countdown');
+    if (!el) return;
+
+    if (arenaCountdownTimeLeft <= 0) {
+        el.style.display = 'none';
+        return;
+    }
+
+    el.innerText = `ARENA FIGHT\n${arenaCountdownTimeLeft}`;
+    el.style.display = 'block';
+
+    // Change color and scale based on time remaining
+    if (arenaCountdownTimeLeft <= 3) {
+        el.style.color = '#f00';
+        el.style.textShadow = '0 0 30px #f00, 0 0 60px #f00';
+        el.style.fontSize = '64px';
+    } else if (arenaCountdownTimeLeft <= 5) {
+        el.style.color = '#ff0';
+        el.style.textShadow = '0 0 25px #ff0, 0 0 50px #ff0';
+        el.style.fontSize = '56px';
+    } else {
+        el.style.color = '#f80';
+        el.style.textShadow = '0 0 20px #f80, 0 0 40px #f80';
+        el.style.fontSize = '48px';
+    }
+}
+
+function stopArenaCountdown() {
+    if (arenaCountdownInterval) {
+        clearInterval(arenaCountdownInterval);
+        arenaCountdownInterval = null;
+    }
+    arenaCountdownActive = false;
+    const el = document.getElementById('arena-countdown');
+    if (el) el.style.display = 'none';
 }
 
 // --- Map Entities ---
@@ -4086,7 +4134,6 @@ class Bullet extends Entity {
             if (bases && bases.length > 0) for (let b of bases) consider(b);
             if (spaceStation && !spaceStation.dead) consider(spaceStation);
             if (destroyer && !destroyer.dead) consider(destroyer);
-            if (destroyer2 && !destroyer2.dead) consider(destroyer2);
             if (contractEntities && contractEntities.wallTurrets && contractEntities.wallTurrets.length > 0) {
                 for (let t of contractEntities.wallTurrets) consider(t);
             }
@@ -5549,6 +5596,7 @@ function beginFlagshipFight(cx, cy, radius = 1875) {
 
     // Don't let the cruiser timer trigger during a flagship boss.
     try { dreadManager.timerActive = false; dreadManager.timerAt = null; } catch (e) { }
+    stopArenaCountdown();
 
     showOverlayMessage("WARNING: FLAGSHIP ENGAGED - ARENA LOCKED", '#f0f', 4500, 2);
     playSound('boss_spawn');
@@ -9249,7 +9297,7 @@ class ExplorationCache extends Entity {
                 spr.visible = true;
                 spr.position.set(this.pos.x, this.pos.y);
                 const pulse = 1.0 + Math.sin(this.flash * 0.1) * 0.15;
-                const targetRadius = 50; // Match smallest asteroid radius (50).
+                const targetRadius = 25; // 50% smaller cache nugz.
                 const base = (targetRadius * 2) / Math.max(1, Math.max(tex.width, tex.height));
                 spr.scale.set(base * pulse);
                 spr.rotation = this.flash * 0.05;
@@ -9262,7 +9310,7 @@ class ExplorationCache extends Entity {
 
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
-        const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.15;
+        const scale = (1.0 + Math.sin(this.flash * 0.1) * 0.15) * 0.5;
         ctx.scale(scale, scale);
         ctx.rotate(this.flash * 0.05);
 
@@ -9292,6 +9340,8 @@ class Cruiser extends Enemy {
         const boost = Math.max(0, encounterIndex - 1);
         const hpScale = 1 + boost * 0.35;
         let shieldStrength = 2 + boost;
+        const maxShieldHp = 5; // Max 5 HP per shield segment
+        shieldStrength = Math.min(shieldStrength, maxShieldHp);
         const baseCruiserHp = 70 * 0.75; // first cruiser is 25% lower HP; later cruisers scale from this baseline
         this.type = 'cruiser';
         this.isCruiser = true;
@@ -9368,6 +9418,10 @@ class Cruiser extends Enemy {
 
         const hardHp = Math.round((18 + boost * 6) * hpScale);
         const hs = this.cruiserHullScale;
+        this.hardpointMaxHp = 5; // Each shard maxes at 5 HP
+        this.hardpointHpRegenMs = 3000; // Shards regenerate 1 HP every 3 seconds
+        this.lastHpRegenTime = Date.now();
+        this.fightDuration = 0; // Track fight duration for scaling
         this.hardpoints = [
             { id: 'LC', type: 'cannon', off: { x: -20 * hs, y: -4 * hs }, r: 3.2 * hs, hp: hardHp, maxHp: hardHp, cd: 0 },
             { id: 'RC', type: 'cannon', off: { x: 20 * hs, y: -4 * hs }, r: 3.2 * hs, hp: hardHp, maxHp: hardHp, cd: 0 },
@@ -9420,8 +9474,12 @@ class Cruiser extends Enemy {
         if (this.dead) return;
         this.dead = true;
         pixiCleanupObject(this);
+        const boomScale = Math.max(2.6, Math.min(5, (this.radius || 160) / 40));
+        spawnBossExplosion(this.pos.x, this.pos.y, boomScale, 26);
+        spawnParticles(this.pos.x, this.pos.y, 120, '#f00');
         playSound('base_explode');
-        spawnParticles(this.pos.x, this.pos.y, 100, '#f00');
+        shakeMagnitude = Math.max(shakeMagnitude, 22);
+        shakeTimer = Math.max(shakeTimer, 24);
         clearArrayWithPixiCleanup(bossBombs);
         for (let i = 0; i < 13; i++) {
             coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 100, this.pos.y + (Math.random() - 0.5) * 100, 10));
@@ -9449,6 +9507,9 @@ class Cruiser extends Enemy {
         } catch (e) { console.warn('failed to start cruiser timer', e); }
         if (boss) pixiCleanupObject(boss);
         boss = null;
+        bossArena.active = false;
+        bossArena.growing = false;
+        stopArenaCountdown();
     }
 
     update(deltaTime = 16.67) {
@@ -11436,23 +11497,23 @@ class Destroyer extends Entity {
         this.farTurnSpeed = 0.05;
         this.chaseDistance = 8000;
 
-        // Outer + inner shields for destroyer
+        // Outer + inner shields for destroyer (optimized segment count for performance)
         this.maxShieldHp = 3;
         this.shieldSegments = new Array(80).fill(3);
-        this.innerShieldSegments = new Array(60).fill(3);
+        this.innerShieldSegments = new Array(70).fill(3);
         this.shieldRadius = Math.round(this.visualRadius * 0.85);
         this.innerShieldRadius = Math.round(this.visualRadius * 0.78);
         this.shieldRotation = 0;
         this.innerShieldRotation = 0;
         this.shieldsDirty = true;
-        this.shieldRegenMs = 5000;
+        this.shieldRegenMs = 3000;
         this.lastShieldRegenAt = Date.now();
         this.invulnerable = 0;
         this.invincibilityCycle = {
             unlocked: true,
             state: 'ready', // ready, active, cooldown
             timer: 0,
-            stats: { duration: 180, cooldown: 1200, regen: false } // 3s active / 20s CD
+            stats: { duration: 180, cooldown: 600, regen: false } // 3s active / 10s CD
         };
 
         // Single turret fire
@@ -11501,8 +11562,7 @@ class Destroyer extends Entity {
         // Apply velocity for roaming (always move forward in the direction we're facing)
         this.vel.x = Math.cos(this.angle || 0) * this.roamSpeed;
         this.vel.y = Math.sin(this.angle || 0) * this.roamSpeed;
-        this.pos.x += this.vel.x;
-        this.pos.y += this.vel.y;
+        super.update(deltaTime);
 
         // Keep within reasonable bounds (stay within 15000 of center)
         const distFromCenter = Math.hypot(this.pos.x, this.pos.y);
@@ -11612,13 +11672,17 @@ class Destroyer extends Entity {
             ));
         }
 
-        spawnParticles(this.pos.x, this.pos.y, 60, '#0ff');
-        spawnFieryExplosion(this.pos.x, this.pos.y, 1.5);
+        const boomScale = Math.max(2.8, Math.min(5, (this.visualRadius || this.radius || 400) / 250));
+        spawnBossExplosion(this.pos.x, this.pos.y, boomScale, 22);
+        spawnParticles(this.pos.x, this.pos.y, 80, '#0ff');
         playSound('base_explode');
+        shakeMagnitude = Math.max(shakeMagnitude, 18);
+        shakeTimer = Math.max(shakeTimer, 20);
         showOverlayMessage("DESTROYER DESTROYED - 20 NUGGETS DROPPED", '#ff0', 2000, 2);
 
-        // Set respawn timer
-        nextDestroyer2SpawnTime = Date.now() + 60000; // 1 minute
+        // Set respawn timer - spawn the OTHER destroyer type
+        currentDestroyerType = (currentDestroyerType === 1) ? 2 : 1;
+        nextDestroyerSpawnTime = Date.now() + 60000; // 1 minute
     }
 
     draw(ctx) {
@@ -11671,7 +11735,8 @@ class Destroyer extends Entity {
                     gfx.clear();
                     const count = this.shieldSegments.length;
                     const arcLen = (Math.PI * 2) / count;
-                    const gap = arcLen * 0.1; // 10% gap for outer shield
+                    const gapPct = 0.1 * (36 / count);
+                    const gap = arcLen * Math.min(0.12, gapPct); // Scale gap for higher segment counts
                     for (let i = 0; i < count; i++) {
                         const v = this.shieldSegments[i];
                         if (v > 0) {
@@ -11706,7 +11771,8 @@ class Destroyer extends Entity {
                     innerGfx.clear();
                     const count = this.innerShieldSegments.length;
                     const arcLen = (Math.PI * 2) / count;
-                    const gap = arcLen * 0.05; // 5% gap for inner shield
+                    const gapPct = 0.05 * (24 / count);
+                    const gap = arcLen * Math.min(0.08, gapPct); // Scale gap for higher segment counts
                     for (let i = 0; i < count; i++) {
                         const v = this.innerShieldSegments[i];
                         if (v > 0) {
@@ -11777,7 +11843,8 @@ class Destroyer extends Entity {
             ctx.lineWidth = 6;
             const count = this.shieldSegments.length;
             const arcLen = (Math.PI * 2) / count;
-            const gap = arcLen * 0.1; // 10% gap for outer shield
+            const gapPct = 0.1 * (36 / count);
+            const gap = arcLen * Math.min(0.12, gapPct); // Scale gap for higher segment counts
             for (let i = 0; i < count; i++) {
                 const v = this.shieldSegments[i];
                 if (v > 0) {
@@ -11799,7 +11866,8 @@ class Destroyer extends Entity {
             ctx.lineWidth = 5;
             const count = this.innerShieldSegments.length;
             const arcLen = (Math.PI * 2) / count;
-            const gap = arcLen * 0.05; // 5% gap for inner shield
+            const gapPct = 0.05 * (24 / count);
+            const gap = arcLen * Math.min(0.08, gapPct); // Scale gap for higher segment counts
             for (let i = 0; i < count; i++) {
                 const v = this.innerShieldSegments[i];
                 if (v > 0) {
@@ -11881,23 +11949,23 @@ class Destroyer2 extends Entity {
         this.farTurnSpeed = 0.05;
         this.chaseDistance = 8000;
 
-        // Outer + inner shields for destroyer
+        // Outer + inner shields for destroyer (optimized segment count for performance)
         this.maxShieldHp = 3;
         this.shieldSegments = new Array(80).fill(3);
-        this.innerShieldSegments = new Array(60).fill(3);
+        this.innerShieldSegments = new Array(70).fill(3);
         this.shieldRadius = Math.round(this.visualRadius * 0.85);
         this.innerShieldRadius = Math.round(this.visualRadius * 0.78);
         this.shieldRotation = 0;
         this.innerShieldRotation = 0;
         this.shieldsDirty = true;
-        this.shieldRegenMs = 5000;
+        this.shieldRegenMs = 3000;
         this.lastShieldRegenAt = Date.now();
         this.invulnerable = 0;
         this.invincibilityCycle = {
             unlocked: true,
             state: 'ready', // ready, active, cooldown
             timer: 0,
-            stats: { duration: 180, cooldown: 1200, regen: false } // 3s active / 20s CD
+            stats: { duration: 180, cooldown: 600, regen: false } // 3s active / 10s CD
         };
 
         // Turrets only (4 turrets like space station)
@@ -11949,8 +12017,7 @@ class Destroyer2 extends Entity {
         // Apply velocity for roaming (always move forward in the direction we're facing)
         this.vel.x = Math.cos(this.angle || 0) * this.roamSpeed;
         this.vel.y = Math.sin(this.angle || 0) * this.roamSpeed;
-        this.pos.x += this.vel.x;
-        this.pos.y += this.vel.y;
+        super.update(deltaTime);
 
         // Keep within reasonable bounds (stay within 15000 of center)
         const distFromCenter = Math.hypot(this.pos.x, this.pos.y);
@@ -12063,13 +12130,17 @@ class Destroyer2 extends Entity {
             ));
         }
 
-        spawnParticles(this.pos.x, this.pos.y, 60, '#0ff');
-        spawnFieryExplosion(this.pos.x, this.pos.y, 1.5);
+        const boomScale = Math.max(2.8, Math.min(5, (this.visualRadius || this.radius || 400) / 250));
+        spawnBossExplosion(this.pos.x, this.pos.y, boomScale, 22);
+        spawnParticles(this.pos.x, this.pos.y, 80, '#0ff');
         playSound('base_explode');
+        shakeMagnitude = Math.max(shakeMagnitude, 18);
+        shakeTimer = Math.max(shakeTimer, 20);
         showOverlayMessage("DESTROYER II DESTROYED - 20 NUGGETS DROPPED", '#ff0', 2000, 2);
 
-        // Set respawn timer
-        nextDestroyer2SpawnTime = Date.now() + 60000; // 1 minute
+        // Set respawn timer - spawn the OTHER destroyer type
+        currentDestroyerType = (currentDestroyerType === 1) ? 2 : 1;
+        nextDestroyerSpawnTime = Date.now() + 60000; // 1 minute
     }
 
     draw(ctx) {
@@ -12122,7 +12193,8 @@ class Destroyer2 extends Entity {
                     gfx.clear();
                     const count = this.shieldSegments.length;
                     const arcLen = (Math.PI * 2) / count;
-                    const gap = arcLen * 0.1; // 10% gap for outer shield
+                    const gapPct = 0.1 * (36 / count);
+                    const gap = arcLen * Math.min(0.12, gapPct); // Scale gap for higher segment counts
                     for (let i = 0; i < count; i++) {
                         const v = this.shieldSegments[i];
                         if (v > 0) {
@@ -12157,7 +12229,8 @@ class Destroyer2 extends Entity {
                     innerGfx.clear();
                     const count = this.innerShieldSegments.length;
                     const arcLen = (Math.PI * 2) / count;
-                    const gap = arcLen * 0.05; // 5% gap for inner shield
+                    const gapPct = 0.05 * (24 / count);
+                    const gap = arcLen * Math.min(0.08, gapPct); // Scale gap for higher segment counts
                     for (let i = 0; i < count; i++) {
                         const v = this.innerShieldSegments[i];
                         if (v > 0) {
@@ -12228,7 +12301,8 @@ class Destroyer2 extends Entity {
             ctx.lineWidth = 6;
             const count = this.shieldSegments.length;
             const arcLen = (Math.PI * 2) / count;
-            const gap = arcLen * 0.1; // 10% gap for outer shield
+            const gapPct = 0.1 * (36 / count);
+            const gap = arcLen * Math.min(0.12, gapPct); // Scale gap for higher segment counts
             for (let i = 0; i < count; i++) {
                 const v = this.shieldSegments[i];
                 if (v > 0) {
@@ -12250,7 +12324,8 @@ class Destroyer2 extends Entity {
             ctx.lineWidth = 5;
             const count = this.innerShieldSegments.length;
             const arcLen = (Math.PI * 2) / count;
-            const gap = arcLen * 0.05; // 5% gap for inner shield
+            const gapPct = 0.05 * (24 / count);
+            const gap = arcLen * Math.min(0.08, gapPct); // Scale gap for higher segment counts
             for (let i = 0; i < count; i++) {
                 const v = this.innerShieldSegments[i];
                 if (v > 0) {
@@ -12352,10 +12427,9 @@ let bossActive = false;
 let spaceStation = null;
 let pendingStations = 0;
 let nextSpaceStationTime = null;
-let destroyer = null;
-let nextDestroyerSpawnTime = null;
-let destroyer2 = null;
-let nextDestroyer2SpawnTime = null;
+let destroyer = null; // Current active destroyer (either Destroyer or Destroyer2)
+let nextDestroyerSpawnTime = null; // Time for next destroyer to spawn
+let currentDestroyerType = 1; // Track which type to spawn (1 or 2)
 let stationArena = { x: 0, y: 0, radius: 2800, active: false };
 let sectorTransitionActive = false;
 let warpCountdownAt = null;
@@ -12882,6 +12956,34 @@ function spawnFieryExplosion(x, y, scale = 1) {
         p.glow = true;
     }
     spawnSmoke(x, y, Math.max(1, Math.round(2 * s)));
+}
+
+function spawnBossExplosion(x, y, scale = 2.5, chunkCount = 18) {
+    const s = Math.max(1.2, Math.min(5, scale || 1));
+    spawnFieryExplosion(x, y, s);
+
+    const colors = ['#888', '#777', '#666'];
+    const count = Math.max(8, Math.round(chunkCount * (0.6 + s * 0.15)));
+    for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const speed = (2.5 + Math.random() * 4.5) * s;
+        const vx = Math.cos(a) * speed;
+        const vy = Math.sin(a) * speed;
+        const life = 40 + Math.floor(Math.random() * 35);
+        const p = emitParticle(x, y, vx, vy, colors[(Math.random() * colors.length) | 0], life);
+        p.size = 4 + Math.random() * 6;
+        p.glow = false;
+    }
+
+    const smokeCount = Math.max(2, Math.round(2 * s));
+    for (let i = 0; i < smokeCount; i++) {
+        const sp = emitSmokeParticle(x, y, (Math.random() - 0.5) * s, (Math.random() - 0.5) * s, '#777');
+        if (sp) {
+            sp.size *= 1.8;
+            sp.life = Math.round(sp.life * 1.3);
+            sp.maxLife = sp.life;
+        }
+    }
 }
 
 function spawnAsteroidExplosion(x, y, scale = 1) {
@@ -14176,7 +14278,6 @@ function resolveEntityCollision() {
     if (boss && !boss.dead) allEntities.push(boss);
     if (spaceStation) allEntities.push(spaceStation);
     if (destroyer && !destroyer.dead) allEntities.push(destroyer);
-    if (destroyer2 && !destroyer2.dead) allEntities.push(destroyer2);
 
     const activeAnomalyZone = (activeContract && activeContract.type === 'anomaly' && contractEntities && contractEntities.anomalies)
         ? contractEntities.anomalies.find(a => a && !a.dead && a.contractId === activeContract.id)
@@ -14238,7 +14339,6 @@ function resolveEntityCollision() {
     const damageable = [player, ...enemies, ...bases, ...(contractEntities.fortresses || [])];
     if (boss && bossActive && !boss.dead) damageable.push(boss);
     if (destroyer && !destroyer.dead) damageable.push(destroyer);
-    if (destroyer2 && !destroyer2.dead) damageable.push(destroyer2);
     for (let entity of damageable) {
         if (entity.dead) continue;
         const nearbyAsteroids = asteroidGrid.query(entity.pos.x, entity.pos.y);
@@ -14923,11 +15023,12 @@ function setupGameWorld() {
     boss = null;
     if (spaceStation) pixiCleanupObject(spaceStation);
     spaceStation = null;
-    if (destroyer) pixiCleanupObject(destroyer);
-    destroyer = null;
-    if (destroyer2) pixiCleanupObject(destroyer2);
-    destroyer2 = null;
+    if (destroyer) {
+        pixiCleanupObject(destroyer);
+        destroyer = null;
+    }
     nextDestroyerSpawnTime = null;
+    currentDestroyerType = 1;
     bossActive = false;
     bossArena.active = false;
     stationArena.active = false;
@@ -14940,7 +15041,7 @@ function setupGameWorld() {
     gunboatRespawnAt = null;
     gunboatLevel2Unlocked = false;
     initialSpawnDone = false;
-    gameStartTime = Date.now();
+    gameStartTime = getGameNowMs();
     pauseStartTime = null;
     pausedAccumMs = 0;
 
@@ -15220,10 +15321,9 @@ function applyUpgrade(id, tier) {
         // On the 3rd chosen upgrade, schedule the first cruiser to spawn after 10s
         // On the 3rd chosen upgrade, schedule the first cruiser to spawn after 10s
         if (!dreadManager.firstSpawnDone && dreadManager.upgradesChosen >= 3 && !bossActive && !dreadManager.timerActive) {
-            dreadManager.timerAt = simNowMs + 10000; // 10 seconds (in sim time)
+            dreadManager.timerAt = Date.now() + 10000; // 10 seconds (real time)
             dreadManager.timerActive = true;
-            // Inform player a cruiser is incoming
-            showOverlayMessage("WARNING: CRUISER INCOMING IN 10s", '#f00', 3000);
+            // Countdown will automatically show 10 seconds before spawn
         }
     } catch (e) { console.warn('dreadManager upgrade increment failed', e); }
 
@@ -15818,7 +15918,8 @@ function gameLoopLogic(opts = null) {
                 }
             }
         } catch (e) { }
-        if (inAnomaly) {
+        const inStationFight = !!(stationArena.active && spaceStation && !spaceStation.dead);
+        if (inAnomaly || inStationFight) {
             if (cruiserTimerPausedAt === null) cruiserTimerPausedAt = now;
         } else if (cruiserTimerPausedAt !== null) {
             const dt = Math.max(0, now - cruiserTimerPausedAt);
@@ -15827,18 +15928,40 @@ function gameLoopLogic(opts = null) {
             }
             cruiserTimerPausedAt = null;
         }
+        // Arena countdown: start 10 seconds before cruiser spawns
+        try {
+            if (!sectorTransitionActive && !warpActive && !caveMode && !inAnomaly && !inStationFight && dreadManager.timerActive && !bossActive && dreadManager.timerAt) {
+                const remainingMs = dreadManager.timerAt - now;
+                if (remainingMs <= 10000 && remainingMs > 0) {
+                    if (!arenaCountdownActive) {
+                        startArenaCountdown();
+                    }
+                    const remainingSecs = Math.ceil(remainingMs / 1000);
+                    if (remainingSecs > 0 && remainingSecs <= 10) {
+                        if (remainingSecs !== arenaCountdownTimeLeft) {
+                            arenaCountdownTimeLeft = remainingSecs;
+                            updateArenaCountdownDisplay();
+                        }
+                    }
+                } else {
+                    if (arenaCountdownActive) {
+                        stopArenaCountdown();
+                    }
+                }
+            } else {
+                if (arenaCountdownActive) {
+                    stopArenaCountdown();
+                }
+            }
+        } catch (e) { }
         // Cruiser timed spawn: if timer active and no boss present, spawn a cruiser 
         try {
-            if (!sectorTransitionActive && !warpActive && !caveMode && !inAnomaly && dreadManager.timerActive && !bossActive && dreadManager.timerAt && now >= dreadManager.timerAt) {
-                // Cruisers can spawn even if a station exists 
+            if (!sectorTransitionActive && !warpActive && !caveMode && !inAnomaly && !inStationFight && dreadManager.timerActive && !bossActive && dreadManager.timerAt && now >= dreadManager.timerAt) {
+                // Cruisers can spawn even if a station exists
                 cruiserEncounterCount++;
                 // Arena boss fight: clear world threats; boss may call a few helpers.
                 if (destroyer) {
                     const idx = enemies.indexOf(destroyer);
-                    if (idx !== -1) enemies.splice(idx, 1);
-                }
-                if (destroyer2) {
-                    const idx = enemies.indexOf(destroyer2);
                     if (idx !== -1) enemies.splice(idx, 1);
                 }
                 clearArrayWithPixiCleanup(enemies);
@@ -15911,68 +16034,25 @@ function gameLoopLogic(opts = null) {
             }
         }
 
-        // Destroyer spawn and respawn (only in level 1, only 1 at a time, respawns 1 min after death)
+        // Single destroyer system: only 1 destroyer at a time, alternates between type 1 and 2
         if (!warpActive && !caveMode && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone && !warpCompletedOnce) {
-            // Check if destroyer exists
             const destroyerAlive = destroyer && !destroyer.dead;
+
             if (!destroyerAlive) {
-                if (destroyer && destroyer.dead) {
-                    // Destroyer was killed, check respawn timer
-                    if (nextDestroyerSpawnTime && now >= nextDestroyerSpawnTime) {
-                        destroyer = new Destroyer();
-                        nextDestroyerSpawnTime = null;
-                        showOverlayMessage("NEW DESTROYER DETECTED", '#f80', 3000);
-                        playSound('boss_spawn');
-                    }
-                } else if (!nextDestroyerSpawnTime && initialSpawnDone) {
-                    // First spawn - after 30 seconds of gameplay
-                    if (now - gameStartTime - pausedAccumMs > 30000) {
-                        destroyer = new Destroyer();
-                        nextDestroyerSpawnTime = null;
-                        showOverlayMessage("DESTROYER DETECTED", '#f80', 3000);
-                        playSound('boss_spawn');
-                    }
-                }
-            }
-        }
-
-        // Destroyer II spawn and respawn (only in level 1, only 1 at a time, respawns 1 min after death)
-        if (!warpActive && !caveMode && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone && !warpCompletedOnce) {
-            const destroyer2Alive = destroyer2 && !destroyer2.dead;
-            const placeDestroyer2Away = (d2) => {
-                if (!destroyer || destroyer.dead || !player) return;
-                const dx = destroyer.pos.x - player.pos.x;
-                const dy = destroyer.pos.y - player.pos.y;
-                const angleFromPlayer = Math.atan2(dy, dx);
-                const spawnAngle = angleFromPlayer + Math.PI;
-                const dist = 4000;
-                d2.pos.x = player.pos.x + Math.cos(spawnAngle) * dist;
-                d2.pos.y = player.pos.y + Math.sin(spawnAngle) * dist;
-            };
-
-            if (!destroyer2Alive) {
-                if (destroyer2 && destroyer2.dead) {
-                    if (nextDestroyer2SpawnTime && now >= nextDestroyer2SpawnTime) {
-                        destroyer2 = new Destroyer2();
-                        if (destroyer && !destroyer.dead) {
-                            const d = Math.hypot(destroyer2.pos.x - destroyer.pos.x, destroyer2.pos.y - destroyer.pos.y);
-                            if (d < 3000) placeDestroyer2Away(destroyer2);
-                        }
-                        nextDestroyer2SpawnTime = null;
-                        showOverlayMessage("NEW DESTROYER II DETECTED", '#ff0', 3000);
-                        playSound('boss_spawn');
-                    }
-                } else if (!nextDestroyer2SpawnTime && initialSpawnDone) {
-                    if (now - gameStartTime - pausedAccumMs > 30000) {
-                        destroyer2 = new Destroyer2();
-                        if (destroyer && !destroyer.dead) {
-                            const d = Math.hypot(destroyer2.pos.x - destroyer.pos.x, destroyer2.pos.y - destroyer.pos.y);
-                            if (d < 3000) placeDestroyer2Away(destroyer2);
-                        }
-                        nextDestroyer2SpawnTime = null;
-                        showOverlayMessage("DESTROYER II DETECTED", '#ff0', 3000);
-                        playSound('boss_spawn');
-                    }
+                if (destroyer && destroyer.dead && nextDestroyerSpawnTime && now >= nextDestroyerSpawnTime) {
+                    // Spawn alternate destroyer type
+                    destroyer = (currentDestroyerType === 1) ? new Destroyer() : new Destroyer2();
+                    nextDestroyerSpawnTime = null;
+                    const typeName = (currentDestroyerType === 1) ? "DESTROYER" : "DESTROYER II";
+                    showOverlayMessage(`NEW ${typeName} DETECTED`, '#f80', 3000);
+                    playSound('boss_spawn');
+                } else if (!nextDestroyerSpawnTime && initialSpawnDone && now - gameStartTime - pausedAccumMs > 30000) {
+                    // First spawn - start with Destroyer type 1
+                    currentDestroyerType = 1;
+                    destroyer = new Destroyer();
+                    nextDestroyerSpawnTime = null;
+                    showOverlayMessage("DESTROYER DETECTED", '#f80', 3000);
+                    playSound('boss_spawn');
                 }
             }
         }
@@ -16109,7 +16189,6 @@ function gameLoopLogic(opts = null) {
         }
         if (boss && !boss.dead) targetGrid.insert(boss);
         if (destroyer && !destroyer.dead) targetGrid.insert(destroyer);
-        if (destroyer2 && !destroyer2.dead) targetGrid.insert(destroyer2);
 
         // Build bullet spatial hash for efficient collision detection
         rebuildBulletGrid(bullets);
@@ -16403,11 +16482,7 @@ function gameLoopLogic(opts = null) {
     // Destroyer update and draw
     if (destroyer) {
         if (doUpdate) destroyer.update(deltaTime);
-        if (doDraw) destroyer.draw(ctx);
-    }
-    if (destroyer2) {
-        if (doUpdate) destroyer2.update(deltaTime);
-        if (doDraw) destroyer2.draw(ctx);
+        if (doDraw && isInViewRadius(destroyer.pos.x, destroyer.pos.y, destroyer.visualRadius)) destroyer.draw(ctx);
     }
 
     // Bullets - always update (movement), cull drawing
@@ -17003,11 +17078,16 @@ function gameLoopLogic(opts = null) {
 
                     // Only player bullets (!b.isEnemy) can hit destroyer
                     if (!hit && !b.isEnemy && destroyer && !destroyer.dead) {
-                        if (destroyer.invulnerable > 0) continue;
                         const dist = Math.hypot(b.pos.x - destroyer.pos.x, b.pos.y - destroyer.pos.y);
+                        // Destroy bullet if it hits invulnerable destroyer's shield radius
+                        if (destroyer.invulnerable > 0 && dist < destroyer.shieldRadius + b.radius) {
+                            hit = true;
+                            playSound('shield_hit');
+                            spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
+                        }
                         const outerUp = destroyer.shieldSegments && destroyer.shieldSegments.some(s => s > 0);
                         const innerUp = destroyer.innerShieldSegments && destroyer.innerShieldSegments.some(s => s > 0);
-                        if (!b.ignoreShields && outerUp && dist < destroyer.shieldRadius + b.radius) {
+                        if (!hit && !b.ignoreShields && outerUp && dist < destroyer.shieldRadius + b.radius) {
                             let angle = Math.atan2(b.pos.y - destroyer.pos.y, b.pos.x - destroyer.pos.x) - destroyer.shieldRotation;
                             while (angle < 0) angle += Math.PI * 2;
                             const count = destroyer.shieldSegments.length;
@@ -17040,48 +17120,6 @@ function gameLoopLogic(opts = null) {
                             spawnParticles(b.pos.x, b.pos.y, 5, '#ff0');
                             if (destroyer.hp <= 0) {
                                 destroyer.kill();
-                            }
-                        }
-                    }
-
-                    if (!hit && !b.isEnemy && destroyer2 && !destroyer2.dead) {
-                        if (destroyer2.invulnerable > 0) continue;
-                        const dist = Math.hypot(b.pos.x - destroyer2.pos.x, b.pos.y - destroyer2.pos.y);
-                        const outerUp = destroyer2.shieldSegments && destroyer2.shieldSegments.some(s => s > 0);
-                        const innerUp = destroyer2.innerShieldSegments && destroyer2.innerShieldSegments.some(s => s > 0);
-                        if (!b.ignoreShields && outerUp && dist < destroyer2.shieldRadius + b.radius) {
-                            let angle = Math.atan2(b.pos.y - destroyer2.pos.y, b.pos.x - destroyer2.pos.x) - destroyer2.shieldRotation;
-                            while (angle < 0) angle += Math.PI * 2;
-                            const count = destroyer2.shieldSegments.length;
-                            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                            if (destroyer2.shieldSegments[idx] > 0) {
-                                destroyer2.shieldSegments[idx]--;
-                                destroyer2.shieldsDirty = true;
-                                hit = true;
-                                playSound('shield_hit');
-                                spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
-                            }
-                        }
-                        if (!hit && !b.ignoreShields && innerUp && dist < destroyer2.innerShieldRadius + b.radius) {
-                            let angle = Math.atan2(b.pos.y - destroyer2.pos.y, b.pos.x - destroyer2.pos.x) - destroyer2.innerShieldRotation;
-                            while (angle < 0) angle += Math.PI * 2;
-                            const count = destroyer2.innerShieldSegments.length;
-                            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                            if (destroyer2.innerShieldSegments[idx] > 0) {
-                                destroyer2.innerShieldSegments[idx]--;
-                                destroyer2.shieldsDirty = true;
-                                hit = true;
-                                playSound('shield_hit');
-                                spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
-                            }
-                        }
-                        if (!hit && dist < destroyer2.radius + b.radius) {
-                            destroyer2.hp -= b.damage;
-                            hit = true;
-                            playSound('hit');
-                            spawnParticles(b.pos.x, b.pos.y, 5, '#ff0');
-                            if (destroyer2.hp <= 0) {
-                                destroyer2.kill();
                             }
                         }
                     }
@@ -17181,7 +17219,6 @@ function gameLoopLogic(opts = null) {
 
         drawStationIndicator();
         drawDestroyerIndicator();
-        drawDestroyer2Indicator();
         drawWarpGateIndicator();
         drawMinimap();
         drawContractIndicator();
@@ -17323,7 +17360,11 @@ function drawDestroyerIndicator() {
     const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
     uiCtx.scale(pulse, pulse);
 
-    uiCtx.fillStyle = '#ff8000';
+    // Color based on destroyer type
+    const isDestroyer2 = destroyer.displayName === "DESTROYER II";
+    const indicatorColor = isDestroyer2 ? '#ff0000' : '#ff8000';
+
+    uiCtx.fillStyle = indicatorColor;
     uiCtx.strokeStyle = '#000';
     uiCtx.lineWidth = 2;
 
@@ -17337,89 +17378,15 @@ function drawDestroyerIndicator() {
 
     // Distance Text
     uiCtx.rotate(-angle);
-    uiCtx.fillStyle = '#ff8000';
+    uiCtx.fillStyle = indicatorColor;
     uiCtx.font = 'bold 14px Courier New';
     uiCtx.textAlign = 'center';
     uiCtx.textBaseline = 'middle';
     uiCtx.shadowBlur = 4;
     uiCtx.shadowColor = '#000';
     const dist = Math.hypot(dx, dy);
-    uiCtx.fillText('DESTROYER ' + (dist / 1000).toFixed(1) + 'km', 0, 25);
-    uiCtx.shadowBlur = 0;
-
-    uiCtx.restore();
-}
-
-function drawDestroyer2Indicator() {
-    if (!destroyer2 || !player || destroyer2.dead) return;
-
-    const screenW = canvas.width;
-    const screenH = canvas.height;
-
-    // Check if on screen (approximate bounds)
-    const z = currentZoom || ZOOM_LEVEL;
-    const camX = player.pos.x - screenW / (2 * z);
-    const camY = player.pos.y - screenH / (2 * z);
-    const viewW = screenW / z;
-    const viewH = screenH / z;
-
-    // If center of destroyer is within view (plus a bit of margin), don't draw arrow
-    if (destroyer2.pos.x > camX && destroyer2.pos.x < camX + viewW &&
-        destroyer2.pos.y > camY && destroyer2.pos.y < camY + viewH) {
-        return;
-    }
-
-    const dx = destroyer2.pos.x - player.pos.x;
-    const dy = destroyer2.pos.y - player.pos.y;
-    const angle = Math.atan2(dy, dx);
-
-    const margin = 60;
-    const cx = screenW / 2;
-    const cy = screenH / 2;
-
-    const vx = Math.cos(angle);
-    const vy = Math.sin(angle);
-
-    // Intersect ray from center with screen bounding box inset by margin
-    const bx = cx - margin;
-    const by = cy - margin;
-
-    const tx = Math.abs(vx) > 0.001 ? bx / Math.abs(vx) : Infinity;
-    const ty = Math.abs(vy) > 0.001 ? by / Math.abs(vy) : Infinity;
-    const t = Math.min(tx, ty);
-
-    const arrowX = cx + vx * t;
-    const arrowY = cy + vy * t;
-
-    uiCtx.save();
-    uiCtx.translate(arrowX, arrowY);
-    uiCtx.rotate(angle);
-
-    const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
-    uiCtx.scale(pulse, pulse);
-
-    uiCtx.fillStyle = '#ff0';
-    uiCtx.strokeStyle = '#000';
-    uiCtx.lineWidth = 2;
-
-    uiCtx.beginPath();
-    uiCtx.moveTo(15, 0);
-    uiCtx.lineTo(-15, 12);
-    uiCtx.lineTo(-15, -12);
-    uiCtx.closePath();
-    uiCtx.fill();
-    uiCtx.stroke();
-
-    // Distance Text
-    uiCtx.rotate(-angle);
-    uiCtx.fillStyle = '#ff0';
-    uiCtx.font = 'bold 14px Courier New';
-    uiCtx.textAlign = 'center';
-    uiCtx.textBaseline = 'middle';
-    uiCtx.shadowBlur = 4;
-    uiCtx.shadowColor = '#000';
-    const dist = Math.hypot(dx, dy);
-    uiCtx.fillText('DESTROYER II ' + (dist / 1000).toFixed(1) + 'km', 0, 25);
+    const label = isDestroyer2 ? 'DESTROYER II ' : 'DESTROYER ';
+    uiCtx.fillText(label + (dist / 1000).toFixed(1) + 'km', 0, 25);
     uiCtx.shadowBlur = 0;
 
     uiCtx.restore();
@@ -17931,27 +17898,7 @@ function drawMinimap() {
         const dy = destroyer.pos.y - player.pos.y;
         const dist = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
-        minimapCtx.fillStyle = '#ff8000';
-
-        // Always draw an arrow; clamp to edge if target is out of range.
-        const inRange = (dist * scale <= 95);
-        const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
-        const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
-
-        minimapCtx.beginPath();
-        minimapCtx.moveTo(px + Math.cos(angle) * 10, py + Math.sin(angle) * 10);
-        minimapCtx.lineTo(px + Math.cos(angle + 2.5) * 8, py + Math.sin(angle + 2.5) * 8);
-        minimapCtx.lineTo(px + Math.cos(angle - 2.5) * 8, py + Math.sin(angle - 2.5) * 8);
-        minimapCtx.fill();
-    }
-
-    // Destroyer II indicator on minimap
-    if (!warpActive && player && destroyer2 && !destroyer2.dead) {
-        const dx = destroyer2.pos.x - player.pos.x;
-        const dy = destroyer2.pos.y - player.pos.y;
-        const dist = Math.hypot(dx, dy);
-        const angle = Math.atan2(dy, dx);
-        minimapCtx.fillStyle = '#ff0';
+        minimapCtx.fillStyle = destroyer.displayName === "DESTROYER II" ? '#ff0' : '#f80';
 
         // Always draw an arrow; clamp to edge if target is out of range.
         const inRange = (dist * scale <= 95);
@@ -18050,6 +17997,7 @@ function startGame() {
         boss = null;
         bossArena.active = false;
         bossArena.growing = false;
+        stopArenaCountdown();
         cruiserEncounterCount = 0;
         cruiserTimerPausedAt = null;
         dreadManager.upgradesChosen = 0;
@@ -18239,12 +18187,15 @@ function togglePause() {
     document.getElementById('pause-menu').style.display = gamePaused ? 'block' : 'none';
     // Pause timer bookkeeping
     if (gamePaused) {
-        pauseStartTime = Date.now();
+        pauseStartTime = getGameNowMs();
+        if (arenaCountdownActive) stopArenaCountdown();
     } else {
         if (pauseStartTime) {
-            const pauseMs = Date.now() - pauseStartTime;
-            pausedAccumMs += pauseMs;
-            shiftPausedTimers(pauseMs);
+            const pauseMs = Math.max(0, getGameNowMs() - pauseStartTime);
+            if (pauseMs > 0) {
+                pausedAccumMs += pauseMs;
+                shiftPausedTimers(pauseMs);
+            }
             pauseStartTime = null;
         }
     }
@@ -18261,8 +18212,9 @@ function quitGame() {
     // Pause the game and show the start menu overlay
     if (!gamePaused) {
         gamePaused = true;
-        pauseStartTime = Date.now();
+        pauseStartTime = getGameNowMs();
     }
+    stopArenaCountdown();
     document.getElementById('pause-menu').style.display = 'none';
     document.getElementById('start-screen').style.display = 'block';
     const endScreen = document.getElementById('end-screen');
@@ -18410,9 +18362,11 @@ if (resumeStartBtn) {
 
         // Unpause the game (same logic as togglePause)
         if (gamePaused && pauseStartTime) {
-            const pauseMs = Date.now() - pauseStartTime;
-            pausedAccumMs += pauseMs;
-            shiftPausedTimers(pauseMs);
+            const pauseMs = Math.max(0, getGameNowMs() - pauseStartTime);
+            if (pauseMs > 0) {
+                pausedAccumMs += pauseMs;
+                shiftPausedTimers(pauseMs);
+            }
             pauseStartTime = null;
         }
         gamePaused = false;

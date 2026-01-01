@@ -60,6 +60,20 @@ export function isInView(x, y) {
 }
 
 /**
+ * Check if position is within view bounds with an extra radius.
+ * Useful for large entities so they don't pop in/out when their center leaves view.
+ * @param {number} x - X position
+ * @param {number} y - Y position
+ * @param {number} radius - Extra radius margin
+ * @returns {boolean}
+ */
+export function isInViewRadius(x, y, radius = 0) {
+    const r = Math.max(0, radius || 0);
+    return x > (viewBounds.left - r) && x < (viewBounds.right + r) &&
+        y > (viewBounds.top - r) && y < (viewBounds.bottom + r);
+}
+
+/**
  * Check if position is within extended view bounds (for updates).
  * Entities outside extended bounds can skip updates.
  * @param {number} x - X position
