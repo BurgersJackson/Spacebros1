@@ -47,6 +47,7 @@ export const ASSET_URLS = {
     asteroid1: 'assets/asteroid1.png',
     asteroid2: 'assets/asteroid2.png',
     asteroid3: 'assets/asteroid3.png',
+    asteroid2_U: 'assets/asteroid2_U.png', // Indestructible asteroid
 
     // Effects
     explosion1: 'assets/explosion1.png'

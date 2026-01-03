@@ -181,6 +181,27 @@ export function playSound(type, volumeMult = 1) {
                 osc.stop(now + 0.1);
                 break;
             }
+            case 'asteroid_destroy': {
+                // Rock breaking/crunching sound
+                const { osc, gain } = createOsc('sawtooth', 200, 0.08, 0.12);
+                // Quick frequency drop for "crack" sound
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.03);
+                osc.frequency.exponentialRampToValueAtTime(30, now + 0.08);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                osc.start(now);
+                osc.stop(now + 0.08);
+                break;
+            }
+            case 'enemy_shield_hit': {
+                // Small, lower-pitched sound for enemy shield hits (increased volume)
+                const { osc, gain } = createOsc('sine', 400, 0.08, 0.12);
+                osc.frequency.linearRampToValueAtTime(250, now + 0.08);
+                gain.gain.linearRampToValueAtTime(0, now + 0.08);
+                osc.start(now);
+                osc.stop(now + 0.08);
+                break;
+            }
             case 'explode': {
                 const { osc, gain } = createOsc('sawtooth', 100, 0.3, 0.2);
                 osc.frequency.exponentialRampToValueAtTime(10, now + 0.3);

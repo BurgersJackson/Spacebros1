@@ -714,11 +714,15 @@ cruiserImage.addEventListener('error', () => {
 const ASTEROID1_URL = 'assets/asteroid1.png';
 const ASTEROID2_URL = 'assets/asteroid2.png';
 const ASTEROID3_URL = 'assets/asteroid3.png';
+const ASTEROID2_U_URL = 'assets/asteroid2_U.png'; // Indestructible asteroid
 const asteroidImages = [
     new Image(),
     new Image(),
     new Image()
 ];
+const asteroidIndestructibleImage = new Image();
+asteroidIndestructibleImage.decoding = 'async';
+asteroidIndestructibleImage.src = ASTEROID2_U_URL;
 asteroidImages[0].decoding = 'async';
 asteroidImages[1].decoding = 'async';
 asteroidImages[2].decoding = 'async';
@@ -726,6 +730,7 @@ asteroidImages[0].src = ASTEROID1_URL;
 asteroidImages[1].src = ASTEROID2_URL;
 asteroidImages[2].src = ASTEROID3_URL;
 let asteroidTexturesExternalReady = false;
+let asteroidIndestructibleTextureReady = false;
 
 const applyAsteroidTextures = () => {
     if (asteroidTexturesExternalReady || !window.PIXI) return;
@@ -755,6 +760,25 @@ for (const img of asteroidImages) {
         // Any missing asteroid image should leave procedural rendering intact.
     });
 }
+
+// Indestructible asteroid texture
+asteroidIndestructibleImage.addEventListener('load', () => {
+    if (!window.PIXI) return;
+    if (!pixiTextures || !pixiTextureAnchors) return;
+    try {
+        const tex = PIXI.Texture.from(asteroidIndestructibleImage);
+        try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+        try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+        pixiTextures.asteroidIndestructible = tex;
+        pixiTextureAnchors.asteroidIndestructible = 0.5;
+        asteroidIndestructibleTextureReady = true;
+    } catch (e) {
+        console.warn('Failed to load indestructible asteroid texture', e);
+    }
+});
+asteroidIndestructibleImage.addEventListener('error', () => {
+    // Indestructible asteroid image is optional
+});
 
 // Optional external sprite override for the player hull.
 const PLAYER1_URL = 'assets/player1.png';
@@ -2412,11 +2436,13 @@ function stopArenaCountdown() {
 
 // --- Map Entities ---
 class EnvironmentAsteroid extends Entity {
-    constructor(x, y, r, sizeLevel = 3) {
+    constructor(x, y, r, sizeLevel = 3, indestructible = false) {
         super(x, y);
         this._pixiPool = 'asteroid';
         this.radius = r;
         this.sizeLevel = sizeLevel;
+        this.indestructible = indestructible;
+        this.unbreakable = indestructible; // Set both properties for compatibility
         this.sprite = null;
         this._pixiAsteroidIndex = Math.floor(Math.random() * 12);
         const speed = (Math.random() * 0.4) + 0.2; // doubled for 60Hz
@@ -2458,6 +2484,8 @@ class EnvironmentAsteroid extends Entity {
         if (this.unbreakable) return;
         this.dead = true;
         pixiCleanupObject(this);
+        // Play quiet destruction sound
+        playSound('asteroid_destroy');
         // previously dropped a coin here; asteroid drops disabled
         const boomScale = Math.max(0.7, Math.min(2.4, (this.radius || 50) / 60));
         spawnAsteroidExplosion(this.pos.x, this.pos.y, boomScale);
@@ -2502,14 +2530,24 @@ class EnvironmentAsteroid extends Entity {
         const rAngle = prevAng + (this.angle - prevAng) * renderAlpha;
 
         if (pixiAsteroidLayer && pixiTextures && pixiTextures.asteroids && pixiTextures.asteroids.length > 0) {
-            let idx = 0;
-            if (asteroidTexturesExternalReady && pixiTextures.asteroids.length >= 3) {
-                idx = (this.sizeLevel >= 3) ? 0 : (this.sizeLevel === 2 ? 1 : 2);
+            let tex;
+            let anchor;
+            
+            // Use indestructible asteroid texture if available
+            if (this.indestructible && asteroidIndestructibleTextureReady && pixiTextures.asteroidIndestructible) {
+                tex = pixiTextures.asteroidIndestructible;
+                anchor = pixiTextureAnchors.asteroidIndestructible || 0.5;
             } else {
-                idx = (this._pixiAsteroidIndex >>> 0) % pixiTextures.asteroids.length;
+                let idx = 0;
+                if (asteroidTexturesExternalReady && pixiTextures.asteroids.length >= 3) {
+                    idx = (this.sizeLevel >= 3) ? 0 : (this.sizeLevel === 2 ? 1 : 2);
+                } else {
+                    idx = (this._pixiAsteroidIndex >>> 0) % pixiTextures.asteroids.length;
+                }
+                tex = pixiTextures.asteroids[idx] || pixiTextures.asteroids[0];
+                anchor = pixiTextureAnchors[`asteroid_${idx}`] || 0.5;
             }
-            const tex = pixiTextures.asteroids[idx] || pixiTextures.asteroids[0];
-            const anchor = pixiTextureAnchors[`asteroid_${idx}`] || 0.5;
+            
             let spr = this.sprite;
             if (!spr) {
                 spr = allocPixiSprite(pixiAsteroidSpritePool, pixiAsteroidLayer, tex, null, anchor);
@@ -2528,7 +2566,7 @@ class EnvironmentAsteroid extends Entity {
                 spr.rotation = rAngle;
                 const s = (this.radius * 2) / Math.max(1, Math.max(tex.width, tex.height));
                 spr.scale.set(s);
-                const tint = this.unbreakable ? 0x00aaff : 0xffffff;
+                const tint = this.indestructible ? 0x00aaff : 0xffffff;
                 spr.tint = tint;
                 spr.alpha = 1;
                 spr.blendMode = PIXI.BLEND_MODES.NORMAL;
@@ -2541,7 +2579,20 @@ class EnvironmentAsteroid extends Entity {
         ctx.rotate(rAngle);
 
         // Canvas fallback: draw external asteroid art if present.
-        if (!this.unbreakable && asteroidImages && asteroidTexturesExternalReady) {
+        // For indestructible asteroids, use the special texture
+        if (this.indestructible && asteroidIndestructibleImage && asteroidIndestructibleImage.naturalWidth > 0) {
+            const img = asteroidIndestructibleImage;
+            if (img && img.naturalWidth > 0) {
+                const denom = Math.max(1, Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+                const scale = (this.radius * 2) / denom;
+                ctx.save();
+                ctx.scale(scale, scale);
+                ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+                ctx.restore();
+                ctx.restore();
+                return;
+            }
+        } else if (!this.unbreakable && asteroidImages && asteroidTexturesExternalReady) {
             const img = (this.sizeLevel >= 3) ? asteroidImages[0] : (this.sizeLevel === 2 ? asteroidImages[1] : asteroidImages[2]);
             if (img && img.naturalWidth > 0) {
                 const denom = Math.max(1, Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
@@ -2648,7 +2699,13 @@ function spawnOneAsteroidRelative(initial = false) {
         }
 
         if (safe) {
-            environmentAsteroids.push(new EnvironmentAsteroid(x, y, r, 3));
+            // Spawn indestructible asteroids from level 1, 1 for every 20 regular asteroids
+            const isIndestructible = Math.random() < 0.05; // 1/20 = 0.05
+            const sizeLevel = isIndestructible ? 1 : 3; // Small size for indestructible (reduced by 1)
+            // Adjust radius for small indestructible asteroids
+            const asteroidR = isIndestructible ? 40 + Math.random() * 50 : r;
+            const asteroid = new EnvironmentAsteroid(x, y, asteroidR, sizeLevel, isIndestructible);
+            environmentAsteroids.push(asteroid);
             break;
         }
     }
@@ -2685,7 +2742,12 @@ function spawnOneWarpAsteroidRelative(initial = false) {
         // Don't spawn directly on top of the player.
         if (Math.hypot(x - player.pos.x, y - player.pos.y) < r + player.radius + 240) continue;
 
-        environmentAsteroids.push(new EnvironmentAsteroid(x, y, r, 3));
+        // Spawn indestructible asteroids from level 1, 1 for every 20 regular asteroids
+        const isIndestructible = Math.random() < 0.05; // 1/20 = 0.05
+        const sizeLevel = isIndestructible ? 1 : 3; // Small size for indestructible (reduced by 1)
+        // Adjust radius for small indestructible asteroids
+        const asteroidR = isIndestructible ? 40 + Math.random() * 50 : r;
+        environmentAsteroids.push(new EnvironmentAsteroid(x, y, asteroidR, sizeLevel, isIndestructible));
         return true;
     }
     return false;
@@ -14536,8 +14598,6 @@ function resolveEntityCollision() {
                 // Some large entities can smash normal asteroids, but indestructible contract walls should block everything.
                 const isCrasher = (entity instanceof Base) ||
                     (entity instanceof Cruiser) ||
-                    (entity instanceof Destroyer) ||
-                    (entity instanceof Destroyer2) ||
                     (entity instanceof Enemy && (
                         entity.isGunboat ||
                         entity.type === 'roamer' ||
@@ -14545,18 +14605,33 @@ function resolveEntityCollision() {
                         entity.type === 'hunter' ||
                         entity.type === 'defender'
                     ));
+                const isDestroyer = (entity instanceof Destroyer || entity instanceof Destroyer2);
+
+                // Track if we had any valid collision
+                let validCollision = false;
+
+                if (isDestroyer && isIndestructibleWall) {
+                    // Destroyers blow through indestructible asteroids with particle effects only (no sound)
+                    spawnParticles(ast.pos.x, ast.pos.y, 10, '#aa8');
+                    // No collision response - continue to next asteroid
+                    continue;
+                }
 
                 if (!isIndestructibleWall && isCrasher) {
                     ast.break();
                     spawnParticles(ast.pos.x, ast.pos.y, 10, '#aa8');
-                    continue;
+                    validCollision = true;
                 }
-                entity.pos.x += nx * overlap;
-                entity.pos.y += ny * overlap;
+                
+                // Only apply collision response if we had a valid collision (not indestructible)
+                if (validCollision) {
+                    entity.pos.x += nx * overlap;
+                    entity.pos.y += ny * overlap;
 
-                if (entity !== player) {
-                    entity.vel.x += nx * 1;
-                    entity.vel.y += ny * 1;
+                    if (entity !== player) {
+                        entity.vel.x += nx * 1;
+                        entity.vel.y += ny * 1;
+                    }
                 }
 
                 if (entity === player) {
@@ -17024,7 +17099,7 @@ function gameLoopLogic(opts = null) {
                                         e.shieldSegments[activeIdx] = 0;
                                         e.shieldsDirty = true;
                                         hit = true;
-                                        playSound('shield_hit');
+                                        playSound('enemy_shield_hit');
                                         spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
                                     }
                                 }
@@ -17034,7 +17109,7 @@ function gameLoopLogic(opts = null) {
                                         e.innerShieldSegments[activeIdx] = Math.max(0, e.innerShieldSegments[activeIdx] - 1);
                                         e.shieldsDirty = true;
                                         hit = true;
-                                        playSound('shield_hit');
+                                        playSound('enemy_shield_hit');
                                         spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
                                     }
                                 }
@@ -17134,7 +17209,7 @@ function gameLoopLogic(opts = null) {
                                         e.shieldSegments[segIndex]--;
                                         e.shieldsDirty = true;
                                         hit = true;
-                                        playSound('shield_hit');
+                                        playSound('enemy_shield_hit');
                                         if (e.shieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#0ff');
                                         else spawnParticles(b.pos.x, b.pos.y, 3, '#088');
                                         e.aggro = true;
