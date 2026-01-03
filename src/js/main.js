@@ -1890,10 +1890,19 @@ let menuDebounce = 0;
 
 function updateInputMode(now = Date.now()) {
     const preferGamepadMs = 1200;
-    const mouseGraceMs = 220;
-    const gamepadRecent = (now - lastGamepadInputAt) < preferGamepadMs;
-    const mouseRecent = (now - lastMouseInputAt) < mouseGraceMs;
-    usingGamepad = gamepadRecent && !mouseRecent;
+    const mouseGraceMs = 220; // Allow mouse to take over if it moves significantly
+
+    // Strict priority: if aiming with stick (fresh input < 100ms), ignore mouse jitter entirely
+    const strictGamepad = (now - lastGamepadInputAt) < 100;
+
+    if (strictGamepad) {
+        usingGamepad = true;
+    } else {
+        const gamepadRecent = (now - lastGamepadInputAt) < preferGamepadMs;
+        const mouseRecent = (now - lastMouseInputAt) < mouseGraceMs;
+        usingGamepad = gamepadRecent && !mouseRecent;
+    }
+
     if (usingGamepad) document.body.classList.add('no-cursor');
     else document.body.classList.remove('no-cursor');
 }
@@ -2427,8 +2436,12 @@ class EnvironmentAsteroid extends Entity {
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
         this.prevAngle = this.angle;
-        this.pos.add(this.vel);
-        this.angle += this.rotSpeed;
+
+        // Use Entity.update for scaled movement
+        super.update(deltaTime);
+
+        const dtFactor = deltaTime / 16.67;
+        this.angle += this.rotSpeed * dtFactor;
         // Contract / maze walls should persist until the contract cleans them up.
         // (Older builds used other contractId prefixes; those should despawn normally.)
         const persistentContractWall = !!(this.unbreakable && this.contractId && String(this.contractId).startsWith('C'));
@@ -2922,15 +2935,18 @@ class Spaceship extends Entity {
 
     update(deltaTime = 16.67) {
         if (this.dead) return;
-        this.shieldRotation += 0.02;
+
+        const dtScale = deltaTime / 16.67;
+
+        this.shieldRotation += 0.02 * dtScale;
         if (this.outerShieldSegments && this.outerShieldSegments.some(s => s > 0)) {
-            this.outerShieldRotation -= 0.026;
+            this.outerShieldRotation -= 0.026 * dtScale;
         }
 
         // Turbo boost timers + activation (E / gamepad X)
         if (this.turboBoost && this.turboBoost.unlocked) {
-            if (this.turboBoost.activeFrames > 0) this.turboBoost.activeFrames -= deltaTime / 16.67;
-            if (this.turboBoost.cooldownFrames > 0) this.turboBoost.cooldownFrames -= deltaTime / 16.67;
+            if (this.turboBoost.activeFrames > 0) this.turboBoost.activeFrames -= dtScale;
+            if (this.turboBoost.cooldownFrames > 0) this.turboBoost.cooldownFrames -= dtScale;
             const turboInput = !!(keys.e || gpState.turbo);
             if (turboInput && !this.turboBoost.buttonHeld) {
                 if (this.turboBoost.activeFrames <= 0 && this.turboBoost.cooldownFrames <= 0) {
@@ -2972,10 +2988,10 @@ class Spaceship extends Entity {
 
         // Removed acceleration stat multiplier, using base or 1.0 implicitly
         const turboMult = (this.turboBoost && this.turboBoost.activeFrames > 0) ? (this.turboBoost.speedMult || 1.5) : 1.0;
-        const currentThrust = this.thrustPower * turboMult;
+        const currentThrust = this.thrustPower * turboMult * dtScale; // Scale thrust by time
         if (this.caveSlowFrames === undefined) this.caveSlowFrames = 0;
         if (this.caveSlowMult === undefined) this.caveSlowMult = 1.0;
-        if (this.caveSlowFrames > 0) this.caveSlowFrames--;
+        if (this.caveSlowFrames > 0) this.caveSlowFrames -= dtScale;
         const slowMult = (this.caveSlowFrames > 0) ? Math.max(0.4, Math.min(1.0, this.caveSlowMult || 0.62)) : 1.0;
         const currentMaxSpeed = this.maxSpeed * this.stats.speedMult * turboMult * slowMult;
 
@@ -2985,7 +3001,7 @@ class Spaceship extends Entity {
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
             if (Math.abs(angleDiff) > 0.05) {
-                this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), 0.15);
+                this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), 0.15 * dtScale);
             }
             // Use normalized components for thrust calculation
             const normMoveX = moveX / moveMag;
@@ -3000,8 +3016,8 @@ class Spaceship extends Entity {
 
         this.fireDelay = this.baseFireDelay / this.stats.fireRateMult;
         this.shotgunDelay = this.baseShotgunDelay / this.stats.shotgunFireRateMult;
-        this.autofireTimer -= deltaTime / 16.67;
-        this.shotgunTimer -= deltaTime / 16.67;
+        this.autofireTimer -= dtScale;
+        this.shotgunTimer -= dtScale;
         if (this.autofireTimer <= 0) {
             this.shoot();
             this.autofireTimer = Math.max(4, this.fireDelay);
@@ -3044,7 +3060,7 @@ class Spaceship extends Entity {
 
         // Auto-Cycling Invincibility Phase Shield
         if (this.invincibilityCycle.unlocked) {
-            this.invincibilityCycle.timer -= deltaTime / 16.67;
+            this.invincibilityCycle.timer -= dtScale;
 
             if (this.invincibilityCycle.state === 'ready') {
                 // Start active phase immediately if ready
@@ -3056,7 +3072,7 @@ class Spaceship extends Entity {
                 this.invulnerable = 2; // Sustain invulnerability each frame
 
                 // Tier 3 Regen - check every ~1 second (60 frames at 60fps)
-                if (this.invincibilityCycle.stats.regen && Math.floor(this.invincibilityCycle.timer / 60) !== Math.floor((this.invincibilityCycle.timer + deltaTime / 16.67) / 60)) {
+                if (this.invincibilityCycle.stats.regen && Math.floor(this.invincibilityCycle.timer / 60) !== Math.floor((this.invincibilityCycle.timer + dtScale) / 60)) {
                     const emptyIdx = this.shieldSegments.findIndex(s => s < 2);
                     if (emptyIdx !== -1) this.shieldSegments[emptyIdx] = 2;
                 }
@@ -3074,7 +3090,7 @@ class Spaceship extends Entity {
 
         // Homing Missiles (Separate System)
         if (this.stats.homing > 0) {
-            this.missileTimer -= deltaTime / 16.67;
+            this.missileTimer -= dtScale;
             if (this.missileTimer <= 0) {
                 this.fireMissiles();
                 this.missileTimer = 30 / this.stats.fireRateMult;
@@ -3082,21 +3098,21 @@ class Spaceship extends Entity {
         }
 
         // Auto Nuke Trigger
-        if (this.nukeCooldown > 0) this.nukeCooldown--;
+        if (this.nukeCooldown > 0) this.nukeCooldown -= dtScale;
         if (this.nukeUnlocked && this.nukeCooldown <= 0) {
             this.fireNuke();
         }
 
         if (this.canWarp) {
             if (this.warpCooldown > 0) {
-                this.warpCooldown--;
+                this.warpCooldown -= dtScale;
                 updateWarpUI();
             } else if (keys.shift || gpState.warp) {
                 this.warp();
             }
         }
 
-        if (this.hp <= 3 && Math.random() < 0.1) {
+        if (this.hp <= 3 && Math.random() < 0.1 * dtScale) {
             spawnSmoke(this.pos.x, this.pos.y, 1);
         }
 
@@ -3109,13 +3125,15 @@ class Spaceship extends Entity {
             if (Math.random() > 0.5) spawnParticles(bx, bx2, 1, '#0aa');
         }
 
-        this.vel.mult(this.friction);
+        // Time-scaled friction
+        // friction^dtScale
+        this.vel.mult(Math.pow(this.friction, dtScale));
 
-        super.update();
+        super.update(deltaTime);
         checkWallCollision(this, 0.0);
 
         if (this.invulnerable > 0) {
-            this.invulnerable -= deltaTime / 16.67;
+            this.invulnerable -= dtScale;
             if (this.invincibilityCycle.state === 'active') {
                 this.visible = true;
             } else {
@@ -3844,11 +3862,15 @@ class FlagshipGuidedMissile extends Entity {
         let angleDiff = targetAngle - this.angle;
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-        this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), this.turnRate);
+
+        const dtFactor = deltaTime / 16.67;
+        this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), this.turnRate * dtFactor);
 
         this.vel.x = Math.cos(this.angle) * this.speed;
         this.vel.y = Math.sin(this.angle) * this.speed;
-        this.pos.add(this.vel);
+
+        // Use Entity.update for scaled movement
+        super.update(deltaTime);
 
         if (this.t % 2 === 0) {
             emitParticle(
@@ -4021,8 +4043,10 @@ class ShootingStar extends Entity {
     }
 
     update(deltaTime = 16.67) {
-        this.pos.add(this.vel);
-        this.life--;
+        // Use Entity.update for scaled movement
+        super.update(deltaTime);
+        const dtFactor = deltaTime / 16.67;
+        this.life -= dtFactor;
         if (this.life <= 0) this.kill(false);
 
         // Trail
@@ -4150,7 +4174,8 @@ class Bullet extends Entity {
                 while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                 while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-                const turnRate = this.homing === 2 ? 0.4 : 0.1; // doubled for 60Hz
+                const dtFactor = deltaTime / 16.67;
+                const turnRate = (this.homing === 2 ? 0.4 : 0.1) * dtFactor;
                 this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), turnRate);
 
                 this.vel.x = Math.cos(this.angle) * this.speed;
@@ -4472,14 +4497,16 @@ class Enemy extends Entity {
         if (!this.despawnImmune) checkDespawn(this, 5000);
         if (this.dead) return;
 
+        const dtFactor = deltaTime / 16.67;
+
         // Stasis Field Logic (Freeze)
         if (this.freezeTimer > 0) {
-            this.freezeTimer -= deltaTime / 16.67;
+            this.freezeTimer -= dtFactor;
             this.vel.x = 0;
             this.vel.y = 0;
             // Skip AI movement when frozen
         } else if (player.stats.slowField > 0 && !this.isCruiser) {
-            if (this.freezeCooldown > 0) this.freezeCooldown -= deltaTime / 16.67;
+            if (this.freezeCooldown > 0) this.freezeCooldown -= dtFactor;
 
             const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
             if (dist < player.stats.slowField && this.freezeCooldown <= 0) {
@@ -4489,9 +4516,9 @@ class Enemy extends Entity {
             }
         }
 
-        if (this.shieldSegments.length > 0) this.shieldRotation += 0.05;
+        if (this.shieldSegments.length > 0) this.shieldRotation += 0.05 * dtFactor;
         if (this.isGunboat && this.shieldSegments.length > 0 && !this.disableShieldRegen) {
-            this.gunboatShieldRecharge--;
+            this.gunboatShieldRecharge -= dtFactor;
             if (this.gunboatShieldRecharge <= 0) {
                 const idx = this.shieldSegments.findIndex(s => s < 2);
                 if (idx !== -1) {
@@ -4503,10 +4530,10 @@ class Enemy extends Entity {
         }
 
         if (this.hp <= 2 && this.type !== 'roamer') {
-            if (Math.random() < 0.1) spawnSmoke(this.pos.x, this.pos.y, 1);
+            if (Math.random() < 0.1 * dtFactor) spawnSmoke(this.pos.x, this.pos.y, 1);
         }
 
-        this.aiTimer -= deltaTime / 16.67;
+        this.aiTimer -= dtFactor;
         if (this.aiTimer <= 0) this.updateAIState();
 
         // Only calculate movement if not frozen
@@ -4692,18 +4719,21 @@ class Enemy extends Entity {
                 let angleDiff = targetAngle - this.angle;
                 while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                 while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                if (Math.abs(angleDiff) < this.turnSpeed) {
+
+                const turnStep = this.turnSpeed * dtFactor;
+                if (Math.abs(angleDiff) < turnStep) {
                     this.angle = targetAngle;
                 } else {
-                    this.angle += Math.sign(angleDiff) * this.turnSpeed;
+                    this.angle += Math.sign(angleDiff) * turnStep;
                 }
                 const forwardX = Math.cos(this.angle);
                 const forwardY = Math.sin(this.angle);
                 const dirMag = Math.sqrt(this.smoothDir.x * this.smoothDir.x + this.smoothDir.y * this.smoothDir.y);
                 const dot = (forwardX * this.smoothDir.x + forwardY * this.smoothDir.y) / (dirMag || 1);
                 if (dot > 0.3) {
-                    this.vel.x += forwardX * this.thrustPower;
-                    this.vel.y += forwardY * this.thrustPower;
+                    const thrust = this.thrustPower * dtFactor;
+                    this.vel.x += forwardX * thrust;
+                    this.vel.y += forwardY * thrust;
                 }
             }
 
@@ -4719,8 +4749,9 @@ class Enemy extends Entity {
             if (speed > currentMaxSpeed) this.vel.mult(currentMaxSpeed / speed);
         } // End freeze check
 
-        this.vel.mult(this.friction);
-        super.update();
+        // friction^dtFactor
+        this.vel.mult(Math.pow(this.friction, dtFactor));
+        super.update(deltaTime);
         checkWallCollision(this, (typeof this.wallElasticity === 'number') ? this.wallElasticity : 0.8);
 
         let distToPlayer = Infinity;
@@ -4740,7 +4771,7 @@ class Enemy extends Entity {
 
         const shouldRoamerClear = roamerAsteroidBlocked && distToPlayer < (attackRange * 1.8);
         if (!this.disableAutoFire && (distToPlayer < gunboatRange || shouldRoamerClear) && !player.dead && this.freezeTimer <= 0) {
-            this.shootTimer -= deltaTime / 16.67;
+            this.shootTimer -= dtFactor;
             if (this.shootTimer <= 0) {
                 const angle = this.getAimAngle();
                 if (this.isGunboat) {
@@ -5188,14 +5219,16 @@ class Base extends Entity {
     update(deltaTime = 16.67) {
         if (this.dead) return;
 
+        const dtFactor = deltaTime / 16.67;
+
         // Stasis Field Logic (Freeze)
         if (this.freezeTimer > 0) {
-            this.freezeTimer -= deltaTime / 16.67;
+            this.freezeTimer -= dtFactor;
             this.vel.x = 0;
             this.vel.y = 0;
             // Skip logic when frozen
         } else if (player.stats.slowField > 0) {
-            if (this.freezeCooldown > 0) this.freezeCooldown -= deltaTime / 16.67;
+            if (this.freezeCooldown > 0) this.freezeCooldown -= dtFactor;
 
             const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
             if (dist < player.stats.slowField && this.freezeCooldown <= 0) {
@@ -5234,7 +5267,7 @@ class Base extends Entity {
                 const by = b.pos.y - this.pos.y;
                 const bdist = Math.hypot(bx, by);
                 if (bdist > 0 && bdist < 400) {
-                    const repulse = (400 - bdist) * 0.0005;
+                    const repulse = (400 - bdist) * 0.0005 * dtFactor;
                     this.vel.x -= (bx / bdist) * repulse;
                     this.vel.y -= (by / bdist) * repulse;
                 }
@@ -5246,7 +5279,7 @@ class Base extends Entity {
             if (elapsed < 0) elapsed = 0;
             const elapsedMinutes = elapsed / 60000;
             const rampT = Math.max(0, Math.min(1, elapsedMinutes / 10));
-            const chaseAccel = (0.12 + 0.08 * rampT);
+            const chaseAccel = (0.12 + 0.08 * rampT) * dtFactor;
             const speedRamp = (0.85 + 0.15 * rampT);
 
             if (dist > 250) {
@@ -5254,20 +5287,21 @@ class Base extends Entity {
                 this.vel.x += Math.cos(angle) * chaseAccel;
                 this.vel.y += Math.sin(angle) * chaseAccel;
             }
-            this.vel.x += dreadAvoidX;
-            this.vel.y += dreadAvoidY;
+            this.vel.x += dreadAvoidX * dtFactor;
+            this.vel.y += dreadAvoidY * dtFactor;
             const speed = this.vel.mag();
             let maxSpeed = this.type === 'heavy' ? 3.0 : (this.type === 'rapid' ? 6.0 : 5.0); // doubled for 60Hz
             maxSpeed *= speedRamp;
             if (speed > maxSpeed) this.vel.mult(maxSpeed / speed);
         } else {
-            this.vel.mult(0.99);
+            // Friction scaled by time
+            this.vel.mult(Math.pow(0.99, dtFactor));
         }
 
         this.pos.add(this.vel);
         checkDespawn(this, 6000);
-        this.shieldRotation += 0.01;
-        this.innerShieldRotation -= 0.015;
+        this.shieldRotation += 0.01 * dtFactor;
+        this.innerShieldRotation -= 0.015 * dtFactor;
 
         if (this.hp <= 5 && Math.random() < 0.1) spawnSmoke(this.pos.x, this.pos.y, 1);
 
@@ -5291,7 +5325,7 @@ class Base extends Entity {
 
             const fireRange = 1100 + 400 * rampT;
             if (dist < fireRange) {
-                this.shootTimer -= deltaTime / 16.67;
+                this.shootTimer -= dtFactor;
                 if (this.shootTimer <= 0) {
                     const shootAngle = this.turretAngle;
                     if (this.type === 'heavy') {
@@ -5454,8 +5488,8 @@ class Base extends Entity {
                                     // Draw at base angle 0
                                     const a0 = i * segAngle + 0.05;
                                     const a1 = (i + 1) * segAngle - 0.05;
-                            gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
-                            gfx.arc(0, 0, this.shieldRadius, a0, a1);
+                                    gfx.moveTo(Math.cos(a0) * this.shieldRadius, Math.sin(a0) * this.shieldRadius);
+                                    gfx.arc(0, 0, this.shieldRadius, a0, a1);
                                 }
                             }
                         }
@@ -5681,7 +5715,9 @@ class CaveGuidedMissile extends Entity {
     update(deltaTime = 16.67) {
         if (this.dead) return;
         this.t++;
-        this.life--;
+        const dtFactor = deltaTime / 16.67;
+
+        this.life -= dtFactor;
         if (this.life <= 0) { this.explode(); return; }
         if (!player || player.dead) { this.explode(); return; }
 
@@ -5689,11 +5725,13 @@ class CaveGuidedMissile extends Entity {
         let angleDiff = targetAngle - this.angle;
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-        this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), this.turnRate);
+        this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), this.turnRate * dtFactor);
 
         this.vel.x = Math.cos(this.angle) * this.speed;
         this.vel.y = Math.sin(this.angle) * this.speed;
-        this.pos.add(this.vel);
+
+        // Use Entity.update for scaled movement
+        super.update(deltaTime);
 
         if (this.t % 2 === 0) {
             emitParticle(
@@ -5912,6 +5950,8 @@ class CaveWallTurret extends Entity {
         if (!caveMode || !caveLevel || !caveLevel.active) return;
         if (!player || player.dead) return;
 
+        const dtFactor = deltaTime / 16.67;
+
         const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
         const engageRange = (this.mode === 'rapid') ? (5200 * 1.25) : 5200;
         if (dist > engageRange) return;
@@ -5921,7 +5961,7 @@ class CaveWallTurret extends Entity {
         if (this.mode === 'tracker') {
             // Paint -> lock -> burst (fresh gameplay turret). 
             if (this.trackerBurst > 0) {
-                this.trackerBurstCd--;
+                this.trackerBurstCd -= dtFactor;
                 if (this.trackerBurstCd <= 0) {
                     const leadX = player.pos.x + player.vel.x * 10;
                     const leadY = player.pos.y + player.vel.y * 10;
@@ -5934,16 +5974,16 @@ class CaveWallTurret extends Entity {
                     playSound('rapid_shoot');
                 }
             } else if (this.trackerLock > 0) {
-                this.trackerLock--;
+                this.trackerLock -= dtFactor;
                 this.trackerAngle = aim;
-                if (this.trackerLock === 0) {
+                if (this.trackerLock <= 0) { // Changed to <= 0 for safety with float decrement
                     this.trackerBurst = 10;
                     this.trackerBurstCd = 0;
                     spawnParticles(this.pos.x, this.pos.y, 10, '#0ff');
                     playSound('heavy_shoot');
                 }
             } else {
-                this.trackerCharge--;
+                this.trackerCharge -= dtFactor;
                 if (this.trackerCharge <= 0) {
                     this.trackerLock = this.trackerLockTotal;
                     this.trackerCharge = this.trackerChargeTotal + Math.floor(Math.random() * 40);
@@ -5954,7 +5994,7 @@ class CaveWallTurret extends Entity {
         }
 
         if (this.mode === 'missile') {
-            this.reload--;
+            this.reload -= dtFactor;
             if (this.reload <= 0) {
                 guidedMissiles.push(new CaveGuidedMissile(this, { hp: 5, maxDamage: 5, radius: 18, speed: 8.2, turnRate: 0.12 }));
                 spawnParticles(this.pos.x, this.pos.y, 8, '#fa0');
@@ -5999,7 +6039,7 @@ class CaveWallTurret extends Entity {
             };
 
             if (this.beamFire > 0) {
-                this.beamFire--;
+                this.beamFire -= dtFactor;
                 if (!this.beamHitThisShot) {
                     const ex = this.pos.x + Math.cos(this.beamAngle) * this.beamLen;
                     const ey = this.pos.y + Math.sin(this.beamAngle) * this.beamLen;
@@ -6014,14 +6054,14 @@ class CaveWallTurret extends Entity {
                     }
                 }
             } else if (this.beamCharge > 0) {
-                this.beamCharge--;
-                if (this.beamCharge === 0) {
+                this.beamCharge -= dtFactor;
+                if (this.beamCharge <= 0) {
                     this.beamFire = this.beamFireTotal;
                     this.beamHitThisShot = false;
                     playSound('heavy_shoot');
                 }
             } else {
-                this.beamCooldown--;
+                this.beamCooldown -= dtFactor;
                 if (this.beamCooldown <= 0 && dist > 300) {
                     this.beamAngle = aim;
                     this.beamCharge = this.beamChargeTotal;
@@ -6034,7 +6074,7 @@ class CaveWallTurret extends Entity {
         }
 
         // Rapid-fire lasers
-        this.reload--;
+        this.reload -= dtFactor;
         if (this.reload <= 0) {
             const muzzleX = this.pos.x + Math.cos(aim) * (this.radius + 6);
             const muzzleY = this.pos.y + Math.sin(aim) * (this.radius + 6);
@@ -9514,11 +9554,12 @@ class Cruiser extends Enemy {
 
     update(deltaTime = 16.67) {
         const now = Date.now();
+        const dtFactor = deltaTime / 16.67;
 
         // Phase sequencing
-        this.phaseTimer -= deltaTime / 16.67;
-        this.phaseTick++;
-        if (this.vulnerableTimer > 0) this.vulnerableTimer -= deltaTime / 16.67;
+        this.phaseTimer -= dtFactor;
+        // phaseTick increment moved to accumulator loop at bottom
+        if (this.vulnerableTimer > 0) this.vulnerableTimer -= dtFactor;
 
         if (this.phaseTimer <= 0) {
             const prev = this.phaseName;
@@ -9592,8 +9633,8 @@ class Cruiser extends Enemy {
             this.gunboatRange = this.baseGunboatRange;
         }
 
-        this.innerShieldRotation -= 0.08;
-        super.update();
+        this.innerShieldRotation -= 0.08 * (deltaTime / 16.67);
+        super.update(deltaTime);
 
         // Shield generator gimmick (destroy SG hardpoint to stop regen)
         if (this.hasHardpoint('shieldgen')) {
@@ -9608,14 +9649,20 @@ class Cruiser extends Enemy {
             }
         }
 
-        // Phase attacks
-        this.runPhaseAttacks();
+        // Phase attacks - Fixed timestep accumulator to preserve pattern speed
+        if (typeof this.phaseTickAccum === 'undefined') this.phaseTickAccum = 0;
+        this.phaseTickAccum += dtFactor;
+        while (this.phaseTickAccum >= 1) {
+            this.phaseTickAccum -= 1;
+            this.phaseTick++;
+            this.runPhaseAttacks();
+        }
 
         // Helper calls (few small ships only)
         this.maybeCallHelpers();
 
         if (this.guidedMissileEnabled && bossActive && boss === this) {
-            this.guidedMissileCd--;
+            this.guidedMissileCd -= (deltaTime / 16.67);
             if (this.guidedMissileCd <= 0) {
                 const alive = guidedMissiles.filter(m => m && !m.dead).length;
                 if (alive < this.guidedMissileCap) {
@@ -10391,10 +10438,11 @@ class WarpSentinelBoss extends Entity {
         if (this.dead) return;
         if (!player || player.dead) return;
         const now = Date.now();
-        this.t++;
-        this.coreRot += 0.04;
-        this.shieldRotation += 0.06;
-        this.innerShieldRotation -= 0.09;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+        this.coreRot += 0.04 * dtFactor;
+        this.shieldRotation += 0.06 * dtFactor;
+        this.innerShieldRotation -= 0.09 * dtFactor;
 
         // Shield regen (outer then inner).
         if (now - this.lastShieldRegenAt >= this.shieldRegenMs) {
@@ -10431,18 +10479,22 @@ class WarpSentinelBoss extends Entity {
         const aimToPlayer = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
 
         // Dash scheduling (telegraphed and blended).
-        this.dashCooldown--;
+        this.dashCooldown -= dtFactor;
         if (this.dashWarmup > 0) {
-            this.dashWarmup--;
-            this.vel.mult(0.92);
-            if (this.dashWarmup === 0) {
+            this.dashWarmup -= dtFactor;
+            this.vel.mult(Math.pow(0.92, dtFactor));
+            if (this.dashWarmup <= 0) {
+                this.dashWarmup = 0;
                 this.dashFrames = 60;
             }
         } else if (this.dashFrames > 0) {
-            this.dashFrames--;
-            this.vel.x = this.vel.x * 0.80 + this.dashDir.x * this.dashSpeed * 0.20;
-            this.vel.y = this.vel.y * 0.80 + this.dashDir.y * this.dashSpeed * 0.20;
-            if (this.dashFrames === 0) {
+            this.dashFrames -= dtFactor;
+            const blend = 1 - Math.pow(0.80, dtFactor); // frame-independent lerp factor for 0.20
+            this.vel.x += (this.dashDir.x * this.dashSpeed - this.vel.x) * blend;
+            this.vel.y += (this.dashDir.y * this.dashSpeed - this.vel.y) * blend;
+
+            if (this.dashFrames <= 0) {
+                this.dashFrames = 0;
                 shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 2, 650, { damagePlayer: true, color: '#f0f' }));
                 playSound('explode');
             }
@@ -10456,7 +10508,7 @@ class WarpSentinelBoss extends Entity {
             showOverlayMessage("SENTINEL CHARGING", '#f0f', 700);
         }
 
-        if (this.dashWarmup === 0 && this.dashFrames === 0) {
+        if (this.dashWarmup <= 0 && this.dashFrames <= 0) {
             const dx = targetX - this.pos.x;
             const dy = targetY - this.pos.y;
             const d = Math.hypot(dx, dy) || 1;
@@ -10474,8 +10526,12 @@ class WarpSentinelBoss extends Entity {
 
             const desiredVx = desiredX * this.maxSpeed;
             const desiredVy = desiredY * this.maxSpeed;
-            this.vel.x = this.vel.x * 0.90 + desiredVx * 0.10;
-            this.vel.y = this.vel.y * 0.90 + desiredVy * 0.10;
+
+            // Frame independent smoothing
+            const blend = 1 - Math.pow(0.90, dtFactor); // for 0.10 per frame
+            this.vel.x += (desiredVx - this.vel.x) * blend;
+            this.vel.y += (desiredVy - this.vel.y) * blend;
+
             const sp = Math.hypot(this.vel.x, this.vel.y);
             if (sp > this.maxSpeed) {
                 const s = this.maxSpeed / sp;
@@ -10485,8 +10541,8 @@ class WarpSentinelBoss extends Entity {
         }
 
         // Attacks
-        this.burstCooldown--;
-        this.mineCooldown--;
+        this.burstCooldown -= dtFactor;
+        this.mineCooldown -= dtFactor;
 
         // Telegraphed heavy laser: charge -> quick blast (single big hit if caught).
         const applyBeamDamageToPlayer = (amount) => {
@@ -10596,12 +10652,20 @@ class WarpSentinelBoss extends Entity {
         }
 
         if (this.spiralTimer > 0) {
-            this.spiralTimer -= deltaTime / 16.67;
-            this.spiralAng += 0.18;
-            const a = this.spiralAng;
-            const bx = this.pos.x + Math.cos(a) * (this.radius + 14);
-            const by = this.pos.y + Math.sin(a) * (this.radius + 14);
-            bullets.push(new Bullet(bx, by, a, true, 1, 12, 3, '#ff6'));
+            this.spiralTimer -= dtFactor;
+
+            // Accumulator for consistent spiral density independent of frame rate
+            if (typeof this.spiralAccum === 'undefined') this.spiralAccum = 0;
+            this.spiralAccum += dtFactor;
+
+            while (this.spiralAccum >= 1) {
+                this.spiralAccum -= 1;
+                this.spiralAng += 0.18;
+                const a = this.spiralAng;
+                const bx = this.pos.x + Math.cos(a) * (this.radius + 14);
+                const by = this.pos.y + Math.sin(a) * (this.radius + 14);
+                bullets.push(new Bullet(bx, by, a, true, 1, 12, 3, '#ff6'));
+            }
         }
 
         // Reinforcements.
@@ -14421,9 +14485,34 @@ function resolveEntityCollision() {
         // Player rams into roamers/defenders: destroy them, take damage equal to remaining HP
         for (let e of enemies) {
             if (e.dead) continue;
-            if (e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter' || e.type === 'defender') {
+            // Ramming Logic
+            const isRoamer = (e.type === 'roamer' || e.type === 'elite_roamer');
+            const isDefender = (e.type === 'defender');
+            const isHunter = (e.type === 'hunter');
+
+            if (isRoamer || isDefender || isHunter) {
                 const dist = Math.hypot(player.pos.x - e.pos.x, player.pos.y - e.pos.y);
                 if (dist < player.radius + e.radius) {
+                    // Safe Bump for Roamers/Defenders
+                    if (isRoamer || isDefender) {
+                        const angle = Math.atan2(player.pos.y - e.pos.y, player.pos.x - e.pos.x);
+                        const nx = Math.cos(angle);
+                        const ny = Math.sin(angle);
+
+                        // Push away physically (velocity)
+                        const pushForce = 5;
+                        player.vel.x += nx * pushForce;
+                        player.vel.y += ny * pushForce;
+                        e.vel.x -= nx * pushForce;
+                        e.vel.y -= ny * pushForce;
+
+                        // Visuals
+                        spawnParticles((player.pos.x + e.pos.x) / 2, (player.pos.y + e.pos.y) / 2, 5, '#fff');
+                        // No damage, no death.
+                        continue;
+                    }
+
+                    // Original logic for Hunters or others
                     const ramDamage = Math.max(0, Math.ceil(e.hp));
                     // Larger, colorful burst on impact
                     spawnParticles(e.pos.x, e.pos.y, 20, '#f44');
@@ -15531,12 +15620,12 @@ function updateGamepad() {
             // Use simple linear navigation for all menus (same as main menu)
             // Standard menu navigation (linear)
             // Vertical (Up/Down) - Standard Menus
-            if (gp.axes[1] < -0.5 || gp.buttons[12].pressed) change = -1;
-            if (gp.axes[1] > 0.5 || gp.buttons[13].pressed) change = 1;
+            if (gp.axes[1] < -0.5 || (gp.buttons[12] && gp.buttons[12].pressed)) change = -1;
+            if (gp.axes[1] > 0.5 || (gp.buttons[13] && gp.buttons[13].pressed)) change = 1;
 
             // Horizontal (Left/Right) - also wraps around like main menu
-            if (gp.axes[0] < -0.5 || gp.buttons[14].pressed) change = -1;
-            if (gp.axes[0] > 0.5 || gp.buttons[15].pressed) change = 1;
+            if (gp.axes[0] < -0.5 || (gp.buttons[14] && gp.buttons[14].pressed)) change = -1;
+            if (gp.axes[0] > 0.5 || (gp.buttons[15] && gp.buttons[15].pressed)) change = 1;
 
             if (change !== 0) {
                 menuSelectionIndex += change;
@@ -15712,16 +15801,8 @@ function mainLoop() {
         // Record frame time for jitter monitoring
         globalJitterMonitor.recordFrame(frameDt);
 
-        // Drop large frame times to prevent jitter (e.g., after upgrade menu closes)
-        // Use a smoother transition instead of hard cutoff
-        if (frameDt > 100) {
-            console.log('[JITTER] Very large frameDt:', frameDt.toFixed(1), 'ms - likely caused by GC or menu transition');
-            // Smoothly ramp up instead of jumping
-            frameDt = 33.33; // Use 30fps worth of time as maximum
-        } else if (frameDt > 50) {
-            // Moderate spike - use a gradual approach
-            frameDt = frameDt * 0.5 + SIM_STEP_MS * 0.5;
-        }
+        // Drop extremely large frame times (pause/background) but allow high refresh rates
+        // 100ms = 10fps minimum
         frameDt = Math.min(100, frameDt);
 
         // Update simulation time
@@ -16118,7 +16199,8 @@ function gameLoopLogic(opts = null) {
 
             const currentRoamers = enemies.filter(e => e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter').length;
             if (!intensityBreakActive && currentRoamers + roamerRespawnQueue.length < targetRoamers) {
-                roamerRespawnQueue.push(100);
+                // 100 frames @ 60fps ~= 1667ms
+                roamerRespawnQueue.push(1667);
             }
 
             const eliteUnlocked = elapsedMinutes >= 5 || difficultyTier >= 3 || player.level >= 4;
@@ -16130,7 +16212,7 @@ function gameLoopLogic(opts = null) {
             const hunterSoftCap = 3;
 
             for (let i = roamerRespawnQueue.length - 1; i >= 0; i--) {
-                roamerRespawnQueue[i]--;
+                roamerRespawnQueue[i] -= deltaTime;
                 if (roamerRespawnQueue[i] <= 0) {
                     roamerRespawnQueue.splice(i, 1);
                     let type = 'roamer';
@@ -18313,7 +18395,7 @@ window.addEventListener('mousemove', e => {
     const dx = Math.abs(e.clientX - mouseScreen.x);
     const dy = Math.abs(e.clientY - mouseScreen.y);
     // Ignore tiny pointer jitter so it doesn't steal aim from the gamepad.
-    if (dx + dy >= 2) lastMouseInputAt = now;
+    if (dx + dy >= 10) lastMouseInputAt = now;
     updateInputMode(now);
     if (typeof mouseScreen !== 'undefined') {
         mouseScreen.x = e.clientX;

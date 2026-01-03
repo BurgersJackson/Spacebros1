@@ -31,6 +31,10 @@ try {
   app.commandLine.appendSwitch("disable-gpu-shader-disk-cache");
 } catch { }
 
+if (process.env.ELECTRON_NO_GPU === "1") {
+  app.disableHardwareAcceleration();
+}
+
 let mainWindow = null;
 
 function createWindow() {
