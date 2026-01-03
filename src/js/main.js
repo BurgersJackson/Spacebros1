@@ -2481,13 +2481,13 @@ class EnvironmentAsteroid extends Entity {
         }
     }
 
-    break() {
+    break(noSound = false) {
         if (this.dead) return;
         if (this.unbreakable) return;
         this.dead = true;
         pixiCleanupObject(this);
         // Play quiet destruction sound
-        playSound('asteroid_destroy');
+        if (!noSound) playSound('asteroid_destroy');
         // previously dropped a coin here; asteroid drops disabled
         const boomScale = Math.max(0.7, Math.min(2.4, (this.radius || 50) / 60));
         spawnAsteroidExplosion(this.pos.x, this.pos.y, boomScale);
@@ -14695,9 +14695,8 @@ function resolveEntityCollision() {
                 if (ast.dead) continue;
                 const dist = Math.hypot(s.pos.x - ast.pos.x, s.pos.y - ast.pos.y);
                 if (dist < s.radius + ast.radius) {
-                    ast.break();
+                    ast.break(true); // No sound when hit by comet
                     spawnParticles(ast.pos.x, ast.pos.y, 10, '#fa0');
-                    playSound('hit');
                     // Star keeps going (pierces)
                 }
             }
@@ -16086,6 +16085,8 @@ function gameLoopLogic(opts = null) {
                 // Cruisers can spawn even if a station exists
                 cruiserEncounterCount++;
                 // Arena boss fight: clear world threats; boss may call a few helpers.
+                // REMOVED: Enemy/Base/Bullet clearing logic to allow them inside arena
+                /*
                 if (destroyer) {
                     const idx = enemies.indexOf(destroyer);
                     if (idx !== -1) enemies.splice(idx, 1);
@@ -16098,6 +16099,7 @@ function gameLoopLogic(opts = null) {
                 clearArrayWithPixiCleanup(bullets);
                 clearArrayWithPixiCleanup(bossBombs);
                 clearArrayWithPixiCleanup(guidedMissiles);
+                */
                 boss = new Cruiser(cruiserEncounterCount);
                 bossActive = true;
                 bossArena.x = (player.pos.x + boss.pos.x) / 2;
