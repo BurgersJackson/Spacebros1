@@ -1095,9 +1095,9 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
 
     try {
         // Create 3 parallax star layers (far, mid, near)
-        const starTexFar = makeStarfieldTexture(80, 0.5, 1.2, 0.2, 0.5);   // Many dim distant stars
-        const starTexMid = makeStarfieldTexture(40, 0.8, 1.8, 0.4, 0.7);   // Medium stars
-        const starTexNear = makeStarfieldTexture(15, 1.2, 2.5, 0.6, 1.0); // Fewer bright close stars
+        const starTexFar = makeStarfieldTexture(80, 0.5, 1.2, 0.1, 0.25);   // Many dim distant stars
+        const starTexMid = makeStarfieldTexture(40, 0.8, 1.8, 0.2, 0.35);   // Medium stars
+        const starTexNear = makeStarfieldTexture(15, 1.2, 2.5, 0.3, 0.5); // Fewer bright close stars
 
         const w = window.innerWidth || 1920;
         const h = window.innerHeight || 1080;
@@ -9382,7 +9382,7 @@ class Cruiser extends Enemy {
         let shieldStrength = 2 + boost;
         const maxShieldHp = 5; // Max 5 HP per shield segment
         shieldStrength = Math.min(shieldStrength, maxShieldHp);
-        const baseCruiserHp = 70 * 0.75; // first cruiser is 25% lower HP; later cruisers scale from this baseline
+        const baseCruiserHp = 100; // first cruiser is 100 HP; later cruisers scale from this baseline
         this.type = 'cruiser';
         this.isCruiser = true;
         this.isGunboat = true;
@@ -14422,7 +14422,19 @@ function resolveEntityCollision() {
                 const nx = dx / dist;
                 const ny = dy / dist;
                 // Some large entities can smash normal asteroids, but indestructible contract walls should block everything.
-                if (!isIndestructibleWall && (entity instanceof Base || (entity instanceof Enemy && entity.isGunboat) || (entity instanceof Cruiser) || (entity instanceof Destroyer) || (entity instanceof Destroyer2))) {
+                const isCrasher = (entity instanceof Base) ||
+                    (entity instanceof Cruiser) ||
+                    (entity instanceof Destroyer) ||
+                    (entity instanceof Destroyer2) ||
+                    (entity instanceof Enemy && (
+                        entity.isGunboat ||
+                        entity.type === 'roamer' ||
+                        entity.type === 'elite_roamer' ||
+                        entity.type === 'hunter' ||
+                        entity.type === 'defender'
+                    ));
+
+                if (!isIndestructibleWall && isCrasher) {
                     ast.break();
                     spawnParticles(ast.pos.x, ast.pos.y, 10, '#aa8');
                     continue;
