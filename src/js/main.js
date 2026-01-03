@@ -2336,10 +2336,12 @@ function handleSpaceStationDestroyed() {
     spawnParticles(sx, sy, 200, '#fff');
     for (let k = 0; k < 50; k++) coins.push(new Coin(sx + (Math.random() - 0.5) * 200, sy + (Math.random() - 0.5) * 200, 10));
     for (let k = 0; k < 25; k++) nuggets.push(new SpaceNugget(sx + (Math.random() - 0.5) * 220, sy + (Math.random() - 0.5) * 220, 1));
-    showOverlayMessage("SPACE STATION DESTROYED", '#0f0', 5000);
+    showOverlayMessage("SPACE STATION DESTROYED - WARP SIGNAL IN 30s", '#f80', 5000);
     pixiCleanupObject(spaceStation);
     spaceStation = null;
-    warpGateUnlocked = true;
+    setTimeout(() => {
+        warpGateUnlocked = true;
+    }, 30000);
     score += 50000;
     if (pendingStations > 0 && !sectorTransitionActive) nextSpaceStationTime = Date.now() + 7000;
 }
@@ -8872,256 +8874,6 @@ class MiniEventDefendCache extends Entity {
     }
 }
 
-class MiniEventEscortDrone extends Entity {
-    constructor(x, y) {
-        super(x, y);
-        this.kind = 'escort_drone';
-        this.dronePos = new Vector(x, y);
-        this.droneVel = new Vector(0, 0);
-        this.droneRadius = 18;
-        const a = Math.random() * Math.PI * 2;
-        const dist = 2200 + Math.random() * 800;
-        this.waypoint = { x: x + Math.cos(a) * dist, y: y + Math.sin(a) * dist, r: 110 };
-        this.expiresAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now()) + 80000;
-        this.lastUpdateAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
-        this.tetherRange = 750;
-        this.failMs = 0;
-        this.nextWaveAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now()) + 2000;
-        this.activated = false;
-        this.t = 0;
-        this.startDist = Math.max(1, Math.hypot(this.waypoint.x - this.dronePos.x, this.waypoint.y - this.dronePos.y));
-        this.shieldsDirty = true;
-        this._pixiWaypointGfx = null;
-        this._pixiTetherGfx = null;
-        this._pixiDroneGfx = null;
-        this._pixiProgressGfx = null;
-        this._pixiTimerText = null;
-    }
-    kill() {
-        if (this.dead) return;
-        super.kill();
-        // Ensure all Pixi graphics are hidden before cleanup to prevent visual artifacts
-        if (this._pixiWaypointGfx && this._pixiWaypointGfx.visible !== false) {
-            this._pixiWaypointGfx.visible = false;
-        }
-        if (this._pixiTetherGfx && this._pixiTetherGfx.visible !== false) {
-            this._pixiTetherGfx.visible = false;
-        }
-        if (this._pixiDroneGfx && this._pixiDroneGfx.visible !== false) {
-            this._pixiDroneGfx.visible = false;
-        }
-        if (this._pixiProgressGfx && this._pixiProgressGfx.visible !== false) {
-            this._pixiProgressGfx.visible = false;
-        }
-        if (this._pixiTimerText && this._pixiTimerText.visible !== false) {
-            this._pixiTimerText.visible = false;
-        }
-        pixiCleanupObject(this);
-    }
-    update(deltaTime = 16.67) {
-        if (this.dead) return;
-        if (!player || player.dead) { this.dead = true; return; }
-        const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
-        const dt = Math.min(120, Math.max(0, now - this.lastUpdateAt));
-        this.lastUpdateAt = now;
-        this.t++;
-
-        const dPlayer = Math.hypot(player.pos.x - this.dronePos.x, player.pos.y - this.dronePos.y);
-        if (!this.activated && dPlayer < 900) {
-            this.activated = true;
-            showOverlayMessage("ESCORT DRONE - STAY CLOSE", '#ff0', 1500, 1);
-        }
-
-        if (now >= this.expiresAt) { this.fail(); return; }
-
-        const dx = this.waypoint.x - this.dronePos.x;
-        const dy = this.waypoint.y - this.dronePos.y;
-        const dWp = Math.hypot(dx, dy);
-        if (dWp < 70) { this.success(); return; }
-
-        const close = dPlayer <= this.tetherRange;
-        const targetSpeed = close ? 6.0 : 1.1;
-        const ang = Math.atan2(dy, dx);
-        const desiredVx = Math.cos(ang) * targetSpeed;
-        const desiredVy = Math.sin(ang) * targetSpeed;
-        this.droneVel.x += (desiredVx - this.droneVel.x) * 0.08;
-        this.droneVel.y += (desiredVy - this.droneVel.y) * 0.08;
-        this.dronePos.x += this.droneVel.x;
-        this.dronePos.y += this.droneVel.y;
-
-        if (!close) this.failMs += dt;
-        else this.failMs = Math.max(0, this.failMs - dt * 0.6);
-        if (this.failMs >= 5000) { this.fail(); return; }
-
-        if (this.activated && now >= this.nextWaveAt) {
-            this.spawnWave();
-            this.nextWaveAt = now + 3600 + Math.floor(Math.random() * 1800);
-        }
-    }
-    spawnWave() {
-        const cap = 22;
-        if (enemies.length >= cap) return;
-        const count = 1 + Math.floor(Math.random() * 2);
-        for (let i = 0; i < count; i++) {
-            if (enemies.length >= cap) break;
-            const a = Math.random() * Math.PI * 2;
-            const dist = 950 + Math.random() * 650;
-            const sx = this.dronePos.x + Math.cos(a) * dist;
-            const sy = this.dronePos.y + Math.sin(a) * dist;
-            enemies.push(new Enemy('roamer', { x: sx, y: sy }));
-        }
-    }
-    success() {
-        if (this.dead) return;
-        this.kill();
-        showOverlayMessage("EVENT COMPLETE - DRONE DELIVERED", '#0f0', 2200, 1);
-        playSound('powerup');
-        player.addXp(80);
-        spawnParticles(this.waypoint.x, this.waypoint.y, 50, '#0ff');
-        for (let i = 0; i < 12; i++) coins.push(new Coin(this.waypoint.x + (Math.random() - 0.5) * 240, this.waypoint.y + (Math.random() - 0.5) * 240, 8));
-    }
-    fail() {
-        if (this.dead) return;
-        this.kill();
-        showOverlayMessage("EVENT FAILED", '#f00', 2000, 1);
-    }
-    getUiText() {
-        const d = Math.hypot(this.waypoint.x - this.dronePos.x, this.waypoint.y - this.dronePos.y);
-        const pct = Math.max(0, Math.min(100, Math.floor((1 - (d / this.startDist)) * 100)));
-        return `EVENT: ESCORT DRONE ${pct}%`;
-    }
-    draw(ctx) {
-        if (this.dead) return;
-
-        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
-            if (!this._pixiWaypointGfx) {
-                this._pixiWaypointGfx = new PIXI.Graphics();
-                pixiVectorLayer.addChild(this._pixiWaypointGfx);
-            }
-            if (!this._pixiTetherGfx) {
-                this._pixiTetherGfx = new PIXI.Graphics();
-                pixiVectorLayer.addChild(this._pixiTetherGfx);
-            }
-            if (!this._pixiDroneGfx) {
-                this._pixiDroneGfx = new PIXI.Graphics();
-                pixiVectorLayer.addChild(this._pixiDroneGfx);
-            }
-            if (!this._pixiProgressGfx) {
-                this._pixiProgressGfx = new PIXI.Graphics();
-                pixiVectorLayer.addChild(this._pixiProgressGfx);
-            }
-            if (!this._pixiTimerText) {
-                this._pixiTimerText = new PIXI.Text("", { fontFamily: 'Courier New', fontSize: 13, fill: 0xffffff, fontWeight: 'bold' });
-                this._pixiTimerText.anchor.set(0.5);
-                pixiVectorLayer.addChild(this._pixiTimerText);
-            }
-
-            const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
-            const remain = Math.max(0, this.expiresAt - now);
-            const d = Math.hypot(this.waypoint.x - this.dronePos.x, this.waypoint.y - this.dronePos.y);
-            const pct = Math.max(0, Math.min(1, 1 - (d / this.startDist)));
-            const pulse = 0.85 + Math.sin(this.t * 0.1) * 0.15;
-
-            // Waypoint
-            this._pixiWaypointGfx.clear();
-            this._pixiWaypointGfx.position.set(this.waypoint.x, this.waypoint.y);
-            this._pixiWaypointGfx.lineStyle(5 / (currentZoom || 1), 0x00ffff, 0.65);
-            this._pixiWaypointGfx.drawCircle(0, 0, 70);
-
-            // Tether
-            this._pixiTetherGfx.clear();
-            this._pixiTetherGfx.lineStyle(2 / (currentZoom || 1), 0xffdc00, 0.25 + 0.35 * pulse);
-            this._pixiTetherGfx.moveTo(player.pos.x, player.pos.y);
-            this._pixiTetherGfx.lineTo(this.dronePos.x, this.dronePos.y);
-
-            // Progress ring around drone (not rotated)
-            this._pixiProgressGfx.clear();
-            this._pixiProgressGfx.position.set(this.dronePos.x, this.dronePos.y);
-            this._pixiProgressGfx.lineStyle(6 / (currentZoom || 1), 0x00ff00, 0.65);
-            this._pixiProgressGfx.arc(0, 0, 34, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
-
-            // Drone body (rotated)
-            this._pixiDroneGfx.clear();
-            this._pixiDroneGfx.position.set(this.dronePos.x, this.dronePos.y);
-            this._pixiDroneGfx.rotation = this.t * 0.06;
-            this._pixiDroneGfx.beginFill(0xffff00, 1.0);
-            this._pixiDroneGfx.lineStyle(2 / (currentZoom || 1), 0xffffff, 1.0);
-            this._pixiDroneGfx.moveTo(20, 0);
-            this._pixiDroneGfx.lineTo(-14, 10);
-            this._pixiDroneGfx.lineTo(-10, 0);
-            this._pixiDroneGfx.lineTo(-14, -10);
-            this._pixiDroneGfx.closePath();
-            this._pixiDroneGfx.endFill();
-            this._pixiTimerText.position.set(this.dronePos.x, this.dronePos.y - 46);
-            this._pixiTimerText.text = `${(remain / 1000).toFixed(0)}s`;
-            return;
-        }
-
-        const now = Date.now();
-        const remain = Math.max(0, this.expiresAt - now);
-        const d = Math.hypot(this.waypoint.x - this.dronePos.x, this.waypoint.y - this.dronePos.y);
-        const pct = Math.max(0, Math.min(1, 1 - (d / this.startDist)));
-        const pulse = 0.85 + Math.sin(this.t * 0.1) * 0.15;
-
-        // Waypoint
-        ctx.save();
-        ctx.translate(this.waypoint.x, this.waypoint.y);
-        ctx.strokeStyle = 'rgba(0, 255, 255, 0.65)';
-        ctx.lineWidth = 5;
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = '#0ff';
-        ctx.beginPath();
-        ctx.arc(0, 0, 70, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.restore();
-
-        // Drone + tether
-        ctx.save();
-        ctx.strokeStyle = `rgba(255, 220, 0, ${0.25 + 0.35 * pulse})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(player.pos.x, player.pos.y);
-        ctx.lineTo(this.dronePos.x, this.dronePos.y);
-        ctx.stroke();
-        ctx.restore();
-
-        ctx.save();
-        ctx.translate(this.dronePos.x, this.dronePos.y);
-        ctx.rotate(this.t * 0.06);
-        ctx.shadowBlur = 14;
-        ctx.shadowColor = '#ff0';
-        ctx.fillStyle = '#ff0';
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(20, 0);
-        ctx.lineTo(-14, 10);
-        ctx.lineTo(-10, 0);
-        ctx.lineTo(-14, -10);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.restore();
-
-        // Progress ring around drone
-        ctx.save();
-        ctx.translate(this.dronePos.x, this.dronePos.y);
-        ctx.lineWidth = 6;
-        ctx.strokeStyle = 'rgba(0, 255, 0, 0.65)';
-        ctx.beginPath();
-        ctx.arc(0, 0, 34, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
-        ctx.stroke();
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 12px Courier New';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`${(remain / 1000).toFixed(0)}s`, 0, -46);
-        ctx.restore();
-    }
-}
-
 class SectorPOI extends Entity {
     constructor(x, y, name, color = '#0ff', radius = 170) {
         super(x, y);
@@ -11682,6 +11434,7 @@ class Destroyer extends Entity {
             { x: 0, y: -0.35 }
         ];
 
+        this.ringAttackTimer = 5000;
         this.guidedMissileTimer = 2000;
 
         // Tractor Beam properties
@@ -11784,6 +11537,13 @@ class Destroyer extends Entity {
                     this.fireTurrets();
                     this.turretReload = 1000; // 1.0 seconds in ms
                 }
+
+                this.ringAttackTimer -= deltaTime;
+                if (this.ringAttackTimer <= 0) {
+                    this.fireRing(16, 8.0, 8, '#ff0');
+                    // Fire more frequently (every 2s) when damaged below 50%
+                    this.ringAttackTimer = (this.hp < this.maxHp * 0.5) ? 2000 : 5000;
+                }
             }
 
             this.guidedMissileTimer -= deltaTime;
@@ -11836,11 +11596,35 @@ class Destroyer extends Entity {
         const muzzle = this.visualRadius * 0.45;
         const tx = this.pos.x + Math.cos(baseAngle) * muzzle;
         const ty = this.pos.y + Math.sin(baseAngle) * muzzle;
-        const b = new Bullet(tx, ty, baseAngle, true, 10, 14.96, 15, '#f80');
-        b.life = Math.round(b.life * 1.25);
-        bullets.push(b);
+        const spread = 0.18;
+        const bulletSpeed = 14.96 * 0.7;
+        const bulletRadius = 15 * 0.5;
+
+        // Rage mode: fire 5 shots spread wider instead of 3
+        let angles;
+        if (this.hp < this.maxHp * 0.5) {
+            angles = [baseAngle - spread * 2, baseAngle - spread, baseAngle, baseAngle + spread, baseAngle + spread * 2];
+        } else {
+            angles = [baseAngle - spread, baseAngle, baseAngle + spread];
+        }
+
+        for (const a of angles) {
+            const b = new Bullet(tx, ty, a, true, 10, bulletSpeed, bulletRadius, '#f80');
+            b.life = Math.round(b.life * 1.25);
+            bullets.push(b);
+        }
         spawnBarrelSmoke(tx, ty, baseAngle);
         playSound('rapid_shoot');
+    }
+
+    fireRing(n, speed, dmg, color) {
+        for (let i = 0; i < n; i++) {
+            const a = (Math.PI * 2 / n) * i;
+            const b = new Bullet(this.pos.x, this.pos.y, a, true, dmg, speed, 6, color);
+            b.life = 140;
+            bullets.push(b);
+        }
+        playSound('shotgun');
     }
 
     takeHit(dmg = 1) {
@@ -12219,6 +12003,7 @@ class Destroyer2 extends Entity {
             { x: 0.42, y: 0.24 }
         ];
 
+        this.ringAttackTimer = 5000;
         this.guidedMissileTimer = 2000;
     }
 
@@ -12316,6 +12101,13 @@ class Destroyer2 extends Entity {
                     this.fireTurrets();
                     this.turretReload = 100; // 0.1 seconds in ms
                 }
+
+                this.ringAttackTimer -= deltaTime;
+                if (this.ringAttackTimer <= 0) {
+                    this.fireRing(16, 8.0, 8, '#ff0');
+                    // Fire more frequently (every 2s) when damaged below 50%
+                    this.ringAttackTimer = (this.hp < this.maxHp * 0.5) ? 2000 : 5000;
+                }
             }
 
             this.guidedMissileTimer -= deltaTime;
@@ -12333,16 +12125,36 @@ class Destroyer2 extends Entity {
     fireTurrets() {
         const tx = this.pos.x;
         const ty = this.pos.y;
-        const baseAngle = Math.atan2(player.pos.y - ty, player.pos.x - tx);
-        const spread = 0.06;
-        const angles = [baseAngle - spread, baseAngle + spread];
+        const bulletSpeed = 14.96;
+        const dx = player.pos.x - tx;
+        const dy = player.pos.y - ty;
+        const dist = Math.hypot(dx, dy);
+        const leadTime = Math.min(40, dist / bulletSpeed);
+        const leadX = player.pos.x + player.vel.x * leadTime;
+        const leadY = player.pos.y + player.vel.y * leadTime;
+        const baseAngle = Math.atan2(leadY - ty, leadX - tx);
+        const spread = 0.09;
+        const angles = [baseAngle - spread, baseAngle, baseAngle + spread];
         for (let i = 0; i < angles.length; i++) {
             const angle = angles[i];
-            const b = new Bullet(tx, ty, angle, true, 2, 14.96, 6, '#f80');
+            const b = new Bullet(tx, ty, angle, true, 2, bulletSpeed, 6, '#f80');
+            // Increase range by 25% (default life is ~60, so 1.25x range via life or direct property)
+            // Assuming default Bullet life is roughly sufficient for screen range, we bump it up.
+            b.life = Math.round(b.life * 1.25);
             bullets.push(b);
             spawnBarrelSmoke(tx, ty, angle);
         }
         playSound('rapid_shoot');
+    }
+
+    fireRing(n, speed, dmg, color) {
+        for (let i = 0; i < n; i++) {
+            const a = (Math.PI * 2 / n) * i;
+            const b = new Bullet(this.pos.x, this.pos.y, a, true, dmg, speed, 6, color);
+            b.life = 140;
+            bullets.push(b);
+        }
+        playSound('shotgun');
     }
 
     takeHit(dmg = 1) {
@@ -14481,14 +14293,9 @@ function scheduleNextMiniEvent(fromNow = Date.now()) {
 function spawnMiniEventRelative() {
     if (!player) return;
     const p = findSpawnPointRelative(true, 2400, 4400);
-    const pick = Math.random();
-    if (pick < 0.5) {
-        miniEvent = new MiniEventDefendCache(p.x, p.y);
-        showOverlayMessage("MINI-EVENT: DEFEND THE CACHE", '#ff0', 2200, 1);
-    } else {
-        miniEvent = new MiniEventEscortDrone(p.x, p.y);
-        showOverlayMessage("MINI-EVENT: ESCORT THE DRONE", '#ff0', 2200, 1);
-    }
+    // Always spawn the Defend Cache event
+    miniEvent = new MiniEventDefendCache(p.x, p.y);
+    showOverlayMessage("MINI-EVENT: DEFEND THE CACHE", '#ff0', 2200, 1);
     playSound('contract');
 }
 
@@ -16621,15 +16428,16 @@ function gameLoopLogic(opts = null) {
                 pixiScreenRoot.scale.set(1);
                 pixiScreenRoot.position.set(0, 0);
                 pixiScreenRoot.visible = true;
-                if (pixiNebulaLayer) pixiNebulaLayer.visible = !!ENABLE_NEBULA && !caveActiveBg;
-                if (pixiStarTilingLayer) pixiStarTilingLayer.visible = !caveActiveBg;
+                // Enable Nebula/Stars in cave mode, disable grid
+                if (pixiNebulaLayer) pixiNebulaLayer.visible = !!ENABLE_NEBULA;
+                if (pixiStarTilingLayer) pixiStarTilingLayer.visible = true;
                 if (pixiStarLayer) pixiStarLayer.visible = false; // legacy particle stars disabled
-                updatePixiCaveGrid(camX, camY, zoom, caveActiveBg);
+                updatePixiCaveGrid(camX, camY, zoom, false);
             }
         }
 
-        // Draw Stars (disabled in cave mode)
-        if (!caveActiveBg) {
+        // Draw Stars (always enabled)
+        // if (!caveActiveBg) { // REMOVED: Enable stars in cave
             if (pixiScreenRoot && pixiStarLayer) {
                 updatePixiBackground(camX, camY);
             } else {
@@ -16643,7 +16451,7 @@ function gameLoopLogic(opts = null) {
                     ctx.fillRect(x, y, s.size, s.size);
                 }
             }
-        }
+        // }
     }
 
     if (doDraw) {
@@ -16678,9 +16486,12 @@ function gameLoopLogic(opts = null) {
     // Cave: full-screen grid background (no stars). 
     if (doDraw && caveActive) {
         // Pixi: cached tiling grid; Canvas fallback only if Pixi is unavailable.
+        // Disabled grid background for cave mode to match Level 1 style
+        /*
         if (!(pixiCaveGridSprite && pixiApp && pixiApp.renderer)) {
             caveLevel.drawGridBackground(ctx, camX, camY, width, height, zoom);
         }
+        */
         caveLevel.drawFireWall(ctx, camX, camY, width, height, zoom);
     }
 
@@ -17866,11 +17677,6 @@ function drawMiniEventIndicator() {
 
     let tx = miniEvent.pos.x;
     let ty = miniEvent.pos.y;
-    if (miniEvent.kind === 'escort_drone' && miniEvent.dronePos && miniEvent.waypoint) {
-        const dDrone = Math.hypot(miniEvent.dronePos.x - player.pos.x, miniEvent.dronePos.y - player.pos.y);
-        if (dDrone > 900) { tx = miniEvent.dronePos.x; ty = miniEvent.dronePos.y; }
-        else { tx = miniEvent.waypoint.x; ty = miniEvent.waypoint.y; }
-    }
 
     const screenW = canvas.width;
     const screenH = canvas.height;
@@ -18268,11 +18074,6 @@ function drawMinimap() {
     // Mini-event indicator on minimap
     if (!warpActive && player && miniEvent && !miniEvent.dead) {
         let tx = miniEvent.pos.x, ty = miniEvent.pos.y;
-        if (miniEvent.kind === 'escort_drone' && miniEvent.dronePos && miniEvent.waypoint) {
-            const dDrone = Math.hypot(miniEvent.dronePos.x - player.pos.x, miniEvent.dronePos.y - player.pos.y);
-            if (dDrone > 900) { tx = miniEvent.dronePos.x; ty = miniEvent.dronePos.y; }
-            else { tx = miniEvent.waypoint.x; ty = miniEvent.waypoint.y; }
-        }
         const dx = tx - player.pos.x;
         const dy = ty - player.pos.y;
         const dist = Math.hypot(dx, dy);
