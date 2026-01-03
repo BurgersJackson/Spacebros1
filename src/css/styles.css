@@ -397,6 +397,10 @@ button:hover, button:focus, button.selected {
 .objective-text {
     color: #f0f;
 }
+#pos-debug {
+    color: #0ff;
+    text-shadow: 0 0 6px #0ff;
+}
 
 /* Station Boss Bar */
 #station-health-container {

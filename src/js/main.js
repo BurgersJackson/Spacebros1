@@ -1839,6 +1839,7 @@ let fpsLastFrameAt = (typeof performance !== 'undefined' && performance.now) ? p
 let fpsSmoothMs = 16.7;
 let fpsNextUiAt = 0;
 let fpsUiVisible = null;
+let posUiNextAt = 0;
 
 // Fixed-timestep simulation (decouple simulation from render FPS)
 // SIM_FPS, SIM_STEP_MS, SIM_MAX_STEPS_PER_FRAME imported from ./core/constants.js
@@ -1849,6 +1850,8 @@ const getGameNowMs = () => (typeof simNowMs === 'number' && simNowMs > 0) ? simN
 let renderAlpha = 1.0; // Global render interpolation alpha (0-1)
 let shakeOffsetX = 0;
 let shakeOffsetY = 0;
+let suppressWarpGateUntil = 0;
+let suppressWarpInputUntil = 0;
 
 let width, height;
 let animationId;
@@ -3108,7 +3111,9 @@ class Spaceship extends Entity {
                 this.warpCooldown -= dtScale;
                 updateWarpUI();
             } else if (keys.shift || gpState.warp) {
-                this.warp();
+                if (!suppressWarpInputUntil || getGameNowMs() >= suppressWarpInputUntil) {
+                    this.warp();
+                }
             }
         }
 
@@ -4479,7 +4484,7 @@ class Enemy extends Entity {
             }
         }
 
-        if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter') roamerRespawnQueue.push(Math.floor(Math.random() * 300));
+        if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter') roamerRespawnQueue.push(2000 + Math.floor(Math.random() * 2000));
         if (this.isGunboat) {
             gunboatRespawnAt = Date.now() + 20000;
         }
@@ -5545,6 +5550,7 @@ class WarpGate extends Entity {
     }
     update(deltaTime = 16.67) {
         if (!player || player.dead) return;
+        if (suppressWarpGateUntil && getGameNowMs() < suppressWarpGateUntil) return;
         this.t++;
         const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
         if (dist > this.radius + player.radius) return;
@@ -11531,6 +11537,32 @@ class SpaceStation extends Entity {
             ctx.shadowBlur = 0;
         }
 
+        // Draw Tractor Beam
+        if (this.tractorBeamActive) {
+            // Pulse effect like boss arena
+            const pulse = 0.5 + Math.sin(Date.now() * 0.005) * 0.2;
+
+            // Outer glow
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#0ff';
+
+            // Solid line
+            ctx.strokeStyle = `rgba(0, 255, 255, ${pulse})`; // Cyan
+            ctx.lineWidth = 10;
+            ctx.beginPath();
+            ctx.arc(0, 0, this.tractorBeamRadius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Reset shadow
+            ctx.shadowBlur = 0;
+
+            // Faint fill
+            ctx.globalAlpha = 0.1;
+            ctx.fillStyle = '#055';
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        }
+
         ctx.restore();
     }
 }
@@ -11589,6 +11621,11 @@ class Destroyer extends Entity {
         ];
 
         this.guidedMissileTimer = 2000;
+
+        // Tractor Beam properties
+        this.tractorBeamActive = false;
+        this.tractorBeamRadius = 3000; // 20% larger than 2500 arena
+        this.tractorBeamTextShown = false;
     }
 
     update(deltaTime = 16.67) {
@@ -11694,6 +11731,39 @@ class Destroyer extends Entity {
             }
         }
 
+
+        // Tractor Beam Logic
+        if (!this.tractorBeamActive && this.hp < this.maxHp * 0.8) {
+            this.tractorBeamActive = true;
+            if (!this.tractorBeamTextShown) {
+                showOverlayMessage("You are caught in Tractor Beam", '#0ff', 3000); // 0ff for cyan beam
+                this.tractorBeamTextShown = true;
+            }
+        }
+
+        if (this.tractorBeamActive && playerAlive) {
+            const dx = player.pos.x - this.pos.x;
+            const dy = player.pos.y - this.pos.y;
+            const dist = Math.hypot(dx, dy);
+
+            // If player is outside the beam radius, pull them back in
+            if (dist > this.tractorBeamRadius) {
+                const angle = Math.atan2(dy, dx);
+                // Clamp position
+                player.pos.x = this.pos.x + Math.cos(angle) * (this.tractorBeamRadius - 5);
+                player.pos.y = this.pos.y + Math.sin(angle) * (this.tractorBeamRadius - 5);
+
+                // Kill outward velocity component to prevent glitchy movement against the wall
+                // Simple approach: dampen all velocity or just reflect? 
+                // Let's just dampen heavily if moving away
+                const dot = player.vel.x * Math.cos(angle) + player.vel.y * Math.sin(angle);
+                if (dot > 0) {
+                    player.vel.x *= 0.1;
+                    player.vel.y *= 0.1;
+                }
+            }
+        }
+
         if (this.invulnerable > 0) {
             this.invulnerable -= dtFactor;
         }
@@ -11726,6 +11796,12 @@ class Destroyer extends Entity {
         if (this.dead) return;
         this.dead = true;
         pixiCleanupObject(this);
+
+        // If tractor beam was active, delay the cruiser timer resume by 20s
+        if (this.tractorBeamActive) {
+            cruiserTimerResumeAt = Date.now() + 20000;
+            showOverlayMessage("TRACTOR BEAM DOWN - SYSTEM REBOOTING (20s)", '#0ff', 4000);
+        }
 
         // Drop 20 nuggets
         for (let i = 0; i < 20; i++) {
@@ -11896,6 +11972,28 @@ class Destroyer extends Entity {
                 txt.position.set(this.pos.x, this.pos.y - this.visualRadius - 20);
             }
 
+            // Draw Tractor Beam (red ring like arena)
+            if (this.tractorBeamActive && pixiVectorLayer) {
+                let beamGfx = this._pixiTractorBeamGfx;
+                if (!beamGfx) {
+                    beamGfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(beamGfx);
+                    this._pixiTractorBeamGfx = beamGfx;
+                } else if (!beamGfx.parent) {
+                    pixiVectorLayer.addChild(beamGfx);
+                }
+                beamGfx.clear();
+                beamGfx.position.set(this.pos.x, this.pos.y);
+
+                // Pulsing red like boss arena
+                const pulse = 0.5 + Math.sin(Date.now() * 0.005) * 0.2;
+                beamGfx.lineStyle(10, 0xff0000, pulse);
+                beamGfx.drawCircle(0, 0, this.tractorBeamRadius);
+            } else if (this._pixiTractorBeamGfx) {
+                try { this._pixiTractorBeamGfx.destroy(true); } catch (e) { }
+                this._pixiTractorBeamGfx = null;
+            }
+
             return;
         }
 
@@ -11983,6 +12081,22 @@ class Destroyer extends Entity {
             ctx.shadowColor = '#000';
             ctx.fillText(this.displayName, this.pos.x, this.pos.y - this.visualRadius - 20);
             ctx.shadowBlur = 0;
+        }
+
+        // Canvas fallback: Draw Tractor Beam (red ring like arena)
+        if (this.tractorBeamActive) {
+            ctx.save();
+            ctx.translate(this.pos.x, this.pos.y);
+            const pulse = 0.5 + Math.sin(Date.now() * 0.005) * 0.2;
+            ctx.strokeStyle = `rgba(255, 0, 0, ${pulse})`;
+            ctx.lineWidth = 10;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#f00';
+            ctx.beginPath();
+            ctx.arc(0, 0, this.tractorBeamRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.restore();
         }
     }
 }
@@ -12508,7 +12622,7 @@ let gunboatLevel2Unlocked = false;
 let cruiserEncounterCount = 0;
 let initialSpawnDelayAt = null;
 let initialSpawnDone = false;
-let metaProfile = { bank: 0, purchases: { startDamage: false, passiveHp: false, rerollTokens: 0, hullPlating: false, shieldCore: false, staticBlueprint: false, missilePrimer: false, magnetBooster: false, warpPrecharge: false, nukeCapacitor: false, speedTuning: false, bankMultiplier: false, shopDiscount: false, extraLife: false, droneFabricator: false } };
+let metaProfile = { bank: 0, purchases: { startDamage: false, passiveHp: false, rerollTokens: 0, hullPlating: false, shieldCore: false, staticBlueprint: false, missilePrimer: false, magnetBooster: false, nukeCapacitor: false, speedTuning: false, bankMultiplier: false, shopDiscount: false, extraLife: false, droneFabricator: false } };
 let rerollTokens = 0;
 let metaExtraLifeAvailable = false;
 
@@ -12528,6 +12642,7 @@ let dreadManager = {
     maxDelayMs: 300000 // 5 minutes
 };
 let cruiserTimerPausedAt = null;
+let cruiserTimerResumeAt = 0;
 
 // Game timer
 let gameStartTime = null;
@@ -13105,7 +13220,6 @@ function loadMetaProfile() {
             staticBlueprint: false,
             missilePrimer: false,
             magnetBooster: false,
-            warpPrecharge: false,
             nukeCapacitor: false,
             speedTuning: false,
             bankMultiplier: false,
@@ -13113,6 +13227,7 @@ function loadMetaProfile() {
             extraLife: false,
             droneFabricator: false
         }, metaProfile.purchases);
+        if (metaProfile.purchases.warpPrecharge) delete metaProfile.purchases.warpPrecharge;
         if (typeof metaProfile.bank !== 'number') metaProfile.bank = 0;
     } catch (e) {
         console.warn('failed to load meta profile', e);
@@ -13129,7 +13244,6 @@ function resetMetaProfile() {
             staticBlueprint: false,
             missilePrimer: false,
             magnetBooster: false,
-            warpPrecharge: false,
             nukeCapacitor: false,
             speedTuning: false,
             bankMultiplier: false,
@@ -13169,8 +13283,6 @@ function updateMetaUI() {
     if (missileEl) missileEl.innerText = metaProfile.purchases.missilePrimer ? 'OWNED' : 'BUY (40 NUGS)';
     const magnetEl = document.getElementById('meta-magnet');
     if (magnetEl) magnetEl.innerText = metaProfile.purchases.magnetBooster ? 'OWNED' : 'BUY (25 NUGS)';
-    const warpEl = document.getElementById('meta-warp');
-    if (warpEl) warpEl.innerText = metaProfile.purchases.warpPrecharge ? 'OWNED' : 'BUY (30 NUGS)';
     const nukeEl = document.getElementById('meta-nuke');
     if (nukeEl) nukeEl.innerText = metaProfile.purchases.nukeCapacitor ? 'OWNED' : 'BUY (35 NUGS)';
     const speedEl = document.getElementById('meta-speed');
@@ -15268,11 +15380,37 @@ function showLevelUpMenu() {
             playSound('powerup');
         }
 
-        // Resume game immediately
-        setTimeout(() => {
-            gameActive = true;
-            if (musicEnabled) startMusic();
-        }, 100);
+        // Resume game with the same timing reset logic as normal upgrade selection
+        // This prevents jitter and timing issues when resuming
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                // Force reset interpolation for all entities to prevent visual jumps
+                const resetEnt = (e) => {
+                    if (e && e.pos && e.prevPos) {
+                        e.prevPos.x = e.pos.x;
+                        e.prevPos.y = e.pos.y;
+                    }
+                };
+                if (player) resetEnt(player);
+                if (boss) resetEnt(boss);
+                if (spaceStation) resetEnt(spaceStation);
+                if (enemies) enemies.forEach(resetEnt);
+                if (bases) bases.forEach(resetEnt);
+                if (bullets) bullets.forEach(resetEnt);
+                if (particles) particles.forEach(resetEnt);
+                if (floatingTexts) floatingTexts.forEach(resetEnt);
+
+                // Reset simAccMs to zero to avoid catching up
+                simAccMs = 0;
+                // Update simLastPerfAt to current time to prevent large delta
+                simLastPerfAt = performance.now();
+
+                suppressWarpGateUntil = getGameNowMs() + 750;
+                suppressWarpInputUntil = suppressWarpGateUntil;
+                gameActive = true;
+                if (musicEnabled) startMusic();
+            }, 100);
+        });
         return;
     }
 
@@ -15386,6 +15524,8 @@ function showLevelUpMenu() {
                     // Update simLastPerfAt to current time to prevent large delta
                     simLastPerfAt = performance.now();
 
+                    suppressWarpGateUntil = getGameNowMs() + 750;
+                    suppressWarpInputUntil = suppressWarpGateUntil;
                     gameActive = true;
                     if (musicEnabled) startMusic();
                 }, 100); // Reduced from 200ms for snappier resume
@@ -15895,6 +16035,14 @@ function gameLoopLogic(opts = null) {
             }
         } catch (e) { console.warn('timer update failed', e); }
 
+        if (player && now >= posUiNextAt) {
+            const posEl = document.getElementById('pos-debug');
+            if (posEl) {
+                posEl.innerText = `POS: ${Math.round(player.pos.x)}, ${Math.round(player.pos.y)}`;
+                posUiNextAt = now + 100;
+            }
+        }
+
         // Sector transition countdown
         if (sectorTransitionActive && warpCountdownAt) {
             const remainingMs = Math.max(0, warpCountdownAt - now);
@@ -16012,7 +16160,10 @@ function gameLoopLogic(opts = null) {
             }
         } catch (e) { }
         const inStationFight = !!(stationArena.active && spaceStation && !spaceStation.dead);
-        if (inAnomaly || inStationFight) {
+        const inTractorBeam = !!(destroyer && !destroyer.dead && destroyer.tractorBeamActive);
+        const waitingForResume = (cruiserTimerResumeAt > now);
+
+        if (inAnomaly || inStationFight || inTractorBeam || waitingForResume) {
             if (cruiserTimerPausedAt === null) cruiserTimerPausedAt = now;
         } else if (cruiserTimerPausedAt !== null) {
             const dt = Math.max(0, now - cruiserTimerPausedAt);
@@ -16023,7 +16174,7 @@ function gameLoopLogic(opts = null) {
         }
         // Arena countdown: start 10 seconds before cruiser spawns
         try {
-            if (!sectorTransitionActive && !warpActive && !caveMode && !inAnomaly && !inStationFight && dreadManager.timerActive && !bossActive && dreadManager.timerAt) {
+            if (!sectorTransitionActive && !warpActive && !caveMode && !inAnomaly && !inStationFight && !inTractorBeam && !waitingForResume && dreadManager.timerActive && !bossActive && dreadManager.timerAt) {
                 const remainingMs = dreadManager.timerAt - now;
                 if (remainingMs <= 10000 && remainingMs > 0) {
                     if (!arenaCountdownActive) {
@@ -16049,7 +16200,7 @@ function gameLoopLogic(opts = null) {
         } catch (e) { }
         // Cruiser timed spawn: if timer active and no boss present, spawn a cruiser 
         try {
-            if (!sectorTransitionActive && !warpActive && !caveMode && !inAnomaly && !inStationFight && dreadManager.timerActive && !bossActive && dreadManager.timerAt && now >= dreadManager.timerAt) {
+            if (!sectorTransitionActive && !warpActive && !caveMode && !inAnomaly && !inStationFight && !inTractorBeam && !waitingForResume && dreadManager.timerActive && !bossActive && dreadManager.timerAt && now >= dreadManager.timerAt) {
                 // Cruisers can spawn even if a station exists
                 cruiserEncounterCount++;
                 // Arena boss fight: clear world threats; boss may call a few helpers.
@@ -16211,8 +16362,8 @@ function gameLoopLogic(opts = null) {
 
             const currentRoamers = enemies.filter(e => e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter').length;
             if (!intensityBreakActive && currentRoamers + roamerRespawnQueue.length < targetRoamers) {
-                // 100 frames @ 60fps ~= 1667ms
-                roamerRespawnQueue.push(1667);
+                // 3000ms delay between new spawns to refill population slower
+                roamerRespawnQueue.push(3000);
             }
 
             const eliteUnlocked = elapsedMinutes >= 5 || difficultyTier >= 3 || player.level >= 4;
@@ -18164,10 +18315,6 @@ function startGame() {
         if (metaProfile.purchases.magnetBooster) {
             player.magnetRadius = Math.max(player.magnetRadius, 300);
         }
-        if (metaProfile.purchases.warpPrecharge) {
-            player.canWarp = true;
-            player.warpCooldown = Math.floor(player.maxWarpCooldown / 2);
-        }
         if (metaProfile.purchases.nukeCapacitor) {
             player.nukeUnlocked = true;
             player.nukeCooldown = 0;
@@ -18678,18 +18825,6 @@ if (buyMagnet) buyMagnet.addEventListener('click', () => {
         showOverlayMessage("MAGNET BOOSTER UNLOCKED", '#0f0', 1500);
     } else {
         showOverlayMessage("NEED 25 NUGS OR OWNED", '#f00', 1500);
-    }
-});
-const buyWarp = document.getElementById('buy-warp');
-if (buyWarp) buyWarp.addEventListener('click', () => {
-    const cost = Math.ceil(30 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.warpPrecharge) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.warpPrecharge = true;
-        saveMetaProfile();
-        showOverlayMessage("WARP PRE-CHARGE UNLOCKED", '#0f0', 1500);
-    } else {
-        showOverlayMessage("NEED 30 NUGS OR OWNED", '#f00', 1500);
     }
 });
 const buyNuke = document.getElementById('buy-nuke');

@@ -427,6 +427,10 @@
         .objective-text {
             color: #f0f;
         }
+        #pos-debug {
+            color: #0ff;
+            text-shadow: 0 0 6px #0ff;
+        }
 
         /* Station Boss Bar */
         #station-health-container {
@@ -527,6 +531,7 @@
             <div class="hud-left">
                 <div>LVL: <span id="level-display">1</span></div>
                 <div id="game-timer" class="hud-timer">00:00</div>
+                <div class="objective-text" id="pos-debug">POS: 0, 0</div>
                 <div class="objective-text">KILLS: <span id="bases-display">0</span></div>
                 <div class="objective-text" id="contract-display" style="color:#0f0; text-shadow:0 0 6px #0f0;">
                     CONTRACT: NONE</div>
@@ -619,7 +624,6 @@
                 </div>
                 <div class="meta-item"><button id="buy-magnet">MAGNET BOOSTER</button><span id="meta-magnet"></span>
                 </div>
-                <div class="meta-item"><button id="buy-warp">WARP PRE-CHARGE</button><span id="meta-warp"></span></div>
                 <div class="meta-item"><button id="buy-nuke">NUKE CAPACITOR</button><span id="meta-nuke"></span></div>
                 <div class="meta-item"><button id="buy-speed">SPEED TUNING</button><span id="meta-speed"></span></div>
                 <div class="meta-item"><button id="buy-bank-mult">BANK MULTIPLIER</button><span
