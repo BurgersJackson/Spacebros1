@@ -208,7 +208,7 @@
             border: 2px solid #0f0;
             box-shadow: 0 0 20px #0f0;
             display: none;
-            z-index: 10;
+            z-index: 100;
             min-width: 300px;
         }
 
@@ -220,7 +220,7 @@
             height: 100%;
             background: rgba(0, 0, 0, 0.85);
             display: none;
-            z-index: 20;
+            z-index: 100;
             pointer-events: auto;
             flex-direction: column;
             justify-content: center;
@@ -365,6 +365,21 @@
             background: #0f0;
             color: #000;
             box-shadow: 0 0 15px #0f0;
+        }
+
+        /* Settings menu gamepad selection styles */
+        #res-select.selected,
+        #fullscreen-check.selected,
+        #frameless-check.selected {
+            outline: 2px solid #0ff;
+            outline-offset: 2px;
+            box-shadow: 0 0 10px #0ff;
+        }
+
+        /* Settings menu label highlighting */
+        label:has(.selected) {
+            color: #0ff !important;
+            text-shadow: 0 0 8px #0ff;
         }
 
         .meta-shop {
@@ -547,7 +562,8 @@
             </div>
         </div>
 
-        <div id="minimap-container">
+        <div id="minimap-container" style="display: none;">
+            <!-- Old Canvas minimap hidden - now rendered via PixiJS -->
             <canvas id="minimap"></canvas>
         </div>
     </div>

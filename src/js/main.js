@@ -240,6 +240,11 @@ let pixiStarTiles = null;
 let pixiNebulaTiles = null;
 let pixiNebulaPaletteIdx = null;
 
+// UI overlay layers (screen-space, for minimap and directional arrows)
+let pixiUiOverlayLayer = null;    // Container for all UI graphics
+let pixiMinimapGraphics = null;   // Graphics object for minimap
+let pixiArrowsGraphics = null;    // Graphics object for directional arrows
+
 // World-space layers
 let pixiAsteroidLayer = null;
 let pixiPickupLayer = null;
@@ -830,6 +835,7 @@ let explosion1Ready = false;
 explosion1Image.addEventListener('load', () => { explosion1Ready = true; });
 explosion1Image.addEventListener('error', () => { explosion1Ready = false; });
 
+
 if (USE_PIXI_OVERLAY && window.PIXI) {
     console.log('[DEBUG] Pixi Block Entered');
     try { PIXI.settings.ROUND_PIXELS = true; } catch (e) { }
@@ -847,7 +853,7 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
     pixiApp.view.style.top = '0';
     pixiApp.view.style.left = '0';
     pixiApp.view.style.pointerEvents = 'none';
-    pixiApp.view.style.zIndex = '1';
+    pixiApp.view.style.zIndex = '15';  // Higher than uiCanvas (10) to render minimap/arrows on top
     document.body.appendChild(pixiApp.view);
     pixiTextureWhite = PIXI.Texture.WHITE;
     try { pixiApp.stage.eventMode = 'none'; } catch (e) { }
@@ -856,6 +862,14 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
     pixiWorldRoot = new PIXI.Container();
     pixiApp.stage.addChild(pixiScreenRoot);
     pixiApp.stage.addChild(pixiWorldRoot);
+
+    // UI Overlay layer (minimap and directional arrows) - must be added AFTER world root to render on top
+    pixiUiOverlayLayer = new PIXI.Container();
+    pixiMinimapGraphics = new PIXI.Graphics();
+    pixiArrowsGraphics = new PIXI.Graphics();
+    pixiUiOverlayLayer.addChild(pixiArrowsGraphics);  // Arrows drawn first (behind minimap)
+    pixiUiOverlayLayer.addChild(pixiMinimapGraphics);  // Minimap on top
+    pixiApp.stage.addChild(pixiUiOverlayLayer);  // Add to stage (not pixiScreenRoot) so it renders above everything
 
     const makeGlowTexture = () => {
         const g = new PIXI.Graphics();
@@ -1910,7 +1924,8 @@ let gpState = {
     fire: false,
     warp: false,
     turbo: false,
-    pausePressed: false
+    pausePressed: false,
+    lastMenuElements: null  // Track when menu changes to reset selection
 };
 let usingGamepad = false;
 let menuDebounce = 0;
@@ -2534,7 +2549,7 @@ class EnvironmentAsteroid extends Entity {
         if (pixiAsteroidLayer && pixiTextures && pixiTextures.asteroids && pixiTextures.asteroids.length > 0) {
             let tex;
             let anchor;
-            
+
             // Use indestructible asteroid texture if available
             if (this.indestructible && asteroidIndestructibleTextureReady && pixiTextures.asteroidIndestructible) {
                 tex = pixiTextures.asteroidIndestructible;
@@ -2549,7 +2564,7 @@ class EnvironmentAsteroid extends Entity {
                 tex = pixiTextures.asteroids[idx] || pixiTextures.asteroids[0];
                 anchor = pixiTextureAnchors[`asteroid_${idx}`] || 0.5;
             }
-            
+
             let spr = this.sprite;
             if (!spr) {
                 spr = allocPixiSprite(pixiAsteroidSpritePool, pixiAsteroidLayer, tex, null, anchor);
@@ -4339,6 +4354,7 @@ class Bullet extends Entity {
     }
 }
 
+
 class Enemy extends Entity {
     constructor(type = 'roamer', startPos = null, assignedBase = null, opts = {}) {
         super(0, 0);
@@ -4496,11 +4512,13 @@ class Enemy extends Entity {
 
         // FIX: Mark as dead FIRST before doing anything else
         // This prevents draw() from trying to recreate graphics after cleanup
-        if (this.isGunboat) playSound('base_explode');
-        else playSound('explode');
-
-        const boomScale = Math.max(0.9, Math.min(2.6, (this.radius || 30) / 40));
-        spawnFieryExplosion(this.pos.x, this.pos.y, boomScale);
+        if (this.isGunboat) {
+            spawnLargeExplosion(this.pos.x, this.pos.y, 2.0);
+        } else {
+            playSound('explode');
+            const boomScale = Math.max(0.9, Math.min(2.6, (this.radius || 30) / 40));
+            spawnFieryExplosion(this.pos.x, this.pos.y, boomScale);
+        }
 
         // DROP COINS
         let val = 2;
@@ -5313,6 +5331,7 @@ class Base extends Entity {
         }
 
         if (player && !player.dead) {
+
             const dx = player.pos.x - this.pos.x;
             const dy = player.pos.y - this.pos.y;
             const dist = Math.hypot(dx, dy);
@@ -5600,6 +5619,28 @@ class Base extends Entity {
             return;
         }
 
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        pixiCleanupObject(this);
+        playSound('base_explode');
+
+        // Base Explosion: Scale 3.0
+        spawnLargeExplosion(this.pos.x, this.pos.y, 3.0);
+
+        // Standard particles as filler
+        spawnParticles(this.pos.x, this.pos.y, 60, '#fa0');
+
+        // Drop coins
+        for (let i = 0; i < 5; i++) {
+            nuggets.push(new SpaceNugget(
+                this.pos.x + (Math.random() - 0.5) * 120,
+                this.pos.y + (Math.random() - 0.5) * 120,
+                1
+            ));
+        }
     }
 }
 
@@ -7194,7 +7235,7 @@ class CaveLevel {
             : (this.startY + 600);
         this.fireWall = {
             y: baseY + gap,
-            speed: 60, // units per second (five times faster)
+            speed: 160, // units per second (five times faster)
             damagePerSecond: 5,
             damageTimer: 0,
             minY: this.endY + 1200
@@ -7499,6 +7540,19 @@ class CaveLevel {
         if (!this.fireWall || !entity || entity.dead) return;
         const radius = entity.radius || 0;
         const limitY = this.fireWall.y - radius;
+
+        // If entity is below the firewall (caught in fire), destroy it
+        if (entity.pos.y > limitY + radius * 0.5) {
+            if (typeof entity.kill === 'function') {
+                entity.kill();
+            } else if (typeof entity.die === 'function') {
+                entity.die();
+            }
+            entity.dead = true;
+            return;
+        }
+
+        // Otherwise push it up ahead of the firewall
         if (entity.pos.y > limitY) {
             entity.pos.y = limitY;
             if (entity.vel && entity.vel.y > 0) entity.vel.y = 0;
@@ -9336,6 +9390,10 @@ class Cruiser extends Enemy {
         pixiCleanupObject(this);
         const boomScale = Math.max(2.6, Math.min(5, (this.radius || 160) / 40));
         spawnBossExplosion(this.pos.x, this.pos.y, boomScale, 26);
+
+        // ADDED: Large particle explosion for Cruiser (Scale 4.0)
+        spawnLargeExplosion(this.pos.x, this.pos.y, 4.0);
+
         spawnParticles(this.pos.x, this.pos.y, 120, '#f00');
         playSound('base_explode');
         shakeMagnitude = Math.max(shakeMagnitude, 22);
@@ -9856,6 +9914,10 @@ class Flagship extends Cruiser {
         this.dead = true;
         pixiCleanupObject(this);
         playSound('base_explode');
+
+        // ADDED: Large particle explosion for Flagship (Scale 5.0)
+        spawnLargeExplosion(this.pos.x, this.pos.y, 5.0);
+
         spawnParticles(this.pos.x, this.pos.y, 200, '#f0f');
         clearArrayWithPixiCleanup(bossBombs);
         clearArrayWithPixiCleanup(guidedMissiles);
@@ -10070,6 +10132,10 @@ class SuperFlagshipBoss extends Flagship {
         this.dead = true;
         pixiCleanupObject(this);
         playSound('base_explode');
+
+        // Super Flagship Explosion: Scale 6.0
+        spawnLargeExplosion(this.pos.x, this.pos.y, 6.0);
+
         spawnParticles(this.pos.x, this.pos.y, 260, '#0ff');
         clearArrayWithPixiCleanup(bossBombs);
         clearArrayWithPixiCleanup(guidedMissiles);
@@ -10233,6 +10299,9 @@ class WarpSentinelBoss extends Entity {
         // PERFORMANCE FIX: Staggered particle spawning to prevent frame spikes
         // Instead of 140 particles at once, spread them over ~20 frames
         scheduleParticleBursts(this.pos.x, this.pos.y, 140, '#f0f', 20);
+
+        // ADDED: Large particle explosion for Warp Sentinel (Scale 4.5)
+        spawnLargeExplosion(this.pos.x, this.pos.y, 4.5);
 
         // PERFORMANCE FIX: Stagger bomb explosions over multiple frames
         // instead of exploding all bombs at once which causes sprite pool exhaustion
@@ -11659,7 +11728,12 @@ class Destroyer extends Entity {
         }
 
         const boomScale = Math.max(2.8, Math.min(5, (this.visualRadius || this.radius || 400) / 250));
+        // Use generic boss explosion for background visual
         spawnBossExplosion(this.pos.x, this.pos.y, boomScale, 22);
+
+        // ADDED: Large particle explosion for Destroyer (Scale 3.5)
+        spawnLargeExplosion(this.pos.x, this.pos.y, 3.5);
+
         spawnParticles(this.pos.x, this.pos.y, 80, '#0ff');
         playSound('base_explode');
         shakeMagnitude = Math.max(shakeMagnitude, 18);
@@ -12991,6 +13065,47 @@ function processStaggeredBombExplosions() {
     // (they're already marked as processed, so they won't be re-exploded)
 }
 
+// Replaces spawnGunboatExplosion with a more generic large explosion
+function spawnLargeExplosion(x, y, scale = 2.0) {
+    const s = scale;
+    const spriteSize = 250 * (s / 2.0); // Base size 250 at scale 2.0
+    explosions.push(new Explosion(x, y, spriteSize));
+
+    // Standard fiery particles (glowy)
+    const count = Math.floor(25 * (s / 1.5));
+    const colors = ['#ff8', '#fa0', '#f40', '#f00'];
+    for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const speed = (2.0 + Math.random() * 3.0) * (s / 2.0);
+        const vx = Math.cos(a) * speed;
+        const vy = Math.sin(a) * speed;
+        const color = colors[(Math.random() * colors.length) | 0];
+        const life = 30 + Math.floor(Math.random() * 20);
+        const p = emitParticle(x, y, vx, vy, color, life);
+        p.glow = true;
+        p.size = (6 + Math.random() * 8) * (s / 2.0); // Scale size
+    }
+
+    // EXTRA LARGE debris particles (explode in all directions)
+    const bigCount = Math.floor(12 * (s / 2.0));
+    for (let i = 0; i < bigCount; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const speed = (1.5 + Math.random() * 3.5) * (s / 2.0);
+        const vx = Math.cos(a) * speed;
+        const vy = Math.sin(a) * speed;
+        const life = 40 + Math.floor(Math.random() * 25);
+        // Use enemy bullet colors (Red/Orange) to match request
+        const color = (Math.random() < 0.5) ? '#f00' : '#f80';
+
+        const p = emitParticle(x, y, vx, vy, color, life);
+        p.size = (20 + Math.random() * 12) * (s / 2.0); // Large particles scaled
+        p.glow = true;
+    }
+
+    spawnSmoke(x, y, Math.ceil(6 * (s / 2.0)));
+    playSound('base_explode');
+}
+
 function spawnFieryExplosion(x, y, scale = 1) {
     const s = Math.max(0.6, Math.min(3, scale || 1));
     const spriteSize = Math.max(90, Math.round(140 * s));
@@ -13271,10 +13386,6 @@ function updateContractUI() {
     } else if (activeContract.type === 'anomaly') {
         if (activeContract.coreCollected) extra = ' (ESCAPE ZONE)';
         else extra = activeContract.state === 'inside' ? ' (FIND CORE)' : ' (ENTER ZONE)';
-    } else if (activeContract.type === 'destroy_fortress') {
-        const ringsLeft = (typeof activeContract.ringsLeft === 'number') ? activeContract.ringsLeft : 3;
-        const hpPct = (typeof activeContract.hpPct === 'number') ? activeContract.hpPct : 1;
-        extra = ` (RINGS ${ringsLeft} HP ${Math.max(0, Math.floor(hpPct * 100))}%)`;
     }
     el.innerText = `CONTRACT: ${activeContract.title}${extra}`;
 }
@@ -13615,209 +13726,6 @@ class GateRing extends Entity {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(`${this.index + 1}/${this.total}`, 0, 0);
-        ctx.restore();
-    }
-}
-
-class ContractFortress extends Entity {
-    constructor(x, y, contractId = null) {
-        super(x, y);
-        this.contractId = contractId;
-        this.radius = 85; // core/base size
-        this.hp = 45;
-        this.maxHp = this.hp;
-        this.t = 0;
-        this.turretAngle = 0;
-        this.turretReload = 30;
-
-        // Star Castle-ish: 3 concentric shield rings (outer -> inner)
-        this.rings = [
-            { r: 260, segHp: 2, segments: new Array(32).fill(2), rot: 0, rotSpeed: 0.006 },
-            { r: 200, segHp: 2, segments: new Array(26).fill(2), rot: 0, rotSpeed: -0.008 },
-            { r: 140, segHp: 2, segments: new Array(20).fill(2), rot: 0, rotSpeed: 0.010 }
-        ];
-        this.ringThickness = 16;
-        this.shieldsDirty = true;
-        this._pixiRingGfxs = [];
-    }
-
-    ringsLeft() {
-        return this.rings.reduce((acc, r) => acc + (r.segments.some(s => s > 0) ? 1 : 0), 0);
-    }
-
-    update(deltaTime = 16.67) {
-        if (this.dead) return;
-        if (!player || player.dead) return;
-        this.t++;
-
-        // Rotate rings
-        for (let i = 0; i < this.rings.length; i++) {
-            this.rings[i].rot += this.rings[i].rotSpeed;
-        }
-
-        // Update contract HUD state
-        if (activeContract && activeContract.type === 'destroy_fortress' && activeContract.id === this.contractId) {
-            activeContract.state = 'active';
-            activeContract.ringsLeft = this.ringsLeft();
-            activeContract.hpPct = this.maxHp > 0 ? (this.hp / this.maxHp) : 0;
-        }
-
-        // Turret fires at player
-        const dx = player.pos.x - this.pos.x;
-        const dy = player.pos.y - this.pos.y;
-        const dist = Math.hypot(dx, dy);
-        this.turretAngle = Math.atan2(dy, dx);
-        if (dist < 3200) {
-            this.turretReload--;
-            if (this.turretReload <= 0) {
-                const b = new Bullet(
-                    this.pos.x + Math.cos(this.turretAngle) * (this.radius + 12),
-                    this.pos.y + Math.sin(this.turretAngle) * (this.radius + 12),
-                    this.turretAngle,
-                    true,
-                    2,
-                    13,
-                    4,
-                    '#0f0'
-                );
-                bullets.push(b);
-                spawnBarrelSmoke(b.pos.x, b.pos.y, this.turretAngle);
-                playSound('shoot');
-                this.turretReload = 26;
-            }
-        } else {
-            this.turretReload = Math.min(this.turretReload, 26);
-        }
-    }
-
-    kill() {
-        if (this.dead) return;
-        this.dead = true;
-        pixiCleanupObject(this);
-        playSound('base_explode');
-        spawnParticles(this.pos.x, this.pos.y, 80, '#0f0');
-
-        // Drop nuggets as the main reward
-        const drop = 14;
-        for (let i = 0; i < drop; i++) {
-            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 160, this.pos.y + (Math.random() - 0.5) * 160, 1));
-        }
-
-        showOverlayMessage("FORTRESS DESTROYED", '#0f0', 1200);
-
-        if (activeContract && activeContract.type === 'destroy_fortress' && activeContract.id === this.contractId) {
-            completeContract(true);
-        }
-    }
-
-    draw(ctx) {
-        if (this.dead) {
-            // FIX: Ensure dead fortresses don't draw
-            pixiCleanupObject(this);
-            return;
-        }
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-
-        // Rings
-        // Rings (PIXI Cached)
-        if (pixiVectorLayer) {
-            if (!this._pixiRingGfxs) this._pixiRingGfxs = [];
-            // Ensure graphics objects exist
-            while (this._pixiRingGfxs.length < this.rings.length) {
-                const g = new PIXI.Graphics();
-                pixiVectorLayer.addChild(g);
-                this._pixiRingGfxs.push(g);
-                this.shieldsDirty = true;
-            }
-            // Handle cleanup if rings reduced (unlikely but safe)
-            while (this._pixiRingGfxs.length > this.rings.length) {
-                const g = this._pixiRingGfxs.pop();
-                try { g.destroy(true); } catch (e) { }
-            }
-
-            // Update transforms
-            for (let i = 0; i < this._pixiRingGfxs.length; i++) {
-                const g = this._pixiRingGfxs[i];
-                if (!g.parent) pixiVectorLayer.addChild(g);
-                g.position.set(this.pos.x, this.pos.y);
-                g.rotation = this.rings[i].rot;
-                // Set alpha based on some global/state if needed, currently static in draw loop
-                // Actually original draw used varying alpha per segment. We can't do that easily with single cached geometry unless we use tint/alpha on sprite...
-                // But original used ctx.globalAlpha per segment.
-                // To optimize, we will use a static alpha for the ring, and maybe pulse the whole ring.
-                // Compromise: Draw segments with fixed alpha, but pulse the container?
-                // Original: alpha = 0.35 + 0.30 * (hp / max).
-                // We will redraw geometry if HP changes significantly? No, that defeats caching locally.
-                // We can use the dirty flag. BUT HP changes continuously?
-                // No, segment HP is int. Max 2.
-                // So we REDRAW when segment HP changes.
-            }
-
-            if (this.shieldsDirty) {
-                for (let r = 0; r < this.rings.length; r++) {
-                    const ring = this.rings[r];
-                    const g = this._pixiRingGfxs[r];
-                    g.clear();
-                    const count = ring.segments.length;
-                    const step = (Math.PI * 2) / count;
-
-                    // Helper to draw segments of specific Alpha
-                    // Since we can't change alpha per line easily in one geometry without multiple drawCalls or complex mesh...
-                    // We will group segments by HP? (1 or 2).
-                    // Or just draw them.
-                    for (let i = 0; i < count; i++) {
-                        if (ring.segments[i] <= 0) continue;
-                        const hpRatio = ring.segments[i] / ring.segHp;
-                        const alpha = 0.35 + 0.30 * hpRatio;
-                        const lineWidth = 10 / Math.max(0.5, currentZoom || ZOOM_LEVEL);
-                        g.lineStyle(lineWidth, 0x00ff00, alpha); // Green
-
-                        const a0 = i * step;
-                        const a1 = a0 + step * 0.82;
-                        g.moveTo(Math.cos(a0) * ring.r, Math.sin(a0) * ring.r);
-                        g.arc(0, 0, ring.r, a0, a1);
-                    }
-                }
-                this.shieldsDirty = false;
-            }
-        }
-
-        /* canvas rendering removed */
-        ctx.globalAlpha = 1;
-        ctx.shadowBlur = 0;
-
-        // Core/base
-        ctx.save();
-        ctx.rotate(this.turretAngle);
-        ctx.fillStyle = '#021';
-        ctx.strokeStyle = '#0f0';
-        ctx.lineWidth = 3;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#0f0';
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        // Turret barrel
-        ctx.fillStyle = '#000';
-        ctx.strokeStyle = '#0f0';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.rect(0, -8, this.radius + 35, 16);
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-
-        // Small HP readout
-        ctx.fillStyle = '#0f0';
-        ctx.font = 'bold 14px Courier New';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        const pct = this.maxHp > 0 ? Math.max(0, Math.floor((this.hp / this.maxHp) * 100)) : 0;
-        ctx.fillText(`FORTRESS ${pct}%`, 0, -this.rings[0].r - 18);
-
         ctx.restore();
     }
 }
@@ -14343,8 +14251,8 @@ function resolveEntityCollision() {
             let r1 = (e1 instanceof Destroyer || e1 instanceof Destroyer2) ? (e1.shieldRadius || e1.radius) : e1.radius;
             let r2 = (e2 instanceof Destroyer || e2 instanceof Destroyer2) ? (e2.shieldRadius || e2.radius) : e2.radius;
 
-            const isStatic1 = (e1 instanceof Base) || (e1 instanceof SpaceStation) || (e1 instanceof ContractFortress);
-            const isStatic2 = (e2 instanceof Base) || (e2 instanceof SpaceStation) || (e2 instanceof ContractFortress);
+            const isStatic1 = (e1 instanceof Base) || (e1 instanceof SpaceStation);
+            const isStatic2 = (e2 instanceof Base) || (e2 instanceof SpaceStation);
             const e1IsDestroyer = (e1 instanceof Destroyer || e1 instanceof Destroyer2);
             const e2IsDestroyer = (e2 instanceof Destroyer || e2 instanceof Destroyer2);
 
@@ -14429,7 +14337,7 @@ function resolveEntityCollision() {
                     spawnParticles(ast.pos.x, ast.pos.y, 10, '#aa8');
                     validCollision = true;
                 }
-                
+
                 // Only apply collision response if we had a valid collision (not indestructible)
                 if (validCollision) {
                     entity.pos.x += nx * overlap;
@@ -15648,6 +15556,17 @@ function updateGamepad() {
     if ((!gameActive || gamePaused) && now - menuDebounce > 150) {
         const activeElements = getActiveMenuElements();
         if (activeElements.length > 0) {
+            // Check if menu has changed by comparing first element or length
+            const menuChanged = !gpState.lastMenuElements ||
+                gpState.lastMenuElements.length !== activeElements.length ||
+                gpState.lastMenuElements[0] !== activeElements[0];
+
+            if (menuChanged) {
+                menuSelectionIndex = 0;
+                gpState.lastMenuElements = activeElements;
+                updateMenuVisuals(activeElements);
+            }
+
             let change = 0;
 
             // Use simple linear navigation for all menus (same as main menu)
@@ -15671,11 +15590,37 @@ function updateGamepad() {
                 menuDebounce = now;
             }
 
-            // A Button / Cross - Select
+            // A Button / Cross - Select/Interact
             if (gp.buttons[0].pressed) {
-                activeElements[menuSelectionIndex].click();
+                const selectedEl = activeElements[menuSelectionIndex];
+
+                // Handle select dropdown - cycle through options
+                if (selectedEl && selectedEl.tagName === 'SELECT') {
+                    const options = selectedEl.options;
+                    const currentIndex = selectedEl.selectedIndex;
+                    const nextIndex = (currentIndex + 1) % options.length;
+                    selectedEl.selectedIndex = nextIndex;
+                    // Trigger change event
+                    selectedEl.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                // Handle checkbox - toggle
+                else if (selectedEl && selectedEl.tagName === 'INPUT' && selectedEl.type === 'checkbox') {
+                    selectedEl.checked = !selectedEl.checked;
+                    // Trigger change event
+                    selectedEl.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                // Handle button - click
+                else {
+                    selectedEl.click();
+                    // After clicking, the menu might change, so clear the cached elements
+                    gpState.lastMenuElements = null;
+                }
+
                 menuDebounce = now + 200;
             }
+        } else {
+            // No active menu elements, clear the cache
+            gpState.lastMenuElements = null;
         }
     }
 }
@@ -15721,6 +15666,41 @@ function getActiveMenuElements() {
         return Array.from(document.querySelectorAll('#pause-menu button'));
     }
 
+    // Add settings menu support
+    const settingsMenu = document.getElementById('settings-menu');
+    if (isVisible(settingsMenu)) {
+        // Get interactive elements: select, checkbox inputs, and buttons
+        const elements = [];
+
+        // Add resolution select
+        const resSelect = document.getElementById('res-select');
+        if (resSelect) {
+            elements.push(resSelect);
+        }
+
+        // Add checkboxes (fullscreen, frameless)
+        const fullscreenCheck = document.getElementById('fullscreen-check');
+        if (fullscreenCheck) {
+            elements.push(fullscreenCheck);
+        }
+        const framelessCheck = document.getElementById('frameless-check');
+        if (framelessCheck) {
+            elements.push(framelessCheck);
+        }
+
+        // Add buttons
+        const settingsCloseBtn = document.getElementById('settings-close-btn');
+        const settingsApplyBtn = document.getElementById('settings-apply-btn');
+        if (settingsCloseBtn) {
+            elements.push(settingsCloseBtn);
+        }
+        if (settingsApplyBtn) {
+            elements.push(settingsApplyBtn);
+        }
+
+        return elements;
+    }
+
     const startScreen = document.getElementById('start-screen');
     if (isVisible(startScreen)) {
         return Array.from(document.querySelectorAll('#start-screen button'));
@@ -15733,9 +15713,12 @@ function updateMenuVisuals(elements) {
     elements.forEach((el, idx) => {
         if (idx === menuSelectionIndex) {
             el.classList.add('selected');
-            if (el.tagName === 'BUTTON') {
+            // Support focus for all interactive elements, not just buttons
+            if (typeof el.focus === 'function') {
                 el.focus();
-                // For shop buttons, also highlight the parent meta-item and scroll into view
+            }
+            // For shop buttons, also highlight the parent meta-item and scroll into view
+            if (el.tagName === 'BUTTON') {
                 const metaItem = el.closest('.meta-item');
                 if (metaItem) {
                     metaItem.classList.add('selected');
@@ -15749,9 +15732,11 @@ function updateMenuVisuals(elements) {
             }
         } else {
             el.classList.remove('selected');
-            if (el.tagName === 'BUTTON') {
+            if (typeof el.blur === 'function') {
                 el.blur();
-                // For shop buttons, also remove highlight from parent meta-item
+            }
+            // For shop buttons, also remove highlight from parent meta-item
+            if (el.tagName === 'BUTTON') {
                 const metaItem = el.closest('.meta-item');
                 if (metaItem) {
                     metaItem.classList.remove('selected');
@@ -15957,7 +15942,7 @@ function gameLoopLogic(opts = null) {
                 const pick = Math.random();
                 const target = findSpawnPointRelative(true, 6000, 9000);
 
-                if (pick < 0.45) {
+                if (pick < 0.60) {
                     // Scan Beacon
                     const beacon = new ContractBeacon(target.x, target.y, "SCAN BEACON");
                     contractEntities.beacons.push(beacon);
@@ -15973,7 +15958,7 @@ function gameLoopLogic(opts = null) {
                     };
                     showOverlayMessage("NEW CONTRACT: SCAN BEACON (STAY IN ZONE)", '#0f0', 2000, 2);
                     playSound('contract');
-                } else if (pick < 0.75) {
+                } else {
                     // Gate run puzzle
                     const gateCount = 5;
                     contractEntities.gates = [];
@@ -15997,24 +15982,6 @@ function gameLoopLogic(opts = null) {
                         rewardScore: 10000
                     };
                     showOverlayMessage("NEW CONTRACT: GATE RUN", '#0f0', 2000, 2);
-                    playSound('contract');
-                } else {
-                    // Destroy Fortress
-                    const id = `C${contractSequence}`;
-                    const fortress = new ContractFortress(target.x, target.y, id);
-                    contractEntities.fortresses.push(fortress);
-                    activeContract = {
-                        id,
-                        type: 'destroy_fortress',
-                        state: 'travel',
-                        title: 'DESTROY FORTRESS',
-                        target: { x: target.x, y: target.y },
-                        ringsLeft: 3,
-                        hpPct: 1,
-                        rewardNugs: 0,
-                        rewardScore: 8000
-                    };
-                    showOverlayMessage("NEW CONTRACT: DESTROY FORTRESS", '#0f0', 2000, 2);
                     playSound('contract');
                 }
                 updateContractUI();
@@ -16440,19 +16407,19 @@ function gameLoopLogic(opts = null) {
 
         // Draw Stars (always enabled)
         // if (!caveActiveBg) { // REMOVED: Enable stars in cave
-            if (pixiScreenRoot && pixiStarLayer) {
-                updatePixiBackground(camX, camY);
-            } else {
-                for (let s of starfield) {
-                    let x = (s.x - camX * s.parallax) % width;
-                    let y = (s.y - camY * s.parallax) % height;
-                    if (x < 0) x += width;
-                    if (y < 0) y += height;
+        if (pixiScreenRoot && pixiStarLayer) {
+            updatePixiBackground(camX, camY);
+        } else {
+            for (let s of starfield) {
+                let x = (s.x - camX * s.parallax) % width;
+                let y = (s.y - camY * s.parallax) % height;
+                if (x < 0) x += width;
+                if (y < 0) y += height;
 
-                    ctx.fillStyle = s.fillStyle;
-                    ctx.fillRect(x, y, s.size, s.size);
-                }
+                ctx.fillStyle = s.fillStyle;
+                ctx.fillRect(x, y, s.size, s.size);
             }
+        }
         // }
     }
 
@@ -16971,45 +16938,6 @@ function gameLoopLogic(opts = null) {
                                     break;
                                 }
                             }
-                            // Fortress Logic
-                            else if (e instanceof ContractFortress) {
-                                const distF = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
-
-                                if (!b.ignoreShields) {
-                                    for (let ri = 0; ri < e.rings.length; ri++) {
-                                        const ring = e.rings[ri];
-                                        if (!ring || !ring.segments || !ring.segments.some(s => s > 0)) continue;
-                                        if (distF < ring.r + e.ringThickness && distF > ring.r - e.ringThickness) {
-                                            let ang = Math.atan2(b.pos.y - e.pos.y, b.pos.x - e.pos.x) - ring.rot;
-                                            while (ang < 0) ang += Math.PI * 2;
-                                            const count = ring.segments.length;
-                                            const segIndex = Math.floor((ang / (Math.PI * 2)) * count) % count;
-                                            if (ring.segments[segIndex] > 0) {
-                                                ring.segments[segIndex] = Math.max(0, ring.segments[segIndex] - 1);
-                                                e.shieldsDirty = true;
-                                                hit = true;
-                                                playSound('shield_hit');
-                                                if (ring.segments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 10, '#0f0');
-                                                else spawnParticles(b.pos.x, b.pos.y, 4, '#060');
-                                                if (!ring.segments.some(s => s > 0)) {
-                                                    showOverlayMessage("FORTRESS SHIELD RING DOWN", '#0f0', 900);
-                                                }
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                                if (hit) break;
-
-                                if (distF < e.radius + b.radius) {
-                                    e.hp -= b.damage;
-                                    hit = true;
-                                    playSound('hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 6, '#0f0');
-                                    if (e.hp <= 0) e.kill();
-                                    break;
-                                }
-                            }
                             // Base Logic
                             else if (e instanceof Base) {
                                 const dist = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
@@ -17339,7 +17267,7 @@ function gameLoopLogic(opts = null) {
 
     if (doDraw) {
         globalProfiler.start('Draw');
-        // Draw cave boundaries on top. 
+        // Draw cave boundaries on top.
         if (caveActive && caveLevel) {
             caveLevel.updatePixi();
             caveLevel.drawEntities(ctx, camX, camY, height, zoom);
@@ -17347,8 +17275,12 @@ function gameLoopLogic(opts = null) {
 
         ctx.restore();
 
-        // Clear UI Canvas for this frame
+        // Clear UI Canvas for this frame (still used for boss HUD and other elements)
         uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
+
+        // Clear Pixi UI graphics and text objects from previous frame
+        if (pixiArrowsGraphics) pixiArrowsGraphics.clear();
+        clearPixiUiText();
 
         drawStationIndicator();
         drawDestroyerIndicator();
@@ -17370,8 +17302,37 @@ function gameLoopLogic(opts = null) {
     globalProfiler.end('GameLoopLogic');
 }
 
+// Helper function to transform polygon vertices
+function transformPolygon(vertices, x, y, scale, rotation) {
+    const cos = Math.cos(rotation) * scale;
+    const sin = Math.sin(rotation) * scale;
+    const result = [];
+    for (let i = 0; i < vertices.length; i += 2) {
+        const vx = vertices[i];
+        const vy = vertices[i + 1];
+        result.push(
+            x + (vx * cos - vy * sin),
+            y + (vx * sin + vy * cos)
+        );
+    }
+    return result;
+}
+
+// Array to hold temporary text objects for cleanup
+let pixiUiTextObjects = [];
+
+function clearPixiUiText() {
+    for (const text of pixiUiTextObjects) {
+        if (text && text.parent) {
+            text.parent.removeChild(text);
+            text.destroy({ children: true });
+        }
+    }
+    pixiUiTextObjects = [];
+}
+
 function drawStationIndicator() {
-    if (!spaceStation || !player) return;
+    if (!spaceStation || !player || !pixiArrowsGraphics) return;
 
     const screenW = canvas.width;
     const screenH = canvas.height;
@@ -17411,42 +17372,37 @@ function drawStationIndicator() {
     const arrowX = cx + vx * t;
     const arrowY = cy + vy * t;
 
-    uiCtx.save();
-    uiCtx.translate(arrowX, arrowY);
-    uiCtx.rotate(angle);
-
     const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
-    uiCtx.scale(pulse, pulse);
 
-    uiCtx.fillStyle = '#0ff';
-    uiCtx.strokeStyle = '#000';
-    uiCtx.lineWidth = 2;
+    // Draw arrow using PixiJS with manually transformed vertices
+    const arrowShape = [15, 0, -15, 12, -15, -12];
+    const transformed = transformPolygon(arrowShape, arrowX, arrowY, pulse, angle);
 
-    uiCtx.beginPath();
-    uiCtx.moveTo(15, 0);
-    uiCtx.lineTo(-15, 12);
-    uiCtx.lineTo(-15, -12);
-    uiCtx.closePath();
-    uiCtx.fill();
-    uiCtx.stroke();
+    pixiArrowsGraphics.lineStyle(2, 0x000000);
+    pixiArrowsGraphics.beginFill(0x00ffff);
+    pixiArrowsGraphics.drawPolygon(transformed);
+    pixiArrowsGraphics.endFill();
 
     // Distance Text
-    uiCtx.rotate(-angle);
-    uiCtx.fillStyle = '#0ff';
-    uiCtx.font = 'bold 14px Courier New';
-    uiCtx.textAlign = 'center';
-    uiCtx.textBaseline = 'middle';
-    uiCtx.shadowBlur = 4;
-    uiCtx.shadowColor = '#000';
     const dist = Math.hypot(dx, dy);
-    uiCtx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
-    uiCtx.shadowBlur = 0;
-
-    uiCtx.restore();
+    const text = new PIXI.Text((dist / 1000).toFixed(1) + 'km', {
+        fontFamily: 'Courier New',
+        fontWeight: 'bold',
+        fontSize: 14,
+        fill: 0x00ffff,
+        align: 'center',
+        dropShadow: true,
+        dropShadowColor: 0x000000,
+        dropShadowBlur: 4
+    });
+    text.anchor.set(0.5, 0);
+    text.position.set(arrowX, arrowY + 25);
+    pixiUiOverlayLayer.addChild(text);
+    pixiUiTextObjects.push(text);
 }
 
 function drawDestroyerIndicator() {
-    if (!destroyer || !player || destroyer.dead) return;
+    if (!destroyer || !player || destroyer.dead || !pixiArrowsGraphics) return;
 
     const screenW = canvas.width;
     const screenH = canvas.height;
@@ -17486,47 +17442,42 @@ function drawDestroyerIndicator() {
     const arrowX = cx + vx * t;
     const arrowY = cy + vy * t;
 
-    uiCtx.save();
-    uiCtx.translate(arrowX, arrowY);
-    uiCtx.rotate(angle);
-
     const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
-    uiCtx.scale(pulse, pulse);
 
     // Color based on destroyer type
     const isDestroyer2 = destroyer.displayName === "DESTROYER II";
-    const indicatorColor = isDestroyer2 ? '#ff0000' : '#ff8000';
+    const indicatorColor = isDestroyer2 ? 0xff0000 : 0xff8000;
 
-    uiCtx.fillStyle = indicatorColor;
-    uiCtx.strokeStyle = '#000';
-    uiCtx.lineWidth = 2;
+    // Draw arrow using PixiJS with manually transformed vertices
+    const arrowShape = [15, 0, -15, 12, -15, -12];
+    const transformed = transformPolygon(arrowShape, arrowX, arrowY, pulse, angle);
 
-    uiCtx.beginPath();
-    uiCtx.moveTo(15, 0);
-    uiCtx.lineTo(-15, 12);
-    uiCtx.lineTo(-15, -12);
-    uiCtx.closePath();
-    uiCtx.fill();
-    uiCtx.stroke();
+    pixiArrowsGraphics.lineStyle(2, 0x000000);
+    pixiArrowsGraphics.beginFill(indicatorColor);
+    pixiArrowsGraphics.drawPolygon(transformed);
+    pixiArrowsGraphics.endFill();
 
     // Distance Text
-    uiCtx.rotate(-angle);
-    uiCtx.fillStyle = indicatorColor;
-    uiCtx.font = 'bold 14px Courier New';
-    uiCtx.textAlign = 'center';
-    uiCtx.textBaseline = 'middle';
-    uiCtx.shadowBlur = 4;
-    uiCtx.shadowColor = '#000';
     const dist = Math.hypot(dx, dy);
     const label = isDestroyer2 ? 'DESTROYER II ' : 'DESTROYER ';
-    uiCtx.fillText(label + (dist / 1000).toFixed(1) + 'km', 0, 25);
-    uiCtx.shadowBlur = 0;
-
-    uiCtx.restore();
+    const text = new PIXI.Text(label + (dist / 1000).toFixed(1) + 'km', {
+        fontFamily: 'Courier New',
+        fontWeight: 'bold',
+        fontSize: 14,
+        fill: indicatorColor,
+        align: 'center',
+        dropShadow: true,
+        dropShadowColor: 0x000000,
+        dropShadowBlur: 4
+    });
+    text.anchor.set(0.5, 0);
+    text.position.set(arrowX, arrowY + 25);
+    pixiUiOverlayLayer.addChild(text);
+    pixiUiTextObjects.push(text);
 }
 
 function drawWarpGateIndicator() {
-    if (!warpGate || !player || player.dead || warpGate.dead) return;
+    if (!warpGate || !player || player.dead || warpGate.dead || !pixiArrowsGraphics) return;
     if (warpGate.mode !== 'entry') return;
 
     const screenW = canvas.width;
@@ -17561,43 +17512,53 @@ function drawWarpGateIndicator() {
     const arrowX = cx + vx * t;
     const arrowY = cy + vy * t;
 
-    uiCtx.save();
-    uiCtx.translate(arrowX, arrowY);
-    uiCtx.rotate(angle);
-
     const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
-    uiCtx.scale(pulse, pulse);
 
-    uiCtx.fillStyle = '#f80';
-    uiCtx.strokeStyle = '#000';
-    uiCtx.lineWidth = 2;
+    // Draw arrow using PixiJS
+    const arrowShape = [15, 0, -15, 12, -15, -12];
+    const transformed = transformPolygon(arrowShape, arrowX, arrowY, pulse, angle);
 
-    uiCtx.beginPath();
-    uiCtx.moveTo(15, 0);
-    uiCtx.lineTo(-15, 12);
-    uiCtx.lineTo(-15, -12);
-    uiCtx.closePath();
-    uiCtx.fill();
-    uiCtx.stroke();
+    pixiArrowsGraphics.lineStyle(2, 0x000000);
+    pixiArrowsGraphics.beginFill(0xff8800);
+    pixiArrowsGraphics.drawPolygon(transformed);
+    pixiArrowsGraphics.endFill();
 
-    uiCtx.rotate(-angle);
-    uiCtx.fillStyle = '#f80';
-    uiCtx.font = 'bold 14px Courier New';
-    uiCtx.textAlign = 'center';
-    uiCtx.textBaseline = 'middle';
-    uiCtx.shadowBlur = 4;
-    uiCtx.shadowColor = '#000';
-    uiCtx.fillText("WARP", 0, -18);
+    // Distance Text (two lines: "WARP" and distance)
     const dist = Math.hypot(dx, dy);
-    uiCtx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
-    uiCtx.shadowBlur = 0;
+    const text1 = new PIXI.Text("WARP", {
+        fontFamily: 'Courier New',
+        fontWeight: 'bold',
+        fontSize: 14,
+        fill: 0xff8800,
+        align: 'center',
+        dropShadow: true,
+        dropShadowColor: 0x000000,
+        dropShadowBlur: 4
+    });
+    text1.anchor.set(0.5, 1);
+    text1.position.set(arrowX, arrowY - 18);
+    pixiUiOverlayLayer.addChild(text1);
+    pixiUiTextObjects.push(text1);
 
-    uiCtx.restore();
+    const text2 = new PIXI.Text((dist / 1000).toFixed(1) + 'km', {
+        fontFamily: 'Courier New',
+        fontWeight: 'bold',
+        fontSize: 14,
+        fill: 0xff8800,
+        align: 'center',
+        dropShadow: true,
+        dropShadowColor: 0x000000,
+        dropShadowBlur: 4
+    });
+    text2.anchor.set(0.5, 0);
+    text2.position.set(arrowX, arrowY + 25);
+    pixiUiOverlayLayer.addChild(text2);
+    pixiUiTextObjects.push(text2);
 }
 
 // Flagship warp zone removed - no longer needed
 function drawContractIndicator() {
-    if (!activeContract || !player || player.dead) return;
+    if (!activeContract || !player || player.dead || !pixiArrowsGraphics) return;
     let tx = null, ty = null;
     if (activeContract.type === 'gate_run' && contractEntities.gates.length > 0) {
         const idx = activeContract.gateIndex || 0;
@@ -17640,42 +17601,37 @@ function drawContractIndicator() {
     const arrowX = cx + vx * tEdge;
     const arrowY = cy + vy * tEdge;
 
-    uiCtx.save();
-    uiCtx.translate(arrowX, arrowY);
-    uiCtx.rotate(angle);
-
     const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
-    uiCtx.scale(pulse, pulse);
 
-    uiCtx.fillStyle = '#0f0';
-    uiCtx.strokeStyle = '#000';
-    uiCtx.lineWidth = 2;
+    // Draw arrow using PixiJS
+    const arrowShape = [15, 0, -15, 12, -15, -12];
+    const transformed = transformPolygon(arrowShape, arrowX, arrowY, pulse, angle);
 
-    uiCtx.beginPath();
-    uiCtx.moveTo(15, 0);
-    uiCtx.lineTo(-15, 12);
-    uiCtx.lineTo(-15, -12);
-    uiCtx.closePath();
-    uiCtx.fill();
-    uiCtx.stroke();
+    pixiArrowsGraphics.lineStyle(2, 0x000000);
+    pixiArrowsGraphics.beginFill(0x00ff00);
+    pixiArrowsGraphics.drawPolygon(transformed);
+    pixiArrowsGraphics.endFill();
 
     // Distance Text
-    uiCtx.rotate(-angle);
-    uiCtx.fillStyle = '#0f0';
-    uiCtx.font = 'bold 14px Courier New';
-    uiCtx.textAlign = 'center';
-    uiCtx.textBaseline = 'middle';
-    uiCtx.shadowBlur = 4;
-    uiCtx.shadowColor = '#000';
     const dist = Math.hypot(dx, dy);
-    uiCtx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
-    uiCtx.shadowBlur = 0;
-
-    uiCtx.restore();
+    const text = new PIXI.Text((dist / 1000).toFixed(1) + 'km', {
+        fontFamily: 'Courier New',
+        fontWeight: 'bold',
+        fontSize: 14,
+        fill: 0x00ff00,
+        align: 'center',
+        dropShadow: true,
+        dropShadowColor: 0x000000,
+        dropShadowBlur: 4
+    });
+    text.anchor.set(0.5, 0);
+    text.position.set(arrowX, arrowY + 25);
+    pixiUiOverlayLayer.addChild(text);
+    pixiUiTextObjects.push(text);
 }
 
 function drawMiniEventIndicator() {
-    if (!miniEvent || miniEvent.dead || !player || player.dead) return;
+    if (!miniEvent || miniEvent.dead || !player || player.dead || !pixiArrowsGraphics) return;
 
     let tx = miniEvent.pos.x;
     let ty = miniEvent.pos.y;
@@ -17709,143 +17665,89 @@ function drawMiniEventIndicator() {
     const arrowX = cx + vx * tEdge;
     const arrowY = cy + vy * tEdge;
 
-    uiCtx.save();
-    uiCtx.translate(arrowX, arrowY);
-    uiCtx.rotate(angle);
-
     const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
     const blink = (Math.sin(Date.now() * 0.012) > 0.2) ? 1 : 0.55;
-    uiCtx.scale(pulse, pulse);
-    uiCtx.globalAlpha = blink;
 
-    uiCtx.fillStyle = '#ff0';
-    uiCtx.strokeStyle = '#000';
-    uiCtx.lineWidth = 2;
-    uiCtx.beginPath();
-    uiCtx.moveTo(15, 0);
-    uiCtx.lineTo(-15, 12);
-    uiCtx.lineTo(-15, -12);
-    uiCtx.closePath();
-    uiCtx.fill();
-    uiCtx.stroke();
+    // Draw arrow using PixiJS
+    const arrowShape = [15, 0, -15, 12, -15, -12];
+    const transformed = transformPolygon(arrowShape, arrowX, arrowY, pulse, angle);
 
-    uiCtx.rotate(-angle);
-    uiCtx.fillStyle = '#ff0';
-    uiCtx.font = 'bold 14px Courier New';
-    uiCtx.textAlign = 'center';
-    uiCtx.textBaseline = 'middle';
-    uiCtx.shadowBlur = 4;
-    uiCtx.shadowColor = '#000';
+    pixiArrowsGraphics.lineStyle(2, 0x000000);
+    pixiArrowsGraphics.beginFill(0xffff00, blink);
+    pixiArrowsGraphics.drawPolygon(transformed);
+    pixiArrowsGraphics.endFill();
+
+    // Distance Text
     const dist = Math.hypot(dx, dy);
-    uiCtx.fillText((dist / 1000).toFixed(1) + 'km', 0, 25);
-    uiCtx.shadowBlur = 0;
-
-    uiCtx.restore();
+    const text = new PIXI.Text((dist / 1000).toFixed(1) + 'km', {
+        fontFamily: 'Courier New',
+        fontWeight: 'bold',
+        fontSize: 14,
+        fill: 0xffff00,
+        align: 'center',
+        dropShadow: true,
+        dropShadowColor: 0x000000,
+        dropShadowBlur: 4
+    });
+    text.anchor.set(0.5, 0);
+    text.position.set(arrowX, arrowY + 25);
+    text.alpha = blink;
+    pixiUiOverlayLayer.addChild(text);
+    pixiUiTextObjects.push(text);
 }
 
+// Minimap position constants (bottom-right corner of screen)
+const MINIMAP_SIZE = 200;
+const MINIMAP_RADIUS = 100;
+const MINIMAP_OFFSET = 20;
+
 function drawMinimap() {
+    if (!pixiMinimapGraphics) return;
     minimapFrame++;
     if (minimapFrame % 2 === 1) return; // throttle updates
 
-    // Clear canvas and draw circular boundary
-    minimapCtx.clearRect(0, 0, 200, 200);
+    // Clear previous graphics
+    pixiMinimapGraphics.clear();
 
-    minimapCtx.save();
-    minimapCtx.translate(100, 100);
+    // Position minimap in bottom-right corner
+    const screenW = canvas.width;
+    const screenH = canvas.height;
+    const minimapX = screenW - MINIMAP_SIZE - MINIMAP_OFFSET;
+    const minimapY = screenH - MINIMAP_SIZE - MINIMAP_OFFSET;
+    const centerX = minimapX + MINIMAP_RADIUS;
+    const centerY = minimapY + MINIMAP_RADIUS;
 
-    // Draw circular background
-    minimapCtx.beginPath();
-    minimapCtx.arc(0, 0, 100, 0, Math.PI * 2);
-    minimapCtx.fillStyle = '#001';
-    minimapCtx.fill();
-    // Clip rest of drawing to this circle
-    minimapCtx.clip();
+    // Draw circular background with cyan outline
+    pixiMinimapGraphics.lineStyle(2, 0x00ffff);  // Cyan outline
+    pixiMinimapGraphics.beginFill(0x000011);
+    pixiMinimapGraphics.drawCircle(centerX, centerY, MINIMAP_RADIUS);
+    pixiMinimapGraphics.endFill();
 
-    // Restore transform for content drawing (which expects translation)
-    // Actually, the previous code saved, translated, path, clip. 
-    // We already translated and clipped. We just need to ensure background was drawn.
-    // The previous code did:
-    // minimapCtx.fillRect(0, 0, 200, 200);
-    // minimapCtx.translate(100, 100);
-    // ... clip
-
-    // My change:
-    // clearRect
-    // translate
-    // path, fill, clip
-
-    // The rest of the function uses (0,0) as center because of translate. I should be careful.
-    // The original code was:
-    // minimapCtx.save();
-    // minimapCtx.translate(100, 100);
-    // minimapCtx.beginPath(); 
-    // minimapCtx.arc(0, 0, 100 ...); 
-    // minimapCtx.clip();
-
-    // So I am already in the translated context. 
-    // I can proceed. I will remove the logic below "minimapCtx.save()" from my replacement since I am modifying the top part.
-    // Wait, I need to match the TargetContent accurately.
+    // Create a circular mask for clipping (reused each frame)
+    // We'll manually clip by checking bounds for each element
 
     const warpActive = !!(warpZone && warpZone.active);
     const radarRange = warpActive ? ((warpZone.boundaryRadius || 6200) + 300) : 4000;
-    const scale = 100 / radarRange;
+    const scale = MINIMAP_RADIUS / radarRange;
     const refX = warpActive ? warpZone.pos.x : (player ? player.pos.x : 0);
     const refY = warpActive ? warpZone.pos.y : (player ? player.pos.y : 0);
 
-    // Context is already saved/translated/clipped in the block above? 
-    // No, I need to properly structure this.
-    // Original:
-    // 15300:     minimapCtx.save();
-    // 15301:     minimapCtx.translate(100, 100);
-    // 15302: 
-    // 15303:     minimapCtx.beginPath();
-    // 15304:     minimapCtx.arc(0, 0, 100, 0, Math.PI * 2);
-    // 15305:     minimapCtx.clip();
+    // Helper to check if point is in circular bounds
+    const inBounds = (x, y) => (x * x + y * y) <= (MINIMAP_RADIUS * MINIMAP_RADIUS);
 
-    // Since I removed the fillRect and added the circle fill at the top, I can just let this standard clip happen?
-    // Wait, my replacement above did:
-    // clearRect
-    // translate
-    // fill circle
-    // clip
-
-    // But the original code does the save/translate closer to here.
-    // If I replaced lines 15291-15294 with the clear/fill logic, I need to handle the fact that I might not have saved/translated yet.
-
-    // Revised Plan for Minimap:
-    // Replace lines 15291-15305 (inclusive) with the new logic.
-
-    // Logic:
-    // if (minimapFrame % 2 === 1) return;
-    // minimapCtx.clearRect(0,0,200,200);
-    // const warpActive...
-    // ...
-    // minimapCtx.save();
-    // minimapCtx.translate(100, 100);
-    // minimapCtx.beginPath();
-    // minimapCtx.arc(0,0,100,0,Math.PI*2);
-    // minimapCtx.fillStyle = '#001';
-    // minimapCtx.fill();
-    // minimapCtx.clip();
-
-    // This looks correct.
-
-
+    // Draw player
     if (player && !player.dead) {
         const px = warpActive ? ((player.pos.x - refX) * scale) : 0;
         const py = warpActive ? ((player.pos.y - refY) * scale) : 0;
-        minimapCtx.fillStyle = '#0f0';
-        minimapCtx.beginPath();
-        minimapCtx.arc(px, py, 3, 0, Math.PI * 2);
-        minimapCtx.fill();
+        pixiMinimapGraphics.beginFill(0x00ff00);
+        pixiMinimapGraphics.drawCircle(centerX + px, centerY + py, 3);
+        pixiMinimapGraphics.endFill();
     }
 
     // Warp maze walls + turrets
     if (warpActive && warpZone) {
         const segs = (typeof warpZone.allSegments === 'function') ? warpZone.allSegments() : [];
-        minimapCtx.strokeStyle = 'rgba(0,255,255,0.65)';
-        minimapCtx.lineWidth = 1;
-        minimapCtx.beginPath();
+        pixiMinimapGraphics.lineStyle(1, 0x00ffff, 0.65);
         for (let i = 0; i < segs.length; i++) {
             const s = segs[i];
             const x0 = (s.x0 - refX) * scale;
@@ -17853,123 +17755,124 @@ function drawMinimap() {
             const x1 = (s.x1 - refX) * scale;
             const y1 = (s.y1 - refY) * scale;
             if (Math.abs(x0) > 120 && Math.abs(x1) > 120 && Math.abs(y0) > 120 && Math.abs(y1) > 120) continue;
-            minimapCtx.moveTo(x0, y0);
-            minimapCtx.lineTo(x1, y1);
+            pixiMinimapGraphics.moveTo(centerX + x0, centerY + y0);
+            pixiMinimapGraphics.lineTo(centerX + x1, centerY + y1);
         }
-        minimapCtx.stroke();
 
         if (warpZone.turrets && warpZone.turrets.length > 0) {
-            minimapCtx.fillStyle = '#0ff';
+            pixiMinimapGraphics.beginFill(0x00ffff);
             for (let i = 0; i < warpZone.turrets.length; i++) {
                 const t = warpZone.turrets[i];
                 if (!t || t.dead) continue;
                 const dx = (t.pos.x - refX) * scale;
                 const dy = (t.pos.y - refY) * scale;
-                if (Math.abs(dx) < 100 && Math.abs(dy) < 100) minimapCtx.fillRect(dx - 1, dy - 1, 3, 3);
+                if (inBounds(dx, dy)) {
+                    pixiMinimapGraphics.drawRect(centerX + dx - 1, centerY + dy - 1, 3, 3);
+                }
             }
+            pixiMinimapGraphics.endFill();
         }
 
         if (warpGate && !warpGate.dead) {
             const dx = (warpGate.pos.x - refX) * scale;
             const dy = (warpGate.pos.y - refY) * scale;
-            minimapCtx.strokeStyle = 'rgba(255,140,0,0.9)';
-            minimapCtx.beginPath();
-            minimapCtx.arc(dx, dy, 7, 0, Math.PI * 2);
-            minimapCtx.stroke();
+            pixiMinimapGraphics.lineStyle(2, 0xff8800, 0.9);
+            pixiMinimapGraphics.drawCircle(centerX + dx, centerY + dy, 7);
         }
     }
 
-    minimapCtx.strokeStyle = '#050';
+    // Environment asteroids
+    pixiMinimapGraphics.lineStyle(1, 0x005500);
     environmentAsteroids.forEach(a => {
         if (player) {
             const dx = (a.pos.x - refX) * scale;
             const dy = (a.pos.y - refY) * scale;
-            if (Math.abs(dx) < 100 && Math.abs(dy) < 100) {
-                minimapCtx.beginPath();
-                minimapCtx.arc(dx, dy, Math.max(1, a.radius * scale), 0, Math.PI * 2);
-                minimapCtx.stroke();
+            if (inBounds(dx, dy)) {
+                pixiMinimapGraphics.drawCircle(centerX + dx, centerY + dy, Math.max(1, a.radius * scale));
             }
         }
     });
 
-    minimapCtx.fillStyle = '#f00';
+    // Enemies
+    pixiMinimapGraphics.beginFill(0xff0000);
     enemies.forEach(e => {
         if (player) {
             const dx = (e.pos.x - refX) * scale;
             const dy = (e.pos.y - refY) * scale;
-            if (Math.abs(dx) < 100 && Math.abs(dy) < 100) {
-                minimapCtx.fillRect(dx - 1, dy - 1, 3, 3);
+            if (inBounds(dx, dy)) {
+                pixiMinimapGraphics.drawRect(centerX + dx - 1, centerY + dy - 1, 3, 3);
             }
         }
     });
+    pixiMinimapGraphics.endFill();
 
-    minimapCtx.fillStyle = '#f0f';
+    // Bases
+    pixiMinimapGraphics.beginFill(0xff00ff);
     bases.forEach(b => {
         if (player) {
             const dx = (b.pos.x - refX) * scale;
             const dy = (b.pos.y - refY) * scale;
-            if (Math.abs(dx) < 100 && Math.abs(dy) < 100) {
-                minimapCtx.beginPath();
-                minimapCtx.arc(dx, dy, 5, 0, Math.PI * 2);
-                minimapCtx.fill();
+            if (inBounds(dx, dy)) {
+                pixiMinimapGraphics.drawCircle(centerX + dx, centerY + dy, 5);
             }
         }
     });
+    pixiMinimapGraphics.endFill();
 
+    // Boss
     if (bossActive && boss && !boss.dead && player) {
         const dx = (boss.pos.x - refX) * scale;
         const dy = (boss.pos.y - refY) * scale;
-        minimapCtx.fillStyle = '#f00';
-        minimapCtx.beginPath();
-        minimapCtx.arc(dx, dy, 8, 0, Math.PI * 2);
-        minimapCtx.fill();
+        pixiMinimapGraphics.beginFill(0xff0000);
+        pixiMinimapGraphics.drawCircle(centerX + dx, centerY + dy, 8);
+        pixiMinimapGraphics.endFill();
     }
 
+    // Radiation storm
     if (!warpActive && radiationStorm && !radiationStorm.dead && player) {
         const dx = radiationStorm.pos.x - player.pos.x;
         const dy = radiationStorm.pos.y - player.pos.y;
         const dist = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
-        minimapCtx.strokeStyle = 'rgba(255, 220, 0, 0.7)';
-        minimapCtx.lineWidth = 2;
+        pixiMinimapGraphics.lineStyle(2, 0xffdc00, 0.7);
         if (dist * scale > 95) {
             const px = Math.cos(angle) * 90;
             const py = Math.sin(angle) * 90;
-            minimapCtx.fillStyle = '#ff0';
-            minimapCtx.beginPath();
-            minimapCtx.moveTo(px + Math.cos(angle) * 10, py + Math.sin(angle) * 10);
-            minimapCtx.lineTo(px + Math.cos(angle + 2.5) * 8, py + Math.sin(angle + 2.5) * 8);
-            minimapCtx.lineTo(px + Math.cos(angle - 2.5) * 8, py + Math.sin(angle - 2.5) * 8);
-            minimapCtx.fill();
+            pixiMinimapGraphics.beginFill(0xffff00);
+            drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
+            pixiMinimapGraphics.endFill();
         } else {
-            minimapCtx.beginPath();
-            minimapCtx.arc(dx * scale, dy * scale, Math.max(4, radiationStorm.radius * scale), 0, Math.PI * 2);
-            minimapCtx.stroke();
+            pixiMinimapGraphics.drawCircle(centerX + dx * scale, centerY + dy * scale, Math.max(4, radiationStorm.radius * scale));
         }
     }
 
-    minimapCtx.fillStyle = '#ff0';
+    // Coins
+    pixiMinimapGraphics.beginFill(0xffff00);
     coins.forEach(c => {
         if (player) {
             const dx = (c.pos.x - player.pos.x) * scale;
             const dy = (c.pos.y - player.pos.y) * scale;
-            if (Math.abs(dx) < 100 && Math.abs(dy) < 100) {
-                minimapCtx.fillRect(dx, dy, 1, 1);
+            if (inBounds(dx, dy)) {
+                pixiMinimapGraphics.drawRect(centerX + dx, centerY + dy, 1, 1);
             }
         }
     });
+    pixiMinimapGraphics.endFill();
 
-    minimapCtx.fillStyle = '#0f0';
+    // Powerups
+    pixiMinimapGraphics.beginFill(0x00ff00);
     powerups.forEach(p => {
         if (player) {
             const dx = (p.pos.x - player.pos.x) * scale;
             const dy = (p.pos.y - player.pos.y) * scale;
-            if (Math.abs(dx) < 100 && Math.abs(dy) < 100) {
-                minimapCtx.fillRect(dx - 1, dy - 1, 3, 3);
+            if (inBounds(dx, dy)) {
+                pixiMinimapGraphics.drawRect(centerX + dx - 1, centerY + dy - 1, 3, 3);
             }
         }
     });
+    pixiMinimapGraphics.endFill();
 
+    // POIs
     if (player && pois && pois.length > 0) {
         for (const p of pois) {
             if (!p || p.dead || p.claimed) continue;
@@ -17980,44 +17883,35 @@ function drawMinimap() {
             const inRange = (dist * scale <= 95);
             const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
             const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
-            minimapCtx.fillStyle = p.color || '#0ff';
+            const color = colorToHex(p.color || '#0ff');
+            pixiMinimapGraphics.beginFill(color);
             if (inRange) {
-                minimapCtx.beginPath();
-                minimapCtx.arc(px, py, 4, 0, Math.PI * 2);
-                minimapCtx.fill();
+                pixiMinimapGraphics.drawCircle(centerX + px, centerY + py, 4);
             } else {
-                minimapCtx.beginPath();
-                minimapCtx.moveTo(px + Math.cos(angle) * 10, py + Math.sin(angle) * 10);
-                minimapCtx.lineTo(px + Math.cos(angle + 2.5) * 8, py + Math.sin(angle + 2.5) * 8);
-                minimapCtx.lineTo(px + Math.cos(angle - 2.5) * 8, py + Math.sin(angle - 2.5) * 8);
-                minimapCtx.fill();
+                drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
             }
+            pixiMinimapGraphics.endFill();
         }
     }
 
+    // Space station
     if (spaceStation && player) {
         const dx = spaceStation.pos.x - player.pos.x;
         const dy = spaceStation.pos.y - player.pos.y;
         const dist = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
 
+        pixiMinimapGraphics.beginFill(0xffffff);
         if (dist * scale > 95) {
             const px = Math.cos(angle) * 90;
             const py = Math.sin(angle) * 90;
-            minimapCtx.fillStyle = '#fff';
-            minimapCtx.beginPath();
-            minimapCtx.moveTo(px + Math.cos(angle) * 10, py + Math.sin(angle) * 10);
-            minimapCtx.lineTo(px + Math.cos(angle + 2.5) * 8, py + Math.sin(angle + 2.5) * 8);
-            minimapCtx.lineTo(px + Math.cos(angle - 2.5) * 8, py + Math.sin(angle - 2.5) * 8);
-            minimapCtx.fill();
+            drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
         } else {
             const mx = dx * scale;
             const my = dy * scale;
-            minimapCtx.fillStyle = '#fff';
-            minimapCtx.beginPath();
-            minimapCtx.arc(mx, my, 6, 0, Math.PI * 2);
-            minimapCtx.fill();
+            pixiMinimapGraphics.drawCircle(centerX + mx, centerY + my, 6);
         }
+        pixiMinimapGraphics.endFill();
     }
 
     // Destroyer indicator on minimap
@@ -18026,18 +17920,15 @@ function drawMinimap() {
         const dy = destroyer.pos.y - player.pos.y;
         const dist = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
-        minimapCtx.fillStyle = destroyer.displayName === "DESTROYER II" ? '#ff0' : '#f80';
+        const color = destroyer.displayName === "DESTROYER II" ? 0xffff00 : 0xff8800;
 
-        // Always draw an arrow; clamp to edge if target is out of range.
         const inRange = (dist * scale <= 95);
         const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
         const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
 
-        minimapCtx.beginPath();
-        minimapCtx.moveTo(px + Math.cos(angle) * 10, py + Math.sin(angle) * 10);
-        minimapCtx.lineTo(px + Math.cos(angle + 2.5) * 8, py + Math.sin(angle + 2.5) * 8);
-        minimapCtx.lineTo(px + Math.cos(angle - 2.5) * 8, py + Math.sin(angle - 2.5) * 8);
-        minimapCtx.fill();
+        pixiMinimapGraphics.beginFill(color);
+        drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
+        pixiMinimapGraphics.endFill();
     }
 
     // Contract target indicator on minimap
@@ -18058,18 +17949,14 @@ function drawMinimap() {
             const dy = ty - player.pos.y;
             const dist = Math.hypot(dx, dy);
             const angle = Math.atan2(dy, dx);
-            minimapCtx.fillStyle = '#0f0';
 
-            // Always draw an arrow; clamp to edge if target is out of range.
             const inRange = (dist * scale <= 95);
             const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
             const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
 
-            minimapCtx.beginPath();
-            minimapCtx.moveTo(px + Math.cos(angle) * 10, py + Math.sin(angle) * 10);
-            minimapCtx.lineTo(px + Math.cos(angle + 2.5) * 8, py + Math.sin(angle + 2.5) * 8);
-            minimapCtx.lineTo(px + Math.cos(angle - 2.5) * 8, py + Math.sin(angle - 2.5) * 8);
-            minimapCtx.fill();
+            pixiMinimapGraphics.beginFill(0x00ff00);
+            drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
+            pixiMinimapGraphics.endFill();
         }
     }
 
@@ -18080,18 +17967,40 @@ function drawMinimap() {
         const dy = ty - player.pos.y;
         const dist = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
-        minimapCtx.fillStyle = '#ff0';
         const inRange = (dist * scale <= 95);
         const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
         const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
-        minimapCtx.beginPath();
-        minimapCtx.moveTo(px + Math.cos(angle) * 10, py + Math.sin(angle) * 10);
-        minimapCtx.lineTo(px + Math.cos(angle + 2.5) * 8, py + Math.sin(angle + 2.5) * 8);
-        minimapCtx.lineTo(px + Math.cos(angle - 2.5) * 8, py + Math.sin(angle - 2.5) * 8);
-        minimapCtx.fill();
-    }
 
-    minimapCtx.restore();
+        pixiMinimapGraphics.beginFill(0xffff00);
+        drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
+        pixiMinimapGraphics.endFill();
+    }
+}
+
+// Helper function to draw arrows on the minimap
+function drawMinimapArrow(gfx, x, y, angle, length, width) {
+    const tipX = x + Math.cos(angle) * length;
+    const tipY = y + Math.sin(angle) * length;
+    const leftX = x + Math.cos(angle + 2.5) * width;
+    const leftY = y + Math.sin(angle + 2.5) * width;
+    const rightX = x + Math.cos(angle - 2.5) * width;
+    const rightY = y + Math.sin(angle - 2.5) * width;
+    gfx.drawPolygon([tipX, tipY, leftX, leftY, rightX, rightY]);
+}
+
+// Helper function to convert color string to hex number
+function colorToHex(colorStr) {
+    if (!colorStr || typeof colorStr !== 'string') return 0xffffff;
+    if (colorStr.startsWith('#')) {
+        return parseInt(colorStr.slice(1), 16);
+    }
+    // Handle named colors (basic subset)
+    const colors = {
+        'cyan': 0x00ffff, 'magenta': 0xff00ff, 'yellow': 0xffff00,
+        'red': 0xff0000, 'green': 0x00ff00, 'blue': 0x0000ff,
+        'white': 0xffffff, 'black': 0x000000, 'orange': 0xff8800
+    };
+    return colors[colorStr.toLowerCase()] || 0xffffff;
 }
 
 

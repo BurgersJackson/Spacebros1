@@ -181,29 +181,35 @@ export class Missile extends Entity {
     draw(ctx, pixiResources = null) {
         if (this.dead) return;
 
-        // Canvas rendering (missiles are less common, Canvas is fine)
+        // Use same graphics as turret guided missiles
+        const z = currentZoom || ZOOM_LEVEL;
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
         ctx.rotate(this.angle);
 
-        // Missile body
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.moveTo(this.radius, 0);
-        ctx.lineTo(-this.radius, this.radius * 0.6);
-        ctx.lineTo(-this.radius * 0.5, 0);
-        ctx.lineTo(-this.radius, -this.radius * 0.6);
-        ctx.closePath();
-        ctx.fill();
+        // Glow effect
+        ctx.shadowBlur = 16;
+        ctx.shadowColor = '#fa0';
 
-        // Exhaust
-        ctx.fillStyle = '#ff0';
+        // Main missile body - larger diamond shape like turret missiles
+        ctx.fillStyle = '#f80';
+        ctx.strokeStyle = '#111';
+        ctx.lineWidth = 2 / z;
         ctx.beginPath();
-        ctx.moveTo(-this.radius * 0.5, 0);
-        ctx.lineTo(-this.radius * 1.5, this.radius * 0.3);
-        ctx.lineTo(-this.radius * 1.5, -this.radius * 0.3);
+        ctx.moveTo(26, 0);
+        ctx.lineTo(-18, 9);
+        ctx.lineTo(-26, 0);
+        ctx.lineTo(-18, -9);
         ctx.closePath();
         ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Flickering exhaust trail
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = `rgba(255, 120, 0, ${0.35 + Math.random() * 0.45})`;
+        ctx.fillRect(-32, -4, 10, 8);
+        ctx.globalAlpha = 1;
 
         ctx.restore();
     }
