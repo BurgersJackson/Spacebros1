@@ -14,6 +14,8 @@ export let musicEnabled = true;
 let musicNodes = [];
 let musicMode = 'normal';
 let backgroundMusicAudio = null;
+export let musicVolume = 0.5; // 0.0 to 1.0
+export let sfxVolume = 0.5; // 0.0 to 1.0
 
 // --- Sound Context ---
 let inProjectileImpactSoundContext = false;
@@ -61,7 +63,7 @@ export function setMusicMode(mode = null) {
         backgroundMusicAudio.preload = 'auto';
     }
 
-    backgroundMusicAudio.volume = (musicMode === 'cruiser') ? 0.22 : 0.25;
+    backgroundMusicAudio.volume = ((musicMode === 'cruiser') ? 0.22 : 0.25) * musicVolume;
     if (!backgroundMusicAudio.paused && backgroundMusicAudio.readyState > 2) {
         // Already playing
         return;
@@ -70,6 +72,25 @@ export function setMusicMode(mode = null) {
         const p = backgroundMusicAudio.play();
         if (p && typeof p.catch === 'function') p.catch(() => { });
     } catch (e) { }
+}
+
+/**
+ * Set music volume.
+ * @param {number} volume - Volume level (0.0 to 1.0)
+ */
+export function setMusicVolume(volume) {
+    musicVolume = Math.max(0, Math.min(1, volume));
+    if (backgroundMusicAudio) {
+        backgroundMusicAudio.volume = ((musicMode === 'cruiser') ? 0.22 : 0.25) * musicVolume;
+    }
+}
+
+/**
+ * Set SFX volume.
+ * @param {number} volume - Volume level (0.0 to 1.0)
+ */
+export function setSfxVolume(volume) {
+    sfxVolume = Math.max(0, Math.min(1, volume));
 }
 
 /**
@@ -132,6 +153,9 @@ export function playSound(type, volumeMult = 1) {
     if (!ENABLE_PROJECTILE_IMPACT_SOUNDS && inProjectileImpactSoundContext &&
         (type === 'hit' || type === 'shield_hit')) return;
     if (!(volumeMult > 0)) return;
+
+    // Apply global SFX volume
+    volumeMult *= sfxVolume;
 
     try {
         const now = audioCtx.currentTime;
@@ -366,7 +390,9 @@ export function playSound(type, volumeMult = 1) {
  * @param {Object} opts - Options (volume, key, rateLimitMs, poolSize)
  */
 export function playMp3Sfx(url, opts = {}) {
-    const volume = (typeof opts.volume === 'number') ? opts.volume : 1;
+    let volume = (typeof opts.volume === 'number') ? opts.volume : 1;
+    // Apply global SFX volume
+    volume *= sfxVolume;
     if (!(volume > 0)) return;
 
     const key = opts.key || url;

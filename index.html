@@ -382,6 +382,43 @@
             text-shadow: 0 0 8px #0ff;
         }
 
+        /* Volume slider styles */
+        #music-volume.selected,
+        #sfx-volume.selected {
+            outline: 2px solid #0ff;
+            outline-offset: 2px;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 8px;
+            background: #003300;
+            border-radius: 4px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #0ff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px #0ff;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #0ff;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 10px #0ff;
+        }
+
         .meta-shop {
             margin-top: 20px;
             font-size: 14px;
@@ -577,44 +614,59 @@
         <button id="upgrades-btn" style="margin-top: 10px;">UPGRADES</button>
         <button id="settings-btn" style="margin-top: 10px;">SETTINGS</button>
         <button id="desktop-quit-start-btn" style="margin-top: 10px;">QUIT TO DESKTOP</button>
-        <div id="settings-menu"
-            style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; background: rgba(0, 10, 20, 0.95); border: 2px solid #0ff; padding: 20px; z-index: 100; text-align: center;">
-            <h2 style="color: #0ff; margin-top: 0; font-family: 'Courier New', monospace;">SYSTEM CONFIG</h2>
-
-            <div style="margin: 15px 0;">
-                <label style="color: #fff; display: block; margin-bottom: 5px;">RESOLUTION</label>
-                <select id="res-select"
-                    style="background: #000; color: #0f0; border: 1px solid #0f0; padding: 5px; width: 100%; font-family: inherit;">
-                    <option value="1280x720">1280 x 720</option>
-                    <option value="1600x900">1600 x 900</option>
-                    <option value="1920x1080">1920 x 1080</option>
-                </select>
-            </div>
-
-            <div style="margin: 15px 0;">
-                <label
-                    style="color: #fff; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-                    FULLSCREEN
-                    <input type="checkbox" id="fullscreen-check">
-                </label>
-            </div>
-
-            <div style="margin: 15px 0;">
-                <label
-                    style="color: #fff; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-                    FRAMELESS WINDOW
-                    <input type="checkbox" id="frameless-check">
-                </label>
-                <div style="color: #f00; font-size: 10px; margin-top: 2px;">(REQUIRES RESTART)</div>
-            </div>
-
-            <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
-                <button id="settings-close-btn" style="padding: 5px 15px;">BACK</button>
-                <button id="settings-apply-btn"
-                    style="padding: 5px 15px; border-color: #0f0; color: #0f0;">APPLY</button>
-            </div>
-        </div>
         <button id="new-profile-btn">NEW PROFILE</button>
+    </div>
+
+    <div id="settings-menu"
+        style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; background: rgba(0, 10, 20, 0.95); border: 2px solid #0ff; padding: 20px; z-index: 200; text-align: center;">
+        <h2 style="color: #0ff; margin-top: 0; font-family: 'Courier New', monospace;">SYSTEM CONFIG</h2>
+
+        <div style="margin: 15px 0;">
+            <label style="color: #fff; display: block; margin-bottom: 5px;">RESOLUTION</label>
+            <select id="res-select"
+                style="background: #000; color: #0f0; border: 1px solid #0f0; padding: 5px; width: 100%; font-family: inherit;">
+                <option value="1280x720">1280 x 720</option>
+                <option value="1600x900">1600 x 900</option>
+                <option value="1920x1080">1920 x 1080</option>
+            </select>
+        </div>
+
+        <div style="margin: 15px 0;">
+            <label
+                style="color: #fff; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+                FULLSCREEN
+                <input type="checkbox" id="fullscreen-check">
+            </label>
+        </div>
+
+        <div style="margin: 15px 0;">
+            <label
+                style="color: #fff; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+                FRAMELESS WINDOW
+                <input type="checkbox" id="frameless-check">
+            </label>
+            <div style="color: #f00; font-size: 10px; margin-top: 2px;">(REQUIRES RESTART)</div>
+        </div>
+
+        <div style="margin: 15px 0;">
+            <label style="color: #fff; display: block; margin-bottom: 5px;">MUSIC VOLUME</label>
+            <input type="range" id="music-volume" min="0" max="100" value="50"
+                style="width: 100%; background: #000; accent-color: #0ff;">
+            <div style="color: #0ff; font-size: 12px; margin-top: 2px;" id="music-volume-label">50%</div>
+        </div>
+
+        <div style="margin: 15px 0;">
+            <label style="color: #fff; display: block; margin-bottom: 5px;">SFX VOLUME</label>
+            <input type="range" id="sfx-volume" min="0" max="100" value="50"
+                style="width: 100%; background: #000; accent-color: #0ff;">
+            <div style="color: #0ff; font-size: 12px; margin-top: 2px;" id="sfx-volume-label">50%</div>
+        </div>
+
+        <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+            <button id="settings-close-btn" style="padding: 5px 15px;">BACK</button>
+            <button id="settings-apply-btn"
+                style="padding: 5px 15px; border-color: #0f0; color: #0f0;">APPLY</button>
+        </div>
     </div>
 
     <div id="upgrades-menu"
@@ -666,9 +718,10 @@
         <button id="resume-btn">RESUME</button>
         <button id="save-btn">SAVE GAME</button>
         <button id="pause-load-btn">LOAD GAME</button>
+        <button id="pause-settings-btn">SETTINGS</button>
         <button id="restart-btn-pause">RESTART</button>
         <button id="music-btn">MUSIC: ON</button>
-        <button id="quit-btn">QUIT TO MENU</button>
+        <button id="quit-btn">MAIN MENU</button>
         <button id="desktop-quit-pause-btn" style="margin-top: 10px; border-color: #f00; color: #f00;">QUIT TO
             DESKTOP</button>
     </div>

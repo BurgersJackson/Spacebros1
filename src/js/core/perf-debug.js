@@ -91,7 +91,7 @@ if (typeof window !== 'undefined') {
         const stats = {
             bullets: window.bullets?.length || 0,
             enemies: window.enemies?.length || 0,
-            bases: window.bases?.length || 0,
+            pinwheels: window.pinwheels?.length || 0,
             particles: window.particles?.length || 0,
             explosions: window.explosions?.length || 0,
             coins: window.coins?.length || 0,

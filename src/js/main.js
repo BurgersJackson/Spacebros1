@@ -18,7 +18,7 @@ import { Particle, SmokeParticle, Explosion, WarpParticle, Coin, FloatingText, H
 import {
     initAudio, startMusic, stopMusic, setMusicMode, playSound, playMp3Sfx,
     toggleMusic as audioToggleMusic, isMusicEnabled, setProjectileImpactSoundContext,
-    musicEnabled
+    musicEnabled, setMusicVolume, setSfxVolume, musicVolume, sfxVolume
 } from './audio/audio-manager.js';
 import {
     pixiBulletSpritePool, pixiParticleSpritePool, pixiEnemySpritePools,
@@ -1925,7 +1925,7 @@ let gpState = {
     warp: false,
     turbo: false,
     pausePressed: false,
-    lastMenuElements: null  // Track when menu changes to reset selection
+    lastMenuElements: null
 };
 let usingGamepad = false;
 let menuDebounce = 0;
@@ -2249,7 +2249,7 @@ function completeSectorWarp() {
     clearArrayWithPixiCleanup(bossBombs);
     clearArrayWithPixiCleanup(guidedMissiles);
     clearArrayWithPixiCleanup(enemies);
-    clearArrayWithPixiCleanup(bases);
+    clearArrayWithPixiCleanup(pinwheels);
     clearArrayWithPixiCleanup(coins);
     clearArrayWithPixiCleanup(nuggets);
     clearArrayWithPixiCleanup(environmentAsteroids);
@@ -2288,7 +2288,7 @@ function completeSectorWarp() {
     }
 
     generateMap();
-    for (let i = 0; i < 3; i++) spawnNewBaseRelative(true);
+    for (let i = 0; i < 3; i++) spawnNewPinwheelRelative(true);
     gunboatRespawnAt = Date.now() + 5000;
     gunboatLevel2Unlocked = true; // level 2 gunboats allowed after warp
     // Restart cruiser timer for the new sector
@@ -2348,6 +2348,8 @@ function handleSpaceStationDestroyed() {
     const sx = spaceStation.pos.x;
     const sy = spaceStation.pos.y;
     playSound('base_explode');
+
+    spawnLargeExplosion(sx, sy, 3.5);
     spawnParticles(sx, sy, 200, '#fff');
     for (let k = 0; k < 50; k++) coins.push(new Coin(sx + (Math.random() - 0.5) * 200, sy + (Math.random() - 0.5) * 200, 10));
     for (let k = 0; k < 25; k++) nuggets.push(new SpaceNugget(sx + (Math.random() - 0.5) * 220, sy + (Math.random() - 0.5) * 220, 1));
@@ -2711,7 +2713,7 @@ function spawnOneAsteroidRelative(initial = false) {
         const r = 50 + Math.random() * 150;
 
         let safe = true;
-        for (let b of bases) {
+        for (let b of pinwheels) {
             if (Math.hypot(x - b.pos.x, y - b.pos.y) < b.shieldRadius + r + 200) safe = false;
         }
 
@@ -3671,7 +3673,7 @@ class Shockwave extends Entity {
         if (this.currentRadius >= this.maxRadius) this.dead = true;
 
         const targets = [...enemies];
-        if (this.damageBases) targets.push(...bases);
+        if (this.damageBases)         targets.push(...pinwheels);
         if (boss && bossActive && !boss.dead) targets.push(boss);
         if (this.damagePlayer && player && !player.dead) targets.push(player);
 
@@ -3888,7 +3890,7 @@ class FlagshipGuidedMissile extends Entity {
         this._exploded = true;
         this.dead = true;
         playSound('explode');
-        spawnParticles(this.pos.x, this.pos.y, 26, color);
+        spawnFieryExplosion(this.pos.x, this.pos.y, 1.2);
     }
 
     applyDamageToPlayer(amount) {
@@ -3931,7 +3933,7 @@ class FlagshipGuidedMissile extends Entity {
         const d = Math.max(0, damage || 0);
         this.hp -= d;
         spawnParticles(this.pos.x, this.pos.y, 6, '#ff0');
-        playSound('hit');
+        playSound('shield_hit');
         if (this.hp <= 0) this.explode('#ff0');
     }
 
@@ -4239,7 +4241,7 @@ class Bullet extends Entity {
 
             for (let e of enemies) consider(e);
             if (bossActive && boss && !boss.dead) consider(boss);
-            if (bases && bases.length > 0) for (let b of bases) consider(b);
+            if (bases && bases.length > 0) for (let b of pinwheels) consider(b);
             if (spaceStation && !spaceStation.dead) consider(spaceStation);
             if (destroyer && !destroyer.dead) consider(destroyer);
             if (contractEntities && contractEntities.wallTurrets && contractEntities.wallTurrets.length > 0) {
@@ -4753,10 +4755,10 @@ class Enemy extends Entity {
             }
             if (count > 0) { sepForce.mult(1.5); desiredVel.add(sepForce); }
 
-            // Avoid bases/stations/fortresses so we don't rely on collision pushing.
+            // Avoid pinwheels/stations/fortresses so we don't rely on collision pushing.
             const avoid = new Vector(0, 0);
             const obstacles = [];
-            for (let b of bases) if (b && !b.dead) obstacles.push({ e: b, r: b.radius + 420 });
+            for (let b of pinwheels) if (b && !b.dead) obstacles.push({ e: b, r: b.radius + 420 });
             if (spaceStation && !spaceStation.dead) obstacles.push({ e: spaceStation, r: spaceStation.radius + 520 });
             if (contractEntities && contractEntities.fortresses) {
                 for (let f of contractEntities.fortresses) if (f && !f.dead) obstacles.push({ e: f, r: f.radius + 420 });
@@ -5235,7 +5237,7 @@ class Enemy extends Entity {
     }
 }
 
-class Base extends Entity {
+class Pinwheel extends Entity {
     constructor(x, y, type = 'standard') {
         super(0, 0);
         this.pos.x = x;
@@ -5349,7 +5351,7 @@ class Base extends Entity {
             }
 
             // Avoid bunching with other bases
-            for (let b of bases) {
+            for (let b of pinwheels) {
                 if (b === this || b.dead) continue;
                 const bx = b.pos.x - this.pos.x;
                 const by = b.pos.y - this.pos.y;
@@ -5627,11 +5629,7 @@ class Base extends Entity {
         pixiCleanupObject(this);
         playSound('base_explode');
 
-        // Base Explosion: Scale 3.0
-        spawnLargeExplosion(this.pos.x, this.pos.y, 3.0);
-
-        // Standard particles as filler
-        spawnParticles(this.pos.x, this.pos.y, 60, '#fa0');
+        spawnLargeExplosion(this.pos.x, this.pos.y, 2.0);
 
         // Drop coins
         for (let i = 0; i < 5; i++) {
@@ -5776,7 +5774,7 @@ class CaveGuidedMissile extends Entity {
         this._exploded = true;
         this.dead = true;
         playSound('explode');
-        spawnParticles(this.pos.x, this.pos.y, 18, color);
+        spawnFieryExplosion(this.pos.x, this.pos.y, 1.0);
     }
 
     takeHit(damage) {
@@ -5784,7 +5782,7 @@ class CaveGuidedMissile extends Entity {
         const d = Math.max(0, damage || 0);
         this.hp -= d;
         spawnParticles(this.pos.x, this.pos.y, 4, '#ff0');
-        playSound('hit');
+        playSound('shield_hit');
         if (this.hp <= 0) this.explode('#ff0');
     }
 
@@ -7906,7 +7904,7 @@ class CaveLevel {
         // No dynamic boss-arena blockers in the cave. 
         this.arenaSegments = [];
 
-        // Maintain ambient Level-1 enemies in the cave (no bases/stations here). 
+        // Maintain ambient Level-1 enemies in the cave (no pinwheels/stations here). 
         this.enemySpawnCooldown--;
         if (this.enemySpawnCooldown <= 0) {
             const living = enemies.filter(e => e && !e.dead && (e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter' || e.type === 'defender')).length;
@@ -8158,8 +8156,8 @@ function startCaveSector2() {
 
     caveLevel.resetFireWall(player.pos.y);
 
-    // Seed a few bases up the tunnel (they'll also respawn via the normal base timer loop).
-    for (let i = 0; i < 3; i++) spawnNewBaseRelative(true);
+    // Seed a few pinwheels up the tunnel (they'll also respawn via the normal pinwheel timer loop).
+    for (let i = 0; i < 3; i++) spawnNewPinwheelRelative(true);
 
     showOverlayMessage("SECTOR 2: CAVE RUN - FLY UPWARD", '#0ff', 3200, 2);
 }
@@ -8485,7 +8483,7 @@ class WarpMazeZone extends Entity {
                 showOverlayMessage("WARP SENTINEL ENGAGED", '#f0f', 2200, 3);
                 playSound('boss_spawn');
                 clearArrayWithPixiCleanup(enemies); // keep the fight clean
-                clearArrayWithPixiCleanup(bases);
+                clearArrayWithPixiCleanup(pinwheels);
                 filterArrayWithPixiCleanup(bullets, b => !b.isEnemy);
                 clearArrayWithPixiCleanup(bossBombs);
                 boss = new WarpSentinelBoss(this.pos.x, this.pos.y, this);
@@ -12258,6 +12256,7 @@ class Destroyer2 extends Entity {
 
         const boomScale = Math.max(2.8, Math.min(5, (this.visualRadius || this.radius || 400) / 250));
         spawnBossExplosion(this.pos.x, this.pos.y, boomScale, 22);
+        spawnLargeExplosion(this.pos.x, this.pos.y, 3.5);
         spawnParticles(this.pos.x, this.pos.y, 80, '#0ff');
         playSound('base_explode');
         shakeMagnitude = Math.max(shakeMagnitude, 18);
@@ -12515,7 +12514,7 @@ let staggeredBombExplosions = []; // Queue for staggered bomb explosions
 let staggeredParticleBursts = []; // Queue for staggered particle bursts
 let guidedMissiles = [];
 let enemies = [];
-let bases = [];
+let pinwheels = [];
 let particles = [];
 let explosions = [];
 let floatingTexts = [];
@@ -12544,8 +12543,8 @@ let intensityBreakActive = false;
 const INTENSITY_BREAK_DURATION = 12000; // 12s
 let score = 0;
 let difficultyTier = 1;
-let basesDestroyed = 0;
-let basesDestroyedTotal = 0;
+let pinwheelsDestroyed = 0;
+let pinwheelsDestroyedTotal = 0;
 let roamerRespawnQueue = [];
 let maxRoamers = 5;
 let boss = null;
@@ -12638,7 +12637,7 @@ function enterWarpMaze() {
     detach(bossBombs);
     detach(guidedMissiles);
     detach(enemies);
-    detach(bases);
+    detach(pinwheels);
     detach(particles);
     detach(explosions);
     detach(floatingTexts);
@@ -12657,7 +12656,7 @@ function enterWarpMaze() {
     staggeredParticleBursts = [];
     guidedMissiles = [];
     enemies = [];
-    bases = [];
+    pinwheels = [];
     particles = [];
     explosions = [];
     floatingTexts = [];
@@ -12813,7 +12812,7 @@ function exitWarpMaze() {
     cleanupWarpArray(staggeredParticleBursts, 'staggered particle bursts');
     cleanupWarpArray(guidedMissiles, 'warp guided missiles');
     cleanupWarpArray(enemies, 'warp enemies');
-    cleanupWarpArray(bases, 'warp bases');
+    cleanupWarpArray(pinwheels, 'warp pinwheels');
     cleanupWarpArray(particles, 'warp particles');
     cleanupWarpArray(explosions, 'warp explosions');
     cleanupWarpArray(floatingTexts, 'warp floating texts');
@@ -12843,7 +12842,7 @@ function exitWarpMaze() {
     staggeredParticleBursts.length = 0;
     guidedMissiles.length = 0;
     enemies.length = 0;
-    bases.length = 0;
+    pinwheels.length = 0;
     particles.length = 0;
     explosions.length = 0;
     floatingTexts.length = 0;
@@ -14227,7 +14226,7 @@ function findSpawnPointRelative(random = false, min = 1500, max = 2500) {
 }
 
 function resolveEntityCollision() {
-    const allEntities = [player, ...enemies, ...bases, ...(contractEntities.fortresses || [])].filter(e => e && !e.dead);
+    const allEntities = [player, ...enemies, ...pinwheels, ...(contractEntities.fortresses || [])].filter(e => e && !e.dead);
     if (boss && !boss.dead) allEntities.push(boss);
     if (spaceStation) allEntities.push(spaceStation);
     if (destroyer && !destroyer.dead) allEntities.push(destroyer);
@@ -14244,15 +14243,15 @@ function resolveEntityCollision() {
             const e1 = allEntities[i];
             const e2 = allEntities[j];
 
-            // Bases shouldn't "push" ships around; ships should avoid them instead.
-            if ((e1 instanceof Base && e2 instanceof Enemy) || (e2 instanceof Base && e1 instanceof Enemy)) {
+            // Pinwheels shouldn't "push" ships around; ships should avoid them instead.
+            if ((e1 instanceof Pinwheel && e2 instanceof Enemy) || (e2 instanceof Pinwheel && e1 instanceof Enemy)) {
                 continue;
             }
             let r1 = (e1 instanceof Destroyer || e1 instanceof Destroyer2) ? (e1.shieldRadius || e1.radius) : e1.radius;
             let r2 = (e2 instanceof Destroyer || e2 instanceof Destroyer2) ? (e2.shieldRadius || e2.radius) : e2.radius;
 
-            const isStatic1 = (e1 instanceof Base) || (e1 instanceof SpaceStation);
-            const isStatic2 = (e2 instanceof Base) || (e2 instanceof SpaceStation);
+            const isStatic1 = (e1 instanceof Pinwheel) || (e1 instanceof SpaceStation);
+            const isStatic2 = (e2 instanceof Pinwheel) || (e2 instanceof SpaceStation);
             const e1IsDestroyer = (e1 instanceof Destroyer || e1 instanceof Destroyer2);
             const e2IsDestroyer = (e2 instanceof Destroyer || e2 instanceof Destroyer2);
 
@@ -14270,7 +14269,7 @@ function resolveEntityCollision() {
                 const ny = dy / dist;
                 const push = overlap * 0.5;
 
-                if ((e1IsDestroyer && e2 instanceof Base) || (e2IsDestroyer && e1 instanceof Base)) {
+                if ((e1IsDestroyer && e2 instanceof Pinwheel) || (e2IsDestroyer && e1 instanceof Pinwheel)) {
                     if (e1IsDestroyer) { e2.pos.x += nx * overlap; e2.pos.y += ny * overlap; }
                     else { e1.pos.x -= nx * overlap; e1.pos.y -= ny * overlap; }
                 } else if (isStatic1) { e2.pos.x += nx * overlap; e2.pos.y += ny * overlap; }
@@ -14282,14 +14281,14 @@ function resolveEntityCollision() {
                     e2.pos.x += nx * push; e2.pos.y += ny * push;
                 }
 
-                if (e1 instanceof Base) e1.aggro = true;
-                if (e2 instanceof Base) e2.aggro = true;
+                if (e1 instanceof Pinwheel) e1.aggro = true;
+                if (e2 instanceof Pinwheel) e2.aggro = true;
             }
         }
     }
 
     // Collision & Damage
-    const damageable = [player, ...enemies, ...bases, ...(contractEntities.fortresses || [])];
+    const damageable = [player, ...enemies, ...pinwheels, ...(contractEntities.fortresses || [])];
     if (boss && bossActive && !boss.dead) damageable.push(boss);
     if (destroyer && !destroyer.dead) damageable.push(destroyer);
     for (let entity of damageable) {
@@ -14311,7 +14310,7 @@ function resolveEntityCollision() {
                 const nx = dx / dist;
                 const ny = dy / dist;
                 // Some large entities can smash normal asteroids, but indestructible contract walls should block everything.
-                const isCrasher = (entity instanceof Base) ||
+                const isCrasher = (entity instanceof Pinwheel) ||
                     (entity instanceof Cruiser) ||
                     (entity instanceof Enemy && (
                         entity.isGunboat ||
@@ -14540,7 +14539,7 @@ function resolveEntityCollision() {
                 }
             }
             if (!hitEntity) {
-                for (let b of bases) {
+                for (let b of pinwheels) {
                     if (!b || b.dead) continue;
                     const dist = Math.hypot(s.pos.x - b.pos.x, s.pos.y - b.pos.y);
                     if (dist < s.radius + b.radius) {
@@ -14551,15 +14550,14 @@ function resolveEntityCollision() {
                         if (b.hp <= 0) {
                             b.dead = true;
                             playSound('base_explode');
-                            const boomScale = Math.max(0.9, Math.min(2.6, (b.radius || 30) / 40));
-                            spawnFieryExplosion(b.pos.x, b.pos.y, boomScale);
+                            spawnLargeExplosion(b.pos.x, b.pos.y, 2.0);
                             for (let i = 0; i < 6; i++) coins.push(new Coin(b.pos.x + (Math.random() - 0.5) * 50, b.pos.y + (Math.random() - 0.5) * 50, 5));
                             nuggets.push(new SpaceNugget(b.pos.x, b.pos.y, 1));
-                            basesDestroyed++;
-                            basesDestroyedTotal++;
-                            difficultyTier = 1 + Math.floor(basesDestroyedTotal / 6);
+                            pinwheelsDestroyed++;
+                            pinwheelsDestroyedTotal++;
+                            difficultyTier = 1 + Math.floor(pinwheelsDestroyedTotal / 6);
                             score += 1000;
-                            document.getElementById('bases-display').innerText = `${basesDestroyedTotal}`;
+                            document.getElementById('bases-display').innerText = `${pinwheelsDestroyedTotal}`;
                             enemies.forEach(e => { if (e.assignedBase === b) e.type = 'roamer'; });
                             const delay = 5000 + Math.random() * 5000;
                             baseRespawnTimers.push(Date.now() + delay);
@@ -14991,7 +14989,7 @@ function setupGameWorld() {
     clearArrayWithPixiCleanup(bossBombs);
     clearArrayWithPixiCleanup(guidedMissiles);
     clearArrayWithPixiCleanup(enemies);
-    clearArrayWithPixiCleanup(bases);
+    clearArrayWithPixiCleanup(pinwheels);
     clearArrayWithPixiCleanup(particles);
     clearArrayWithPixiCleanup(explosions);
     clearArrayWithPixiCleanup(floatingTexts);
@@ -15019,8 +15017,8 @@ function setupGameWorld() {
     shockwaves = [];
     roamerRespawnQueue = [];
     baseRespawnTimers = [];
-    basesDestroyed = 0;
-    basesDestroyedTotal = 0;
+    pinwheelsDestroyed = 0;
+    pinwheelsDestroyedTotal = 0;
     if (boss) pixiCleanupObject(boss);
     boss = null;
     if (spaceStation) pixiCleanupObject(spaceStation);
@@ -15098,7 +15096,7 @@ function awardNugzInstant(amount, opts = {}) {
     addPickupFloatingText('nugs', v, opts.color || '#ff0');
 }
 
-function spawnNewBaseRelative(initial = false) {
+function spawnNewPinwheelRelative(initial = false) {
     if (!player) return;
     const availableTypes = ['standard'];
     if (difficultyTier >= 2) availableTypes.push('rapid');
@@ -15117,7 +15115,7 @@ function spawnNewBaseRelative(initial = false) {
     const dist = initial ? (1000 + Math.random() * 2000) : (3500 + Math.random() * 1500);
     let bx, by;
     if (caveMode && caveLevel && caveLevel.active) {
-        // Spawn bases "up the tunnel" and inside the cave bounds.
+        // Spawn pinwheels "up the tunnel" and inside the cave bounds.
         by = player.pos.y - dist * (0.85 + Math.random() * 0.3);
         const bounds = caveLevel.boundsAt(by);
         const margin = 420;
@@ -15128,9 +15126,9 @@ function spawnNewBaseRelative(initial = false) {
         by = player.pos.y + Math.sin(angle) * dist;
     }
 
-    const b = new Base(bx, by, type);
-    bases.push(b);
-    // One guard per base
+    const b = new Pinwheel(bx, by, type);
+    pinwheels.push(b);
+    // One guard per pinwheel
     const da = Math.random() * Math.PI * 2;
     const defX = b.pos.x + Math.cos(da) * 150;
     const defY = b.pos.y + Math.sin(da) * 150;
@@ -15184,7 +15182,7 @@ function showLevelUpMenu() {
                 if (boss) resetEnt(boss);
                 if (spaceStation) resetEnt(spaceStation);
                 if (enemies) enemies.forEach(resetEnt);
-                if (bases) bases.forEach(resetEnt);
+                if (pinwheels) pinwheels.forEach(resetEnt);
                 if (bullets) bullets.forEach(resetEnt);
                 if (particles) particles.forEach(resetEnt);
                 if (floatingTexts) floatingTexts.forEach(resetEnt);
@@ -15303,7 +15301,7 @@ function showLevelUpMenu() {
                     if (boss) resetEnt(boss);
                     if (spaceStation) resetEnt(spaceStation);
                     if (enemies) enemies.forEach(resetEnt);
-                    if (bases) bases.forEach(resetEnt);
+                    if (pinwheels) pinwheels.forEach(resetEnt);
                     if (bullets) bullets.forEach(resetEnt);
                     if (particles) particles.forEach(resetEnt);
                     if (floatingTexts) floatingTexts.forEach(resetEnt);
@@ -15567,59 +15565,91 @@ function updateGamepad() {
                 updateMenuVisuals(activeElements);
             }
 
-            let change = 0;
+            const selectedEl = activeElements[menuSelectionIndex];
+            const isSlider = selectedEl && selectedEl.tagName === 'INPUT' && selectedEl.type === 'range';
+            const isCheckbox = selectedEl && selectedEl.tagName === 'INPUT' && selectedEl.type === 'checkbox';
+            const isSelect = selectedEl && selectedEl.tagName === 'SELECT';
 
-            // Use simple linear navigation for all menus (same as main menu)
-            // Standard menu navigation (linear)
-            // Vertical (Up/Down) - Standard Menus
-            if (gp.axes[1] < -0.5 || (gp.buttons[12] && gp.buttons[12].pressed)) change = -1;
-            if (gp.axes[1] > 0.5 || (gp.buttons[13] && gp.buttons[13].pressed)) change = 1;
+            // Check for horizontal input
+            const leftPressed = gp.axes[0] < -0.5 || (gp.buttons[14] && gp.buttons[14].pressed);
+            const rightPressed = gp.axes[0] > 0.5 || (gp.buttons[15] && gp.buttons[15].pressed);
 
-            // Horizontal (Left/Right) - also wraps around like main menu
-            if (gp.axes[0] < -0.5 || (gp.buttons[14] && gp.buttons[14].pressed)) change = -1;
-            if (gp.axes[0] > 0.5 || (gp.buttons[15] && gp.buttons[15].pressed)) change = 1;
+            // Handle sliders - left/right adjusts value, up/down navigates
+            if (isSlider) {
+                if (leftPressed || rightPressed) {
+                    const changeAmount = 5;
+                    if (rightPressed) {
+                        selectedEl.value = Math.min(parseInt(selectedEl.max), parseInt(selectedEl.value) + changeAmount);
+                    } else {
+                        selectedEl.value = Math.max(parseInt(selectedEl.min), parseInt(selectedEl.value) - changeAmount);
+                    }
+                    selectedEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    menuDebounce = now + 100;
+                } else {
+                    // Vertical navigation for sliders
+                    let change = 0;
+                    if (gp.axes[1] < -0.5 || (gp.buttons[12] && gp.buttons[12].pressed)) change = -1;
+                    if (gp.axes[1] > 0.5 || (gp.buttons[13] && gp.buttons[13].pressed)) change = 1;
 
-            if (change !== 0) {
-                menuSelectionIndex += change;
-                if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
-                if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
-            }
+                    if (change !== 0) {
+                        menuSelectionIndex += change;
+                        if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
+                        if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
+                        updateMenuVisuals(activeElements);
+                        menuDebounce = now;
+                    }
+                }
+            } else {
+                // Non-slider navigation
+                // Check for vertical input (navigation)
+                let vertChange = 0;
+                if (gp.axes[1] < -0.5 || (gp.buttons[12] && gp.buttons[12].pressed)) vertChange = -1;
+                if (gp.axes[1] > 0.5 || (gp.buttons[13] && gp.buttons[13].pressed)) vertChange = 1;
 
-            if (change !== 0 || change === 'grid') {
-                updateMenuVisuals(activeElements);
-                menuDebounce = now;
-            }
+                // Check for horizontal input
+                let horizChange = 0;
+                if (leftPressed) horizChange = -1;
+                if (rightPressed) horizChange = 1;
 
-            // A Button / Cross - Select/Interact
-            if (gp.buttons[0].pressed) {
-                const selectedEl = activeElements[menuSelectionIndex];
-
-                // Handle select dropdown - cycle through options
-                if (selectedEl && selectedEl.tagName === 'SELECT') {
+                // Vertical input - always navigate
+                if (vertChange !== 0) {
+                    menuSelectionIndex += vertChange;
+                    if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
+                    if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
+                    updateMenuVisuals(activeElements);
+                    menuDebounce = now;
+                }
+                // Horizontal input - cycle options for selects
+                else if (horizChange !== 0 && isSelect) {
                     const options = selectedEl.options;
                     const currentIndex = selectedEl.selectedIndex;
-                    const nextIndex = (currentIndex + 1) % options.length;
+                    const nextIndex = (currentIndex + horizChange + options.length) % options.length;
                     selectedEl.selectedIndex = nextIndex;
-                    // Trigger change event
                     selectedEl.dispatchEvent(new Event('change', { bubbles: true }));
+                    menuDebounce = now;
                 }
-                // Handle checkbox - toggle
-                else if (selectedEl && selectedEl.tagName === 'INPUT' && selectedEl.type === 'checkbox') {
-                    selectedEl.checked = !selectedEl.checked;
-                    // Trigger change event
-                    selectedEl.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-                // Handle button - click
-                else {
-                    selectedEl.click();
-                    // After clicking, the menu might change, so clear the cached elements
-                    gpState.lastMenuElements = null;
+                // Horizontal input on non-select - navigate
+                else if (horizChange !== 0) {
+                    menuSelectionIndex += horizChange;
+                    if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
+                    if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
+                    updateMenuVisuals(activeElements);
+                    menuDebounce = now;
                 }
 
-                menuDebounce = now + 200;
+                // A Button / Cross - toggle checkbox or click button
+                if (gp.buttons[0].pressed) {
+                    if (isCheckbox) {
+                        selectedEl.checked = !selectedEl.checked;
+                        selectedEl.dispatchEvent(new Event('change', { bubbles: true }));
+                    } else {
+                        selectedEl.click();
+                        gpState.lastMenuElements = null;
+                    }
+                    menuDebounce = now + 200;
+                }
             }
         } else {
-            // No active menu elements, clear the cache
             gpState.lastMenuElements = null;
         }
     }
@@ -15661,15 +15691,10 @@ function getActiveMenuElements() {
         return elements.concat(cards);
     }
 
-    const pauseMenu = document.getElementById('pause-menu');
-    if (isVisible(pauseMenu)) {
-        return Array.from(document.querySelectorAll('#pause-menu button'));
-    }
-
-    // Add settings menu support
+    // Check settings menu first - it should take priority over pause menu when visible
     const settingsMenu = document.getElementById('settings-menu');
     if (isVisible(settingsMenu)) {
-        // Get interactive elements: select, checkbox inputs, and buttons
+        // Get interactive elements: select, checkboxes, sliders, and buttons
         const elements = [];
 
         // Add resolution select
@@ -15688,6 +15713,16 @@ function getActiveMenuElements() {
             elements.push(framelessCheck);
         }
 
+        // Add volume sliders
+        const musicVolume = document.getElementById('music-volume');
+        const sfxVolume = document.getElementById('sfx-volume');
+        if (musicVolume) {
+            elements.push(musicVolume);
+        }
+        if (sfxVolume) {
+            elements.push(sfxVolume);
+        }
+
         // Add buttons
         const settingsCloseBtn = document.getElementById('settings-close-btn');
         const settingsApplyBtn = document.getElementById('settings-apply-btn');
@@ -15699,6 +15734,11 @@ function getActiveMenuElements() {
         }
 
         return elements;
+    }
+
+    const pauseMenu = document.getElementById('pause-menu');
+    if (isVisible(pauseMenu)) {
+        return Array.from(document.querySelectorAll('#pause-menu button'));
     }
 
     const startScreen = document.getElementById('start-screen');
@@ -15860,8 +15900,8 @@ function gameLoopLogic(opts = null) {
         // Safe clears after a station destruction to avoid mid-loop mutation
         if (pendingTransitionClear) {
             resetPixiOverlaySprites();
-            clearArrayWithPixiCleanup(enemies);
-            clearArrayWithPixiCleanup(bases);
+    clearArrayWithPixiCleanup(enemies);
+    clearArrayWithPixiCleanup(pinwheels);
             clearArrayWithPixiCleanup(bullets);
             clearArrayWithPixiCleanup(bossBombs);
             clearArrayWithPixiCleanup(floatingTexts);
@@ -15884,7 +15924,7 @@ function gameLoopLogic(opts = null) {
                 const start = findSpawnPointRelative(true, 1200);
                 enemies.push(new Enemy('roamer', start));
             }
-            for (let i = 0; i < 1; i++) spawnNewBaseRelative(true);
+            for (let i = 0; i < 1; i++) spawnNewPinwheelRelative(true);
         }
         // Update HUD timer (exclude paused time)
         try {
@@ -16059,8 +16099,8 @@ function gameLoopLogic(opts = null) {
                     if (idx !== -1) enemies.splice(idx, 1);
                 }
                 clearArrayWithPixiCleanup(enemies);
-                clearArrayWithPixiCleanup(bases);
-                baseRespawnTimers = [];
+    clearArrayWithPixiCleanup(pinwheels);
+    baseRespawnTimers = [];
                 roamerRespawnQueue = [];
                 // Clear all bullets to prevent immediate cruiser death
                 clearArrayWithPixiCleanup(bullets);
@@ -16270,7 +16310,7 @@ function gameLoopLogic(opts = null) {
 
         targetGrid.clear();
         for (let i = 0; i < enemies.length; i++) targetGrid.insert(enemies[i]);
-        for (let i = 0; i < bases.length; i++) targetGrid.insert(bases[i]);
+        for (let i = 0; i < pinwheels.length; i++) targetGrid.insert(pinwheels[i]);
         for (let i = 0; i < shootingStars.length; i++) targetGrid.insert(shootingStars[i]);
         if (contractEntities) {
             if (contractEntities.fortresses) {
@@ -16306,14 +16346,14 @@ function gameLoopLogic(opts = null) {
                 else targetBases = 4;
             }
 
-            if (bases.length < targetBases) {
-                if (baseRespawnTimers.length === 0) spawnNewBaseRelative();
+                    if (pinwheels.length < targetBases) {
+                if (baseRespawnTimers.length === 0) spawnNewPinwheelRelative();
             }
 
             for (let i = baseRespawnTimers.length - 1; i >= 0; i--) {
                 if (now > baseRespawnTimers[i]) {
-                    if (bases.length < targetBases) {
-                        spawnNewBaseRelative();
+            if (pinwheels.length < targetBases) {
+                        spawnNewPinwheelRelative();
                         baseRespawnTimers.splice(i, 1);
                     } else {
                         // Delay respawns until the current target count needs them.
@@ -16543,9 +16583,9 @@ function gameLoopLogic(opts = null) {
         if (doDraw) d.draw(ctx);
     }
 
-    // Bases - always update (can fire), cull drawing
-    for (let i = 0, len = bases.length; i < len; i++) {
-        const b = bases[i];
+    // Pinwheels - always update (can fire), cull drawing
+    for (let i = 0, len = pinwheels.length; i < len; i++) {
+        const b = pinwheels[i];
         if (doUpdate) b.update(deltaTime);
         if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
     }
@@ -16694,7 +16734,7 @@ function gameLoopLogic(opts = null) {
             pixiCleanupObject(m);
         });
         immediateCompactArray(enemies, pixiCleanupObject);
-        immediateCompactArray(bases, pixiCleanupObject);
+        immediateCompactArray(pinwheels, pixiCleanupObject);
         immediateCompactArray(environmentAsteroids);
 
         // Explosion cleanup with safety check for uncleaned sprites
@@ -16938,8 +16978,8 @@ function gameLoopLogic(opts = null) {
                                     break;
                                 }
                             }
-                            // Base Logic
-                            else if (e instanceof Base) {
+                            // Pinwheel Logic
+                            else if (e instanceof Pinwheel) {
                                 const dist = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
                                 if (!b.ignoreShields && dist < e.shieldRadius + 5 && dist > e.shieldRadius - 15) {
                                     let angle = Math.atan2(b.pos.y - e.pos.y, b.pos.x - e.pos.x) - e.shieldRotation;
@@ -16983,8 +17023,7 @@ function gameLoopLogic(opts = null) {
                                     if (e.hp <= 0) {
                                         e.dead = true;
                                         playSound('base_explode');
-                                        const boomScale = Math.max(0.9, Math.min(2.6, (e.radius || 30) / 40));
-                                        spawnFieryExplosion(e.pos.x, e.pos.y, boomScale);
+                                        spawnLargeExplosion(e.pos.x, e.pos.y, 2.0);
 
                                         // DROP COINS
                                         const caveActive = (caveMode && caveLevel && caveLevel.active);
@@ -17001,12 +17040,12 @@ function gameLoopLogic(opts = null) {
                                             nuggets.push(new SpaceNugget(e.pos.x, e.pos.y, 1));
                                         }
 
-                                        basesDestroyed++;
-                                        basesDestroyedTotal++;
-                                        difficultyTier = 1 + Math.floor(basesDestroyedTotal / 6);
+                                        pinwheelsDestroyed++;
+                                        pinwheelsDestroyedTotal++;
+                                        difficultyTier = 1 + Math.floor(pinwheelsDestroyedTotal / 6);
                                         score += 1000;
                                         const bdDisplay = document.getElementById('bases-display');
-                                        if (bdDisplay) bdDisplay.innerText = `${basesDestroyedTotal}`;
+                                        if (bdDisplay) bdDisplay.innerText = `${pinwheelsDestroyedTotal}`;
 
                                         enemies.forEach(en => { if (en.assignedBase === e) en.type = 'roamer'; });
 
@@ -17808,7 +17847,7 @@ function drawMinimap() {
 
     // Bases
     pixiMinimapGraphics.beginFill(0xff00ff);
-    bases.forEach(b => {
+    pinwheels.forEach(b => {
         if (player) {
             const dx = (b.pos.x - refX) * scale;
             const dy = (b.pos.y - refY) * scale;
@@ -18023,7 +18062,7 @@ function startGame() {
         player = new Spaceship();
         score = 0;
         difficultyTier = 1;
-        basesDestroyedTotal = 0;
+        pinwheelsDestroyedTotal = 0;
         bossActive = false;
         if (boss) pixiCleanupObject(boss);
         boss = null;
@@ -18725,82 +18764,153 @@ if (settingsBtn) {
         settingsBtn.style.display = 'none';
     } else {
         settingsBtn.addEventListener('click', async () => {
-            const current = await window.SpacebrosApp.settings.get();
-            if (current) {
-                // Populate UI
-                if (current.fullscreen) {
-                    fullscreenCheck.checked = true;
-                    resSelect.disabled = true;
-                } else {
-                    fullscreenCheck.checked = false;
-                    resSelect.disabled = false;
-                    const resString = `${current.width}x${current.height}`;
-                    if ([...resSelect.options].some(o => o.value === resString)) {
-                        resSelect.value = resString;
-                    }
-                }
-                framelessCheck.checked = !!current.frameless;
-            }
-            settingsMenu.style.display = 'block';
+            openSettingsMenu();
         });
-
-        settingsCloseBtn.addEventListener('click', () => {
-            settingsMenu.style.display = 'none';
-        });
-
-        fullscreenCheck.addEventListener('change', (e) => {
-            resSelect.disabled = e.target.checked;
-        });
-
-        settingsApplyBtn.addEventListener('click', async () => {
-            const isFullscreen = fullscreenCheck.checked;
-            const isFrameless = framelessCheck.checked;
-            const [w, h] = resSelect.value.split('x').map(Number);
-
-            // Get old settings to compare for restart requirement
-            const old = await window.SpacebrosApp.settings.get();
-            const framelessChanged = old.frameless !== isFrameless;
-
-            // Save everything
-            await window.SpacebrosApp.settings.save({
-                width: w,
-                height: h,
-                fullscreen: isFullscreen,
-                frameless: isFrameless
-            });
-
-            // Apply runtime changes
-            window.SpacebrosApp.settings.setFullscreen(isFullscreen);
-            if (!isFullscreen) {
-                window.SpacebrosApp.settings.setResolution(w, h);
-            }
-
-            // Handle restart if frameless changed
-            if (framelessChanged) {
-                if (confirm("Changing window frame style requires a restart. Restart now?")) {
-                    window.SpacebrosApp.settings.relaunch();
-                }
-            } else {
-                showOverlayMessage("SETTINGS SAVED", '#0f0', 1500);
-                settingsMenu.style.display = 'none';
-            }
-        });
-
-        // Desktop Quit Support
-        const qStart = document.getElementById('desktop-quit-start-btn');
-        const qPause = document.getElementById('desktop-quit-pause-btn');
-
-        if (qStart) {
-            qStart.addEventListener('click', () => window.SpacebrosApp.settings.quit());
-        }
-        if (qPause) {
-            qPause.addEventListener('click', () => {
-                if (confirm("Quit to desktop? Any unsaved progress will be lost.")) {
-                    window.SpacebrosApp.settings.quit();
-                }
-            });
-        }
     }
+}
+
+// Make settings menu accessible from pause menu
+const pauseSettingsBtn = document.getElementById('pause-settings-btn');
+if (pauseSettingsBtn) {
+    pauseSettingsBtn.addEventListener('click', openSettingsMenu);
+}
+
+async function openSettingsMenu() {
+    const current = await window.SpacebrosApp.settings.get();
+    if (current) {
+        // Populate UI
+        if (current.fullscreen) {
+            fullscreenCheck.checked = true;
+            resSelect.disabled = true;
+        } else {
+            fullscreenCheck.checked = false;
+            resSelect.disabled = false;
+            const resString = `${current.width}x${current.height}`;
+            if ([...resSelect.options].some(o => o.value === resString)) {
+                resSelect.value = resString;
+            }
+        }
+        framelessCheck.checked = !!current.frameless;
+    }
+
+    // Set volume sliders to current values
+    const musicVolumeSlider = document.getElementById('music-volume');
+    const sfxVolumeSlider = document.getElementById('sfx-volume');
+    const musicVolumeLabel = document.getElementById('music-volume-label');
+    const sfxVolumeLabel = document.getElementById('sfx-volume-label');
+
+    if (musicVolumeSlider && musicVolumeLabel) {
+        musicVolumeSlider.value = Math.round(musicVolume * 100);
+        musicVolumeLabel.textContent = `${musicVolumeSlider.value}%`;
+    }
+    if (sfxVolumeSlider && sfxVolumeLabel) {
+        sfxVolumeSlider.value = Math.round(sfxVolume * 100);
+        sfxVolumeLabel.textContent = `${sfxVolumeSlider.value}%`;
+    }
+
+    settingsMenu.style.display = 'block';
+
+    // Disable pointer-events on pause menu when settings is open to prevent click-through
+    const pauseMenu = document.getElementById('pause-menu');
+    if (pauseMenu && gamePaused) {
+        pauseMenu.style.pointerEvents = 'none';
+    }
+}
+
+// Volume slider handlers
+const musicVolumeSlider = document.getElementById('music-volume');
+const sfxVolumeSlider = document.getElementById('sfx-volume');
+const musicVolumeLabel = document.getElementById('music-volume-label');
+const sfxVolumeLabel = document.getElementById('sfx-volume-label');
+
+if (musicVolumeSlider) {
+    musicVolumeSlider.addEventListener('input', (e) => {
+        const value = e.target.value / 100;
+        setMusicVolume(value);
+        musicVolumeLabel.textContent = `${e.target.value}%`;
+    });
+}
+
+if (sfxVolumeSlider) {
+    sfxVolumeSlider.addEventListener('input', (e) => {
+        const value = e.target.value / 100;
+        setSfxVolume(value);
+        sfxVolumeLabel.textContent = `${e.target.value}%`;
+    });
+}
+
+if (settingsCloseBtn) {
+    settingsCloseBtn.addEventListener('click', () => {
+        settingsMenu.style.display = 'none';
+        // If we were paused when opening settings, return to pause menu
+        if (gamePaused) {
+            const pauseMenu = document.getElementById('pause-menu');
+            pauseMenu.style.display = 'block';
+            pauseMenu.style.pointerEvents = 'auto';
+        }
+    });
+}
+
+if (settingsApplyBtn && isElectron) {
+    settingsApplyBtn.addEventListener('click', async () => {
+        const isFullscreen = fullscreenCheck.checked;
+        const isFrameless = framelessCheck.checked;
+        const [w, h] = resSelect.value.split('x').map(Number);
+
+        // Get old settings to compare for restart requirement
+        const old = await window.SpacebrosApp.settings.get();
+        const framelessChanged = old.frameless !== isFrameless;
+
+        // Save everything
+        await window.SpacebrosApp.settings.save({
+            width: w,
+            height: h,
+            fullscreen: isFullscreen,
+            frameless: isFrameless
+        });
+
+        // Apply runtime changes
+        window.SpacebrosApp.settings.setFullscreen(isFullscreen);
+        if (!isFullscreen) {
+            window.SpacebrosApp.settings.setResolution(w, h);
+        }
+
+        // Handle restart if frameless changed
+        if (framelessChanged) {
+            if (confirm("Changing window frame style requires a restart. Restart now?")) {
+                window.SpacebrosApp.settings.relaunch();
+            }
+        } else {
+            showOverlayMessage("SETTINGS SAVED", '#0f0', 1500);
+            settingsMenu.style.display = 'none';
+            if (gamePaused) {
+                const pauseMenu = document.getElementById('pause-menu');
+                pauseMenu.style.display = 'block';
+                pauseMenu.style.pointerEvents = 'auto';
+            }
+        }
+    });
+}
+
+if (fullscreenCheck) {
+    fullscreenCheck.addEventListener('change', (e) => {
+        resSelect.disabled = e.target.checked;
+    });
+}
+
+// Desktop Quit Support
+const qStart = document.getElementById('desktop-quit-start-btn');
+const qPause = document.getElementById('desktop-quit-pause-btn');
+
+if (qStart) {
+    qStart.addEventListener('click', () => window.SpacebrosApp.settings.quit());
+}
+if (qPause) {
+    qPause.addEventListener('click', () => {
+        if (confirm("Quit to desktop? Any unsaved progress will be lost.")) {
+            window.SpacebrosApp.settings.quit();
+        }
+    });
 }
 
 // Robust menu initialization for start screen

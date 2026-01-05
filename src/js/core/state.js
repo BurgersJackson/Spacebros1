@@ -14,7 +14,7 @@ export let particles = [];
 export let explosions = [];
 export let pickups = [];
 export let floatingTexts = [];
-export let bases = [];
+export let pinwheels = [];
 export let warpGates = [];
 export let cruisers = [];
 export let stations = [];
@@ -135,7 +135,7 @@ export function clearAllEntities() {
     explosions.length = 0;
     pickups.length = 0;
     floatingTexts.length = 0;
-    bases.length = 0;
+    pinwheels.length = 0;
     warpGates.length = 0;
     cruisers.length = 0;
     stations.length = 0;

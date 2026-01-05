@@ -106,7 +106,7 @@ export function releasePixiEnemySprite(spr) {
 export function pixiCleanupObject(obj) {
     if (!obj) return;
 
-    // Non-pooled containers (player/bases/stations/etc)
+    // Non-pooled containers (player/pinwheels/stations/etc)
     if (obj._pixiContainer) {
         try {
             obj._pixiContainer.destroy({ children: true });
