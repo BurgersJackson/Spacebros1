@@ -3381,27 +3381,6 @@ class Spaceship extends Entity {
             this._lastShootSfxAt = now;
         }
 
-        // Shotgun Logic
-        const shotgunTier = this.inventory['shotgun'] || 0;
-        if (shotgunTier > 0 && this.shotgunTimer <= 0) {
-            const count = shotgunTier === 1 ? 5 : (shotgunTier === 2 ? 8 : 12);
-            const dmg = this.stats.damageMult * 0.7;
-            const spread = 0.5;
-            const baseShotgunLife = 23;
-            const tierRangeMult = 1 + (0.1 * Math.max(0, shotgunTier - 1));
-
-            for (let i = 0; i < count; i++) {
-                const a = this.turretAngle + (Math.random() - 0.5) * spread;
-                const s = 12 + (Math.random() - 0.5) * 4;
-                const b = new Bullet(this.pos.x, this.pos.y, a, false, dmg, s, 3, '#ff0', 0, 'square');
-                b.life = (baseShotgunLife * tierRangeMult) * this.stats.rangeMult;
-                bullets.push(b);
-            }
-            // Shotgun uses a soft visual only (no sound)
-            spawnBarrelSmoke(this.pos.x, this.pos.y, this.turretAngle);
-            this.shotgunTimer = Math.max(4, this.shotgunDelay);
-        }
-
         // Static Weapons
         this.staticWeapons.forEach(w => {
             let angleBase = this.angle;
@@ -3422,6 +3401,26 @@ class Spaceship extends Entity {
                 bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle, false, damage, bulletSpeed, 4, '#0f0'));
             }
         });
+    }
+
+    shootShotgun() {
+        const shotgunTier = this.inventory['shotgun'] || 0;
+        if (shotgunTier <= 0) return;
+
+        const count = shotgunTier === 1 ? 5 : (shotgunTier === 2 ? 8 : 12);
+        const dmg = this.stats.damageMult * 0.7;
+        const spread = 0.5;
+        const baseShotgunLife = 23;
+        const tierRangeMult = 1 + (0.1 * Math.max(0, shotgunTier - 1));
+
+        for (let i = 0; i < count; i++) {
+            const a = this.turretAngle + (Math.random() - 0.5) * spread;
+            const s = 12 + (Math.random() - 0.5) * 4;
+            const b = new Bullet(this.pos.x, this.pos.y, a, false, dmg, s, 3, '#ff0', 0, 'square');
+            b.life = (baseShotgunLife * tierRangeMult) * this.stats.rangeMult;
+            bullets.push(b);
+        }
+        spawnBarrelSmoke(this.pos.x, this.pos.y, this.turretAngle);
     }
 
     drawLaser(ctx) {
