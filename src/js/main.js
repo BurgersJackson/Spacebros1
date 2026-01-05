@@ -3210,24 +3210,7 @@ class Spaceship extends Entity {
             }
         }
 
-        // Warp Sentinel Boss shield collision
-        if (bossActive && boss && !boss.dead && player && !player.dead && boss.isWarpBoss) {
-            const dx = player.pos.x - boss.pos.x;
-            const dy = player.pos.y - boss.pos.y;
-            const dist = Math.hypot(dx, dy);
 
-            // Outer collision barrier (always active, independent of shield state)
-            if (dist < boss.shieldRadius + player.radius && dist > boss.shieldRadius - player.radius * 2) {
-                const pushAngle = Math.atan2(dy, dx);
-                const nx = Math.cos(pushAngle);
-                const ny = Math.sin(pushAngle);
-                const pushForce = 8;
-                player.vel.x += nx * pushForce;
-                player.vel.y += ny * pushForce;
-                spawnParticles((player.pos.x + boss.pos.x) / 2, (player.pos.y + boss.pos.y) / 2, 5, '#0ff');
-                playSound('shield_hit');
-            }
-        }
 
         // Homing Missiles (Separate System)
         if (this.stats.homing > 0) {
@@ -8407,18 +8390,15 @@ class WarpMazeZone extends Entity {
         this.segments = [];
         this.dynamicSegments = [];
 
-        // Outer boundary: no gaps (keeps you in the warp area).
-        this.segments.push(...this.buildRing(this.boundaryRadius, [], 0));
-
-        // No inner maze rings or turrets in the warp arena.
+        // No maze walls or turrets in the warp arena.
         this.turrets = [];
 
-        showOverlayMessage("WARP ANOMALY: ENTER THE CORE", '#0ff', 2200, 2);
+
 
         // Seed some roamers so the zone isn't empty.
         for (let i = 0; i < 6; i++) {
             const a = Math.random() * Math.PI * 2;
-            const rr = this.boundaryRadius - 900 - Math.random() * 900;
+            const rr = this.arenaRadius + 1200 + Math.random() * 1400;
             const x = this.pos.x + Math.cos(a) * rr;
             const y = this.pos.y + Math.sin(a) * rr;
             const e = new Enemy('roamer', { x, y });
@@ -8436,10 +8416,10 @@ class WarpMazeZone extends Entity {
         if (this.mobSpawnCooldown > 0) this.mobSpawnCooldown--;
         if (this.state === 'maze' && player && !player.dead) {
             const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-            const band =
-                dist > 5400 ? 0 :
-                    dist > 4400 ? 1 :
-                        dist > 3400 ? 2 :
+        const band =
+                dist > (this.arenaRadius + 2600) ? 0 :
+                    dist > (this.arenaRadius + 1400) ? 1 :
+                        dist > (this.arenaRadius + 400) ? 2 :
                             dist > this.arenaRadius ? 3 :
                                 4;
 
@@ -8453,7 +8433,7 @@ class WarpMazeZone extends Entity {
                 const spawnCount = movedInward ? 4 : 2;
                 for (let i = 0; i < spawnCount && enemies.length < 300; i++) {
                     const a = Math.random() * Math.PI * 2;
-                    const rr = Math.max(this.arenaRadius + 220, Math.min(this.boundaryRadius - 380, dist + 900 + Math.random() * 700));
+                    const rr = Math.max(this.arenaRadius + 220, dist + 900 + Math.random() * 700);
                     const x = this.pos.x + Math.cos(a) * rr;
                     const y = this.pos.y + Math.sin(a) * rr;
                     const distP = Math.hypot(x - player.pos.x, y - player.pos.y);
@@ -8468,16 +8448,7 @@ class WarpMazeZone extends Entity {
             }
         }
 
-        // Dynamic door: lock the arena ring while the boss is alive.
-        this.dynamicSegments = [];
-        const arena = this.rings.find(r => r.isArena);
-        if (arena && this.state === 'boss' && bossActive && boss && !boss.dead) {
-            // Seal *all* entrances by overlaying a full ring (no gaps).
-            this.dynamicSegments = this.buildRing(arena.r, [], 0);
-        }
 
-        this.turrets.forEach(t => t.update());
-        compactArray(this.turrets);
 
         // Start boss when player reaches the core (inside the arena ring).
         if (this.state === 'maze' && player && !player.dead) {
@@ -8500,7 +8471,7 @@ class WarpMazeZone extends Entity {
                     el.style.display = 'block';
                     el.style.color = '#f0f';
                     el.style.textShadow = '0 0 24px #f0f, 0 0 48px #f0f';
-                    el.style.fontSize = remainingSecs <= 3 ? '64px' : '52px';
+                    el.style.fontSize = remainingSecs <= 3 ? '44px' : '36px';
                 }
                 this.bossIntroLastSec = remainingSecs;
             }
@@ -8537,88 +8508,20 @@ class WarpMazeZone extends Entity {
     }
 
     allSegments() {
-        return [...this.segments, ...(this.dynamicSegments || [])];
+        return [];
     }
 
     applyWallCollisions(entity) {
         if (!this.active || !entity || entity.dead) return;
-        const segs = this.allSegments();
-        const elasticity = (entity === player) ? 0.85 : (entity.isWarpBoss ? 0.75 : 0.55);
-        for (let i = 0; i < segs.length; i++) {
-            const s = segs[i];
-            resolveCircleSegment(entity, s.x0, s.y0, s.x1, s.y1, elasticity);
-        }
+        return;
     }
 
     bulletHitsWall(bullet) {
-        const segs = this.allSegments();
-        for (let i = 0; i < segs.length; i++) {
-            const s = segs[i];
-            const cp = closestPointOnSegment(bullet.pos.x, bullet.pos.y, s.x0, s.y0, s.x1, s.y1);
-            const dx = bullet.pos.x - cp.x;
-            const dy = bullet.pos.y - cp.y;
-            const dist = Math.hypot(dx, dy);
-            if (dist < (bullet.radius || 0) + 0.8) return true;
-        }
         return false;
     }
 
     draw(ctx) {
-        if (!this.active) return;
-        const z = currentZoom || ZOOM_LEVEL;
-        const segs = this.allSegments();
-        ctx.save();
-        ctx.lineWidth = 1 / z; // 1px lines in screen space
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = '#0ff';
-        ctx.strokeStyle = 'rgba(0,255,255,0.65)';
-        ctx.beginPath();
-        for (let i = 0; i < segs.length; i++) {
-            const s = segs[i];
-            ctx.moveTo(s.x0, s.y0);
-            ctx.lineTo(s.x1, s.y1);
-        }
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Arena outline glow for readability.
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.lineWidth = 3 / z;
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = '#f0f';
-        ctx.strokeStyle = 'rgba(255,0,255,0.35)';
-        const arenaRing = this.rings.find(r => r.isArena);
-        const arenaGaps = arenaRing ? (arenaRing.gaps || [arenaRing.gap]) : [];
-        const arenaGapWidth = arenaRing ? arenaRing.width : 0.65;
-        const ringStep = 0.12;
-        ctx.beginPath();
-        for (let ang = 0; ang < Math.PI * 2; ang += ringStep) {
-            const a0 = ang;
-            const a1 = Math.min(Math.PI * 2, ang + ringStep);
-            let inGap = false;
-            for (const g of arenaGaps) {
-                let d = a0 - g;
-                while (d > Math.PI) d -= Math.PI * 2;
-                while (d < -Math.PI) d += Math.PI * 2;
-                if (Math.abs(d) < arenaGapWidth) { inGap = true; break; }
-            }
-            if (inGap) continue;
-            ctx.moveTo(Math.cos(a0) * this.arenaRadius, Math.sin(a0) * this.arenaRadius);
-            ctx.arc(0, 0, this.arenaRadius, a0, a1);
-        }
-        ctx.stroke();
-        ctx.restore();
-
-        ctx.restore();
-
-        // Draw warp turrets (separate from global enemies list).
-        if (this.turrets && this.turrets.length > 0) {
-            for (let i = 0; i < this.turrets.length; i++) {
-                const t = this.turrets[i];
-                if (t && !t.dead) t.draw(ctx);
-            }
-        }
+        return;
     }
 }
 
@@ -10224,12 +10127,13 @@ class SuperFlagshipBoss extends Flagship {
 }
 
 class WarpBioPod extends Entity {
-    constructor(x, y, angle) {
+    constructor(x, y, angle, owner = null) {
         super(x, y);
         this.radius = 22;
         this.hp = 3;
         this.life = 180;
         this.angle = angle || 0;
+        this.owner = owner;
         const speed = 2.5;
         this.vel.x = Math.cos(this.angle) * speed;
         this.vel.y = Math.sin(this.angle) * speed;
@@ -10254,6 +10158,7 @@ class WarpBioPod extends Entity {
         for (let i = 0; i < pelletCount; i++) {
             const a = Math.random() * Math.PI * 2;
             const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 3, 3, '#f0f');
+            b.owner = this.owner;
             b.life = 120;
             bullets.push(b);
         }
@@ -10369,6 +10274,8 @@ class WarpSentinelBoss extends Entity {
 
         this.shieldsDirty = true;
         this._pixiInnerGfx = null;
+        this.ramInvulnerable = 0;
+
 
         // Collision hull (head + body, no tail) - hand-tuned for 512x256 sprite
         // Head is the large right-side part, body is the mid section
@@ -10483,6 +10390,8 @@ class WarpSentinelBoss extends Entity {
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
         this.coreRot += 0.04 * dtFactor;
+        if (this.ramInvulnerable > 0) this.ramInvulnerable -= dtFactor;
+
         this.shieldRotation += 0.06 * dtFactor;
         this.innerShieldRotation -= 0.09 * dtFactor;
 
@@ -10636,6 +10545,7 @@ class WarpSentinelBoss extends Entity {
                 const bx = this.pos.x + Math.cos(a) * (this.radius + 10);
                 const by = this.pos.y + Math.sin(a) * (this.radius + 10);
                 const shot = new Bullet(bx, by, a, true, 1, 12, 4, '#f6f');
+                shot.owner = this;
                 shot.life = Math.round(shot.life * 1.25);
                 bullets.push(shot);
             }
@@ -10659,7 +10569,7 @@ class WarpSentinelBoss extends Entity {
             const count = 2 + Math.floor(Math.random() * 3);
             for (let i = 0; i < count; i++) {
                 const a = Math.random() * Math.PI * 2;
-                warpBioPods.push(new WarpBioPod(this.pos.x, this.pos.y, a));
+                warpBioPods.push(new WarpBioPod(this.pos.x, this.pos.y, a, this));
             }
             playSound('warp_pod');
             this.podCooldown = this.phase === 3 ? 200 : 260;
@@ -10672,6 +10582,7 @@ class WarpSentinelBoss extends Entity {
         const speed = Math.hypot(this.vel.x, this.vel.y);
         const isRamming = (this.dashFrames > 0) || (speed > 4);
         if (isRamming && distToPlayer < this.radius + player.radius + 4) {
+            this.ramInvulnerable = Math.max(this.ramInvulnerable, 12);
             if (player.invulnerable <= 0) {
                 const idx = player.shieldSegments ? player.shieldSegments.findIndex(s => s > 0) : -1;
                 if (idx !== -1) {
@@ -12849,6 +12760,10 @@ function enterWarpMaze() {
     const originY = 0;
     warpZone = new WarpMazeZone(originX, originY);
     warpZone.generate();
+    warpZone.state = 'boss_intro';
+    warpZone.bossIntroAt = Date.now() + 10000;
+    warpZone.bossIntroLastSec = null;
+
 
     // Place the player at the entrance.
     player.pos.x = warpZone.entrancePos.x;
@@ -14444,10 +14359,44 @@ function resolveEntityCollision() {
         }
     }
 
+    // Warp boss collision barrier: keep vehicles outside outer ring (bullets bypass).
+    if (bossActive && boss && boss.isWarpBoss && !boss.dead) {
+        for (let i = 0; i < allEntities.length; i++) {
+            const entity = allEntities[i];
+            if (!entity || entity.dead || entity === boss) continue;
+            const dx = entity.pos.x - boss.pos.x;
+            const dy = entity.pos.y - boss.pos.y;
+            const dist = Math.hypot(dx, dy) || 0.001;
+            const barrierRadius = boss.shieldRadius;
+            const minDist = barrierRadius + entity.radius;
+            if (dist < minDist) {
+                const angle = Math.atan2(dy, dx);
+                const nx = Math.cos(angle);
+                const ny = Math.sin(angle);
+                entity.pos.x = boss.pos.x + nx * minDist;
+                entity.pos.y = boss.pos.y + ny * minDist;
+                const dot = entity.vel.x * nx + entity.vel.y * ny;
+                if (dot < 0) {
+                    entity.vel.x -= nx * dot * 1.2;
+                    entity.vel.y -= ny * dot * 1.2;
+                }
+                if (entity === player) {
+                    const now = Date.now();
+                    if (!player.lastWarpBossBlockAt || now - player.lastWarpBossBlockAt > 200) {
+                        spawnParticles((player.pos.x + boss.pos.x) / 2, (player.pos.y + boss.pos.y) / 2, 5, '#0ff');
+                        playSound('shield_hit');
+                        player.lastWarpBossBlockAt = now;
+                    }
+                }
+            }
+        }
+    }
+
     // Collision & Damage
     const damageable = [player, ...enemies, ...pinwheels, ...(contractEntities.fortresses || [])];
     if (boss && bossActive && !boss.dead) damageable.push(boss);
     if (destroyer && !destroyer.dead) damageable.push(destroyer);
+
     for (let entity of damageable) {
         if (entity.dead) continue;
         const nearbyAsteroids = asteroidGrid.query(entity.pos.x, entity.pos.y);
@@ -14726,12 +14675,14 @@ function resolveEntityCollision() {
             }
             if (!hitEntity && bossActive && boss && !boss.dead) {
                 if (typeof boss.hitTestCircle === 'function' && boss.hitTestCircle(s.pos.x, s.pos.y, s.radius)) {
-                    boss.hp -= s.damage;
-                    spawnParticles(boss.pos.x, boss.pos.y, 22, '#fa0');
-                    playSound('explode');
-                    if (boss.hp <= 0) {
-                        boss.kill();
-                        score += 10000;
+                    if (!(boss.isWarpBoss && boss.ramInvulnerable > 0)) {
+                        boss.hp -= s.damage;
+                        spawnParticles(boss.pos.x, boss.pos.y, 22, '#fa0');
+                        playSound('explode');
+                        if (boss.hp <= 0) {
+                            boss.kill();
+                            score += 10000;
+                        }
                     }
                     hitEntity = true;
                 }
@@ -17471,64 +17422,72 @@ function gameLoopLogic(opts = null) {
 
                     // Only player bullets (!b.isEnemy) can hit the boss
                     if (!hit && !b.isEnemy && bossActive && boss && !boss.dead) {
-                        const dist = Math.hypot(b.pos.x - boss.pos.x, b.pos.y - boss.pos.y);
+                        if (b.owner !== boss) {
+                            const dist = Math.hypot(b.pos.x - boss.pos.x, b.pos.y - boss.pos.y);
 
-                        // Check if shields have any segments up
-                        const outerShieldsUp = boss.shieldSegments && boss.shieldSegments.some(s => s > 0);
-                        const innerShieldsUp = boss.innerShieldSegments && boss.innerShieldSegments.length > 0 && boss.innerShieldSegments.some(s => s > 0);
-
-                        // Outer shield collision - bullet is within the shield radius
-                        if (!hit && !b.ignoreShields && outerShieldsUp && dist < boss.shieldRadius + b.radius) {
-                            let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.shieldRotation;
-                            while (angle < 0) angle += Math.PI * 2;
-                            const segCount = boss.shieldSegments.length;
-                            const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
-                            if (boss.shieldSegments[segIndex] > 0) {
-                                boss.shieldSegments[segIndex]--;
-                                boss.shieldsDirty = true;
+                            if (boss.isWarpBoss && boss.ramInvulnerable > 0 && dist < boss.radius + b.radius + 6) {
                                 hit = true;
                                 playSound('shield_hit');
-                                spawnParticles(b.pos.x, b.pos.y, 3, '#0ff');
+                                spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
                             }
-                        }
-                        // Inner shield collision - bullet is within the inner shield radius
-                        if (!hit && !b.ignoreShields && innerShieldsUp && dist < boss.innerShieldRadius + b.radius) {
-                            let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.innerShieldRotation;
-                            while (angle < 0) angle += Math.PI * 2;
-                            const count = boss.innerShieldSegments.length;
-                            const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                            if (boss.innerShieldSegments[segIndex] > 0) {
-                                boss.innerShieldSegments[segIndex]--;
-                                boss.shieldsDirty = true;
-                                hit = true;
-                                playSound('shield_hit');
-                                spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
-                            }
-                        }
 
-                        // If shields are bypassed or down, allow hardpoints and hull damage
-                        if (!hit) {
-                            // Hardpoints take damage when shields are down (or bypassed)
-                            if (typeof boss.applyPlayerBulletHit === 'function') {
-                                if (boss.applyPlayerBulletHit(b)) {
+                            // Check if shields have any segments up
+                            const outerShieldsUp = boss.shieldSegments && boss.shieldSegments.some(s => s > 0);
+                            const innerShieldsUp = boss.innerShieldSegments && boss.innerShieldSegments.length > 0 && boss.innerShieldSegments.some(s => s > 0);
+
+                            // Outer shield collision - bullet is within the shield radius
+                            if (!hit && !b.ignoreShields && outerShieldsUp && dist < boss.shieldRadius + b.radius) {
+                                let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.shieldRotation;
+                                while (angle < 0) angle += Math.PI * 2;
+                                const segCount = boss.shieldSegments.length;
+                                const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
+                                if (boss.shieldSegments[segIndex] > 0) {
+                                    boss.shieldSegments[segIndex]--;
+                                    boss.shieldsDirty = true;
                                     hit = true;
+                                    playSound('shield_hit');
+                                    spawnParticles(b.pos.x, b.pos.y, 3, '#0ff');
+                                }
+                            }
+                            // Inner shield collision - bullet is within the inner shield radius
+                            if (!hit && !b.ignoreShields && innerShieldsUp && dist < boss.innerShieldRadius + b.radius) {
+                                let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.innerShieldRotation;
+                                while (angle < 0) angle += Math.PI * 2;
+                                const count = boss.innerShieldSegments.length;
+                                const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                                if (boss.innerShieldSegments[segIndex] > 0) {
+                                    boss.innerShieldSegments[segIndex]--;
+                                    boss.shieldsDirty = true;
+                                    hit = true;
+                                    playSound('shield_hit');
+                                    spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
                                 }
                             }
 
-                            // Hull damage
-                            if (!hit && (typeof boss.hitTestCircle === 'function' ? boss.hitTestCircle(b.pos.x, b.pos.y, b.radius) : (dist < boss.radius + b.radius))) {
-                                const dmg = (boss.vulnerableTimer && boss.vulnerableTimer > 0) ? (b.damage * 2) : b.damage;
-                                boss.hp -= dmg;
-                                hit = true;
-                                playSound('hit');
-                                spawnParticles(b.pos.x, b.pos.y, 5, '#f00');
-                                if (boss.hp <= 0) {
-                                    boss.kill(); // Drops coins
-                                    score += 10000;
+                            // If shields are bypassed or down, allow hardpoints and hull damage
+                            if (!hit) {
+                                // Hardpoints take damage when shields are down (or bypassed)
+                                if (typeof boss.applyPlayerBulletHit === 'function') {
+                                    if (boss.applyPlayerBulletHit(b)) {
+                                        hit = true;
+                                    }
+                                }
+
+                                // Hull damage
+                                if (!hit && (typeof boss.hitTestCircle === 'function' ? boss.hitTestCircle(b.pos.x, b.pos.y, b.radius) : (dist < boss.radius + b.radius))) {
+                                    boss.hp -= b.damage;
+                                    hit = true;
+                                    playSound('hit');
+                                    spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
+                                    if (boss.hp <= 0) {
+                                        boss.kill();
+                                        score += 5000;
+                                    }
                                 }
                             }
                         }
                     }
+
 
 
 
