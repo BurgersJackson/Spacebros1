@@ -129,7 +129,7 @@ window.spawnCruiser = function () {
         destroyer = null;
     }
     clearArrayWithPixiCleanup(enemies);
-    clearArrayWithPixiCleanup(bases);
+    clearArrayWithPixiCleanup(pinwheels);
     baseRespawnTimers = [];
     roamerRespawnQueue = [];
     clearArrayWithPixiCleanup(bullets);
@@ -712,6 +712,39 @@ cruiserImage.addEventListener('load', () => {
 });
 cruiserImage.addEventListener('error', () => {
     cruiserLoaded = false;
+});
+
+// Warp Sentinel Boss sprite override
+const WARP_BOSS_URL = 'assets/warp_boss.png';
+const warpBossImage = new Image();
+warpBossImage.decoding = 'async';
+warpBossImage.src = WARP_BOSS_URL;
+let warpBossTexture = null;
+let warpBossLoaded = false;
+
+const applyWarpBossTexture = () => {
+    if (!warpBossLoaded || warpBossTexture || !window.PIXI) return;
+    try {
+        const tex = PIXI.Texture.from(warpBossImage);
+        try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+        try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+
+        warpBossTexture = tex;
+        pixiTextures.warp_boss = tex;
+        pixiTextureAnchors.warp_boss = 0.5;
+        // Face right by default; rotate to face player
+        pixiTextureRotOffsets.warp_boss = 0;
+        // Scale to fit the body width (exclude wispy tail)
+        pixiTextureScaleToRadius.warp_boss = true;
+    } catch (e) { }
+};
+
+warpBossImage.addEventListener('load', () => {
+    warpBossLoaded = true;
+    applyWarpBossTexture();
+});
+warpBossImage.addEventListener('error', () => {
+    warpBossLoaded = false;
 });
 
 // Optional external sprite override for asteroid size tiers.
@@ -3031,7 +3064,7 @@ class Spaceship extends Entity {
         if (this.turboBoost && this.turboBoost.unlocked) {
             if (this.turboBoost.activeFrames > 0) this.turboBoost.activeFrames -= dtScale;
             if (this.turboBoost.cooldownFrames > 0) this.turboBoost.cooldownFrames -= dtScale;
-            const turboInput = !!(keys.e || gpState.turbo);
+            const turboInput = !(keys.e || gpState.turbo);
             if (turboInput && !this.turboBoost.buttonHeld) {
                 if (this.turboBoost.activeFrames <= 0 && this.turboBoost.cooldownFrames <= 0) {
                     this.turboBoost.activeFrames = this.turboBoost.durationFrames;
@@ -3060,7 +3093,7 @@ class Spaceship extends Entity {
         const aimThresh = 0.08;
         const moveAimThresh = 0.08;
         if (usingGamepad) {
-            // In gamepad mode, never snap aim back to the mouse when sticks go idle.
+            // In gamepad mode, never snap aim back to mouse when sticks go idle.
             if (aimMag > aimThresh) {
                 this.turretAngle = Math.atan2(gpState.aim.y, gpState.aim.x);
             } else if (moveMag > moveAimThresh) {
@@ -3097,21 +3130,25 @@ class Spaceship extends Entity {
             thrusting = true;
         }
 
-
         this.fireDelay = this.baseFireDelay / this.stats.fireRateMult;
         this.shotgunDelay = this.baseShotgunDelay / this.stats.shotgunFireRateMult;
+
         this.autofireTimer -= dtScale;
         this.shotgunTimer -= dtScale;
         if (this.autofireTimer <= 0) {
             this.shoot();
             this.autofireTimer = Math.max(4, this.fireDelay);
         }
+        if (this.shotgunTimer <= 0) {
+            this.shootShotgun();
+            this.shotgunTimer = Math.max(4, this.shotgunDelay);
+        }
 
         // Shield Regen
         if (this.stats.shieldRegenRate > 0) {
             const now = Date.now();
             if (now - this.lastShieldRegenTime > this.stats.shieldRegenRate * 1000) {
-                // Regen prioritizes the main (inner) shield; once full, it repairs the outer shield (if owned).
+                // Regen prioritizes main (inner) shield; once full, it repairs outer shield (if owned).
                 const innerIdx = this.shieldSegments.findIndex(s => s < 2);
                 if (innerIdx !== -1) {
                     this.shieldSegments[innerIdx] = 2;
@@ -3154,11 +3191,12 @@ class Spaceship extends Entity {
                 // showOverlayMessage("PHASE SHIELD ACTIVE", '#ff0', 1000);
             } else if (this.invincibilityCycle.state === 'active') {
                 this.invulnerable = 2; // Sustain invulnerability each frame
-
                 // Tier 3 Regen - check every ~1 second (60 frames at 60fps)
                 if (this.invincibilityCycle.stats.regen && Math.floor(this.invincibilityCycle.timer / 60) !== Math.floor((this.invincibilityCycle.timer + dtScale) / 60)) {
                     const emptyIdx = this.shieldSegments.findIndex(s => s < 2);
-                    if (emptyIdx !== -1) this.shieldSegments[emptyIdx] = 2;
+                    if (emptyIdx !== -1) {
+                        this.shieldSegments[emptyIdx] = 2;
+                    }
                 }
 
                 if (this.invincibilityCycle.timer <= 0) {
@@ -3168,6 +3206,53 @@ class Spaceship extends Entity {
             } else if (this.invincibilityCycle.state === 'cooldown') {
                 if (this.invincibilityCycle.timer <= 0) {
                     this.invincibilityCycle.state = 'ready';
+                }
+            }
+        }
+
+        // Warp Sentinel Boss shield collision
+        if (bossActive && boss && !boss.dead && player && !player.dead && boss.isWarpBoss) {
+            const dx = player.pos.x - boss.pos.x;
+            const dy = player.pos.y - boss.pos.y;
+            const dist = Math.hypot(dx, dy);
+
+            // Outer shield collision
+            const outerShieldsUp = boss.shieldSegments && boss.shieldSegments.some(s => s > 0);
+            if (outerShieldsUp && dist < boss.shieldRadius + player.radius && dist > boss.shieldRadius - player.radius * 2) {
+                const angle = Math.atan2(dy, dx) - boss.shieldRotation;
+                const count = boss.shieldSegments.length;
+                const arcLen = (Math.PI * 2) / count;
+                const normalizedAngle = angle - Math.floor(angle / arcLen) * arcLen;
+                const segIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * count) % count;
+                if (boss.shieldSegments[segIndex] > 0) {
+                    const pushAngle = Math.atan2(dy, dx);
+                    const nx = Math.cos(pushAngle);
+                    const ny = Math.sin(pushAngle);
+                    const pushForce = 8;
+                    player.vel.x += nx * pushForce;
+                    player.vel.y += ny * pushForce;
+                    spawnParticles((player.pos.x + boss.pos.x) / 2, (player.pos.y + boss.pos.y) / 2, 5, '#0ff');
+                    playSound('shield_hit');
+                }
+            }
+
+            // Inner shield collision
+            const innerShieldsUp = boss.innerShieldSegments && boss.innerShieldSegments.some(s => s > 0);
+            if (innerShieldsUp && dist < boss.innerShieldRadius + player.radius && dist > boss.innerShieldRadius - player.radius * 2) {
+                const angle = Math.atan2(dy, dx) - boss.innerShieldRotation;
+                const count = boss.innerShieldSegments.length;
+                const arcLen = (Math.PI * 2) / count;
+                const normalizedAngle = angle - Math.floor(angle / arcLen) * arcLen;
+                const segIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * count) % count;
+                if (boss.innerShieldSegments[segIndex] > 0) {
+                    const pushAngle = Math.atan2(dy, dx);
+                    const nx = Math.cos(pushAngle);
+                    const ny = Math.sin(pushAngle);
+                    const pushForce = 8;
+                    player.vel.x += nx * pushForce;
+                    player.vel.y += ny * pushForce;
+                    spawnParticles((player.pos.x + boss.pos.x) / 2, (player.pos.y + boss.pos.y) / 2, 5, '#f0f');
+                    playSound('shield_hit');
                 }
             }
         }
@@ -4241,7 +4326,7 @@ class Bullet extends Entity {
 
             for (let e of enemies) consider(e);
             if (bossActive && boss && !boss.dead) consider(boss);
-            if (bases && bases.length > 0) for (let b of pinwheels) consider(b);
+            if (pinwheels && pinwheels.length > 0) for (let b of pinwheels) consider(b);
             if (spaceStation && !spaceStation.dead) consider(spaceStation);
             if (destroyer && !destroyer.dead) consider(destroyer);
             if (contractEntities && contractEntities.wallTurrets && contractEntities.wallTurrets.length > 0) {
@@ -8135,7 +8220,7 @@ function startCaveSector2() {
     nextIntensityBreakAt = Date.now() + 999999999;
 
     // Keep bases in the cave (Sector 1 feel), but no stations/contracts. 
-    clearArrayWithPixiCleanup(bases);
+    clearArrayWithPixiCleanup(pinwheels);
     baseRespawnTimers = [];
     roamerRespawnQueue = [];
     maxRoamers = 0;
@@ -10188,7 +10273,8 @@ class WarpSentinelBoss extends Entity {
         super(x, y);
         this.zone = zone || null;
         this.isWarpBoss = true;
-        this.radius = 110;
+        this.sizeScale = 3;
+        this.radius = 110 * this.sizeScale;
         this.hp = 180;
         this.maxHp = this.hp;
 
@@ -10196,12 +10282,13 @@ class WarpSentinelBoss extends Entity {
         this.shieldStrength = 3;
         this.shieldSegments = new Array(18).fill(this.shieldStrength);
         this.innerShieldSegments = new Array(24).fill(this.shieldStrength);
-        this.shieldRadius = this.radius + 72;
-        this.innerShieldRadius = this.radius + 52;
+        // Shield radius scaled to protect enlarged body
+        this.shieldRadius = 950;
+        this.innerShieldRadius = 850;
         this.shieldRotation = Math.random() * Math.PI * 2;
         this.innerShieldRotation = Math.random() * Math.PI * 2;
         this.lastShieldRegenAt = Date.now();
-        this.shieldRegenMs = 700;
+        this.shieldRegenMs = 500;
 
         this.t = 0;
         this.phase = 1;
@@ -10249,6 +10336,37 @@ class WarpSentinelBoss extends Entity {
         this.spiralAng = Math.random() * Math.PI * 2;
         this.shieldsDirty = true;
         this._pixiInnerGfx = null;
+
+        // Collision hull (head + body, no tail) - hand-tuned for 512x256 sprite
+        // Head is the large right-side part, body is the mid section
+        this.collisionHull = [
+            { x: 50 * this.sizeScale, y: 0, r: 85 * this.sizeScale },
+            { x: -30 * this.sizeScale, y: 0, r: 70 * this.sizeScale },
+            { x: -80 * this.sizeScale, y: 0, r: 50 * this.sizeScale }
+        ];
+        this.collisionRadius = 85 * this.sizeScale;
+
+        // Sprite properties
+        this._pixiSprite = null;
+    }
+
+    hitTestCircle(x, y, r) {
+        if (this.dead) return false;
+        const dx = x - this.pos.x;
+        const dy = y - this.pos.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq > (this.collisionRadius + r) * (this.collisionRadius + r)) return false;
+        const aimToPlayer = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
+        const cos = Math.cos(-aimToPlayer);
+        const sin = Math.sin(-aimToPlayer);
+        const localX = dx * cos - dy * sin;
+        const localY = dx * sin + dy * cos;
+        for (const circle of this.collisionHull) {
+            const cdx = localX - circle.x;
+            const cdy = localY - circle.y;
+            if (cdx * cdx + cdy * cdy < (circle.r + r) * (circle.r + r)) return true;
+        }
+        return false;
     }
 
     drawBossHud(ctx) {
@@ -10661,67 +10779,145 @@ class WarpSentinelBoss extends Entity {
     draw(ctx) {
         if (this.dead) return;
 
-        // Interpolate for smooth rendering
         const rPos = this.getRenderPos(renderAlpha);
-
+        const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
         const z = currentZoom || ZOOM_LEVEL;
+
+        // Pixi sprite rendering (rotate to face player)
+        if (pixiBossLayer && pixiTextures && pixiTextures.warp_boss) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                pixiBossLayer.addChild(container);
+
+                const spr = new PIXI.Sprite(pixiTextures.warp_boss);
+                spr.anchor.set(0.5);
+                container.addChild(spr);
+                this._pixiSprite = spr;
+            } else if (!container.parent) {
+                pixiBossLayer.addChild(container);
+            }
+
+            container.visible = true;
+            container.position.set(rPos.x, rPos.y);
+            container.rotation = aim;
+
+            if (this._pixiSprite) {
+                const hullScale = this.sizeScale;
+                this._pixiSprite.scale.set(hullScale);
+            }
+
+            if (pixiVectorLayer) {
+                let gfx = this._pixiGfx;
+                if (!gfx) {
+                    gfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(gfx);
+                    this._pixiGfx = gfx;
+                    this.shieldsDirty = true;
+                } else if (!gfx.parent) pixiVectorLayer.addChild(gfx);
+
+                let innerGfx = this._pixiInnerGfx;
+                if (!innerGfx) {
+                    innerGfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(innerGfx);
+                    this._pixiInnerGfx = innerGfx;
+                    this.shieldsDirty = true;
+                } else if (!innerGfx.parent) pixiVectorLayer.addChild(innerGfx);
+
+                gfx.position.set(rPos.x, rPos.y);
+                gfx.rotation = aim + this.shieldRotation;
+                innerGfx.position.set(rPos.x, rPos.y);
+                innerGfx.rotation = aim + this.innerShieldRotation;
+
+                if (this.shieldsDirty) {
+                    const drawShieldRing = (graphics, segments, radius, color) => {
+                        if (!segments || segments.length === 0) return;
+                        graphics.clear();
+                        const count = segments.length;
+                        const arcLen = (Math.PI * 2) / count;
+                        graphics.lineStyle(8 / z, color, 0.8);
+                        for (let i = 0; i < count; i++) {
+                            if (segments[i] <= 0) continue;
+                            const a0 = i * arcLen + 0.03;
+                            const a1 = (i + 1) * arcLen - 0.03;
+                            graphics.moveTo(Math.cos(a0) * radius, Math.sin(a0) * radius);
+                            graphics.arc(0, 0, radius, a0, a1);
+                        }
+                    };
+                    drawShieldRing(gfx, this.shieldSegments, this.shieldRadius, 0x00ffff);
+                    drawShieldRing(innerGfx, this.innerShieldSegments, this.innerShieldRadius, 0xff00ff);
+                    this.shieldsDirty = false;
+                }
+            }
+
+            // Telegraphed heavy laser (charge line -> blast) overlay
+            if ((this.laserCharge && this.laserCharge > 0) || (this.laserDelay && this.laserDelay > 0) || (this.laserFire && this.laserFire > 0)) {
+                const a = this.laserAngle || aim;
+                const ex = Math.cos(a) * this.laserLen;
+                const ey = Math.sin(a) * this.laserLen;
+                const charging = (this.laserCharge && this.laserCharge > 0);
+                const locking = (this.laserDelay && this.laserDelay > 0);
+                const firing = (this.laserFire && this.laserFire > 0);
+                const pct = charging ? (1 - (this.laserCharge / (this.laserChargeTotal || 1))) : 1;
+                ctx.save();
+                ctx.translate(rPos.x, rPos.y);
+                ctx.lineWidth = (this.laserWidth / z);
+                if (charging || locking) {
+                    ctx.setLineDash([12 / z, 10 / z]);
+                    const lockPulse = locking ? (0.55 + 0.35 * Math.sin(this.t * 0.35)) : 1;
+                    ctx.strokeStyle = `rgba(255, 220, 0, ${Math.min(0.75, (0.10 + pct * 0.35) * lockPulse + (locking ? 0.20 : 0))})`;
+                    ctx.shadowBlur = 16;
+                    ctx.shadowColor = '#ff0';
+                } else if (firing) {
+                    ctx.setLineDash([]);
+                    ctx.strokeStyle = 'rgba(255, 240, 0, 0.95)';
+                    ctx.shadowBlur = 28;
+                    ctx.shadowColor = '#ff0';
+                }
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(ex, ey);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.setLineDash([]);
+                if (firing) {
+                    ctx.fillStyle = 'rgba(255, 240, 0, 0.85)';
+                    ctx.beginPath();
+                    ctx.arc(ex, ey, (10 / z), 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+            return;
+        }
+
+        // Fallback: procedural canvas rendering
         ctx.save();
         ctx.translate(rPos.x, rPos.y);
-        const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
+        ctx.rotate(aim);
 
-        const drawShieldRing = (graphics, segments, radius, color, strength) => {
+        const drawShieldRing = (segments, radius, color, strength) => {
             if (!segments || segments.length === 0) return;
-            graphics.clear();
+            ctx.lineWidth = 8 / z;
+            ctx.strokeStyle = color;
+            ctx.globalAlpha = 0.8;
             const count = segments.length;
             const arcLen = (Math.PI * 2) / count;
-            graphics.lineWidth = 8 / z;
-            // Static alpha for cached version
-            graphics.lineStyle(8 / z, color, 0.8);
             for (let i = 0; i < count; i++) {
                 if (segments[i] <= 0) continue;
-                // const energyPulse = ... (dropped for cache)
-                // ctx.globalAlpha = ...
                 const a0 = i * arcLen + 0.03;
                 const a1 = (i + 1) * arcLen - 0.03;
-                graphics.moveTo(Math.cos(a0) * radius, Math.sin(a0) * radius);
-                graphics.arc(0, 0, radius, a0, a1);
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a0) * radius, Math.sin(a0) * radius);
+                ctx.arc(0, 0, radius, a0, a1);
+                ctx.stroke();
             }
+            ctx.globalAlpha = 1;
         };
 
-        if (pixiVectorLayer) {
-            let gfx = this._pixiGfx;
-            if (!gfx) {
-                gfx = new PIXI.Graphics();
-                pixiVectorLayer.addChild(gfx);
-                this._pixiGfx = gfx;
-                this.shieldsDirty = true;
-            } else if (!gfx.parent) pixiVectorLayer.addChild(gfx);
-
-            let innerGfx = this._pixiInnerGfx;
-            if (!innerGfx) {
-                innerGfx = new PIXI.Graphics();
-                pixiVectorLayer.addChild(innerGfx);
-                this._pixiInnerGfx = innerGfx;
-                this.shieldsDirty = true;
-            } else if (!innerGfx.parent) pixiVectorLayer.addChild(innerGfx);
-
-            gfx.position.set(rPos.x, rPos.y);
-            gfx.rotation = this.shieldRotation;
-            innerGfx.position.set(rPos.x, rPos.y);
-            innerGfx.rotation = this.innerShieldRotation;
-
-            if (this.shieldsDirty) {
-                drawShieldRing(gfx, this.shieldSegments, this.shieldRadius, 0x00ffff, this.shieldStrength);
-                drawShieldRing(innerGfx, this.innerShieldSegments, this.innerShieldRadius, 0xff00ff, this.shieldStrength);
-                this.shieldsDirty = false;
-            }
-        }
-        // Fallback or just suppress Canvas draw if PIXI is active (which it is)
-        // Original code drew to ctx. We replaced it with PIXI logic above.
-        // We do NOT call ctx draw for shields if PIXI is used.
-
-        // drawShieldRing(this.shieldSegments, this.shieldRadius, this.shieldRotation, '#0ff', this.shieldStrength);
-        // drawShieldRing(this.innerShieldSegments, this.innerShieldRadius, this.innerShieldRotation, '#f0f', this.shieldStrength);
+        drawShieldRing(this.shieldSegments, this.shieldRadius, '#0ff', this.shieldStrength);
+        drawShieldRing(this.innerShieldSegments, this.innerShieldRadius, '#f0f', this.shieldStrength);
 
         ctx.shadowBlur = 26;
         ctx.shadowColor = '#f0f';
@@ -10735,7 +10931,7 @@ class WarpSentinelBoss extends Entity {
 
         // Telegraphed heavy laser (charge line -> blast).
         if ((this.laserCharge && this.laserCharge > 0) || (this.laserDelay && this.laserDelay > 0) || (this.laserFire && this.laserFire > 0)) {
-            const a = this.laserAngle || aim;
+            const a = (this.laserAngle || aim) - aim;
             const ex = Math.cos(a) * this.laserLen;
             const ey = Math.sin(a) * this.laserLen;
             const charging = (this.laserCharge && this.laserCharge > 0);
@@ -10762,7 +10958,6 @@ class WarpSentinelBoss extends Entity {
             ctx.stroke();
             ctx.shadowBlur = 0;
             ctx.setLineDash([]);
-            // Endpoint flash
             if (firing) {
                 ctx.fillStyle = 'rgba(255, 240, 0, 0.85)';
                 ctx.beginPath();
@@ -14378,18 +14573,63 @@ function resolveEntityCollision() {
                                 ast.break();
                                 spawnParticles(ast.pos.x, ast.pos.y, 8, '#aa8');
                                 playSound('hit');
-                            } else {
-                                // Wall sparks (no breaking).
-                                spawnParticles(player.pos.x - nx * player.radius, player.pos.y - ny * player.radius, 6, '#08f');
-                                playSound('hit');
-                            }
-                        }
+                } else {
+                    // Wall sparks (no breaking).
+                    spawnParticles(player.pos.x - nx * player.radius, player.pos.y - ny * player.radius, 6, '#08f');
+                    playSound('hit');
                     }
                 }
             }
         }
 
-        // (Wall collisions for caves, warp zones, and anomalies are now handled centrally 
+    // Player vs Warp Sentinel Boss shield collision
+    if (bossActive && boss && !boss.dead && player && !player.dead && boss.isWarpBoss) {
+        const dx = player.pos.x - boss.pos.x;
+        const dy = player.pos.y - boss.pos.y;
+        const dist = Math.hypot(dx, dy);
+
+        // Outer shield collision
+        const outerShieldsUp = boss.shieldSegments && boss.shieldSegments.some(s => s > 0);
+        if (outerShieldsUp && dist < boss.shieldRadius + player.radius && dist > boss.shieldRadius - player.radius * 2) {
+            const angle = Math.atan2(dy, dx) - boss.shieldRotation;
+            const count = boss.shieldSegments.length;
+            const arcLen = (Math.PI * 2) / count;
+            const normalizedAngle = angle - Math.floor(angle / arcLen) * arcLen;
+            const segIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * count) % count;
+            if (boss.shieldSegments[segIndex] > 0) {
+                const pushAngle = Math.atan2(dy, dx);
+                const nx = Math.cos(pushAngle);
+                const ny = Math.sin(pushAngle);
+                const pushForce = 8;
+                player.vel.x += nx * pushForce;
+                player.vel.y += ny * pushForce;
+                spawnParticles((player.pos.x + boss.pos.x) / 2, (player.pos.y + boss.pos.y) / 2, 5, '#0ff');
+                playSound('shield_hit');
+            }
+        }
+
+        // Inner shield collision
+        const innerShieldsUp = boss.innerShieldSegments && boss.innerShieldSegments.some(s => s > 0);
+        if (innerShieldsUp && dist < boss.innerShieldRadius + player.radius && dist > boss.innerShieldRadius - player.radius * 2) {
+            const angle = Math.atan2(dy, dx) - boss.innerShieldRotation;
+            const count = boss.innerShieldSegments.length;
+            const arcLen = (Math.PI * 2) / count;
+            const normalizedAngle = angle - Math.floor(angle / arcLen) * arcLen;
+            const segIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * count) % count;
+            if (boss.innerShieldSegments[segIndex] > 0) {
+                const pushAngle = Math.atan2(dy, dx);
+                const nx = Math.cos(pushAngle);
+                const ny = Math.sin(pushAngle);
+                const pushForce = 8;
+                player.vel.x += nx * pushForce;
+                player.vel.y += ny * pushForce;
+                spawnParticles((player.pos.x + boss.pos.x) / 2, (player.pos.y + boss.pos.y) / 2, 5, '#f0f');
+                playSound('shield_hit');
+            }
+        }
+    }
+
+    // (Wall collisions for caves, warp zones, and anomalies are now handled centrally
         //  via checkWallCollision(entity) within each entity's update method).
     }
 
@@ -14419,7 +14659,7 @@ function resolveEntityCollision() {
                         e.vel.x -= nx * pushForce;
                         e.vel.y -= ny * pushForce;
 
-                        // Visuals
+                    // Visuals
                         spawnParticles((player.pos.x + e.pos.x) / 2, (player.pos.y + e.pos.y) / 2, 5, '#fff');
                         // No damage, no death.
                         continue;
@@ -14568,8 +14808,7 @@ function resolveEntityCollision() {
                 }
             }
             if (!hitEntity && bossActive && boss && !boss.dead) {
-                const dist = Math.hypot(s.pos.x - boss.pos.x, s.pos.y - boss.pos.y);
-                if (dist < s.radius + boss.radius) {
+                if (boss.hitTestCircle(s.pos.x, s.pos.y, s.radius)) {
                     boss.hp -= s.damage;
                     spawnParticles(boss.pos.x, boss.pos.y, 22, '#fa0');
                     playSound('explode');
@@ -17271,7 +17510,7 @@ function gameLoopLogic(opts = null) {
                             }
 
                             // Hull damage
-                            if (!hit && dist < boss.radius + b.radius) {
+                            if (!hit && boss.hitTestCircle(b.pos.x, b.pos.y, b.radius)) {
                                 const dmg = (boss.vulnerableTimer && boss.vulnerableTimer > 0) ? (b.damage * 2) : b.damage;
                                 boss.hp -= dmg;
                                 hit = true;
