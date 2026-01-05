@@ -3216,44 +3216,16 @@ class Spaceship extends Entity {
             const dy = player.pos.y - boss.pos.y;
             const dist = Math.hypot(dx, dy);
 
-            // Outer shield collision
-            const outerShieldsUp = boss.shieldSegments && boss.shieldSegments.some(s => s > 0);
-            if (outerShieldsUp && dist < boss.shieldRadius + player.radius && dist > boss.shieldRadius - player.radius * 2) {
-                const angle = Math.atan2(dy, dx) - boss.shieldRotation;
-                const count = boss.shieldSegments.length;
-                const arcLen = (Math.PI * 2) / count;
-                const normalizedAngle = angle - Math.floor(angle / arcLen) * arcLen;
-                const segIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * count) % count;
-                if (boss.shieldSegments[segIndex] > 0) {
-                    const pushAngle = Math.atan2(dy, dx);
-                    const nx = Math.cos(pushAngle);
-                    const ny = Math.sin(pushAngle);
-                    const pushForce = 8;
-                    player.vel.x += nx * pushForce;
-                    player.vel.y += ny * pushForce;
-                    spawnParticles((player.pos.x + boss.pos.x) / 2, (player.pos.y + boss.pos.y) / 2, 5, '#0ff');
-                    playSound('shield_hit');
-                }
-            }
-
-            // Inner shield collision
-            const innerShieldsUp = boss.innerShieldSegments && boss.innerShieldSegments.some(s => s > 0);
-            if (innerShieldsUp && dist < boss.innerShieldRadius + player.radius && dist > boss.innerShieldRadius - player.radius * 2) {
-                const angle = Math.atan2(dy, dx) - boss.innerShieldRotation;
-                const count = boss.innerShieldSegments.length;
-                const arcLen = (Math.PI * 2) / count;
-                const normalizedAngle = angle - Math.floor(angle / arcLen) * arcLen;
-                const segIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * count) % count;
-                if (boss.innerShieldSegments[segIndex] > 0) {
-                    const pushAngle = Math.atan2(dy, dx);
-                    const nx = Math.cos(pushAngle);
-                    const ny = Math.sin(pushAngle);
-                    const pushForce = 8;
-                    player.vel.x += nx * pushForce;
-                    player.vel.y += ny * pushForce;
-                    spawnParticles((player.pos.x + boss.pos.x) / 2, (player.pos.y + boss.pos.y) / 2, 5, '#f0f');
-                    playSound('shield_hit');
-                }
+            // Outer collision barrier (always active, independent of shield state)
+            if (dist < boss.shieldRadius + player.radius && dist > boss.shieldRadius - player.radius * 2) {
+                const pushAngle = Math.atan2(dy, dx);
+                const nx = Math.cos(pushAngle);
+                const ny = Math.sin(pushAngle);
+                const pushForce = 8;
+                player.vel.x += nx * pushForce;
+                player.vel.y += ny * pushForce;
+                spawnParticles((player.pos.x + boss.pos.x) / 2, (player.pos.y + boss.pos.y) / 2, 5, '#0ff');
+                playSound('shield_hit');
             }
         }
 
@@ -8384,18 +8356,12 @@ class WarpMazeZone extends Entity {
         this.boundaryRadius = 6200;
         this.entryAngle = Math.random() * Math.PI * 2;
         this.exitAngle = this.entryAngle + Math.PI;
-        this.arenaRadius = 2600;
+        this.arenaRadius = 4000;
+        this.bossIntroAt = null;
+        this.bossIntroLastSec = null;
 
-        // Rings define the "maze". Each ring has a gap you must find to get inward. 
-        const a = this.entryAngle;
-        this.rings = [
-            // Multiple openings per ring so the maze never "feels sealed".
-            { r: 5400, gaps: [a, a + Math.PI], width: 0.55, turretCount: 6 },
-            { r: 4400, gaps: [a + Math.PI / 2, a + (Math.PI * 3 / 2)], width: 0.50, turretCount: 6 },
-            { r: 3400, gaps: [a + Math.PI, a], width: 0.48, turretCount: 5 },
-            // Arena ring: 4 entrances so you can always reach the center.
-            { r: this.arenaRadius, gaps: [a, a + Math.PI / 2, a + Math.PI, a + (Math.PI * 3 / 2)], width: 0.65, turretCount: 0, isArena: true }
-        ];
+        // Warp space is open - no maze rings, just the outer boundary.
+        this.rings = [];
 
         this.segments = [];      // fixed walls
         this.dynamicSegments = []; // doors/locks
@@ -8444,54 +8410,10 @@ class WarpMazeZone extends Entity {
         // Outer boundary: no gaps (keeps you in the warp area).
         this.segments.push(...this.buildRing(this.boundaryRadius, [], 0));
 
-        // Maze rings
-        for (const ring of this.rings) {
-            const gaps = ring.gaps || [ring.gap];
-            this.segments.push(...this.buildRing(ring.r, gaps, ring.width));
-        }
-
-        // Maze turrets placed along outer rings away from gaps.
+        // No inner maze rings or turrets in the warp arena.
         this.turrets = [];
-        // Extra boundary turrets to make the warp perimeter feel defended (avoid the entrance direction).
-        const boundaryTurrets = 10;
-        for (let i = 0; i < boundaryTurrets; i++) {
-            for (let attempt = 0; attempt < 50; attempt++) {
-                const ang = Math.random() * Math.PI * 2;
-                let d = ang - this.entryAngle;
-                while (d > Math.PI) d -= Math.PI * 2;
-                while (d < -Math.PI) d += Math.PI * 2;
-                if (Math.abs(d) < 0.7) continue;
-                const rr = this.boundaryRadius - 260;
-                const x = this.pos.x + Math.cos(ang) * rr;
-                const y = this.pos.y + Math.sin(ang) * rr;
-                this.turrets.push(new WarpTurret(x, y));
-                break;
-            }
-        }
-        for (const ring of this.rings) {
-            if (ring.isArena) continue;
-            const gaps = ring.gaps || [ring.gap];
-            for (let i = 0; i < ring.turretCount; i++) {
-                for (let attempt = 0; attempt < 40; attempt++) {
-                    const ang = Math.random() * Math.PI * 2;
-                    let nearGap = false;
-                    for (const g of gaps) {
-                        let d = ang - g;
-                        while (d > Math.PI) d -= Math.PI * 2;
-                        while (d < -Math.PI) d += Math.PI * 2;
-                        if (Math.abs(d) < ring.width + 0.35) { nearGap = true; break; }
-                    }
-                    if (nearGap) continue;
-                    const rr = ring.r + 95;
-                    const x = this.pos.x + Math.cos(ang) * rr;
-                    const y = this.pos.y + Math.sin(ang) * rr;
-                    this.turrets.push(new WarpTurret(x, y));
-                    break;
-                }
-            }
-        }
 
-        showOverlayMessage("WARP MAZE: NAVIGATE TO THE CORE", '#0ff', 2200, 2);
+        showOverlayMessage("WARP ANOMALY: ENTER THE CORE", '#0ff', 2200, 2);
 
         // Seed some roamers so the zone isn't empty.
         for (let i = 0; i < 6; i++) {
@@ -8561,6 +8483,30 @@ class WarpMazeZone extends Entity {
         if (this.state === 'maze' && player && !player.dead) {
             const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
             if (dist < this.arenaRadius - 300) {
+                this.state = 'boss_intro';
+                this.bossIntroAt = Date.now() + 10000;
+                this.bossIntroLastSec = null;
+            }
+        }
+
+        if (this.state === 'boss_intro') {
+            const now = Date.now();
+            const remainingMs = (this.bossIntroAt || now) - now;
+            const remainingSecs = Math.max(0, Math.ceil(remainingMs / 1000));
+            if (this.bossIntroLastSec !== remainingSecs) {
+                const el = document.getElementById('arena-countdown');
+                if (el) {
+                    el.innerText = `SOMETHING IS COMING\n${remainingSecs}s`;
+                    el.style.display = 'block';
+                    el.style.color = '#f0f';
+                    el.style.textShadow = '0 0 24px #f0f, 0 0 48px #f0f';
+                    el.style.fontSize = remainingSecs <= 3 ? '64px' : '52px';
+                }
+                this.bossIntroLastSec = remainingSecs;
+            }
+            if (remainingMs <= 0) {
+                const el = document.getElementById('arena-countdown');
+                if (el) el.style.display = 'none';
                 this.state = 'boss';
                 // Keep the boss arena readable by clearing asteroids near the core.
                 filterArrayWithPixiCleanup(environmentAsteroids, a => !a.dead && (Math.hypot(a.pos.x - this.pos.x, a.pos.y - this.pos.y) > this.arenaRadius + 260));
@@ -8572,6 +8518,16 @@ class WarpMazeZone extends Entity {
                 clearArrayWithPixiCleanup(bossBombs);
                 boss = new WarpSentinelBoss(this.pos.x, this.pos.y, this);
                 bossActive = true;
+
+                // Spawn cover asteroids in the arena
+                for (let i = 0; i < 10; i++) {
+                    const a = Math.random() * Math.PI * 2;
+                    const rr = 800 + Math.random() * (this.arenaRadius - 1200);
+                    const x = this.pos.x + Math.cos(a) * rr;
+                    const y = this.pos.y + Math.sin(a) * rr;
+                    if (player && Math.hypot(x - player.pos.x, y - player.pos.y) < 500) continue;
+                    environmentAsteroids.push(new EnvironmentAsteroid(x, y, 40 + Math.random() * 50, 3, false));
+                }
             }
         }
 
@@ -10267,6 +10223,80 @@ class SuperFlagshipBoss extends Flagship {
     }
 }
 
+class WarpBioPod extends Entity {
+    constructor(x, y, angle) {
+        super(x, y);
+        this.radius = 22;
+        this.hp = 3;
+        this.life = 180;
+        this.angle = angle || 0;
+        const speed = 2.5;
+        this.vel.x = Math.cos(this.angle) * speed;
+        this.vel.y = Math.sin(this.angle) * speed;
+        this._pixiGfx = null;
+    }
+    takeHit(damage) {
+        if (this.dead) return;
+        this.hp -= damage;
+        spawnParticles(this.pos.x, this.pos.y, 6, '#f6f');
+        if (this.hp <= 0) this.explode();
+    }
+    explode() {
+        if (this.dead) return;
+        this.dead = true;
+        if (this._pixiGfx) {
+            try { this._pixiGfx.destroy(true); } catch (e) { }
+            this._pixiGfx = null;
+        }
+        playSound('warp_pod_pop');
+        spawnParticles(this.pos.x, this.pos.y, 18, '#f0f');
+        const pelletCount = 10;
+        for (let i = 0; i < pelletCount; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 3, 3, '#f0f');
+            b.life = 120;
+            bullets.push(b);
+        }
+    }
+    update(deltaTime = 16.67) {
+        if (this.dead) return;
+        super.update(deltaTime);
+        this.life -= (deltaTime / 16.67);
+        this.vel.x *= 0.98;
+        this.vel.y *= 0.98;
+        if (this.life <= 0) this.explode();
+    }
+    draw(ctx) {
+        if (this.dead) return;
+        const rPos = this.getRenderPos(renderAlpha);
+        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
+            let g = this._pixiGfx;
+            if (!g) {
+                g = new PIXI.Graphics();
+                pixiVectorLayer.addChild(g);
+                this._pixiGfx = g;
+            }
+            g.clear();
+            g.position.set(rPos.x, rPos.y);
+            g.beginFill(0xff00ff, 0.5);
+            g.lineStyle(2, 0xff99ff, 0.9);
+            g.drawCircle(0, 0, this.radius);
+            g.endFill();
+            return;
+        }
+        ctx.save();
+        ctx.translate(rPos.x, rPos.y);
+        ctx.fillStyle = '#f0f';
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
 class WarpSentinelBoss extends Entity {
     constructor(x, y, zone) {
         super(x, y);
@@ -10292,8 +10322,6 @@ class WarpSentinelBoss extends Entity {
         this.t = 0;
         this.phase = 1;
         this.coreRot = 0;
-        this.burstCooldown = 55;
-        this.mineCooldown = 130;
 
         // Smoother movement (no hard velocity snaps).
         this.orbitOffset = Math.random() * Math.PI * 2;
@@ -10302,21 +10330,28 @@ class WarpSentinelBoss extends Entity {
         this.dashWarmup = 0;
         this.dashFrames = 0;
         this.dashDir = { x: 0, y: 0 };
-        this.dashSpeed = 15;
+        this.dashSpeed = 11.25;
 
-        // Telegraphed heavy laser (quick blast).
-        // Fire less frequently; extra lock delay improves readability.
-        this.laserCooldown = 180;
-        this.laserCharge = 0;
-        this.laserChargeTotal = 35;
-        this.laserDelay = 0;
-        this.laserDelayTotal = 15; // ~0.25s at 60fps after lock-in
-        this.laserFire = 0;
-        this.laserFireTotal = 5;
-        this.laserAngle = 0;
-        this.laserLen = 5200;
-        this.laserWidth = 44;
-        this.laserHitThisShot = false;
+        // Flame breath (long cone).
+        this.flameCooldown = 140;
+        this.flameCharge = 0;
+        this.flameChargeTotal = 50;
+        this.flameFire = 0;
+        this.flameFireTotal = 120;
+        this.flameAngle = 0;
+        this.flameRange = 1400;
+        this.flameCone = 0.75;
+        this.flameTickCooldown = 0;
+        this.flameHitCount = 0;
+
+        // Chitin barrage (projectile arc).
+        this.chitinCooldown = 120;
+
+        // Warp scream (shockwave knockback).
+        this.screamCooldown = 260;
+
+        // Bio-pods (slow drifting mines that burst into pellets).
+        this.podCooldown = 240;
 
         // Reinforcements (like cruiser helpers).
         this.helperMax = 6;
@@ -10329,10 +10364,9 @@ class WarpSentinelBoss extends Entity {
         this.called50 = false;
         this.called40 = false;
         this.phase2Started = false;
+        this.phase3Started = false;
         this.helperStrengthTier = 1;
 
-        this.spiralTimer = 0;
-        this.spiralAng = Math.random() * Math.PI * 2;
         this.shieldsDirty = true;
         this._pixiInnerGfx = null;
 
@@ -10422,11 +10456,15 @@ class WarpSentinelBoss extends Entity {
         // instead of exploding all bombs at once which causes sprite pool exhaustion
         scheduleStaggeredBombExplosions(this.pos.x, this.pos.y);
 
-        // Start 10-second countdown to level 2
+        // Start 15-second countdown to level 2
         sectorTransitionActive = true;
-        warpCountdownAt = Date.now() + 10000; // 10 seconds
-        showOverlayMessage("SENTINEL DOWN - LEVEL 2 IN 10s", '#ff0', 2600, 3);
+        warpCountdownAt = Date.now() + 15000; // 15 seconds
+        showOverlayMessage("SENTINEL DOWN - LEVEL 2 IN 15s", '#ff0', 2600, 3);
         bossActive = false;
+        bossArena.active = false;
+        bossArena.growing = false;
+        playSound('warp_flame_stop');
+        clearArrayWithPixiCleanup(warpBioPods);
         if (boss) pixiCleanupObject(boss);
         boss = null;
 
@@ -10459,16 +10497,21 @@ class WarpSentinelBoss extends Entity {
         }
 
         const hpPct = this.maxHp > 0 ? this.hp / this.maxHp : 0;
-        this.phase = hpPct < 0.5 ? 2 : 1;
+        const nextPhase = hpPct > 0.7 ? 1 : (hpPct > 0.4 ? 2 : 3);
+        if (nextPhase !== this.phase) this.phase = nextPhase;
 
-        if (this.phase === 2 && !this.phase2Started) {
+        if (this.phase >= 2 && !this.phase2Started) {
             this.phase2Started = true;
-            // Phase 2: faster laser cadence + heavier reinforcement pressure.
+            // Phase 2: heavier reinforcement pressure.
             this.helperMax = 10;
             this.helperBurst = 3;
             this.helperCooldownBase = 320;
             this.spawnDefenders(6);
             showOverlayMessage("SENTINEL PHASE 2", '#f0f', 1800, 3);
+        }
+        if (this.phase === 3 && !this.phase3Started) {
+            this.phase3Started = true;
+            showOverlayMessage("SENTINEL PHASE 3", '#f0f', 1800, 3);
         }
 
         // Orbit the zone center (smooth steering).
@@ -10545,145 +10588,103 @@ class WarpSentinelBoss extends Entity {
         }
 
         // Attacks
-        this.burstCooldown -= dtFactor;
-        this.mineCooldown -= dtFactor;
+        this.flameCooldown -= dtFactor;
+        this.chitinCooldown -= dtFactor;
+        this.screamCooldown -= dtFactor;
+        this.podCooldown -= dtFactor;
 
-        // Telegraphed heavy laser: charge -> quick blast (single big hit if caught).
-        const applyBeamDamageToPlayer = (amount) => {
-            if (!player || player.dead) return;
-            if (player.invulnerable > 0) return;
-            let remaining = Math.max(0, Math.ceil(amount));
-            // Outer shield (if any): each segment is 0/1.
-            if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
-                for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
-                    if (player.outerShieldSegments[i] > 0) {
-                        player.outerShieldSegments[i] = 0;
-                        remaining -= 1;
-                    }
+        if (this.flameFire > 0) {
+            this.flameFire -= dtFactor;
+            this.flameTickCooldown -= dtFactor;
+            if (this.flameTickCooldown <= 0 && this.flameHitCount < 2) {
+                const angleDiff = Math.atan2(Math.sin(aimToPlayer - this.flameAngle), Math.cos(aimToPlayer - this.flameAngle));
+                if (distToPlayer <= this.flameRange && Math.abs(angleDiff) <= this.flameCone * 0.5) {
+                    player.takeHit(3);
+                    const nx = Math.cos(aimToPlayer);
+                    const ny = Math.sin(aimToPlayer);
+                    player.vel.x += nx * 6;
+                    player.vel.y += ny * 6;
+                    this.flameHitCount++;
                 }
+                this.flameTickCooldown = 12;
             }
-            // Inner shield: each segment can be 0..2.
-            if (player.shieldSegments && player.shieldSegments.length > 0) {
-                for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
-                    const absorb = Math.min(remaining, player.shieldSegments[i]);
-                    player.shieldSegments[i] -= absorb;
-                    remaining -= absorb;
-                }
+            if (this.flameFire <= 0) {
+                playSound('warp_flame_stop');
             }
-            if (remaining > 0) {
-                player.hp -= remaining;
-                spawnParticles(player.pos.x, player.pos.y, 14, '#f00');
-                playSound('hit');
-                updateHealthUI();
-                if (player.hp <= 0) killPlayer();
-            } else {
-                spawnParticles(player.pos.x, player.pos.y, 10, '#ff0');
-                playSound('shield_hit');
-            }
-            player.invulnerable = 22;
-        };
-
-        if (this.laserFire > 0) {
-            this.laserFire--;
-            if (!this.laserHitThisShot) {
-                const ex = this.pos.x + Math.cos(this.laserAngle) * this.laserLen;
-                const ey = this.pos.y + Math.sin(this.laserAngle) * this.laserLen;
-                const cp = closestPointOnSegment(player.pos.x, player.pos.y, this.pos.x, this.pos.y, ex, ey);
-                const d = Math.hypot(player.pos.x - cp.x, player.pos.y - cp.y);
-                const hitDist = (this.laserWidth * 0.5) + (player.radius * 0.55);
-                if (d <= hitDist) {
-                    this.laserHitThisShot = true;
-                    const dmg = (this.phase === 2) ? 10 : 8;
-                    applyBeamDamageToPlayer(dmg);
-                    shakeMagnitude = Math.max(shakeMagnitude, 14);
-                    shakeTimer = Math.max(shakeTimer, 14);
-                }
-            }
-        } else if (this.laserDelay > 0) {
-            this.laserDelay--;
-            if (this.laserDelay === 0) {
-                this.laserFire = this.laserFireTotal;
-                this.laserHitThisShot = false;
-                playSound('heavy_shoot');
-                spawnParticles(this.pos.x + Math.cos(this.laserAngle) * (this.radius + 10), this.pos.y + Math.sin(this.laserAngle) * (this.radius + 10), 18, '#ff0');
-            }
-        } else if (this.laserCharge > 0) {
-            this.laserCharge--;
-            if (this.laserCharge === 0) {
-                this.laserDelay = this.laserDelayTotal;
+        } else if (this.flameCharge > 0) {
+            this.flameCharge -= dtFactor;
+            this.flameAngle = aimToPlayer;
+            if (this.flameCharge <= 0) {
+                this.flameFire = this.flameFireTotal;
+                this.flameHitCount = 0;
+                this.flameTickCooldown = 0;
+                playSound('warp_flame_start');
             }
         } else {
-            this.laserCooldown--;
-            const cd = (this.phase === 2) ? 280 : 560;
-            const wantCharge = (this.phase === 2) ? 55 : 70;
-            if (this.laserCooldown <= 0 && distToPlayer < 3200 && distToPlayer > 450) {
-                this.laserAngle = aimToPlayer;
-                this.laserChargeTotal = wantCharge;
-                this.laserCharge = this.laserChargeTotal;
-                this.laserDelay = 0;
-                this.laserFireTotal = 10;
-                this.laserFire = 0;
-                this.laserCooldown = cd;
-                this.laserHitThisShot = false;
-                showOverlayMessage("SENTINEL LASER LOCK", '#ff0', 900, 2);
+            if (this.flameCooldown <= 0 && distToPlayer < 2200) {
+                this.flameCharge = this.flameChargeTotal;
+                this.flameCooldown = this.phase === 3 ? 150 : 180;
             }
         }
 
-        if (this.mineCooldown <= 0) {
-            // Bring back the mine pressure.
-            const count = this.phase === 2 ? 10 : 7;
+        if (this.chitinCooldown <= 0 && distToPlayer < 2600) {
+            const count = this.phase === 1 ? 16 : (this.phase === 2 ? 22 : 28);
+            const spread = 1.1;
             for (let i = 0; i < count; i++) {
-                const a = (Math.PI * 2 / count) * i + (this.t * 0.01);
-                const maxTravel = 320 + Math.random() * 320;
-                const dmg = 5;
-                const blastRadius = 620;
-                bossBombs.push(new CruiserMineBomb(this, a, maxTravel, dmg, blastRadius));
-            }
-            this.mineCooldown = this.phase === 2 ? 220 : 280;
-        }
-
-        if (this.burstCooldown <= 0) {
-            const shots = this.phase === 2 ? 26 : 18;
-            for (let i = 0; i < shots; i++) {
-                const a = (Math.PI * 2 / shots) * i + (this.t * 0.015);
+                const t = count === 1 ? 0 : (i / (count - 1) - 0.5);
+                const a = aimToPlayer + t * spread;
                 const bx = this.pos.x + Math.cos(a) * (this.radius + 10);
                 const by = this.pos.y + Math.sin(a) * (this.radius + 10);
-                bullets.push(new Bullet(bx, by, a, true, 1, 9 + (this.phase === 2 ? 2 : 0), 4, '#f0f'));
+                const shot = new Bullet(bx, by, a, true, 1, 12, 4, '#f6f');
+                shot.life = Math.round(shot.life * 1.25);
+                bullets.push(shot);
             }
-            this.spiralTimer = this.phase === 2 ? 90 : 45;
-            this.burstCooldown = this.phase === 2 ? 95 : 120;
-            playSound('shoot');
+            playSound('warp_chitin');
+            this.chitinCooldown = this.phase === 3 ? 90 : (this.phase === 2 ? 110 : 130);
         }
 
-        if (this.spiralTimer > 0) {
-            this.spiralTimer -= dtFactor;
-
-            // Accumulator for consistent spiral density independent of frame rate
-            if (typeof this.spiralAccum === 'undefined') this.spiralAccum = 0;
-            this.spiralAccum += dtFactor;
-
-            while (this.spiralAccum >= 1) {
-                this.spiralAccum -= 1;
-                this.spiralAng += 0.18;
-                const a = this.spiralAng;
-                const bx = this.pos.x + Math.cos(a) * (this.radius + 14);
-                const by = this.pos.y + Math.sin(a) * (this.radius + 14);
-                bullets.push(new Bullet(bx, by, a, true, 1, 12, 3, '#ff6'));
+        if (this.screamCooldown <= 0 && distToPlayer < 2400) {
+            shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 0, 1100, { damageAsteroids: true, color: '#f0f' }));
+            if (distToPlayer < 1200) {
+                const nx = Math.cos(aimToPlayer);
+                const ny = Math.sin(aimToPlayer);
+                player.vel.x += nx * 12;
+                player.vel.y += ny * 12;
             }
+            playSound('warp_scream');
+            this.screamCooldown = this.phase === 3 ? 210 : 260;
+        }
+
+        if (this.podCooldown <= 0) {
+            const count = 2 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < count; i++) {
+                const a = Math.random() * Math.PI * 2;
+                warpBioPods.push(new WarpBioPod(this.pos.x, this.pos.y, a));
+            }
+            playSound('warp_pod');
+            this.podCooldown = this.phase === 3 ? 200 : 260;
         }
 
         // Reinforcements.
         this.maybeCallHelpers();
 
-        // Contact damage (prevents "hugging" the boss).
-        if (distToPlayer < this.radius + player.radius + 4) {
+        // Contact damage only on true rams/dashes.
+        const speed = Math.hypot(this.vel.x, this.vel.y);
+        const isRamming = (this.dashFrames > 0) || (speed > 4);
+        if (isRamming && distToPlayer < this.radius + player.radius + 4) {
             if (player.invulnerable <= 0) {
-                player.hp -= 1;
+                const idx = player.shieldSegments ? player.shieldSegments.findIndex(s => s > 0) : -1;
+                if (idx !== -1) {
+                    player.shieldSegments[idx] = Math.max(0, player.shieldSegments[idx] - 1);
+                    player.shieldsDirty = true;
+                } else {
+                    player.hp -= 2;
+                    spawnParticles(player.pos.x, player.pos.y, 10, '#f00');
+                    playSound('hit');
+                    updateHealthUI();
+                    if (player.hp <= 0) killPlayer();
+                }
                 player.invulnerable = 22;
-                spawnParticles(player.pos.x, player.pos.y, 10, '#f00');
-                playSound('hit');
-                updateHealthUI();
-                if (player.hp <= 0) killPlayer();
             }
         }
 
@@ -10850,42 +10851,19 @@ class WarpSentinelBoss extends Entity {
                 }
             }
 
-            // Telegraphed heavy laser (charge line -> blast) overlay
-            if ((this.laserCharge && this.laserCharge > 0) || (this.laserDelay && this.laserDelay > 0) || (this.laserFire && this.laserFire > 0)) {
-                const a = this.laserAngle || aim;
-                const ex = Math.cos(a) * this.laserLen;
-                const ey = Math.sin(a) * this.laserLen;
-                const charging = (this.laserCharge && this.laserCharge > 0);
-                const locking = (this.laserDelay && this.laserDelay > 0);
-                const firing = (this.laserFire && this.laserFire > 0);
-                const pct = charging ? (1 - (this.laserCharge / (this.laserChargeTotal || 1))) : 1;
+            // Flame breath telegraph
+            if ((this.flameCharge && this.flameCharge > 0) || (this.flameFire && this.flameFire > 0)) {
+                const a = this.flameAngle || aim;
+                const alpha = (this.flameFire && this.flameFire > 0) ? 0.35 : 0.2;
                 ctx.save();
                 ctx.translate(rPos.x, rPos.y);
-                ctx.lineWidth = (this.laserWidth / z);
-                if (charging || locking) {
-                    ctx.setLineDash([12 / z, 10 / z]);
-                    const lockPulse = locking ? (0.55 + 0.35 * Math.sin(this.t * 0.35)) : 1;
-                    ctx.strokeStyle = `rgba(255, 220, 0, ${Math.min(0.75, (0.10 + pct * 0.35) * lockPulse + (locking ? 0.20 : 0))})`;
-                    ctx.shadowBlur = 16;
-                    ctx.shadowColor = '#ff0';
-                } else if (firing) {
-                    ctx.setLineDash([]);
-                    ctx.strokeStyle = 'rgba(255, 240, 0, 0.95)';
-                    ctx.shadowBlur = 28;
-                    ctx.shadowColor = '#ff0';
-                }
+                ctx.rotate(a);
+                ctx.fillStyle = `rgba(255, 120, 40, ${alpha})`;
                 ctx.beginPath();
                 ctx.moveTo(0, 0);
-                ctx.lineTo(ex, ey);
-                ctx.stroke();
-                ctx.shadowBlur = 0;
-                ctx.setLineDash([]);
-                if (firing) {
-                    ctx.fillStyle = 'rgba(255, 240, 0, 0.85)';
-                    ctx.beginPath();
-                    ctx.arc(ex, ey, (10 / z), 0, Math.PI * 2);
-                    ctx.fill();
-                }
+                ctx.arc(0, 0, this.flameRange, -this.flameCone * 0.5, this.flameCone * 0.5);
+                ctx.closePath();
+                ctx.fill();
                 ctx.restore();
             }
             return;
@@ -10928,41 +10906,18 @@ class WarpSentinelBoss extends Entity {
         ctx.fill();
         ctx.stroke();
 
-        // Telegraphed heavy laser (charge line -> blast).
-        if ((this.laserCharge && this.laserCharge > 0) || (this.laserDelay && this.laserDelay > 0) || (this.laserFire && this.laserFire > 0)) {
-            const a = (this.laserAngle || aim) - aim;
-            const ex = Math.cos(a) * this.laserLen;
-            const ey = Math.sin(a) * this.laserLen;
-            const charging = (this.laserCharge && this.laserCharge > 0);
-            const locking = (this.laserDelay && this.laserDelay > 0);
-            const firing = (this.laserFire && this.laserFire > 0);
-            const pct = charging ? (1 - (this.laserCharge / (this.laserChargeTotal || 1))) : 1;
+        // Flame breath telegraph
+        if ((this.flameCharge && this.flameCharge > 0) || (this.flameFire && this.flameFire > 0)) {
+            const a = (this.flameAngle || aim) - aim;
+            const alpha = (this.flameFire && this.flameFire > 0) ? 0.35 : 0.2;
             ctx.save();
-            ctx.lineWidth = (this.laserWidth / z);
-            if (charging || locking) {
-                ctx.setLineDash([12 / z, 10 / z]);
-                const lockPulse = locking ? (0.55 + 0.35 * Math.sin(this.t * 0.35)) : 1;
-                ctx.strokeStyle = `rgba(255, 220, 0, ${Math.min(0.75, (0.10 + pct * 0.35) * lockPulse + (locking ? 0.20 : 0))})`;
-                ctx.shadowBlur = 16;
-                ctx.shadowColor = '#ff0';
-            } else if (firing) {
-                ctx.setLineDash([]);
-                ctx.strokeStyle = 'rgba(255, 240, 0, 0.95)';
-                ctx.shadowBlur = 28;
-                ctx.shadowColor = '#ff0';
-            }
+            ctx.rotate(a);
+            ctx.fillStyle = `rgba(255, 120, 40, ${alpha})`;
             ctx.beginPath();
             ctx.moveTo(0, 0);
-            ctx.lineTo(ex, ey);
-            ctx.stroke();
-            ctx.shadowBlur = 0;
-            ctx.setLineDash([]);
-            if (firing) {
-                ctx.fillStyle = 'rgba(255, 240, 0, 0.85)';
-                ctx.beginPath();
-                ctx.arc(ex, ey, (10 / z), 0, Math.PI * 2);
-                ctx.fill();
-            }
+            ctx.arc(0, 0, this.flameRange, -this.flameCone * 0.5, this.flameCone * 0.5);
+            ctx.closePath();
+            ctx.fill();
             ctx.restore();
         }
 
@@ -12704,6 +12659,7 @@ class Destroyer2 extends Entity {
 let player;
 let bullets = [];
 let bossBombs = [];
+let warpBioPods = [];
 let staggeredBombExplosions = []; // Queue for staggered bomb explosions
 let staggeredParticleBursts = []; // Queue for staggered particle bursts
 let guidedMissiles = [];
@@ -12829,6 +12785,7 @@ function enterWarpMaze() {
     };
     detach(bullets);
     detach(bossBombs);
+    detach(warpBioPods);
     detach(guidedMissiles);
     detach(enemies);
     detach(pinwheels);
@@ -12846,6 +12803,7 @@ function enterWarpMaze() {
 
     bullets = [];
     bossBombs = [];
+    warpBioPods = [];
     staggeredBombExplosions = [];
     staggeredParticleBursts = [];
     guidedMissiles = [];
@@ -13002,6 +12960,7 @@ function exitWarpMaze() {
     // Clean up all warp-specific entities
     cleanupWarpArray(bullets, 'warp bullets');
     cleanupWarpArray(bossBombs, 'warp boss bombs');
+    cleanupWarpArray(warpBioPods, 'warp bio pods');
     cleanupWarpArray(staggeredBombExplosions, 'staggered bomb explosions');
     cleanupWarpArray(staggeredParticleBursts, 'staggered particle bursts');
     cleanupWarpArray(guidedMissiles, 'warp guided missiles');
@@ -13032,6 +12991,7 @@ function exitWarpMaze() {
     // Clear the arrays
     bullets.length = 0;
     bossBombs.length = 0;
+    warpBioPods.length = 0;
     staggeredBombExplosions.length = 0;
     staggeredParticleBursts.length = 0;
     guidedMissiles.length = 0;
@@ -14443,6 +14403,9 @@ function resolveEntityCollision() {
             }
             let r1 = (e1 instanceof Destroyer || e1 instanceof Destroyer2) ? (e1.shieldRadius || e1.radius) : e1.radius;
             let r2 = (e2 instanceof Destroyer || e2 instanceof Destroyer2) ? (e2.shieldRadius || e2.radius) : e2.radius;
+            if (e1.isWarpBoss) r1 = e1.shieldRadius || e1.radius;
+            if (e2.isWarpBoss) r2 = e2.shieldRadius || e2.radius;
+
 
             const isStatic1 = (e1 instanceof Pinwheel) || (e1 instanceof SpaceStation);
             const isStatic2 = (e2 instanceof Pinwheel) || (e2 instanceof SpaceStation);
@@ -14833,7 +14796,8 @@ function checkWallCollision(entity, elasticity = 0) {
         if (dist > bossArena.radius) {
             // Player Damage Logic
             if (entity === player) {
-                if (Date.now() - player.lastArenaDamageTime > 1000) {
+                const warpBossActive = !!(boss && bossActive && boss.isWarpBoss && !boss.dead);
+                if (!warpBossActive && Date.now() - player.lastArenaDamageTime > 1000) {
                     if (player.invulnerable <= 0) {
                         player.hp -= 1;
                         playSound('hit');
@@ -16627,7 +16591,7 @@ function gameLoopLogic(opts = null) {
     renderAlpha = alpha; // Set global for entity draw methods
     const renderPos = player.getRenderPos(alpha);
     let camX, camY;
-    const arenaLockActive = !!(bossArena && bossArena.active && !(boss && (boss.isCruiser || boss.isFlagship || boss.type === 'flagship')));
+    const arenaLockActive = !!(bossArena && bossArena.active && !(boss && (boss.isCruiser || boss.isFlagship || boss.isWarpBoss || boss.type === 'flagship')));
     if (arenaLockActive) {
         camX = bossArena.x - width / (2 * zoom);
         camY = bossArena.y - height / (2 * zoom);
@@ -16849,6 +16813,13 @@ function gameLoopLogic(opts = null) {
 
     if (bossActive && boss) {
         if (doUpdate) boss.update(deltaTime);
+        if (boss.isWarpBoss) {
+            bossArena.x = boss.pos.x;
+            bossArena.y = boss.pos.y;
+            bossArena.radius = 4000;
+            bossArena.active = true;
+            bossArena.growing = false;
+        }
         if (doDraw) boss.draw(ctx);
     }
 
@@ -16887,6 +16858,13 @@ function gameLoopLogic(opts = null) {
         const b = bossBombs[i];
         if (doUpdate) b.update(deltaTime);
         if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
+    }
+
+    // Warp bio-pods - always update, cull drawing
+    for (let i = 0, len = warpBioPods.length; i < len; i++) {
+        const p = warpBioPods[i];
+        if (doUpdate) p.update(deltaTime);
+        if (doDraw && isInView(p.pos.x, p.pos.y)) p.draw(ctx);
     }
 
     // Guided missiles - always update (tracking), cull drawing
@@ -16977,6 +16955,7 @@ function gameLoopLogic(opts = null) {
             else pixiCleanupObject(b);
         });
         immediateCompactArray(bossBombs);
+        immediateCompactArray(warpBioPods, pixiCleanupObject);
         immediateCompactArray(guidedMissiles, (m) => {
             if (m && m.dead && typeof m.explode === 'function' && !m._exploded) {
                 m.explode('#ff0');
@@ -17376,6 +17355,19 @@ function gameLoopLogic(opts = null) {
                                         }
                                     }
                                 }
+                                break;
+                            }
+                        }
+                    }
+
+                    // Only player bullets can hit warp bio-pods
+                    if (!hit && !b.isEnemy && warpBioPods && warpBioPods.length > 0) {
+                        for (let p of warpBioPods) {
+                            if (!p || p.dead) continue;
+                            const dist = Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y);
+                            if (dist < p.radius + b.radius) {
+                                p.takeHit(b.damage);
+                                hit = true;
                                 break;
                             }
                         }
