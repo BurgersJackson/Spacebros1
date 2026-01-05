@@ -475,7 +475,6 @@ export function playSound(type, volumeMult = 1) {
                 break;
             }
             case 'warp_flame_start': {
-                if (sfxLoops.warp_flame_loop) break;
                 const osc = audioCtx.createOscillator();
                 const g = audioCtx.createGain();
                 const noise = createNoise();
@@ -493,13 +492,14 @@ export function playSound(type, volumeMult = 1) {
                 g.connect(audioCtx.destination);
                 g.gain.setValueAtTime(0.0001, now);
                 g.gain.exponentialRampToValueAtTime(0.25, now + 0.2);
+                g.gain.exponentialRampToValueAtTime(0.0001, now + 0.8);
                 osc.start(now);
                 noise.start(now);
-                sfxLoops.warp_flame_loop = { osc, gain: g, noise };
+                osc.stop(now + 0.8);
+                noise.stop(now + 0.8);
                 break;
             }
             case 'warp_flame_stop': {
-                stopLoop('warp_flame_loop');
                 break;
             }
         }

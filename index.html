@@ -521,6 +521,50 @@
             background-color: #f00;
             transition: width 0.1s linear;
         }
+
+        /* Abort Modal Styles */
+        #abort-confirm {
+            border-color: #ff0;
+            color: #ff0;
+            min-width: 120px;
+            font-weight: bold;
+        }
+        #abort-cancel {
+            border-color: #0f0;
+            min-width: 120px;
+        }
+
+        /* Profile Card Styles */
+        .profile-item {
+            background: rgba(0, 20, 0, 0.9);
+            border: 2px solid #0f0;
+            padding: 15px;
+            margin: 10px 0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .profile-item:hover,
+        .profile-item.selected {
+            background: rgba(0, 40, 0, 0.95);
+            border-color: #ff0;
+            box-shadow: 0 0 10px #ff0;
+        }
+        .profile-item-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #ff0;
+            margin-bottom: 8px;
+        }
+        .profile-item-detail {
+            font-size: 13px;
+            color: #fff;
+            margin: 4px 0;
+        }
+        .profile-item-last-saved {
+            font-size: 11px;
+            color: #888;
+            margin-top: 8px;
+        }
     </style>
     <script type="importmap">
 {
@@ -608,13 +652,13 @@
     <div id="start-screen" class="menu-screen">
         <h1>NEON SPACE</h1>
         <p>MOUSE: Aim • WASD/L-STICK: Move<br>Collect Coins to Upgrade Ship!</p>
+        <div id="current-profile-display" style="color: #ff0; margin-bottom: 10px; font-size: 14px;">Current: None</div>
         <button id="resume-btn-start">RESUME GAME</button>
         <button id="start-btn">INITIATE LAUNCH</button>
-        <button id="load-btn">LOAD DATA</button>
+        <button id="profile-btn">SELECT PROFILE</button>
         <button id="upgrades-btn" style="margin-top: 10px;">UPGRADES</button>
         <button id="settings-btn" style="margin-top: 10px;">SETTINGS</button>
         <button id="desktop-quit-start-btn" style="margin-top: 10px;">QUIT TO DESKTOP</button>
-        <button id="new-profile-btn">NEW PROFILE</button>
     </div>
 
     <div id="settings-menu"
@@ -716,12 +760,10 @@
     <div id="pause-menu" class="menu-screen">
         <h1>PAUSED</h1>
         <button id="resume-btn">RESUME</button>
-        <button id="save-btn">SAVE GAME</button>
-        <button id="pause-load-btn">LOAD GAME</button>
         <button id="pause-settings-btn">SETTINGS</button>
         <button id="restart-btn-pause">RESTART</button>
         <button id="music-btn">MUSIC: ON</button>
-        <button id="quit-btn">MAIN MENU</button>
+        <button id="quit-btn">ABORT RUN</button>
         <button id="desktop-quit-pause-btn" style="margin-top: 10px; border-color: #f00; color: #f00;">QUIT TO
             DESKTOP</button>
     </div>
@@ -732,6 +774,26 @@
         <div style="display: flex; justify-content: space-around;">
             <button id="prompt-cancel">CANCEL</button>
             <button id="prompt-confirm">CONFIRM</button>
+        </div>
+    </div>
+
+    <div id="abort-modal" class="menu-screen" style="display: none; width: 450px; padding: 30px; border-color: #ff0;">
+        <h2 style="color: #ff0; margin-top: 0; font-family: 'Courier New', monospace;">ABORT RUN?</h2>
+        <p style="color: #ccc; margin: 20px 0; line-height: 1.6;">Are you sure?</p>
+        <div style="display: flex; gap: 20px; justify-content: center; margin-top: 25px;">
+            <button id="abort-confirm">YES</button>
+            <button id="abort-cancel">NO</button>
+        </div>
+    </div>
+
+    <div id="save-menu" class="menu-screen" style="display: none; width: 600px; max-height: 80vh; overflow-y: auto; border-color: #ff0;">
+        <h2 style="color: #ff0; margin-top: 0; font-family: 'Courier New', monospace;">SELECT PROFILE</h2>
+        <div id="profile-list" style="max-height: 50vh; overflow-y: auto; margin-bottom: 20px;"></div>
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+            <button id="create-new-profile">CREATE NEW</button>
+            <button id="delete-profile">DELETE SELECTED</button>
+            <button id="select-profile">SELECT</button>
+            <button id="close-save-menu" style="border-color: #0f0; color: #0f0;">CLOSE</button>
         </div>
     </div>
 

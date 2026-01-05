@@ -3698,7 +3698,7 @@ class Shockwave extends Entity {
         this.damage = damage;
         this.currentRadius = 10;
         this.maxRadius = maxRadius;
-        this.speed = 25;
+        this.speed = opts.travelSpeed !== undefined ? opts.travelSpeed : 12;
         this.hitList = [];
         this.damagePlayer = !!opts.damagePlayer;
         this.damageBases = !!opts.damageBases;
@@ -3785,7 +3785,7 @@ class Shockwave extends Entity {
             }
             g.clear();
             const alpha = Math.max(0, 1 - (this.currentRadius / this.maxRadius));
-            g.lineStyle(8, colorToPixi(this.color), alpha);
+            g.lineStyle(18, colorToPixi(this.color), alpha);
             g.drawCircle(0, 0, this.currentRadius);
             g.position.set(rPos.x, rPos.y);
             return;
@@ -10451,7 +10451,7 @@ class WarpSentinelBoss extends Entity {
 
             if (this.dashFrames <= 0) {
                 this.dashFrames = 0;
-                shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 2, 650, { damagePlayer: true, color: '#f0f' }));
+                shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 2, 650, { damagePlayer: true, color: '#f0f', ignoreEntity: this }));
                 playSound('explode');
             }
         } else if (this.dashCooldown <= 0 && distToPlayer > 650 && distToPlayer < 2800) {
@@ -10554,7 +10554,7 @@ class WarpSentinelBoss extends Entity {
         }
 
         if (this.screamCooldown <= 0 && distToPlayer < 2400) {
-            shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 0, 1100, { damageAsteroids: true, color: '#f0f' }));
+            shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 0, 1100, { damageAsteroids: true, color: '#f0f', ignoreEntity: this }));
             if (distToPlayer < 1200) {
                 const nx = Math.cos(aimToPlayer);
                 const ny = Math.sin(aimToPlayer);
@@ -14872,12 +14872,24 @@ function updateNuggetUI() {
 const SAVE_PREFIX = 'neon_space_profile_v1_';
 const SAVE_LAST_KEY = 'neon_space_profile_last';
 let pendingProfile = null;
+let currentProfileName = null;
+let selectedProfileName = null;
+let totalKills = 0;
+let highScore = 0;
+let totalPlayTimeMs = 0;
+let fromPauseMenu = false;
 
 function buildProfileData() {
     if (!player) return null;
     return {
         version: 1,
         timestamp: Date.now(),
+        lastSavedAt: Date.now(),
+        score: score,
+        sectorIndex: sectorIndex,
+        totalKills: totalKills,
+        highScore: highScore,
+        totalPlayTimeMs: totalPlayTimeMs,
         player: {
             hp: player.hp,
             maxHp: player.maxHp,
@@ -14940,11 +14952,60 @@ function applyProfile(profile) {
     player.turboBoost.durationFrames = Math.max(60, player.turboBoost.durationFrames || 0);
     player.turboBoost.cooldownTotalFrames = 600;
     player.turboBoost.speedMult = Math.max(1.25, player.turboBoost.speedMult || 0);
+
+    // Restore profile statistics
+    if (typeof profile.totalKills === 'number') totalKills = profile.totalKills;
+    if (typeof profile.highScore === 'number') highScore = profile.highScore;
+    if (typeof profile.totalPlayTimeMs === 'number') totalPlayTimeMs = profile.totalPlayTimeMs;
+
     updateHealthUI();
     updateWarpUI();
     updateTurboUI();
     updateXpUI();
     pendingProfile = null;
+}
+
+function showAbortConfirmDialog() {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('abort-modal');
+        const confirmBtn = document.getElementById('abort-confirm');
+        const cancelBtn = document.getElementById('abort-cancel');
+
+        if (!modal || !confirmBtn || !cancelBtn) {
+            resolve(false);
+            return;
+        }
+
+        modal.style.display = 'block';
+
+        const cleanup = () => {
+            confirmBtn.removeEventListener('click', onYes);
+            cancelBtn.removeEventListener('click', onNo);
+            window.removeEventListener('keydown', onEscape);
+            modal.style.display = 'none';
+        };
+
+        const onYes = () => {
+            cleanup();
+            resolve(true);
+        };
+
+        const onNo = () => {
+            cleanup();
+            resolve(false);
+        };
+
+        const onEscape = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                onNo();
+            }
+        };
+
+        confirmBtn.addEventListener('click', onYes);
+        cancelBtn.addEventListener('click', onNo);
+        window.addEventListener('keydown', onEscape);
+    });
 }
 
 function listSaveSlots() {
@@ -14956,6 +15017,197 @@ function listSaveSlots() {
         }
     }
     return slots;
+}
+
+function getProfileList() {
+    const profiles = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(SAVE_PREFIX)) {
+            const raw = localStorage.getItem(k);
+            try {
+                const data = JSON.parse(raw);
+                const name = k.replace(SAVE_PREFIX, '');
+                const p = data.player || {};
+
+                const storedHighScore = data.highScore || 0;
+                const currentScore = data.score || 0;
+                const effectiveHighScore = Math.max(storedHighScore, currentScore);
+
+                profiles.push({
+                    name: name,
+                    level: p.level || 1,
+                    xp: p.xp || 0,
+                    nextXp: p.nextLevelXp || 100,
+                    hp: p.hp || 100,
+                    maxHp: p.maxHp || 100,
+                    totalKills: data.totalKills || 0,
+                    sectorIndex: data.sectorIndex || 1,
+                    score: data.score || 0,
+                    highScore: effectiveHighScore,
+                    totalPlayTimeMs: data.totalPlayTimeMs || 0,
+                    timestamp: data.lastSavedAt || data.timestamp || 0
+                });
+            } catch (e) {
+                console.warn('Failed to parse profile', name, e);
+            }
+        }
+    }
+    return profiles.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+function formatPlayTime(ms) {
+    const totalSec = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSec / 3600);
+    const minutes = Math.floor((totalSec % 3600) / 60);
+
+    if (hours > 0) {
+        return `${hours}h ${minutes}m`;
+    }
+    return `${minutes}m`;
+}
+
+function updateStartScreenDisplay() {
+    const el = document.getElementById('current-profile-display');
+    if (el) {
+        el.innerText = currentProfileName ? `Current: ${currentProfileName}` : 'Current: None';
+    }
+}
+
+function updateProfileSelectionVisuals() {
+    document.querySelectorAll('.profile-item').forEach(el => {
+        if (el.dataset.name === selectedProfileName) {
+            el.classList.add('selected');
+        } else {
+            el.classList.remove('selected');
+        }
+    });
+}
+
+function selectProfile(name) {
+    currentProfileName = name;
+    localStorage.setItem(SAVE_LAST_KEY, name);
+    updateStartScreenDisplay();
+    showOverlayMessage(`SELECTED: ${name}`, '#ff0', 1200);
+}
+
+function createNewProfile() {
+    const existingProfiles = listSaveSlots();
+    let counter = 1;
+    let newName;
+    do {
+        newName = `profile${counter}`;
+        counter++;
+    } while (existingProfiles.includes(newName));
+
+    const template = {
+        version: 1,
+        timestamp: Date.now(),
+        lastSavedAt: Date.now(),
+        score: 0,
+        sectorIndex: 1,
+        totalKills: 0,
+        highScore: 0,
+        totalPlayTimeMs: 0,
+        player: null
+    };
+
+    try {
+        localStorage.setItem(SAVE_PREFIX + newName, JSON.stringify(template));
+    } catch (e) {
+        showOverlayMessage("PROFILE CREATE FAILED", '#f00', 1500);
+        return;
+    }
+
+    currentProfileName = newName;
+    localStorage.setItem(SAVE_LAST_KEY, newName);
+    showSaveMenu();
+    updateStartScreenDisplay();
+    showOverlayMessage(`CREATED: ${newName}`, '#0f0', 1200);
+}
+
+async function deleteSelectedProfile() {
+    if (!selectedProfileName) {
+        showOverlayMessage("NO PROFILE SELECTED", '#f00', 1200);
+        return;
+    }
+
+    const confirmed = await showAbortConfirmDialog();
+    if (!confirmed) return;
+
+    localStorage.removeItem(SAVE_PREFIX + selectedProfileName);
+    if (currentProfileName === selectedProfileName) {
+        currentProfileName = null;
+        localStorage.removeItem(SAVE_LAST_KEY);
+        updateStartScreenDisplay();
+    }
+
+    selectedProfileName = currentProfileName;
+    showSaveMenu();
+    showOverlayMessage("PROFILE DELETED", '#ff0', 1200);
+}
+
+function showSaveMenu() {
+    const menu = document.getElementById('save-menu');
+    const listEl = document.getElementById('profile-list');
+
+    const profiles = getProfileList();
+    listEl.innerHTML = '';
+
+    if (profiles.length === 0) {
+        listEl.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">No profiles found</div>';
+    } else {
+        profiles.forEach(p => {
+            const date = new Date(p.timestamp);
+            const timeStr = date.toLocaleString();
+            const playTime = formatPlayTime(p.totalPlayTimeMs);
+
+            const div = document.createElement('div');
+            div.className = 'profile-item';
+            div.dataset.name = p.name;
+            div.innerHTML = `
+                <div class="profile-item-name">${p.name}</div>
+                <div class="profile-item-detail">Level ${p.level} • XP: ${p.xp}/${p.nextXp}</div>
+                <div class="profile-item-detail">HP: ${p.hp}/${p.maxHp} • Kills: ${p.totalKills}</div>
+                <div class="profile-item-detail">Sector ${p.sectorIndex} • Score: ${p.score}</div>
+                <div class="profile-item-detail">High Score: ${p.highScore}</div>
+                <div class="profile-item-detail">Play Time: ${playTime}</div>
+                <div class="profile-item-last-saved">Last saved: ${timeStr}</div>
+            `;
+            div.addEventListener('click', () => {
+                selectedProfileName = p.name;
+                updateProfileSelectionVisuals();
+            });
+            listEl.appendChild(div);
+        });
+    }
+
+    document.getElementById('create-new-profile').onclick = () => createNewProfile();
+    document.getElementById('delete-profile').onclick = () => deleteSelectedProfile();
+    document.getElementById('select-profile').onclick = () => {
+        if (selectedProfileName) {
+            selectProfile(selectedProfileName);
+            menu.style.display = 'none';
+        } else {
+            showOverlayMessage("NO PROFILE SELECTED", '#f00', 1200);
+        }
+    };
+    document.getElementById('close-save-menu').onclick = () => {
+        menu.style.display = 'none';
+        updateStartScreenDisplay();
+    };
+
+    menu.style.display = 'block';
+    selectedProfileName = currentProfileName;
+    updateProfileSelectionVisuals();
+
+    menuSelectionIndex = 0;
+    gpState.lastMenuElements = null;
+}
+
+function autoSaveToCurrentProfile() {
+    if (!currentProfileName) return;
+    saveToSlot(currentProfileName, true);
 }
 
 function showCustomPrompt(message, defaultValue) {
@@ -15015,19 +15267,6 @@ function showCustomPrompt(message, defaultValue) {
     });
 }
 
-async function promptForSlot(existingOnly = false, promptText = null) {
-    const slots = listSaveSlots();
-    const defaultSlot = localStorage.getItem(SAVE_LAST_KEY) || (slots[0] || 'slot1');
-    let msg = promptText;
-    if (!msg) {
-        msg = existingOnly ? `Load profile (${slots.join(', ') || 'none'}):` : `Save profile (existing: ${slots.join(', ') || 'none'}):`;
-    }
-    const name = await showCustomPrompt(msg, defaultSlot);
-    if (!name) return null;
-    localStorage.setItem(SAVE_LAST_KEY, name);
-    return name;
-}
-
 function saveToSlot(slot, silent = false) {
     try {
         const data = buildProfileData();
@@ -15054,52 +15293,10 @@ function wipeProfiles() {
     resetMetaProfile();
     pendingProfile = null;
     rerollTokens = 0;
+    currentProfileName = null;
     updateMetaUI();
+    updateStartScreenDisplay();
     showOverlayMessage("PROFILE RESET - STARTING FRESH", '#0f0', 2000);
-}
-
-async function saveGame() {
-    if (!player || !gameActive) {
-        showOverlayMessage("NO ACTIVE PROFILE TO SAVE", '#f00', 1500);
-        return;
-    }
-    const slot = await promptForSlot(false);
-    if (!slot) return;
-    saveToSlot(slot);
-}
-
-async function loadGameFromStorage() {
-    const slot = await promptForSlot(true);
-    if (!slot) return;
-    try {
-        const raw = localStorage.getItem(SAVE_PREFIX + slot);
-        if (!raw) {
-            showOverlayMessage("NO PROFILE FOUND", '#f00', 1500);
-            return;
-        }
-        const data = JSON.parse(raw);
-        pendingProfile = data;
-        if (player) applyProfile(data);
-        localStorage.setItem(SAVE_LAST_KEY, slot);
-        showOverlayMessage(`PROFILE LOADED (${slot})`, '#0f0', 1500);
-
-        // Loading a save is like starting fresh - can't resume until quitting to menu
-        canResumeGame = false;
-
-        // Update resume button state
-        if (window.updateResumeButtonState) {
-            window.updateResumeButtonState();
-        }
-    } catch (e) {
-        console.warn('load failed', e);
-        showOverlayMessage("LOAD FAILED", '#f00', 1500);
-    }
-}
-
-async function saveEndOfRun() {
-    const slot = await promptForSlot(false, "Save profile (new or overwrite):");
-    if (!slot) return;
-    saveToSlot(slot);
 }
 
 function formatTime(ms) {
@@ -15965,12 +16162,12 @@ function killPlayer() {
     }
     playSound('explode');
     spawnParticles(player.pos.x, player.pos.y, 30, '#0ff');
-    setTimeout(async () => {
+    setTimeout(() => {
         gameActive = false;
         resetWarpState();
         stopMusic();
         try { depositMetaNuggets(); } catch (e) { console.warn('meta deposit failed', e); }
-        try { await saveEndOfRun(); } catch (e) { console.warn('save end of run failed', e); }
+        if (currentProfileName) autoSaveToCurrentProfile();
         document.getElementById('start-screen').style.display = 'block';
         document.querySelector('#start-screen h1').innerText = "SYSTEM FAILURE";
         document.getElementById('start-btn').innerText = "REBOOT SYSTEM";
@@ -16459,7 +16656,7 @@ function gameLoopLogic(opts = null) {
                 spawnOneAsteroidRelative(false);
                 tries++;
             }
-        } else if (warpZone && warpZone.active && !bossActive) {
+        } else if (warpZone && warpZone.active) {
             let tries = 0;
             while (environmentAsteroids.length < 50 && tries < 300) {
                 if (!spawnOneWarpAsteroidRelative(false)) break;
@@ -18250,10 +18447,13 @@ function colorToHex(colorStr) {
 function startGame() {
     console.log('[DEBUG] startGame() called');
     try {
+        // Reset fromPauseMenu flag for fresh start
+        fromPauseMenu = false;
+
         resetWarpState();
         resetCaveState();
         warpCompletedOnce = false;
-        // Always reset audio state to normal before a new run 
+        // Always reset audio state to normal before a new run
         setMusicMode('normal');
         gameMode = 'normal';
         simNowMs = 0; // Reset simulation clock for new game logic
@@ -18264,6 +18464,30 @@ function startGame() {
         stopMusic();
         if (player) pixiCleanupObject(player);
         player = new Spaceship();
+
+        // Load current profile data if available
+        if (currentProfileName) {
+            const raw = localStorage.getItem(SAVE_PREFIX + currentProfileName);
+            if (raw) {
+                try {
+                    const profile = JSON.parse(raw);
+                    // Restore profile statistics
+                    if (typeof profile.totalKills === 'number') totalKills = profile.totalKills;
+                    if (typeof profile.highScore === 'number') highScore = profile.highScore;
+                    if (typeof profile.totalPlayTimeMs === 'number') totalPlayTimeMs = profile.totalPlayTimeMs;
+                    // Restore player data
+                    applyProfile(profile);
+                } catch (e) {
+                    console.warn('Failed to load profile on start', e);
+                }
+            }
+        } else {
+            // Reset stats if no profile
+            totalKills = 0;
+            highScore = 0;
+            totalPlayTimeMs = 0;
+        }
+
         score = 0;
         difficultyTier = 1;
         pinwheelsDestroyedTotal = 0;
@@ -18453,6 +18677,15 @@ window.updateResumeButtonState = updateResumeButtonState;
 
 function togglePause() {
     if (!gameActive) return;
+
+    // Return to pause menu from start screen
+    if (fromPauseMenu && gamePaused && document.getElementById('start-screen').style.display === 'block') {
+        document.getElementById('start-screen').style.display = 'none';
+        document.getElementById('pause-menu').style.display = 'block';
+        fromPauseMenu = false;
+        return;
+    }
+
     const wasPaused = gamePaused;
     gamePaused = !gamePaused;
     document.getElementById('pause-menu').style.display = gamePaused ? 'block' : 'none';
@@ -18490,10 +18723,13 @@ function quitGame() {
     document.getElementById('start-screen').style.display = 'block';
     const endScreen = document.getElementById('end-screen');
     if (endScreen) endScreen.style.display = 'none';
-    document.querySelector('#start-screen h1').innerText = "PAUSED";
+    document.querySelector('#start-screen h1').innerText = "ABORTED";
     document.getElementById('start-btn').innerText = "INITIATE LAUNCH";
     setTimeout(() => document.getElementById('resume-btn-start').focus(), 100);
     menuSelectionIndex = 0;
+
+    // Set flag that we came from pause menu
+    fromPauseMenu = true;
 
     // Mark that we can resume this game
     canResumeGame = gameActive;
@@ -18659,11 +18895,14 @@ if (resumeStartBtn) {
     window.updateResumeButtonState();
 }
 
-const loadBtn = document.getElementById('load-btn');
-if (loadBtn) loadBtn.addEventListener('click', () => {
-    initAudio();
-    loadGameFromStorage();
-});
+// Profile selection button
+const profileBtn = document.getElementById('profile-btn');
+if (profileBtn) {
+    profileBtn.addEventListener('click', () => {
+        initAudio();
+        showSaveMenu();
+    });
+}
 
 const upgradesBtn = document.getElementById('upgrades-btn');
 const upgradesBackBtn = document.getElementById('upgrades-back-btn');
@@ -18934,19 +19173,17 @@ document.getElementById('restart-btn').addEventListener('click', () => {
     startGame();
 });
 document.getElementById('resume-btn').addEventListener('click', togglePause);
-const saveBtn = document.getElementById('save-btn');
-if (saveBtn) saveBtn.addEventListener('click', () => {
-    saveGame();
-});
-const pauseLoadBtn = document.getElementById('pause-load-btn');
-if (pauseLoadBtn) pauseLoadBtn.addEventListener('click', () => {
-    loadGameFromStorage();
-});
 const pauseRestartBtn = document.getElementById('restart-btn-pause');
 if (pauseRestartBtn) pauseRestartBtn.addEventListener('click', () => {
     startGame();
 });
-document.getElementById('quit-btn').addEventListener('click', quitGame);
+// Quit button now shows confirmation dialog
+document.getElementById('quit-btn').addEventListener('click', async () => {
+    const confirmed = await showAbortConfirmDialog();
+    if (confirmed) {
+        quitGame();
+    }
+});
 document.getElementById('music-btn').addEventListener('click', toggleMusic);
 
 
@@ -19139,4 +19376,9 @@ requestAnimationFrame(() => {
 
 loadMetaProfile();
 updateMetaUI();
+
+// Initialize profile system
+currentProfileName = localStorage.getItem(SAVE_LAST_KEY) || null;
+updateStartScreenDisplay();
+
 mainLoop();
