@@ -14762,7 +14762,7 @@ function resolveEntityCollision() {
                 }
             }
             if (!hitEntity && bossActive && boss && !boss.dead) {
-                if (boss.hitTestCircle(s.pos.x, s.pos.y, s.radius)) {
+                if (typeof boss.hitTestCircle === 'function' && boss.hitTestCircle(s.pos.x, s.pos.y, s.radius)) {
                     boss.hp -= s.damage;
                     spawnParticles(boss.pos.x, boss.pos.y, 22, '#fa0');
                     playSound('explode');
@@ -17158,6 +17158,9 @@ function gameLoopLogic(opts = null) {
                             }
                             // Enemy Logic
                             if (e instanceof Enemy) {
+                                // Skip boss entities - they have dedicated collision logic later
+                                if (bossActive && boss && e === boss) continue;
+
                                 const dx = b.pos.x - e.pos.x;
                                 const dy = b.pos.y - e.pos.y;
                                 const distSq = dx * dx + dy * dy;
@@ -17521,7 +17524,7 @@ function gameLoopLogic(opts = null) {
                             }
 
                             // Hull damage
-                            if (!hit && boss.hitTestCircle(b.pos.x, b.pos.y, b.radius)) {
+                            if (!hit && (typeof boss.hitTestCircle === 'function' ? boss.hitTestCircle(b.pos.x, b.pos.y, b.radius) : (dist < boss.radius + b.radius))) {
                                 const dmg = (boss.vulnerableTimer && boss.vulnerableTimer > 0) ? (b.damage * 2) : b.damage;
                                 boss.hp -= dmg;
                                 hit = true;

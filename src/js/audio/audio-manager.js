@@ -20,6 +20,9 @@ export let sfxVolume = 0.5; // 0.0 to 1.0
 // --- Sound Context ---
 let inProjectileImpactSoundContext = false;
 
+// --- Looping SFX ---
+const sfxLoops = Object.create(null);
+
 // --- MP3 SFX Pools ---
 const mp3SfxPools = Object.create(null);
 
@@ -169,6 +172,26 @@ export function playSound(type, volumeMult = 1) {
             gain.connect(audioCtx.destination);
             gain.gain.setValueAtTime(vol * volumeMult, now);
             return { osc, gain };
+        };
+
+        const createNoise = () => {
+            const bufferSize = audioCtx.sampleRate * 0.5;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            const src = audioCtx.createBufferSource();
+            src.buffer = buffer;
+            src.loop = true;
+            return src;
+        };
+
+        const stopLoop = (key) => {
+            const loop = sfxLoops[key];
+            if (!loop) return;
+            try { loop.gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08); } catch (e) { }
+            try { loop.osc.stop(now + 0.1); } catch (e) { }
+            try { if (loop.noise) loop.noise.stop(now + 0.1); } catch (e) { }
+            delete sfxLoops[key];
         };
 
         switch (type) {
@@ -378,6 +401,105 @@ export function playSound(type, volumeMult = 1) {
                 oscB.start(now);
                 oscA.stop(now + 0.95);
                 oscB.stop(now + 0.95);
+                break;
+            }
+            case 'warp_growl':
+            case 'warp_scream': {
+                const isScream = type === 'warp_scream';
+                const osc1 = audioCtx.createOscillator();
+                const osc2 = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc1.type = 'sawtooth';
+                osc2.type = 'triangle';
+                const base = isScream ? 120 : 90;
+                const peak = isScream ? 180 : 130;
+                const dur = isScream ? 0.8 : 0.5;
+                osc1.frequency.setValueAtTime(base, now);
+                osc1.frequency.exponentialRampToValueAtTime(peak, now + dur * 0.4);
+                osc1.frequency.exponentialRampToValueAtTime(base * 0.6, now + dur);
+                osc2.frequency.setValueAtTime(base * 0.5, now);
+                osc2.frequency.exponentialRampToValueAtTime(peak * 0.7, now + dur * 0.4);
+                osc2.frequency.exponentialRampToValueAtTime(base * 0.4, now + dur);
+                g.gain.setValueAtTime(0.0001, now);
+                g.gain.exponentialRampToValueAtTime(isScream ? 0.45 : 0.35, now + dur * 0.2);
+                g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+                osc1.connect(g);
+                osc2.connect(g);
+                g.connect(audioCtx.destination);
+                osc1.start(now);
+                osc2.start(now);
+                osc1.stop(now + dur);
+                osc2.stop(now + dur);
+                break;
+            }
+            case 'warp_chitin': {
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(900, now);
+                osc.frequency.exponentialRampToValueAtTime(220, now + 0.15);
+                g.gain.setValueAtTime(0.18, now);
+                g.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+                osc.connect(g);
+                g.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.18);
+                break;
+            }
+            case 'warp_pod': {
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(120, now);
+                osc.frequency.exponentialRampToValueAtTime(70, now + 0.25);
+                g.gain.setValueAtTime(0.22, now);
+                g.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+                osc.connect(g);
+                g.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+                break;
+            }
+            case 'warp_pod_pop': {
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.exponentialRampToValueAtTime(60, now + 0.18);
+                g.gain.setValueAtTime(0.25, now);
+                g.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+                osc.connect(g);
+                g.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.18);
+                break;
+            }
+            case 'warp_flame_start': {
+                if (sfxLoops.warp_flame_loop) break;
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                const noise = createNoise();
+                const filter = audioCtx.createBiquadFilter();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(90, now);
+                osc.frequency.exponentialRampToValueAtTime(120, now + 0.6);
+                noise.playbackRate.setValueAtTime(1.0, now);
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(900, now);
+                filter.Q.setValueAtTime(0.7, now);
+                osc.connect(g);
+                noise.connect(filter);
+                filter.connect(g);
+                g.connect(audioCtx.destination);
+                g.gain.setValueAtTime(0.0001, now);
+                g.gain.exponentialRampToValueAtTime(0.25, now + 0.2);
+                osc.start(now);
+                noise.start(now);
+                sfxLoops.warp_flame_loop = { osc, gain: g, noise };
+                break;
+            }
+            case 'warp_flame_stop': {
+                stopLoop('warp_flame_loop');
                 break;
             }
         }
