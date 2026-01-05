@@ -14581,57 +14581,12 @@ function resolveEntityCollision() {
                 }
             }
         }
-
-    // Player vs Warp Sentinel Boss shield collision
-    if (bossActive && boss && !boss.dead && player && !player.dead && boss.isWarpBoss) {
-        const dx = player.pos.x - boss.pos.x;
-        const dy = player.pos.y - boss.pos.y;
-        const dist = Math.hypot(dx, dy);
-
-        // Outer shield collision
-        const outerShieldsUp = boss.shieldSegments && boss.shieldSegments.some(s => s > 0);
-        if (outerShieldsUp && dist < boss.shieldRadius + player.radius && dist > boss.shieldRadius - player.radius * 2) {
-            const angle = Math.atan2(dy, dx) - boss.shieldRotation;
-            const count = boss.shieldSegments.length;
-            const arcLen = (Math.PI * 2) / count;
-            const normalizedAngle = angle - Math.floor(angle / arcLen) * arcLen;
-            const segIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * count) % count;
-            if (boss.shieldSegments[segIndex] > 0) {
-                const pushAngle = Math.atan2(dy, dx);
-                const nx = Math.cos(pushAngle);
-                const ny = Math.sin(pushAngle);
-                const pushForce = 8;
-                player.vel.x += nx * pushForce;
-                player.vel.y += ny * pushForce;
-                spawnParticles((player.pos.x + boss.pos.x) / 2, (player.pos.y + boss.pos.y) / 2, 5, '#0ff');
-                playSound('shield_hit');
-            }
-        }
-
-        // Inner shield collision
-        const innerShieldsUp = boss.innerShieldSegments && boss.innerShieldSegments.some(s => s > 0);
-        if (innerShieldsUp && dist < boss.innerShieldRadius + player.radius && dist > boss.innerShieldRadius - player.radius * 2) {
-            const angle = Math.atan2(dy, dx) - boss.innerShieldRotation;
-            const count = boss.innerShieldSegments.length;
-            const arcLen = (Math.PI * 2) / count;
-            const normalizedAngle = angle - Math.floor(angle / arcLen) * arcLen;
-            const segIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * count) % count;
-            if (boss.innerShieldSegments[segIndex] > 0) {
-                const pushAngle = Math.atan2(dy, dx);
-                const nx = Math.cos(pushAngle);
-                const ny = Math.sin(pushAngle);
-                const pushForce = 8;
-                player.vel.x += nx * pushForce;
-                player.vel.y += ny * pushForce;
-                spawnParticles((player.pos.x + boss.pos.x) / 2, (player.pos.y + boss.pos.y) / 2, 5, '#f0f');
-                playSound('shield_hit');
-            }
-        }
+    }
+    }
     }
 
     // (Wall collisions for caves, warp zones, and anomalies are now handled centrally
         //  via checkWallCollision(entity) within each entity's update method).
-    }
 
     // Coin Collection
     if (player && !player.dead) {
