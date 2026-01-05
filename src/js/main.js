@@ -15043,14 +15043,71 @@ function listSaveSlots() {
     return slots;
 }
 
-function promptForSlot(existingOnly = false, promptText = null) {
+function showCustomPrompt(message, defaultValue) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('prompt-modal');
+        const input = document.getElementById('prompt-input');
+        const msgEl = document.getElementById('prompt-message');
+        const confirmBtn = document.getElementById('prompt-confirm');
+        const cancelBtn = document.getElementById('prompt-cancel');
+
+        if (!modal || !input || !msgEl) {
+            console.error('Prompt modal elements missing');
+            resolve(null);
+            return;
+        }
+
+        msgEl.innerText = message;
+        input.value = defaultValue || '';
+        modal.style.display = 'block';
+        input.focus();
+        input.select();
+
+        // Ensure keys don't trigger game actions
+        const stopProp = (e) => e.stopPropagation();
+        
+        const cleanup = () => {
+            confirmBtn.removeEventListener('click', onConfirm);
+            cancelBtn.removeEventListener('click', onCancel);
+            input.removeEventListener('keydown', onKey);
+            input.removeEventListener('keypress', stopProp);
+            input.removeEventListener('keyup', stopProp);
+            modal.style.display = 'none';
+        };
+
+        const onConfirm = () => {
+            const val = input.value.trim();
+            cleanup();
+            resolve(val || null);
+        };
+
+        const onCancel = () => {
+            cleanup();
+            resolve(null);
+        };
+
+        const onKey = (e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') onConfirm();
+            if (e.key === 'Escape') onCancel();
+        };
+
+        confirmBtn.addEventListener('click', onConfirm);
+        cancelBtn.addEventListener('click', onCancel);
+        input.addEventListener('keydown', onKey);
+        input.addEventListener('keypress', stopProp);
+        input.addEventListener('keyup', stopProp);
+    });
+}
+
+async function promptForSlot(existingOnly = false, promptText = null) {
     const slots = listSaveSlots();
     const defaultSlot = localStorage.getItem(SAVE_LAST_KEY) || (slots[0] || 'slot1');
     let msg = promptText;
     if (!msg) {
         msg = existingOnly ? `Load profile (${slots.join(', ') || 'none'}):` : `Save profile (existing: ${slots.join(', ') || 'none'}):`;
     }
-    const name = prompt(msg, defaultSlot);
+    const name = await showCustomPrompt(msg, defaultSlot);
     if (!name) return null;
     localStorage.setItem(SAVE_LAST_KEY, name);
     return name;
@@ -15086,18 +15143,18 @@ function wipeProfiles() {
     showOverlayMessage("PROFILE RESET - STARTING FRESH", '#0f0', 2000);
 }
 
-function saveGame() {
+async function saveGame() {
     if (!player || !gameActive) {
         showOverlayMessage("NO ACTIVE PROFILE TO SAVE", '#f00', 1500);
         return;
     }
-    const slot = promptForSlot(false);
+    const slot = await promptForSlot(false);
     if (!slot) return;
     saveToSlot(slot);
 }
 
-function loadGameFromStorage() {
-    const slot = promptForSlot(true);
+async function loadGameFromStorage() {
+    const slot = await promptForSlot(true);
     if (!slot) return;
     try {
         const raw = localStorage.getItem(SAVE_PREFIX + slot);
@@ -15124,8 +15181,8 @@ function loadGameFromStorage() {
     }
 }
 
-function saveEndOfRun() {
-    const slot = promptForSlot(false, "Save profile (new or overwrite):");
+async function saveEndOfRun() {
+    const slot = await promptForSlot(false, "Save profile (new or overwrite):");
     if (!slot) return;
     saveToSlot(slot);
 }
@@ -15993,12 +16050,12 @@ function killPlayer() {
     }
     playSound('explode');
     spawnParticles(player.pos.x, player.pos.y, 30, '#0ff');
-    setTimeout(() => {
+    setTimeout(async () => {
         gameActive = false;
         resetWarpState();
         stopMusic();
         try { depositMetaNuggets(); } catch (e) { console.warn('meta deposit failed', e); }
-        try { saveEndOfRun(); } catch (e) { console.warn('save end of run failed', e); }
+        try { await saveEndOfRun(); } catch (e) { console.warn('save end of run failed', e); }
         document.getElementById('start-screen').style.display = 'block';
         document.querySelector('#start-screen h1').innerText = "SYSTEM FAILURE";
         document.getElementById('start-btn').innerText = "REBOOT SYSTEM";
