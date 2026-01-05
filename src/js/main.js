@@ -14978,6 +14978,10 @@ function showAbortConfirmDialog() {
 
         modal.style.display = 'block';
 
+        // Reset gamepad navigation for this modal
+        menuSelectionIndex = 0;
+        gpState.lastMenuElements = null;
+
         const cleanup = () => {
             confirmBtn.removeEventListener('click', onYes);
             cancelBtn.removeEventListener('click', onNo);
@@ -15005,6 +15009,19 @@ function showAbortConfirmDialog() {
         confirmBtn.addEventListener('click', onYes);
         cancelBtn.addEventListener('click', onNo);
         window.addEventListener('keydown', onEscape);
+
+        // Wait one frame to ensure DOM has updated, then setup gamepad navigation
+        requestAnimationFrame(() => {
+            menuDebounce = Date.now() + 300;
+            const active = getActiveMenuElements();
+            if (active.length > 0) {
+                updateMenuVisuals(active);
+                // Force focus on the first button (NO/abort-cancel is safer default)
+                if (typeof active[0].focus === 'function') {
+                    active[0].focus();
+                }
+            }
+        });
     });
 }
 
@@ -15203,6 +15220,19 @@ function showSaveMenu() {
 
     menuSelectionIndex = 0;
     gpState.lastMenuElements = null;
+
+    // Wait one frame to ensure DOM has updated, then setup gamepad navigation
+    requestAnimationFrame(() => {
+        menuDebounce = Date.now() + 300;
+        const active = getActiveMenuElements();
+        if (active.length > 0) {
+            updateMenuVisuals(active);
+            // Force focus on the first element
+            if (typeof active[0].focus === 'function') {
+                active[0].focus();
+            }
+        }
+    });
 }
 
 function autoSaveToCurrentProfile() {
@@ -16098,6 +16128,22 @@ function getActiveMenuElements() {
         return elements;
     }
 
+    // Save menu (profile selection) - check before pause menu
+    const saveMenu = document.getElementById('save-menu');
+    if (isVisible(saveMenu)) {
+        // Get profile items first (the cards that are clickable), then action buttons
+        const profileItems = Array.from(document.querySelectorAll('.profile-item'));
+        const actionButtons = Array.from(document.querySelectorAll('#save-menu button'));
+        // Combine: profile items first, then buttons
+        return [...profileItems, ...actionButtons];
+    }
+
+    // Abort confirmation modal - highest priority when visible
+    const abortModal = document.getElementById('abort-modal');
+    if (isVisible(abortModal)) {
+        return Array.from(document.querySelectorAll('#abort-modal button'));
+    }
+
     const pauseMenu = document.getElementById('pause-menu');
     if (isVisible(pauseMenu)) {
         return Array.from(document.querySelectorAll('#pause-menu button'));
@@ -16131,6 +16177,14 @@ function updateMenuVisuals(elements) {
                         inline: 'nearest'
                     });
                 }
+            }
+            // For profile items, scroll into view when selected
+            if (el.classList.contains('profile-item')) {
+                el.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'nearest',
+                    inline: 'nearest'
+                });
             }
         } else {
             el.classList.remove('selected');
