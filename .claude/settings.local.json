@@ -3,7 +3,9 @@
     "allow": [
       "Bash(npm start)",
       "Bash(cat:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npm run dist:*)",
+      "Bash(timeout:*)"
     ]
   }
 }

@@ -1,0 +1,51 @@
+Cave Monster Boss Plan
+
+Spawner
+- Replace cave cruiser spawner call with createCaveMonsterBoss() selecting 3 new monster bosses by gateIndex (0/1/2).
+- Keep loot drops and arena logic unchanged.
+
+Monsters
+- CaveMonster1 uses monster1.png, HP 250, slow ring rotation.
+- CaveMonster2 uses monster2.png, HP 300, medium ring rotation.
+- CaveMonster3 uses monster4.png, HP 350, fast ring rotation.
+- Movement: M1 strafe/hover, M2 aggressive chase, M3 slow artillery.
+
+Shield System (Crystalline Tech Panels)
+- Two concentric shield rings with 50 shard slots each.
+- Every other slot active: 25 indestructible shards per ring, permanent gaps.
+- Rings rotate in opposite directions.
+- Same inner/outer radii for all three monsters.
+- Bullets collide with shield arcs; hull damage only when gaps align.
+- Other ships collide at outer ring radius (no ramming into hull).
+
+Escalation (Shorter Cave Timings)
+- Phase 1: 0-40s, normal attacks, 1.0x fire rate.
+- Phase 2: 40-80s, 1.3x fire rate, extra attack layers, faster ring spin.
+- Phase 3: 80-120s+, 1.5x fire rate, full kit, fastest ring spin.
+
+Collision Hulls (Accurate Bullet Collision)
+- Use multi-sphere hullDefinition per monster based on sprite silhouette.
+- Implement hitTestCircle() like Destroyer, with hullScale for sprite size.
+- Set collisionRadius for ship-ship collisions to outer ring radius.
+
+Attack Kits (3-4 unique each)
+Monster 1 (Bio-Mechanical)
+- Wing Barrage: alternating pod fire.
+- Drone Swarm: small homing bombs.
+- Siphon Beam: telegraphed slow/damage.
+- Tendril Mines: area denial.
+
+Monster 2 (Berserker)
+- Gore Charge: dash with trail.
+- Horn Arc: wide crescent spread.
+- Bellow Shockwave: push back.
+- Blood Rain: localized falling shots.
+
+Monster 3 (Dreadnought)
+- Spine Salvo: sequential hardpoint fire.
+- Plasma Mortar: lobbed explosive shells.
+- Gravity Well: pull zone.
+- Shield Drone: orbiting blocker.
+
+Assets
+- Load monster1.png, monster2.png, monster4.png as enemy textures.
