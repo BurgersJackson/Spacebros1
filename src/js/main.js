@@ -4396,7 +4396,207 @@ class Bullet extends Entity {
                 if (Math.random() < 0.01) console.error('[BULLET DRAW] Sprite alloc failed or missing!', this);
             }
         }
-        // No Canvas fallback intended for final release. 
+        // No Canvas fallback intended for final release.
+    }
+}
+
+
+// ClusterBomb - splits into multiple bullets at target location
+class ClusterBomb extends Entity {
+    constructor(x, y, angle, owner, splitCount = 4, splitDistance = 400) {
+        super(x, y);
+        this._poolType = 'bullet';
+        this.sprite = null;
+        this.angle = angle;
+        this.owner = owner;
+        this.splitCount = splitCount;
+        this.splitDistance = splitDistance;
+        this.speed = 12;
+        this.vel.x = Math.cos(angle) * this.speed;
+        this.vel.y = Math.sin(angle) * this.speed;
+        this.radius = 8;
+        this.damage = 8;
+        this.dead = false;
+        this.hasSplit = false;
+        this.color = '#f80'; // Orange like turret bullets
+        this.startX = x;
+        this.startY = y;
+    }
+
+    update(deltaTime = 16.67) {
+        if (this.dead) return;
+
+        super.update(deltaTime);
+
+        // Check if we've traveled far enough to split
+        const dist = Math.hypot(this.pos.x - this.startX, this.pos.y - this.startY);
+        if (dist >= this.splitDistance && !this.hasSplit) {
+            this.split();
+        }
+    }
+
+    split() {
+        this.hasSplit = true;
+        this.dead = true;
+
+        // Spawn cluster bullets in a spread pattern
+        const spreadAngle = 0.3; // Spread width in radians
+        const startAngle = this.angle - spreadAngle / 2;
+        const angleStep = this.splitCount > 1 ? spreadAngle / (this.splitCount - 1) : 0;
+
+        for (let i = 0; i < this.splitCount; i++) {
+            const a = this.splitCount > 1 ? startAngle + (i * angleStep) : this.angle + (Math.random() - 0.5) * spreadAngle;
+            const b = new Bullet(this.pos.x, this.pos.y, a, true, this.damage, 10, 5, this.color);
+            b.life = 60;
+            bullets.push(b);
+        }
+
+        // Visual effect
+        spawnFieryExplosion(this.pos.x, this.pos.y, 0.8);
+        playSound('shotgun');
+    }
+
+    draw(ctx) {
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
+
+        // Render similar to bullets but with different appearance
+        if (pixiBulletLayer && pixiBulletTextures.glow) {
+            let spr = this.sprite;
+            const size = (this.radius || 8) * 2;
+
+            if (!spr) {
+                spr = allocPixiSprite(pixiBulletSpritePool, pixiBulletLayer, pixiBulletTextures.glow, size);
+                this.sprite = spr;
+                this._poolType = 'bullet';
+            }
+
+            if (spr) {
+                const rPos = this.getRenderPos(renderAlpha);
+                if (!spr.parent) pixiBulletLayer.addChild(spr);
+                spr.visible = true;
+                spr.position.set(rPos.x, rPos.y);
+                spr.rotation = this.angle;
+                spr.width = size * 4;
+                spr.height = size * 4;
+                spr.tint = colorToPixi(this.color || '#f80');
+                spr.alpha = 1;
+            }
+        }
+    }
+}
+
+
+// NapalmZone - persistent damage zone that hurts player over time
+class NapalmZone extends Entity {
+    constructor(x, y, radius = 180, lifeMs = 4000, damagePerTick = 0.5) {
+        super(x, y);
+        this.radius = radius;
+        this.lifeMs = lifeMs;
+        this.maxLifeMs = lifeMs;
+        this.damagePerTick = damagePerTick;
+        this.damageCooldown = 200; // 200ms delay before first damage
+        this.damageInterval = 200; // Damage every 200ms after initial delay
+        this.dead = false;
+        this._pixiGfx = null;
+        this._poolType = 'napalm';
+    }
+
+    update(deltaTime = 16.67) {
+        if (this.dead) return;
+
+        this.lifeMs -= deltaTime;
+        if (this.lifeMs <= 0) {
+            this.kill();
+            return;
+        }
+
+        // Damage player if inside zone
+        if (this.damageCooldown > 0) {
+            this.damageCooldown -= deltaTime;
+        } else if (player && !player.dead && player.invulnerable <= 0) {
+            const dx = player.pos.x - this.pos.x;
+            const dy = player.pos.y - this.pos.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < this.radius) {
+                player.takeHit(this.damagePerTick, true);
+                this.damageCooldown = this.damageInterval;
+                // Visual feedback - spark effect
+                if (Math.random() < 0.3) {
+                    emitParticle(player.pos.x, player.pos.y, 0, 0, '#f50', 15);
+                }
+            }
+        }
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        if (this._pixiGfx) {
+            try { this._pixiGfx.destroy(true); } catch (e) { }
+            this._pixiGfx = null;
+        }
+    }
+
+    draw(ctx) {
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
+
+        // Render as fading red/orange circle overlay
+        if (pixiVectorLayer) {
+            let gfx = this._pixiGfx;
+            if (!gfx) {
+                gfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(gfx);
+                this._pixiGfx = gfx;
+            } else if (!gfx.parent) {
+                pixiVectorLayer.addChild(gfx);
+            }
+
+            gfx.clear();
+            const lifeRatio = this.lifeMs / this.maxLifeMs;
+            const alpha = 0.3 + (lifeRatio * 0.3); // Fade from 0.6 to 0.3
+            const pulse = 0.9 + Math.sin(Date.now() * 0.01) * 0.1;
+
+            // Outer glow
+            gfx.beginFill(0xff4400, alpha * 0.3);
+            gfx.drawCircle(this.pos.x, this.pos.y, this.radius * pulse);
+            gfx.endFill();
+
+            // Inner core
+            gfx.beginFill(0xff6600, alpha * 0.5);
+            gfx.drawCircle(this.pos.x, this.pos.y, this.radius * 0.6 * pulse);
+            gfx.endFill();
+
+            // Edge ring
+            gfx.lineStyle(3, 0xff8800, alpha);
+            gfx.drawCircle(this.pos.x, this.pos.y, this.radius * pulse);
+        }
+
+        // Canvas fallback
+        if (ctx && !pixiVectorLayer) {
+            const lifeRatio = this.lifeMs / this.maxLifeMs;
+            const alpha = 0.2 + (lifeRatio * 0.3);
+            const pulse = 0.9 + Math.sin(Date.now() * 0.01) * 0.1;
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = '#ff4400';
+            ctx.beginPath();
+            ctx.arc(this.pos.x, this.pos.y, this.radius * pulse, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.globalAlpha = alpha * 0.7;
+            ctx.fillStyle = '#ff6600';
+            ctx.beginPath();
+            ctx.arc(this.pos.x, this.pos.y, this.radius * 0.5 * pulse, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
     }
 }
 
@@ -11665,7 +11865,24 @@ class Destroyer extends Entity {
             { x: 110, y: 0, r: 120 }   // Front
         ];
         // Pre-calculate hull scale based on visual radius logic
-        this.hullScale = (this.visualRadius / 340); 
+        this.hullScale = (this.visualRadius / 340);
+
+        // Escalation system - tracks battle duration for difficulty scaling
+        this.battleStartTime = Date.now();
+        this.escalationPhase = 1;
+        this.escalationMultiplier = 1.0;
+    }
+
+    getEscalationPhase() {
+        if (this.dead) return 1;
+        const elapsed = Date.now() - this.battleStartTime;
+        if (elapsed >= 120000) return 3; // 2+ minutes = Phase 3 (napalm + max fire rate)
+        if (elapsed >= 60000) return 2;  // 1-2 minutes = Phase 2 (cluster bombs + increased fire rate)
+        return 1; // 0-1 minute = Phase 1 (normal)
+    }
+
+    getEscalationMultiplier() {
+        return this.getEscalationPhase() === 3 ? 1.6 : (this.getEscalationPhase() === 2 ? 1.3 : 1.0);
     }
 
     hitTestCircle(x, y, r) {
@@ -11784,27 +12001,39 @@ class Destroyer extends Entity {
         }
 
         // Check if player is within range to engage with turrets
+        const phase = this.getEscalationPhase();
+        const mult = this.getEscalationMultiplier();
         if (playerAlive) {
             const dist = distToPlayer;
 
             if (dist < 3200) { // Engagement range
-                this.turretReload -= deltaTime;
+                this.turretReload -= deltaTime * mult;
                 if (this.turretReload <= 0) {
                     this.fireTurrets();
                     this.turretReload = 1000; // 1.0 seconds in ms
                 }
 
-                this.ringAttackTimer -= deltaTime;
+                this.ringAttackTimer -= deltaTime * mult;
                 if (this.ringAttackTimer <= 0) {
                     this.fireRing(16, 8.0, 8, '#ff0');
                     // Fire more frequently (every 2s) when damaged below 50%
                     this.ringAttackTimer = (this.hp < this.maxHp * 0.5) ? 2000 : 5000;
+
+                    // Phase 3: Spawn napalm zone with ring attack
+                    if (phase >= 3) {
+                        this.spawnNapalmZone();
+                    }
                 }
             }
 
-            this.guidedMissileTimer -= deltaTime;
+            this.guidedMissileTimer -= deltaTime * mult;
             if (this.guidedMissileTimer <= 0) {
-                guidedMissiles.push(new FlagshipGuidedMissile(this));
+                // Phase 2+: Use cluster bombs instead of standard guided missiles
+                if (phase >= 2) {
+                    this.fireClusterBomb();
+                } else {
+                    guidedMissiles.push(new FlagshipGuidedMissile(this));
+                }
                 this.guidedMissileTimer = 2000;
             }
         }
@@ -11881,6 +12110,20 @@ class Destroyer extends Entity {
             bullets.push(b);
         }
         playSound('shotgun');
+    }
+
+    fireClusterBomb() {
+        const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const bomb = new ClusterBomb(this.pos.x, this.pos.y, angle, this, 4, 350);
+        // Add to bullets array for proper update/draw cycle
+        bullets.push(bomb);
+        playSound('rapid_shoot');
+    }
+
+    spawnNapalmZone() {
+        // Spawn napalm zone at player's current position
+        const zone = new NapalmZone(player.pos.x, player.pos.y, 180, 4500, 0.6);
+        napalmZones.push(zone);
     }
 
     takeHit(dmg = 1) {
@@ -12316,6 +12559,23 @@ class Destroyer2 extends Entity {
             { x: 120, y: 0, r: 103 }   // Front
         ];
         this.hullScale = (this.visualRadius / 340);
+
+        // Escalation system - tracks battle duration for difficulty scaling
+        this.battleStartTime = Date.now();
+        this.escalationPhase = 1;
+        this.escalationMultiplier = 1.0;
+    }
+
+    getEscalationPhase() {
+        if (this.dead) return 1;
+        const elapsed = Date.now() - this.battleStartTime;
+        if (elapsed >= 120000) return 3; // 2+ minutes = Phase 3 (napalm + max fire rate)
+        if (elapsed >= 60000) return 2;  // 1-2 minutes = Phase 2 (cluster bombs + increased fire rate)
+        return 1; // 0-1 minute = Phase 1 (normal)
+    }
+
+    getEscalationMultiplier() {
+        return this.getEscalationPhase() === 3 ? 1.6 : (this.getEscalationPhase() === 2 ? 1.3 : 1.0);
     }
 
     hitTestCircle(x, y, r) {
@@ -12428,27 +12688,39 @@ class Destroyer2 extends Entity {
         }
 
         // Check if player is within range to engage with turrets
+        const phase = this.getEscalationPhase();
+        const mult = this.getEscalationMultiplier();
         if (playerAlive) {
             const dist = distToPlayer;
 
             if (dist < 3200) { // Engagement range
-                this.turretReload -= deltaTime;
+                this.turretReload -= deltaTime * mult;
                 if (this.turretReload <= 0) {
                     this.fireTurrets();
                     this.turretReload = 100; // 0.1 seconds in ms
                 }
 
-                this.ringAttackTimer -= deltaTime;
+                this.ringAttackTimer -= deltaTime * mult;
                 if (this.ringAttackTimer <= 0) {
                     this.fireRing(16, 8.0, 8, '#ff0');
                     // Fire more frequently (every 2s) when damaged below 50%
                     this.ringAttackTimer = (this.hp < this.maxHp * 0.5) ? 2000 : 5000;
+
+                    // Phase 3: Spawn napalm zone with ring attack
+                    if (phase >= 3) {
+                        this.spawnNapalmZone();
+                    }
                 }
             }
 
-            this.guidedMissileTimer -= deltaTime;
+            this.guidedMissileTimer -= deltaTime * mult;
             if (this.guidedMissileTimer <= 0) {
-                guidedMissiles.push(new Destroyer2GuidedMissile(this));
+                // Phase 2+: Use cluster bombs instead of standard guided missiles
+                if (phase >= 2) {
+                    this.fireClusterBomb();
+                } else {
+                    guidedMissiles.push(new Destroyer2GuidedMissile(this));
+                }
                 this.guidedMissileTimer = 2000;
             }
         }
@@ -12491,6 +12763,18 @@ class Destroyer2 extends Entity {
             bullets.push(b);
         }
         playSound('shotgun');
+    }
+
+    fireClusterBomb() {
+        const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const bomb = new ClusterBomb(this.pos.x, this.pos.y, angle, this, 4, 350);
+        bullets.push(bomb);
+        playSound('rapid_shoot');
+    }
+
+    spawnNapalmZone() {
+        const zone = new NapalmZone(player.pos.x, player.pos.y, 180, 4500, 0.6);
+        napalmZones.push(zone);
     }
 
     takeHit(dmg = 1) {
@@ -12818,6 +13102,7 @@ let warpBioPods = [];
 let staggeredBombExplosions = []; // Queue for staggered bomb explosions
 let staggeredParticleBursts = []; // Queue for staggered particle bursts
 let guidedMissiles = [];
+let napalmZones = [];
 let enemies = [];
 let pinwheels = [];
 let particles = [];
@@ -13154,6 +13439,7 @@ function exitWarpMaze() {
     staggeredBombExplosions.length = 0;
     staggeredParticleBursts.length = 0;
     guidedMissiles.length = 0;
+    napalmZones.length = 0;
     enemies.length = 0;
     pinwheels.length = 0;
     particles.length = 0;
@@ -17318,6 +17604,16 @@ function gameLoopLogic(opts = null) {
         const m = guidedMissiles[i];
         if (doUpdate) m.update(deltaTime);
         if (doDraw && isInView(m.pos.x, m.pos.y)) m.draw(ctx);
+    }
+
+    // Napalm zones - persistent damage zones (always update, cull drawing)
+    for (let i = napalmZones.length - 1; i >= 0; i--) {
+        const z = napalmZones[i];
+        if (doUpdate) z.update(deltaTime);
+        if (doDraw && isInView(z.pos.x, z.pos.y, z.radius + 50)) z.draw(ctx);
+        if (z.dead) {
+            napalmZones.splice(i, 1);
+        }
     }
 
     // Particles - always update, cull drawing (high volume)
