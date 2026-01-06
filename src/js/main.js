@@ -87,6 +87,7 @@ let nebulas = [];
 let shockwaves = [];
 let menuSelectionIndex = 0;
 let sectorIndex = 1;
+let DEBUG_COLLISION = false; // Toggle for collision debug visualization
 
 // Pixi Textures (Global)
 let pixiParticleSmokeTexture;
@@ -159,6 +160,10 @@ document.addEventListener('keydown', function (e) {
     } else if (e.ctrlKey && e.shiftKey && e.key === '4') {
         e.preventDefault();
         window.spawnStation();
+    } else if (e.ctrlKey && (e.key === 'h' || e.key === 'H')) {
+        e.preventDefault();
+        DEBUG_COLLISION = !DEBUG_COLLISION;
+        showOverlayMessage(`HITBOX DEBUG: ${DEBUG_COLLISION ? "ON" : "OFF"}`, DEBUG_COLLISION ? '#0f0' : '#f00', 1500);
     }
 });
 
@@ -10833,21 +10838,27 @@ class WarpSentinelBoss extends Entity {
                 } else if (!debugGfx.parent) {
                     pixiVectorLayer.addChild(debugGfx);
                 }
-                debugGfx.clear();
-                debugGfx.position.set(rPos.x, rPos.y);
-                debugGfx.rotation = aim; // Boss rotates to face player (aim)
                 
-                // Draw Broad Phase Radius (Yellow)
-                debugGfx.lineStyle(2, 0xFFFF00, 0.5);
-                debugGfx.drawCircle(0, 0, this.collisionRadius);
+                if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
+                    debugGfx.visible = true;
+                    debugGfx.clear();
+                    debugGfx.position.set(rPos.x, rPos.y);
+                    debugGfx.rotation = aim; // Boss rotates to face player (aim)
+                    
+                    // Draw Broad Phase Radius (Yellow)
+                    debugGfx.lineStyle(2, 0xFFFF00, 0.5);
+                    debugGfx.drawCircle(0, 0, this.collisionRadius);
 
-                // Draw Component Hitboxes (Green)
-                // collisionHull is local to the rotated boss
-                debugGfx.lineStyle(2, 0x00FF00, 1);
-                if (this.collisionHull) {
-                    for (const circle of this.collisionHull) {
-                        debugGfx.drawCircle(circle.x, circle.y, circle.r);
+                    // Draw Component Hitboxes (Green)
+                    // collisionHull is local to the rotated boss
+                    debugGfx.lineStyle(2, 0x00FF00, 1);
+                    if (this.collisionHull) {
+                        for (const circle of this.collisionHull) {
+                            debugGfx.drawCircle(circle.x, circle.y, circle.r);
+                        }
                     }
+                } else {
+                    debugGfx.visible = false;
                 }
             }
 
@@ -12100,17 +12111,33 @@ class Destroyer extends Entity {
                 } else if (!debugGfx.parent) {
                     pixiVectorLayer.addChild(debugGfx);
                 }
-                debugGfx.clear();
-                debugGfx.position.set(this.pos.x, this.pos.y);
                 
-                // Draw Hull Hitbox (Green)
-                debugGfx.lineStyle(3, 0x00FF00, 0.8);
-                debugGfx.drawCircle(0, 0, this.radius);
+                if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
+                    debugGfx.visible = true;
+                    debugGfx.clear();
+                    debugGfx.position.set(this.pos.x, this.pos.y);
+                    debugGfx.rotation = this.angle || 0; // Rotate debug gfx with ship
+                    
+                    // Draw Hull Hitbox (Green) - Multi-Circle
+                    debugGfx.lineStyle(3, 0x00FF00, 0.8);
+                    if (this.hullDefinition) {
+                        for (const circle of this.hullDefinition) {
+                            const cx = circle.x * this.hullScale;
+                            const cy = circle.y * this.hullScale;
+                            const cr = circle.r * this.hullScale;
+                            debugGfx.drawCircle(cx, cy, cr);
+                        }
+                    } else {
+                        debugGfx.drawCircle(0, 0, this.radius);
+                    }
 
-                // Draw Shield Hitbox (Cyan)
-                if (this.shieldSegments && this.shieldSegments.some(s => s > 0)) {
-                    debugGfx.lineStyle(2, 0x00FFFF, 0.4);
-                    debugGfx.drawCircle(0, 0, this.shieldRadius);
+                    // Draw Shield Hitbox (Cyan)
+                    if (this.shieldSegments && this.shieldSegments.some(s => s > 0)) {
+                        debugGfx.lineStyle(2, 0x00FFFF, 0.4);
+                        debugGfx.drawCircle(0, 0, this.shieldRadius);
+                    }
+                } else {
+                    debugGfx.visible = false;
                 }
             }
 
@@ -12662,17 +12689,33 @@ class Destroyer2 extends Entity {
                 } else if (!debugGfx.parent) {
                     pixiVectorLayer.addChild(debugGfx);
                 }
-                debugGfx.clear();
-                debugGfx.position.set(this.pos.x, this.pos.y);
                 
-                // Draw Hull Hitbox (Green)
-                debugGfx.lineStyle(3, 0x00FF00, 0.8);
-                debugGfx.drawCircle(0, 0, this.radius);
+                if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
+                    debugGfx.visible = true;
+                    debugGfx.clear();
+                    debugGfx.position.set(this.pos.x, this.pos.y);
+                    debugGfx.rotation = this.angle || 0;
+                    
+                    // Draw Hull Hitbox (Green) - Multi-Circle
+                    debugGfx.lineStyle(3, 0x00FF00, 0.8);
+                    if (this.hullDefinition) {
+                        for (const circle of this.hullDefinition) {
+                            const cx = circle.x * this.hullScale;
+                            const cy = circle.y * this.hullScale;
+                            const cr = circle.r * this.hullScale;
+                            debugGfx.drawCircle(cx, cy, cr);
+                        }
+                    } else {
+                        debugGfx.drawCircle(0, 0, this.radius);
+                    }
 
-                // Draw Shield Hitbox (Cyan)
-                if (this.shieldSegments && this.shieldSegments.some(s => s > 0)) {
-                    debugGfx.lineStyle(2, 0x00FFFF, 0.4);
-                    debugGfx.drawCircle(0, 0, this.shieldRadius);
+                    // Draw Shield Hitbox (Cyan)
+                    if (this.shieldSegments && this.shieldSegments.some(s => s > 0)) {
+                        debugGfx.lineStyle(2, 0x00FFFF, 0.4);
+                        debugGfx.drawCircle(0, 0, this.shieldRadius);
+                    }
+                } else {
+                    debugGfx.visible = false;
                 }
             }
 
@@ -17861,7 +17904,7 @@ function gameLoopLogic(opts = null) {
                                 spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
                             }
                         }
-                        if (!hit && dist < destroyer.radius + b.radius) {
+                        if (!hit && (typeof destroyer.hitTestCircle === 'function' ? destroyer.hitTestCircle(b.pos.x, b.pos.y, b.radius) : (dist < destroyer.radius + b.radius))) {
                             destroyer.hp -= b.damage;
                             hit = true;
                             playSound('hit');
@@ -18726,12 +18769,14 @@ function startGame() {
             if (raw) {
                 try {
                     const profile = JSON.parse(raw);
-                    // Restore profile statistics
+                    // Restore ONLY career statistics
                     if (typeof profile.totalKills === 'number') totalKills = profile.totalKills;
                     if (typeof profile.highScore === 'number') highScore = profile.highScore;
                     if (typeof profile.totalPlayTimeMs === 'number') totalPlayTimeMs = profile.totalPlayTimeMs;
-                    // Restore player data
-                    applyProfile(profile);
+                    
+                    // FIXED: Do NOT restore player state (applyProfile) when starting a new game.
+                    // This ensures in-game upgrades are reset while store upgrades are re-applied below.
+                    // applyProfile(profile); 
                 } catch (e) {
                     console.warn('Failed to load profile on start', e);
                 }
