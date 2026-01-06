@@ -10159,16 +10159,54 @@ class WarpBioPod extends Entity {
             const a = Math.random() * Math.PI * 2;
             const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 3, 3, '#f0f');
             b.owner = this.owner;
-            b.life = 120;
+            b.life = 180;
             bullets.push(b);
         }
     }
     update(deltaTime = 16.67) {
         if (this.dead) return;
+        
+        const dtFactor = deltaTime / 16.67;
+        
+        // Homing Logic (Orbital Hazard)
+        if (player && !player.dead) {
+            const dx = player.pos.x - this.pos.x;
+            const dy = player.pos.y - this.pos.y;
+            const distSq = dx * dx + dy * dy;
+            const homingRange = 750;
+            
+            // Home in if within range and not about to explode immediately
+            if (distSq < homingRange * homingRange && this.life > 20) {
+                const dist = Math.sqrt(distSq);
+                const ax = (dx / dist) * 0.18 * dtFactor;
+                const ay = (dy / dist) * 0.18 * dtFactor;
+                this.vel.x += ax;
+                this.vel.y += ay;
+                
+                // Spin faster when tracking
+                this.angle += 0.1 * dtFactor; 
+            } else {
+                // Regular drift friction
+                this.vel.x *= Math.pow(0.98, dtFactor);
+                this.vel.y *= Math.pow(0.98, dtFactor);
+            }
+        } else {
+             this.vel.x *= Math.pow(0.98, dtFactor);
+             this.vel.y *= Math.pow(0.98, dtFactor);
+        }
+
         super.update(deltaTime);
-        this.life -= (deltaTime / 16.67);
-        this.vel.x *= 0.98;
-        this.vel.y *= 0.98;
+        this.life -= dtFactor;
+        
+        // Soft cap on speed to prevent crazy flinging
+        const speed = Math.hypot(this.vel.x, this.vel.y);
+        const maxSpeed = 6.0;
+        if (speed > maxSpeed) {
+            const s = maxSpeed / speed;
+            this.vel.x *= s;
+            this.vel.y *= s;
+        }
+
         if (this.life <= 0) this.explode();
     }
     draw(ctx) {
@@ -10209,11 +10247,11 @@ class WarpSentinelBoss extends Entity {
         this.isWarpBoss = true;
         this.sizeScale = 3;
         this.radius = 110 * this.sizeScale;
-        this.hp = 180;
+        this.hp = 500;
         this.maxHp = this.hp;
 
         // Cruiser-style rotating shield rings + regen.
-        this.shieldStrength = 3;
+        this.shieldStrength = 4;
         this.shieldSegments = new Array(18).fill(this.shieldStrength);
         this.innerShieldSegments = new Array(24).fill(this.shieldStrength);
         // Shield radius scaled to protect enlarged body
@@ -10245,7 +10283,7 @@ class WarpSentinelBoss extends Entity {
         this.flameFireTotal = 120;
         this.flameAngle = 0;
         this.flameRange = 1400;
-        this.flameCone = 0.75;
+        this.flameCone = 0.9375; // Increased by 25% from 0.75
         this.flameTickCooldown = 0;
         this.flameHitCount = 0;
 
@@ -10277,14 +10315,18 @@ class WarpSentinelBoss extends Entity {
         this.ramInvulnerable = 0;
 
 
-        // Collision hull (head + body, no tail) - hand-tuned for 512x256 sprite
-        // Head is the large right-side part, body is the mid section
+        // Collision hull (head + body, no tail) - tuned for 512x256 sprite scaled by 3
+        // Sprite is ~1360 wide x ~738 high.
+        // Center is (0,0). Visible range relative to center: X[-680, +680], Y[-370, +370].
+        // We use 3 overlapping circles to approximate the oblong shape.
+        // Scale 3 is baked into these values.
         this.collisionHull = [
-            { x: 50 * this.sizeScale, y: 0, r: 85 * this.sizeScale },
-            { x: -30 * this.sizeScale, y: 0, r: 70 * this.sizeScale },
-            { x: -80 * this.sizeScale, y: 0, r: 50 * this.sizeScale }
+            { x: 100 * this.sizeScale, y: 0, r: 115 * this.sizeScale }, // Head (Right)
+            { x: 0, y: 0, r: 120 * this.sizeScale },                    // Body (Center)
+            { x: -100 * this.sizeScale, y: 0, r: 115 * this.sizeScale } // Tail (Left)
         ];
-        this.collisionRadius = 85 * this.sizeScale;
+        // Broad phase radius covers the whole ship
+        this.collisionRadius = 240 * this.sizeScale;
 
         // Sprite properties
         this._pixiSprite = null;
@@ -10546,7 +10588,7 @@ class WarpSentinelBoss extends Entity {
                 const by = this.pos.y + Math.sin(a) * (this.radius + 10);
                 const shot = new Bullet(bx, by, a, true, 1, 12, 4, '#f6f');
                 shot.owner = this;
-                shot.life = Math.round(shot.life * 1.25);
+                shot.life = Math.round(shot.life * 1.875);
                 bullets.push(shot);
             }
             playSound('warp_chitin');
@@ -10637,10 +10679,13 @@ class WarpSentinelBoss extends Entity {
         if (slots <= 0) return;
         count = Math.min(count, slots);
 
-        const phase2 = (this.phase === 2);
+        const phase2 = (this.phase >= 2);
         let types = ['roamer', 'defender', 'roamer', 'elite_roamer'];
         if (this.helperStrengthTier <= 0) types = ['roamer', 'roamer', 'defender'];
-        if (phase2) types = ['defender', 'defender', 'hunter', 'elite_roamer'];
+        if (phase2) {
+            // Harder reinforcements for Phase 2+
+            types = ['defender', 'defender', 'hunter', 'elite_roamer', 'hunter'];
+        }
 
         for (let i = 0; i < count; i++) {
             const type = types[Math.floor(Math.random() * types.length)];
@@ -10777,6 +10822,35 @@ class WarpSentinelBoss extends Entity {
                 ctx.fill();
                 ctx.restore();
             }
+
+            // DEBUG HITBOX
+            if (pixiVectorLayer) {
+                let debugGfx = this._pixiDebugGfx;
+                if (!debugGfx) {
+                    debugGfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(debugGfx);
+                    this._pixiDebugGfx = debugGfx;
+                } else if (!debugGfx.parent) {
+                    pixiVectorLayer.addChild(debugGfx);
+                }
+                debugGfx.clear();
+                debugGfx.position.set(rPos.x, rPos.y);
+                debugGfx.rotation = aim; // Boss rotates to face player (aim)
+                
+                // Draw Broad Phase Radius (Yellow)
+                debugGfx.lineStyle(2, 0xFFFF00, 0.5);
+                debugGfx.drawCircle(0, 0, this.collisionRadius);
+
+                // Draw Component Hitboxes (Green)
+                // collisionHull is local to the rotated boss
+                debugGfx.lineStyle(2, 0x00FF00, 1);
+                if (this.collisionHull) {
+                    for (const circle of this.collisionHull) {
+                        debugGfx.drawCircle(circle.x, circle.y, circle.r);
+                    }
+                }
+            }
+
             return;
         }
 
@@ -11568,6 +11642,50 @@ class Destroyer extends Entity {
         this.tractorBeamActive = false;
         this.tractorBeamRadius = 3000; // 20% larger than 2500 arena
         this.tractorBeamTextShown = false;
+
+        // Collision Hull Setup
+        // Image is 512x512, visible ship is ~466x246 centered.
+        // visualRadius ~ 1014. Scale ~ 3.0.
+        // We define hull in "sprite space" pixels (relative to center 256,256)
+        // and scale it dynamically during hit test.
+        this.hullDefinition = [
+            { x: -110, y: 0, r: 120 }, // Rear
+            { x: 0, y: 0, r: 120 },    // Center
+            { x: 110, y: 0, r: 120 }   // Front
+        ];
+        // Pre-calculate hull scale based on visual radius logic
+        this.hullScale = (this.visualRadius / 340); 
+    }
+
+    hitTestCircle(x, y, r) {
+        if (this.dead) return false;
+        // Broad phase check
+        const dx = x - this.pos.x;
+        const dy = y - this.pos.y;
+        const distSq = dx * dx + dy * dy;
+        const broadRadius = this.radius + r; // this.radius is ~500, fairly large
+        if (distSq > broadRadius * broadRadius) return false;
+
+        // Detailed hull check
+        // Transform test point into local unrotated space
+        const angle = -this.angle;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const localX = dx * cos - dy * sin;
+        const localY = dx * sin + dy * cos;
+
+        // Check against scaled hull circles
+        for (const circle of this.hullDefinition) {
+            const cx = circle.x * this.hullScale;
+            const cy = circle.y * this.hullScale;
+            const cr = circle.r * this.hullScale;
+            const cdx = localX - cx;
+            const cdy = localY - cy;
+            // (circle.r + r) -> check distance against sum of radii
+            // Note: r is in world space, cr is in world space.
+            if (cdx * cdx + cdy * cdy < (cr + r) * (cr + r)) return true;
+        }
+        return false;
     }
 
     update(deltaTime = 16.67) {
@@ -11972,6 +12090,30 @@ class Destroyer extends Entity {
                 this._pixiTractorBeamGfx = null;
             }
 
+            // DEBUG HITBOX
+            if (pixiVectorLayer) {
+                let debugGfx = this._pixiDebugGfx;
+                if (!debugGfx) {
+                    debugGfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(debugGfx);
+                    this._pixiDebugGfx = debugGfx;
+                } else if (!debugGfx.parent) {
+                    pixiVectorLayer.addChild(debugGfx);
+                }
+                debugGfx.clear();
+                debugGfx.position.set(this.pos.x, this.pos.y);
+                
+                // Draw Hull Hitbox (Green)
+                debugGfx.lineStyle(3, 0x00FF00, 0.8);
+                debugGfx.drawCircle(0, 0, this.radius);
+
+                // Draw Shield Hitbox (Cyan)
+                if (this.shieldSegments && this.shieldSegments.some(s => s > 0)) {
+                    debugGfx.lineStyle(2, 0x00FFFF, 0.4);
+                    debugGfx.drawCircle(0, 0, this.shieldRadius);
+                }
+            }
+
             return;
         }
 
@@ -12137,6 +12279,41 @@ class Destroyer2 extends Entity {
 
         this.ringAttackTimer = 5000;
         this.guidedMissileTimer = 2000;
+
+        // Collision Hull Setup
+        // Image is 512x512, visible ship is ~452x206 centered.
+        // Scale ~ 3.0.
+        this.hullDefinition = [
+            { x: -120, y: 0, r: 103 }, // Rear
+            { x: 0, y: 0, r: 103 },    // Center
+            { x: 120, y: 0, r: 103 }   // Front
+        ];
+        this.hullScale = (this.visualRadius / 340);
+    }
+
+    hitTestCircle(x, y, r) {
+        if (this.dead) return false;
+        const dx = x - this.pos.x;
+        const dy = y - this.pos.y;
+        const distSq = dx * dx + dy * dy;
+        const broadRadius = this.radius + r;
+        if (distSq > broadRadius * broadRadius) return false;
+
+        const angle = -this.angle;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const localX = dx * cos - dy * sin;
+        const localY = dx * sin + dy * cos;
+
+        for (const circle of this.hullDefinition) {
+            const cx = circle.x * this.hullScale;
+            const cy = circle.y * this.hullScale;
+            const cr = circle.r * this.hullScale;
+            const cdx = localX - cx;
+            const cdy = localY - cy;
+            if (cdx * cdx + cdy * cdy < (cr + r) * (cr + r)) return true;
+        }
+        return false;
     }
 
     update(deltaTime = 16.67) {
@@ -12473,6 +12650,30 @@ class Destroyer2 extends Entity {
                 if (!txt.parent) pixiVectorLayer.addChild(txt);
                 txt.visible = true;
                 txt.position.set(this.pos.x, this.pos.y - this.visualRadius - 20);
+            }
+
+            // DEBUG HITBOX
+            if (pixiVectorLayer) {
+                let debugGfx = this._pixiDebugGfx;
+                if (!debugGfx) {
+                    debugGfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(debugGfx);
+                    this._pixiDebugGfx = debugGfx;
+                } else if (!debugGfx.parent) {
+                    pixiVectorLayer.addChild(debugGfx);
+                }
+                debugGfx.clear();
+                debugGfx.position.set(this.pos.x, this.pos.y);
+                
+                // Draw Hull Hitbox (Green)
+                debugGfx.lineStyle(3, 0x00FF00, 0.8);
+                debugGfx.drawCircle(0, 0, this.radius);
+
+                // Draw Shield Hitbox (Cyan)
+                if (this.shieldSegments && this.shieldSegments.some(s => s > 0)) {
+                    debugGfx.lineStyle(2, 0x00FFFF, 0.4);
+                    debugGfx.drawCircle(0, 0, this.shieldRadius);
+                }
             }
 
             return;
