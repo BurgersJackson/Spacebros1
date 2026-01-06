@@ -2751,13 +2751,21 @@ function spawnOneAsteroidRelative(initial = false) {
         const r = 50 + Math.random() * 150;
 
         let safe = true;
+        // Prevent spawning inside firewall in cave mode
+        if (caveMode && caveLevel && caveLevel.fireWall) {
+            const firewallY = caveLevel.fireWall.y;
+            // Don't spawn if asteroid would be below the firewall line
+            if (y > firewallY) {
+                safe = false;
+            }
+        }
         for (let b of pinwheels) {
             if (Math.hypot(x - b.pos.x, y - b.pos.y) < b.shieldRadius + r + 200) safe = false;
         }
 
         if (safe) {
             // Spawn indestructible asteroids from level 1, 1 for every 20 regular asteroids
-            const isIndestructible = Math.random() < 0.05; // 1/20 = 0.05
+            const isIndestructible = Math.random() < 0.20; // 20% indestructible chance
             const sizeLevel = isIndestructible ? 1 : 3; // Small size for indestructible (reduced by 1)
             // Adjust radius for small indestructible asteroids
             const asteroidR = isIndestructible ? 40 + Math.random() * 50 : r;
@@ -4766,12 +4774,12 @@ class Enemy extends Entity {
             spawnFieryExplosion(this.pos.x, this.pos.y, boomScale);
         }
 
-        // DROP COINS
+        // DROP COINS (increased by 25%)
         let val = 2;
-        let count = 3;
-        if (this.type === 'elite_roamer') { val = 3; count = 4; }
-        if (this.type === 'hunter') { val = 4; count = 5; }
-        if (this.type === 'defender') { val = 3; count = 3; }
+        let count = 4;  // was 3
+        if (this.type === 'elite_roamer') { val = 3; count = 5; }  // was 4
+        if (this.type === 'hunter') { val = 4; count = 7; }  // was 5
+        if (this.type === 'defender') { val = 3; count = 4; }  // was 3
         if (this.nameTag) { val += 1; count += 2; }
         const caveActive = (caveMode && caveLevel && caveLevel.active);
         if (caveActive) {
@@ -6823,10 +6831,35 @@ class CaveRewardPickup extends Entity {
     }
 }
 
+// Turret attached to an asteroid - follows asteroid position and rotation
+class AsteroidTurret extends CaveWallTurret {
+    constructor(asteroid, offset, mode, opts) {
+        super(asteroid.pos.x + offset.x, asteroid.pos.y + offset.y, mode, opts);
+        this.asteroid = asteroid;
+        this.offset = offset;
+        this.radius = 49; // 25% smaller than 66
+    }
+
+    update(deltaTime = 16.67) {
+        if (this.dead || !this.asteroid || this.asteroid.dead) {
+            this.dead = true;
+            return;
+        }
+        // Follow asteroid position and rotation
+        const cos = Math.cos(this.asteroid.angle);
+        const sin = Math.sin(this.asteroid.angle);
+        this.pos.x = this.asteroid.pos.x + cos * this.offset.x - sin * this.offset.y;
+        this.pos.y = this.asteroid.pos.y + sin * this.offset.x + cos * this.offset.y;
+
+        // Call parent update for turret targeting logic
+        super.update(deltaTime);
+    }
+}
+
 class CaveGasVent extends Entity {
     constructor(x, y) {
         super(x, y);
-        this.radius = 420;
+        this.radius = 1260;
         this.t = 0;
         this.state = 'off'; // off | warn | on 
         this.timer = 180 + Math.floor(Math.random() * 120);
@@ -7171,7 +7204,7 @@ class CaveLevel {
         this.startY = 0;
         this.endY = -220000; // ~10 minutes of flight at stock speeds 
         this.stepY = 240;
-        this.baseWidth = 3000;
+        this.baseWidth = 4688;
         // Pixi Rendering
         this._pixiContainer = null;
         this._pixiBackGfx = null;
@@ -7210,21 +7243,13 @@ class CaveLevel {
         this.buckets = new Array(count);
         for (let i = 0; i < count; i++) this.buckets[i] = [];
 
-        let cx = this.startX;
         const leftPts = [];
         const rightPts = [];
         for (let i = 0; i <= count; i++) {
             const y = this.startY - i * this.stepY;
-            cx += (Math.random() - 0.5) * 140;
-            cx = Math.max(-1600, Math.min(1600, cx));
-
-            const endBoost = (y < this.endY + 22000) ? 1 : 0;
-            let width = this.baseWidth + ((i % 70 < 14) ? (900 + Math.random() * 900) : 0) + endBoost * 1400;
-            width += (Math.random() - 0.5) * 220;
-            width = Math.max(2400, Math.min(6200, width));
-
-            leftPts.push({ x: cx - width * 0.5 + (Math.random() - 0.5) * 220, y });
-            rightPts.push({ x: cx + width * 0.5 + (Math.random() - 0.5) * 220, y });
+            // Straight walls - no randomization
+            leftPts.push({ x: -this.baseWidth * 0.5, y });
+            rightPts.push({ x: this.baseWidth * 0.5, y });
         }
 
         this.leftPts = leftPts;
@@ -7270,7 +7295,7 @@ class CaveLevel {
         const gateYs = [-52000, -118000, -182000];
         this.gates = gateYs.map((y, i) => ({
             y,
-            open: false,
+            open: true,  // All gates open - using arena bosses instead
             preSpawned: false,
             relaysSpawned: false,
             relaysCleared: false,
@@ -7281,11 +7306,11 @@ class CaveLevel {
             segments: this.buildGateSegments(y)
         }));
 
-        // Wall turrets along the cave walls. 
+        // Wall turrets along the cave walls.
         this.wallTurrets = [];
         const turretEvery = 2600;
         const totalTurrets = Math.max(70, Math.floor(Math.abs(this.endY - this.startY) / turretEvery));
-        // Turret variety: machine-gun bias + missile + beam + tracker. 
+        // Turret variety: machine-gun bias + missile + beam + tracker.
         const modes = ['rapid', 'rapid', 'rapid', 'beam', 'missile', 'rapid', 'tracker', 'rapid'];
         for (let i = 0; i < totalTurrets; i++) {
             const y = this.startY - (i * turretEvery) - 2400 - Math.random() * 1200;
@@ -7477,7 +7502,7 @@ class CaveLevel {
             : (this.startY + 600);
         this.fireWall = {
             y: baseY + gap,
-            speed: 160, // units per second (five times faster)
+            speed: 200, // units per second (five times faster)
             damagePerSecond: 5,
             damageTimer: 0,
             minY: this.endY + 1200
@@ -7490,21 +7515,26 @@ class CaveLevel {
         const dtSec = Math.max(0, deltaTime) / 1000;
         fire.y -= fire.speed * dtSec;
         if (fire.minY !== undefined && fire.y < fire.minY) fire.y = fire.minY;
-        if (!player || player.dead) {
+
+        // Damage player
+        if (player && !player.dead && player.pos.y >= fire.y) {
+            fire.damageTimer += deltaTime;
+            const ticks = Math.floor(fire.damageTimer / 1000);
+            if (ticks > 0) {
+                const damage = fire.damagePerSecond * ticks;
+                player.takeHit(damage);
+                fire.damageTimer -= ticks * 1000;
+            }
+        } else {
             fire.damageTimer = 0;
-            return;
         }
-        const inside = player.pos.y >= fire.y;
-        if (!inside) {
-            fire.damageTimer = 0;
-            return;
-        }
-        fire.damageTimer += deltaTime;
-        const ticks = Math.floor(fire.damageTimer / 1000);
-        if (ticks > 0) {
-            const damage = fire.damagePerSecond * ticks;
-            player.takeHit(damage);
-            fire.damageTimer -= ticks * 1000;
+
+        // Damage all enemies inside firewall
+        for (let i = 0; i < enemies.length; i++) {
+            const e = enemies[i];
+            if (e && !e.dead && e.pos.y >= fire.y && typeof e.takeHit === 'function') {
+                e.takeHit(fire.damagePerSecond * dtSec);
+            }
         }
     }
 
@@ -7597,13 +7627,13 @@ class CaveLevel {
 
         // 1. Draw Outer Walls
         // Back (Thick Dark)
-        this._pixiBackGfx.lineStyle(18, 0x004678, 0.85);
+        this._pixiBackGfx.lineStyle(23, 0x004678, 0.85);
         for (let s of visibleOuter) {
             this._pixiBackGfx.moveTo(s.x0, s.y0);
             this._pixiBackGfx.lineTo(s.x1, s.y1);
         }
         // Front (Thin Neon)
-        this._pixiFrontGfx.lineStyle(3, 0x8cf0ff, 0.9);
+        this._pixiFrontGfx.lineStyle(4, 0x8cf0ff, 0.9);
         for (let s of visibleOuter) {
             this._pixiFrontGfx.moveTo(s.x0, s.y0);
             this._pixiFrontGfx.lineTo(s.x1, s.y1);
@@ -7760,11 +7790,8 @@ class CaveLevel {
     }
 
     openGate(index) {
-        const gate = this.gates[index];
-        if (!gate || gate.open) return;
-        gate.open = true;
-        this.bossesDefeated++;
-        showOverlayMessage(`GATE ${this.bossesDefeated}/3 OPEN`, '#0ff', 1600, 2);
+        // DISABLED: Gate system removed, using arena bosses instead
+        return;
     }
 
     applyWallCollisions(entity) {
@@ -7779,26 +7806,9 @@ class CaveLevel {
     }
 
     applyFireWallCollision(entity) {
-        if (!this.fireWall || !entity || entity.dead) return;
-        const radius = entity.radius || 0;
-        const limitY = this.fireWall.y - radius;
-
-        // If entity is below the firewall (caught in fire), destroy it
-        if (entity.pos.y > limitY + radius * 0.5) {
-            if (typeof entity.kill === 'function') {
-                entity.kill();
-            } else if (typeof entity.die === 'function') {
-                entity.die();
-            }
-            entity.dead = true;
-            return;
-        }
-
-        // Otherwise push it up ahead of the firewall
-        if (entity.pos.y > limitY) {
-            entity.pos.y = limitY;
-            if (entity.vel && entity.vel.y > 0) entity.vel.y = 0;
-        }
+        // DISABLED: Firewall no longer pushes or destroys entities
+        // Entities pass through freely, damage is applied in updateFireWall
+        return;
     }
 
     bulletHitsWall(bullet) {
@@ -7847,27 +7857,8 @@ class CaveLevel {
     }
 
     spawnGateRelays(gateIndex) {
-        const gate = this.gates[gateIndex];
-        if (!gate || gate.open || gate.relaysSpawned || !gate.relaysEnabled) return;
-        gate.relaysSpawned = true;
-        gate.relaysCleared = false;
-        gate.relaysRemaining = 4;
-        const y = gate.y + 1400;
-        const b = this.boundsAt(y);
-        const cx = (b.left + b.right) * 0.5;
-        const offsets = [
-            { x: -700, y: 0 },
-            { x: 700, y: 0 },
-            { x: -350, y: 520 },
-            { x: 350, y: 520 }
-        ];
-        for (let i = 0; i < offsets.length; i++) {
-            const rx = cx + offsets[i].x + (Math.random() - 0.5) * 120;
-            const ry = y + offsets[i].y + (Math.random() - 0.5) * 120;
-            const clampedX = Math.max(b.left + 260, Math.min(b.right - 260, rx));
-            this.relays.push(new CavePowerRelay(clampedX, ry, gateIndex));
-        }
-        showOverlayMessage("GATE SHIELD: DESTROY 4 RELAYS", '#ff0', 2200, 3);
+        // DISABLED: Relay system removed, using arena bosses instead
+        return;
     }
 
     onRelayDestroyed(gateIndex) {
@@ -8104,24 +8095,28 @@ class CaveLevel {
             }
         }
 
-        // Activate gate bosses when the player reaches a closed gate. 
-        for (let i = 0; i < this.gates.length; i++) {
-            const gate = this.gates[i];
-            if (!gate || gate.open) continue;
-            if (gate.bossEnabled === false) {
-                if (!gate.relaysEnabled || gate.relaysCleared) this.openGate(i);
-                continue;
-            }
-            const dY = player.pos.y - gate.y;
-            if (dY < 5200 && dY > -3800) {
-                if (gate.relaysEnabled && !gate.relaysCleared) break;
-                if (!bossActive || !boss || boss.dead) {
-                    const bx = this.centerXAt(gate.y + 900);
-                    const by = gate.y + 900;
-                    boss = createCaveCruiserBoss(bx, by, { gateIndex: i });
+        // Arena-based boss spawning - 3 bosses at fixed Y positions
+        const caveBossYs = [-60000, -120000, -180000];
+        for (let i = 0; i < caveBossYs.length; i++) {
+            const bossY = caveBossYs[i];
+            // Check if player has reached this boss area
+            const dY = player.pos.y - bossY;
+            // Spawn when player is within range of boss position
+            if (dY < 4000 && dY > -3000) {
+                // Check if we haven't spawned this boss yet
+                if (!this[`boss${i}Spawned`]) {
+                    this[`boss${i}Spawned`] = true;
+                    // Activate bossArena at this position
+                    const cx = this.centerXAt(bossY);
+                    bossArena.x = cx;
+                    bossArena.y = bossY;
+                    bossArena.active = true;
+                    // Spawn the boss
+                    boss = createCaveCruiserBoss(cx, bossY, { gateIndex: i });
                     bossActive = true;
                     showOverlayMessage(`CAVE BOSS ${i + 1}/3 ENGAGED`, '#f0f', 2400, 2);
                     playSound('boss_spawn');
+                    if (musicEnabled) setMusicMode('cruiser');
                 }
                 break;
             }
@@ -8331,12 +8326,12 @@ function createCaveCruiserBoss(x, y, opts = {}) {
         clearArrayWithPixiCleanup(bossBombs);
         clearArrayWithPixiCleanup(guidedMissiles);
 
-        for (let i = 0; i < (finalBoss ? 22 : 14); i++) coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 10));
+        for (let i = 0; i < (finalBoss ? 28 : 18); i++) coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 10));  // was 22/14
         for (let i = 0; i < (finalBoss ? 10 : 6); i++) nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 200, this.pos.y + (Math.random() - 0.5) * 200, 1));
         powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
         if (gateIndex !== null) {
-            try { if (caveLevel && caveLevel.active) caveLevel.openGate(gateIndex); } catch (e) { }
+            // Gate system removed - boss defeated message only
             showOverlayMessage(`CAVE CRUISER ${gateIndex + 1} DESTROYED`, '#0f0', 2600, 3);
         } else {
             showOverlayMessage("CAVE CRUISER DESTROYED - WARP CORE CHARGING", '#0ff', 3500, 3);
@@ -10068,7 +10063,7 @@ class Flagship extends Cruiser {
         clearArrayWithPixiCleanup(bossBombs);
         clearArrayWithPixiCleanup(guidedMissiles);
 
-        for (let i = 0; i < 40; i++) coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 260, this.pos.y + (Math.random() - 0.5) * 260, 10));
+        for (let i = 0; i < 50; i++) coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 260, this.pos.y + (Math.random() - 0.5) * 260, 10));  // was 40
         for (let i = 0; i < 16; i++) nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 320, this.pos.y + (Math.random() - 0.5) * 320, 1));
 
         bossActive = false;
@@ -17236,7 +17231,7 @@ function gameLoopLogic(opts = null) {
         } else if (caveMode && caveLevel && caveLevel.active) {
             // Keep asteroids present but not overwhelming inside the cave.
             let tries = 0;
-            while (environmentAsteroids.length < 40 && tries < 300) {
+            while (environmentAsteroids.length < 75 && tries < 300) {
                 spawnOneAsteroidRelative(false);
                 tries++;
             }
