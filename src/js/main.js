@@ -7460,39 +7460,9 @@ class CaveLevel {
         }
         this.entranceSeal = { y: sealY, segments: sealSegs, sideSegments: sideSegs, leftX: entranceLeftX, rightX: entranceRightX };
 
-        // Seal the cave exit near the end so the player can't fly out until the final boss is defeated.
-        const exitTargetY = this.endY + 1800;
-        const exitIdx = Math.ceil((this.startY - exitTargetY) / this.stepY);
-        const exitY = this.startY - exitIdx * this.stepY;
-        const bEnd = this.boundsAt(exitY);
-        const exitLeftX = bEnd.left;
-        const exitRightX = bEnd.right;
-        const exitSegs = [];
-        const exitN = 34;
-        const exitStep = (exitRightX - exitLeftX) / exitN;
-        const exitJitter = 70;
-        const exitPts = [];
-        for (let i = 0; i <= exitN; i++) {
-            const x = exitLeftX + i * exitStep;
-            let y = exitY + (Math.random() - 0.5) * exitJitter;
-            if (i === 0 || i === exitN) y = exitY;
-            exitPts.push({ x, y });
-        }
-        for (let i = 0; i < exitN; i++) {
-            exitSegs.push({ x0: exitPts[i].x, y0: exitPts[i].y, x1: exitPts[i + 1].x, y1: exitPts[i + 1].y, kind: 'exit' });
-        }
-        // Connect the exit seal to the cave boundary for a tight lock.
-        const exitSideSegs = [];
-        const exitConnectLen = 1200;
-        for (let y = exitY; y < exitY + exitConnectLen; y += this.stepY) {
-            const y1 = Math.min(exitY + exitConnectLen, y + this.stepY);
-            const bA = this.boundsAt(y);
-            const bB = this.boundsAt(y1);
-            exitSideSegs.push({ x0: bA.left, y0: y, x1: bB.left, y1, kind: 'exit' });
-            exitSideSegs.push({ x0: bA.right, y0: y, x1: bB.right, y1, kind: 'exit' });
-        }
-        this.exitSeal = { y: exitY, segments: exitSegs, sideSegments: exitSideSegs, leftX: exitLeftX, rightX: exitRightX };
-        this.exitUnlocked = false;
+        // Exit seal removed - using bossArena to trap player at final boss instead
+        this.exitSeal = null;
+        this.exitUnlocked = true;  // Always unlocked now
     }
 
     resetFireWall(playerY = null) {
@@ -8122,13 +8092,26 @@ class CaveLevel {
             }
         }
 
-        // Spawn the super flagship near the end after 3 bosses.
-        if (!this.finalSpawned && this.bossesDefeated >= 3 && player.pos.y < this.endY + 14000) {
+        // Spawn the final boss when player reaches the end of the cave walls
+        if (!this.finalSpawned && player.pos.y < this.endY + 4000) {
             this.finalSpawned = true;
-            const cx = this.centerXAt(this.endY + 5600);
-            boss = createCaveCruiserBoss(cx, this.endY + 5600, { finalBoss: true });
+            const cx = this.centerXAt(this.endY - 400);
+            const by = this.endY - 400;
+            // Activate bossArena to trap player in arena with final boss
+            bossArena.x = cx;
+            bossArena.y = by;
+            bossArena.active = true;
+            // Spawn Warp Sentinel Boss (25% tougher than warp version)
+            boss = new WarpSentinelBoss(cx, by, null);
             bossActive = true;
-            showOverlayMessage("CAVE CRUISER DETECTED", '#0ff', 3500, 3);
+            // Increase toughness by 25%
+            boss.hp = Math.floor(boss.hp * 1.25);
+            boss.maxHp = boss.hp;
+            boss.shieldStrength = Math.ceil(boss.shieldStrength * 1.25);
+            // Update shield segments with increased strength
+            boss.shieldSegments = new Array(boss.shieldSegments.length).fill(boss.shieldStrength);
+            boss.innerShieldSegments = new Array(boss.innerShieldSegments.length).fill(boss.shieldStrength);
+            showOverlayMessage("WARP SENTINEL DETECTED", '#f80', 3500, 3);
             playSound('boss_spawn');
             if (musicEnabled) setMusicMode('cruiser');
         }
