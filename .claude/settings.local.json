@@ -7,5 +7,6 @@
       "Bash(npm run dist:*)",
       "Bash(timeout:*)"
     ]
-  }
+  },
+  "outputStyle": "default"
 }

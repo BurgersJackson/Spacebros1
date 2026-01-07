@@ -4410,6 +4410,18 @@ class Bullet extends Entity {
             if (this.isBomb && this.explosionRadius > 0) {
                 // Create explosion effect
                 spawnFieryExplosion(this.pos.x, this.pos.y, 1.5);
+
+                // Create shockwave effect for bio mortars (nuke-style)
+                if (this.useShockwave) {
+                    shockwaves.push(new Shockwave(
+                        this.pos.x,
+                        this.pos.y,
+                        this.explosionDamage || 10,
+                        this.explosionRadius || 150,
+                        { color: '#f80', damagePlayer: true }
+                    ));
+                }
+
                 playSound('explode');
 
                 // Damage player if within explosion radius
@@ -7343,7 +7355,8 @@ class CaveLevel {
             if (this.buckets[i]) this.buckets[i].push(sL, sR);
         }
 
-        // Branching pillars: create alternate routes around central obstructions.
+         // Branching pillars: DISABLED - REMOVED
+        /*
         this.innerSegments = [];
         const pillarCount = 6;
         for (let p = 0; p < pillarCount; p++) {
@@ -7370,12 +7383,14 @@ class CaveLevel {
                 if (this.buckets[bi]) this.buckets[bi].push(s1, s2);
             }
         }
+        */
 
-        // Gates (boss checkpoints): closed barriers across the tunnel. 
+        // Gates (boss checkpoints): DISABLED - REMOVED
+        /*
         const gateYs = [-52000, -118000, -182000];
         this.gates = gateYs.map((y, i) => ({
             y,
-            open: true,  // All gates open - using arena bosses instead
+            open: true,
             preSpawned: false,
             relaysSpawned: false,
             relaysCleared: false,
@@ -7385,6 +7400,7 @@ class CaveLevel {
             relaysEnabled: i === 0,
             segments: this.buildGateSegments(y)
         }));
+        */
 
         // Wall turrets along the cave walls.
         this.wallTurrets = [];
@@ -7403,17 +7419,16 @@ class CaveLevel {
             this.wallTurrets.push(new CaveWallTurret(x, y, mode, { armored }));
         }
 
-        // Side caves with rewards + switchable doors (optional detours). 
+        // Side caves with rewards - DISABLED, only rewards and entrance seal kept
         this.doors = [];
         this.switches = [];
         this.rewards = [];
         this.relays = [];
         this.gasVents = [];
         this.draftZones = [];
-        this.critters = [];
         this.rockfalls = [];
         this.arenaSegments = [];
-
+        /*
         const isNearGate = (y) => this.gates.some(g => g && Math.abs(g.y - y) < 9000);
         const sideCaveCount = 8;
         for (let sc = 0; sc < sideCaveCount; sc++) {
@@ -7431,7 +7446,7 @@ class CaveLevel {
             const y1c = y + h * 0.5;
             const faceX = side === 'left' ? x1 : x0;
 
-            // Chamber walls (mostly sealed, with 2 doorways on the face that reconnect later). 
+            // Chamber walls (mostly sealed, with 2 doorways on face that reconnect later).
             const segs = [];
             const step = 140;
             // Top / bottom 
@@ -7464,7 +7479,7 @@ class CaveLevel {
                 if (this.buckets[bi]) this.buckets[bi].push(s);
             }
 
-            // Door that blocks the lower entrance until the player shoots a switch. 
+            // Door that blocks lower entrance until player shoots a switch. 
             const doorId = `side_${sc}`;
             const doorSeg = { x0: faceX, y0: gap1 - gapH / 2, x1: faceX, y1: gap1 + gapH / 2, kind: 'door' };
             this.doors.push({ id: doorId, open: false, segments: [doorSeg] });
@@ -7482,7 +7497,7 @@ class CaveLevel {
             this.rewards.push(new CaveRewardPickup((x0 + x1) * 0.5, y, rewardType, 0));
         }
 
-        // Hazards / traversal moments sprinkled throughout. 
+        // Hazards / traversal moments sprinkled throughout.
         for (let i = 0; i < 10; i++) {
             const y = this.startY - (i + 1) * 18000 - Math.random() * 8000;
             if (y < this.endY + 14000) break;
@@ -7508,6 +7523,7 @@ class CaveLevel {
             const closeSide = (Math.random() < 0.5) ? 'left' : 'right';
             this.rockfalls.push(new CaveRockfall(cx, y, 1600, closeSide));
         }
+        */
 
         // Seal the entrance behind the player so there's no way back out of the cave. 
         const sealY = this.startY + 1400;
@@ -8024,7 +8040,8 @@ class CaveLevel {
             if (r && !r.dead) r.update();
         }
 
-        // Ambient cave life. 
+        // Ambient cave life - DISABLED
+        /*
         this.critterSpawnCooldown--;
         if (this.critterSpawnCooldown <= 0) {
             const living = this.critters.filter(c => c && !c.dead).length;
@@ -8041,23 +8058,28 @@ class CaveLevel {
             if (c && !c.dead) c.update();
         }
         compactArray(this.critters);
+        */
 
-        // Update switches + rewards. 
+        // Update switches + rewards - SWITCHES AND RELAYS DISABLED
+        /*
         for (let i = 0; i < this.switches.length; i++) {
             const s = this.switches[i];
             if (s && !s.dead) s.update();
         }
         compactArray(this.switches);
+        */
         for (let i = 0; i < this.rewards.length; i++) {
             const r = this.rewards[i];
             if (r && !r.dead) r.update();
         }
         compactArray(this.rewards);
+        /*
         for (let i = 0; i < this.relays.length; i++) {
             const r = this.relays[i];
             if (r && !r.dead) r.update();
         }
         compactArray(this.relays);
+        */
 
         // Reward pickup handling. 
         for (let i = 0; i < this.rewards.length; i++) {
@@ -13278,10 +13300,12 @@ class CaveMonsterBase extends Entity {
         // Shields must be OUTSIDE the monster sprite, not inside
         this.maxShieldHp = 999; // Indestructible
         this.shieldSegments = new Array(50).fill(0);
-        this.innerShieldSegments = new Array(50).fill(0);
-        // Every other slot active (25 active segments per ring)
+        this.innerShieldSegments = new Array(20).fill(0);
+        // Every other slot active (25 outer, 10 inner segments per ring)
         for (let i = 0; i < 50; i += 2) {
             this.shieldSegments[i] = 999;
+        }
+        for (let i = 0; i < 20; i += 2) {
             this.innerShieldSegments[i] = 999;
         }
         // Shields are OUTSIDE the monster - outer shield is larger than visualRadius
@@ -13358,7 +13382,7 @@ class CaveMonsterBase extends Entity {
         if (dist <= this.innerShieldRadius) {
             const angle = Math.atan2(dy, dx) - this.innerShieldRotation;
             const normalizedAngle = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-            const segmentIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * 50);
+            const segmentIndex = Math.floor((normalizedAngle / (Math.PI * 2)) * this.innerShieldSegments.length);
             if (this.innerShieldSegments[segmentIndex] > 0) {
                 return true; // Hit inner shield
             }
@@ -13851,7 +13875,7 @@ class CaveMonsterBase extends Entity {
 
 // ============================================================================
 // CAVE MONSTER 1: Bio-Mechanical Cryptid
-// Attacks: Bio-Mortars, Neural Pulse, Spore Clouds, Tendril Mines
+// Attacks: Bio-Mortars, Neural Pulse, Tendril Mines
 // ============================================================================
 class CaveMonster1 extends CaveMonsterBase {
     constructor(x, y) {
@@ -13859,16 +13883,15 @@ class CaveMonster1 extends CaveMonsterBase {
         this.displayName = 'CAVE CRYPTID';
         this.pulseActive = false;
         this.pulseRadius = 0;
-        this.pulseMaxRadius = 1500;
+        this.pulseMaxRadius = 600;
         this.pulseExpansionSpeed = 25;
         this.pulseHit = false;
-        this.sporeClouds = [];
         this.artillerySpeed = 3.0;
         this.attackType = 0;
     }
 
     fireAttack(phase) {
-        const attacks = ['bioMortars', 'neuralPulse', 'spawnSporeClouds', 'tendrilMines'];
+        const attacks = ['bioMortars', 'neuralPulse', 'tendrilMines'];
         const attack = attacks[this.attackType % attacks.length];
         this.attackType++;
 
@@ -13878,9 +13901,6 @@ class CaveMonster1 extends CaveMonsterBase {
                 break;
             case 'neuralPulse':
                 this.neuralPulse(phase);
-                break;
-            case 'spawnSporeClouds':
-                this.spawnSporeClouds(phase);
                 break;
             case 'tendrilMines':
                 this.tendrilMines(phase);
@@ -13903,51 +13923,22 @@ class CaveMonster1 extends CaveMonsterBase {
             b.isBomb = true;
             b.explosionRadius = 150;
             b.explosionDamage = 10;
+            b.useShockwave = true; // Use shockwave effect instead of rings
             bullets.push(b);
         }
         playSound('shotgun');
     }
 
     neuralPulse(phase) {
-        setTimeout(() => {
-            if (this.dead) return;
-            this.pulseActive = true;
-            this.pulseRadius = 400;
-            this.pulseHit = false;
-            playSound('heavy_shoot');
-        }, 800);
-
-        playSound('powerup');
-    }
-
-    spawnSporeClouds(phase) {
-        const count = phase === 3 ? 6 : (phase === 2 ? 5 : 4);
-
-        setTimeout(() => {
-            if (this.dead) return;
-            for (let i = 0; i < count; i++) {
-                const angle = Math.random() * Math.PI * 2;
-                const dist = 400 + Math.random() * 800;
-                const cx = this.pos.x + Math.cos(angle) * dist;
-                const cy = this.pos.y + Math.sin(angle) * dist;
-
-                this.sporeClouds.push({
-                    x: cx,
-                    y: cy,
-                    radius: 160,
-                    life: 240,
-                    maxLife: 240,
-                    telegraphTimer: 10,
-                    maxTelegraphTime: 10,
-                    active: false
-                });
-            }
-            playSound('powerup');
-        }, 1000);
+        if (this.dead) return;
+        this.pulseActive = true;
+        this.pulseRadius = 400;
+        this.pulseHit = false;
+        playSound('heavy_shoot');
     }
 
     tendrilMines(phase) {
-        const count = phase === 3 ? 8 : (phase === 2 ? 6 : 4);
+        const count = phase === 3 ? 6 : (phase === 2 ? 4 : 3);
 
         for (let i = 0; i < count; i++) {
             const angle = Math.random() * Math.PI * 2;
@@ -14037,31 +14028,6 @@ class CaveMonster1 extends CaveMonsterBase {
             }
         }
 
-        for (let i = this.sporeClouds.length - 1; i >= 0; i--) {
-            const cloud = this.sporeClouds[i];
-
-            if (!cloud.active) {
-                cloud.telegraphTimer -= dtFactor;
-                if (cloud.telegraphTimer <= 0) {
-                    cloud.active = true;
-                }
-            } else {
-                cloud.life -= dtFactor;
-
-                if (cloud.life <= 0) {
-                    this.sporeClouds.splice(i, 1);
-                    continue;
-                }
-
-                if (player && !player.dead && Math.floor(cloud.life) % 60 === 0) {
-                    const dist = Math.hypot(player.pos.x - cloud.x, player.pos.y - cloud.y);
-                    if (dist < cloud.radius) {
-                        this.applyDamageToPlayer(2);
-                    }
-                }
-            }
-        }
-
         super.update(deltaTime);
     }
 
@@ -14088,45 +14054,6 @@ class CaveMonster1 extends CaveMonsterBase {
         } else if (this._pixiPulseGfx) {
             try { this._pixiPulseGfx.clear(); } catch (e) { }
         }
-
-        if (this.sporeClouds.length > 0 && pixiVectorLayer) {
-            let gfx = this._pixiCloudGfx;
-            if (!gfx) {
-                gfx = new PIXI.Graphics();
-                pixiVectorLayer.addChild(gfx);
-                this._pixiCloudGfx = gfx;
-            } else if (!gfx.parent) {
-                pixiVectorLayer.addChild(gfx);
-            }
-
-            gfx.clear();
-            gfx.position.set(this.pos.x, this.pos.y);
-            const z = currentZoom || ZOOM_LEVEL;
-            gfx.lineStyle(3 / z, 0xff8800, 0.3);
-
-            for (const cloud of this.sporeClouds) {
-                if (!cloud.active) {
-                    const telegraphAlpha = cloud.telegraphTimer / cloud.maxTelegraphTime;
-                    gfx.lineStyle(4 / z, 0xff8800, 0.6 * telegraphAlpha);
-                    gfx.drawCircle(
-                        (cloud.x - this.pos.x) / z,
-                        (cloud.y - this.pos.y) / z,
-                        cloud.radius / z
-                    );
-                } else {
-                    const alpha = cloud.life / cloud.maxLife;
-                    gfx.beginFill(0xff8800, 0.15 * alpha);
-                    gfx.drawCircle(
-                        (cloud.x - this.pos.x) / z,
-                        (cloud.y - this.pos.y) / z,
-                        cloud.radius / z
-                    );
-                    gfx.endFill();
-                }
-            }
-        } else if (this._pixiCloudGfx) {
-            try { this._pixiCloudGfx.clear(); } catch (e) { }
-        }
     }
 
     kill() {
@@ -14134,10 +14061,6 @@ class CaveMonster1 extends CaveMonsterBase {
         if (this._pixiPulseGfx) {
             try { this._pixiPulseGfx.destroy({ children: true }); } catch (e) { }
             this._pixiPulseGfx = null;
-        }
-        if (this._pixiCloudGfx) {
-            try { this._pixiCloudGfx.destroy({ children: true }); } catch (e) { }
-            this._pixiCloudGfx = null;
         }
 
         for (let i = enemies.length - 1; i >= 0; i--) {
@@ -14148,7 +14071,6 @@ class CaveMonster1 extends CaveMonsterBase {
             }
         }
 
-        this.sporeClouds = [];
         super.kill();
     }
 }
@@ -14500,9 +14422,9 @@ class CaveMonster3 extends CaveMonsterBase {
                     pixiVectorLayer.addChild(gfx);
                 }
 
-                gfx.clear();
-                gfx.position.set(this.pos.x, this.pos.y);
-                const z = currentZoom || ZOOM_LEVEL;
+            gfx.clear();
+            gfx.position.set(0, 0);
+            const z = currentZoom || ZOOM_LEVEL;
                 const a = this.beamAngle;
                 const ex = Math.cos(a) * this.beamLen;
                 const ey = Math.sin(a) * this.beamLen;
@@ -19140,6 +19062,7 @@ function gameLoopLogic(opts = null) {
         }
     }
     if (doUpdate) compactArray(shockwaves);
+
     globalProfiler.end('Entities');
 
     // [MOVED] Pixi overlay render moved to end of Draw block
