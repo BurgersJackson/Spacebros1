@@ -3431,22 +3431,32 @@ class Spaceship extends Entity {
 
         // Static Weapons
         this.staticWeapons.forEach(w => {
-            let angleBase = this.angle;
+            // Calculate effectiveness penalty
+            const weaponEffectiveness = w.effectiveness || 1.0;
+
+            // Calculate same-type penalty (for multiple weapons of the same type)
+            const sameTypeCount = this.staticWeapons.filter(sw => sw.type === w.type).length;
+            const typePenalty = sameTypeCount > 1 ? 1 - ((sameTypeCount - 1) * 0.2) : 1.0;
+
+            // Combined effectiveness (min 20%)
+            const finalEffectiveness = Math.max(0.2, weaponEffectiveness * typePenalty);
+            const weaponDamage = damage * finalEffectiveness;
+
             if (w.type === 'side') {
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI / 2, false, damage, bulletSpeed, 4, '#0f0'));
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle - Math.PI / 2, false, damage, bulletSpeed, 4, '#0f0'));
+                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI / 2, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle - Math.PI / 2, false, weaponDamage, bulletSpeed, 4, '#0f0'));
             } else if (w.type === 'rear') {
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI, false, damage, bulletSpeed, 4, '#0f0')); // Rear laser
+                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI, false, weaponDamage, bulletSpeed, 4, '#0f0')); // Rear laser
             } else if (w.type === 'dual_rear') {
                 // Dual stream to the rear at angles
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI - Math.PI / 6, false, damage, bulletSpeed, 4, '#0f0'));
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI + Math.PI / 6, false, damage, bulletSpeed, 4, '#0f0'));
+                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI - Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI + Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
             } else if (w.type === 'dual_front') {
                 // Dual stream to the front at angles
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle - Math.PI / 6, false, damage, bulletSpeed, 4, '#0f0'));
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI / 6, false, damage, bulletSpeed, 4, '#0f0'));
+                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle - Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
             } else { // Forward
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle, false, damage, bulletSpeed, 4, '#0f0'));
+                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle, false, weaponDamage, bulletSpeed, 4, '#0f0'));
             }
         });
     }
@@ -8567,6 +8577,11 @@ function startCaveSector2() {
     if (spaceStation) pixiCleanupObject(spaceStation);
     spaceStation = null;
     nextSpaceStationTime = null;
+
+    // Ensure no destroyers in cave mode
+    if (destroyer) pixiCleanupObject(destroyer);
+    destroyer = null;
+    nextDestroyerSpawnTime = null;
 
     // Place player at the cave start (bottom), facing upward.
     player.pos.x = caveLevel.startX;
@@ -14782,9 +14797,9 @@ let gunboatLevel2Unlocked = false;
 let cruiserEncounterCount = 0;
 let initialSpawnDelayAt = null;
 let initialSpawnDone = false;
-let metaProfile = { bank: 0, purchases: { startDamage: false, passiveHp: false, rerollTokens: 0, hullPlating: false, shieldCore: false, staticBlueprint: false, missilePrimer: false, magnetBooster: false, nukeCapacitor: false, speedTuning: false, bankMultiplier: false, shopDiscount: false, extraLife: false, droneFabricator: false } };
+let metaProfile = { bank: 0, purchases: { startDamage: 0, passiveHp: 0, rerollTokens: 0, hullPlating: 0, shieldCore: 0, staticBlueprint: 0, missilePrimer: 0, magnetBooster: 0, nukeCapacitor: 0, speedTuning: 0, bankMultiplier: 0, shopDiscount: 0, extraLife: 0, droneFabricator: 0 } };
 let rerollTokens = 0;
-let metaExtraLifeAvailable = false;
+let metaExtraLifeCount = 0;
 
 // --- Exploration Contracts ---
 let activeContract = null;
@@ -15422,23 +15437,35 @@ function loadMetaProfile() {
         if (raw) metaProfile = JSON.parse(raw);
         if (!metaProfile.purchases) metaProfile.purchases = {};
         metaProfile.purchases = Object.assign({
-            startDamage: false,
-            passiveHp: false,
+            startDamage: 0,
+            passiveHp: 0,
             rerollTokens: 0,
-            hullPlating: false,
-            shieldCore: false,
-            staticBlueprint: false,
-            missilePrimer: false,
-            magnetBooster: false,
-            nukeCapacitor: false,
-            speedTuning: false,
-            bankMultiplier: false,
-            shopDiscount: false,
-            extraLife: false,
-            droneFabricator: false
+            hullPlating: 0,
+            shieldCore: 0,
+            staticBlueprint: 0,
+            missilePrimer: 0,
+            magnetBooster: 0,
+            nukeCapacitor: 0,
+            speedTuning: 0,
+            bankMultiplier: 0,
+            shopDiscount: 0,
+            extraLife: 0,
+            droneFabricator: 0
         }, metaProfile.purchases);
         if (metaProfile.purchases.warpPrecharge) delete metaProfile.purchases.warpPrecharge;
         if (typeof metaProfile.bank !== 'number') metaProfile.bank = 0;
+
+        // Migrate old boolean saves to counts
+        for (const key of ['startDamage', 'passiveHp', 'hullPlating', 'shieldCore',
+                           'staticBlueprint', 'missilePrimer', 'magnetBooster',
+                           'nukeCapacitor', 'speedTuning', 'bankMultiplier',
+                           'shopDiscount', 'extraLife', 'droneFabricator']) {
+            if (metaProfile.purchases[key] === true) {
+                metaProfile.purchases[key] = 1;
+            } else if (metaProfile.purchases[key] === false) {
+                metaProfile.purchases[key] = 0;
+            }
+        }
     } catch (e) {
         console.warn('failed to load meta profile', e);
     }
@@ -15446,20 +15473,20 @@ function loadMetaProfile() {
 function resetMetaProfile() {
     metaProfile = {
         bank: 0, purchases: {
-            startDamage: false,
-            passiveHp: false,
+            startDamage: 0,
+            passiveHp: 0,
             rerollTokens: 0,
-            hullPlating: false,
-            shieldCore: false,
-            staticBlueprint: false,
-            missilePrimer: false,
-            magnetBooster: false,
-            nukeCapacitor: false,
-            speedTuning: false,
-            bankMultiplier: false,
-            shopDiscount: false,
-            extraLife: false,
-            droneFabricator: false
+            hullPlating: 0,
+            shieldCore: 0,
+            staticBlueprint: 0,
+            missilePrimer: 0,
+            magnetBooster: 0,
+            nukeCapacitor: 0,
+            speedTuning: 0,
+            bankMultiplier: 0,
+            shopDiscount: 0,
+            extraLife: 0,
+            droneFabricator: 0
         }
     };
 }
@@ -15470,41 +15497,100 @@ function saveMetaProfile() {
     } catch (e) { console.warn('failed to save meta profile', e); }
 }
 function depositMetaNuggets() {
-    const bonus = metaProfile.purchases.bankMultiplier ? 1.1 : 1.0;
-    metaProfile.bank += Math.round(spaceNuggets * bonus);
+    const tier = metaProfile.purchases.bankMultiplier || 0;
+    // Base 10% per tier for first 3 tiers, then diminishing
+    let bonus = 0.1 * Math.min(tier, 3);
+    if (tier > 3) {
+        const table = { 0: 1.0, 1: 1.1, 2: 1.2, 3: 1.3 };
+        const extraValue = getDiminishingValue(tier, table, 0.99);
+        bonus = extraValue - 1.0;
+    }
+    metaProfile.bank += Math.round(spaceNuggets * (1 + bonus));
     saveMetaProfile();
 }
 function updateMetaUI() {
     const bankEl = document.getElementById('meta-bank');
     if (bankEl) bankEl.innerText = metaProfile.bank;
     const startEl = document.getElementById('meta-start-dmg');
-    if (startEl) startEl.innerText = metaProfile.purchases.startDamage ? 'OWNED' : 'BUY (10 NUGS)';
+    if (startEl) {
+        const tier = metaProfile.purchases.startDamage || 0;
+        const cost = getMetaUpgradeCost('startDamage', 10);
+        startEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
     const passiveEl = document.getElementById('meta-passive-hp');
-    if (passiveEl) passiveEl.innerText = metaProfile.purchases.passiveHp ? 'OWNED' : 'BUY (15 NUGS)';
+    if (passiveEl) {
+        const tier = metaProfile.purchases.passiveHp || 0;
+        const cost = getMetaUpgradeCost('passiveHp', 15);
+        passiveEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
     const rerollEl = document.getElementById('meta-reroll-count');
     if (rerollEl) rerollEl.innerText = metaProfile.purchases.rerollTokens || 0;
     const hullEl = document.getElementById('meta-hull');
-    if (hullEl) hullEl.innerText = metaProfile.purchases.hullPlating ? 'OWNED' : 'BUY (30 NUGS)';
+    if (hullEl) {
+        const tier = metaProfile.purchases.hullPlating || 0;
+        const cost = getMetaUpgradeCost('hullPlating', 30);
+        hullEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
     const shieldEl = document.getElementById('meta-shield-core');
-    if (shieldEl) shieldEl.innerText = metaProfile.purchases.shieldCore ? 'OWNED' : 'BUY (30 NUGS)';
+    if (shieldEl) {
+        const tier = metaProfile.purchases.shieldCore || 0;
+        const cost = getMetaUpgradeCost('shieldCore', 30);
+        shieldEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
     const staticEl = document.getElementById('meta-static');
-    if (staticEl) staticEl.innerText = metaProfile.purchases.staticBlueprint ? 'OWNED' : 'BUY (40 NUGS)';
+    if (staticEl) {
+        const tier = metaProfile.purchases.staticBlueprint || 0;
+        const cost = getMetaUpgradeCost('staticBlueprint', 40);
+        staticEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
     const missileEl = document.getElementById('meta-missile');
-    if (missileEl) missileEl.innerText = metaProfile.purchases.missilePrimer ? 'OWNED' : 'BUY (40 NUGS)';
+    if (missileEl) {
+        const tier = metaProfile.purchases.missilePrimer || 0;
+        const cost = getMetaUpgradeCost('missilePrimer', 40);
+        missileEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
     const magnetEl = document.getElementById('meta-magnet');
-    if (magnetEl) magnetEl.innerText = metaProfile.purchases.magnetBooster ? 'OWNED' : 'BUY (25 NUGS)';
+    if (magnetEl) {
+        const tier = metaProfile.purchases.magnetBooster || 0;
+        const cost = getMetaUpgradeCost('magnetBooster', 25);
+        magnetEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
     const nukeEl = document.getElementById('meta-nuke');
-    if (nukeEl) nukeEl.innerText = metaProfile.purchases.nukeCapacitor ? 'OWNED' : 'BUY (35 NUGS)';
+    if (nukeEl) {
+        const tier = metaProfile.purchases.nukeCapacitor || 0;
+        const cost = getMetaUpgradeCost('nukeCapacitor', 35);
+        nukeEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
     const speedEl = document.getElementById('meta-speed');
-    if (speedEl) speedEl.innerText = metaProfile.purchases.speedTuning ? 'OWNED' : 'BUY (25 NUGS)';
+    if (speedEl) {
+        const tier = metaProfile.purchases.speedTuning || 0;
+        const cost = getMetaUpgradeCost('speedTuning', 25);
+        speedEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
     const bankMultEl = document.getElementById('meta-bank-mult');
-    if (bankMultEl) bankMultEl.innerText = metaProfile.purchases.bankMultiplier ? 'OWNED' : 'BUY (50 NUGS)';
+    if (bankMultEl) {
+        const tier = metaProfile.purchases.bankMultiplier || 0;
+        const cost = getMetaUpgradeCost('bankMultiplier', 50);
+        bankMultEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
     const discountEl = document.getElementById('meta-discount');
-    if (discountEl) discountEl.innerText = metaProfile.purchases.shopDiscount ? 'OWNED' : 'BUY (50 NUGS)';
+    if (discountEl) {
+        const tier = metaProfile.purchases.shopDiscount || 0;
+        const cost = getMetaUpgradeCost('shopDiscount', 50);
+        discountEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
     const extraLifeEl = document.getElementById('meta-extra-life');
-    if (extraLifeEl) extraLifeEl.innerText = metaProfile.purchases.extraLife ? 'OWNED' : 'BUY (60 NUGS)';
+    if (extraLifeEl) {
+        const tier = metaProfile.purchases.extraLife || 0;
+        const cost = getMetaUpgradeCost('extraLife', 60);
+        extraLifeEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
     const droneEl = document.getElementById('meta-drone');
-    if (droneEl) droneEl.innerText = metaProfile.purchases.droneFabricator ? 'OWNED' : 'BUY (40 NUGS)';
+    if (droneEl) {
+        const tier = metaProfile.purchases.droneFabricator || 0;
+        const cost = getMetaUpgradeCost('droneFabricator', 40);
+        droneEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
 }
 
 // Companion Drones
@@ -17689,25 +17775,23 @@ function showLevelUpMenu() {
     const existingReroll = document.getElementById('reroll-btn');
     if (existingReroll) existingReroll.remove();
 
-    // 1. Filter Valid Upgrades
+    // 1. Filter Valid Upgrades (infinite tiers - all upgrades are always valid)
     const validUpgrades = [];
     UPGRADE_DATA.categories.forEach(cat => {
         cat.upgrades.forEach(up => {
-            const currentTier = player.inventory[up.id] || 0;
-            if (currentTier < 3) {
-                validUpgrades.push({ ...up, category: cat.name });
-            }
+            // All upgrades are now valid since they have infinite tiers
+            validUpgrades.push({ ...up, category: cat.name });
         });
     });
 
-    // Handle case when all upgrades are maxed out
+    // Handle case when no upgrades are available (shouldn't happen with infinite tiers)
     if (validUpgrades.length === 0) {
-        // Show message that all upgrades are maxed
-        showOverlayMessage("ALL UPGRADES MAXED OUT!", '#0f0', 2000);
+        // Show message that no upgrades are available
+        showOverlayMessage("NO UPGRADES AVAILABLE!", '#f00', 2000);
 
         // Give bonus health as a reward for leveling up
         if (player && !player.dead) {
-            player.hp = player.maxHp;
+            player.hp = Math.min(player.hp + 3, player.maxHp);
             updateHealthUI();
             playSound('powerup');
         }
@@ -17884,6 +17968,51 @@ function showLevelUpMenu() {
     if (cards.length > 0) updateMenuVisuals(cards);
 }
 
+/**
+ * Calculate progressive diminishing returns for infinite tiers
+ * Formula: baseValue * (1 + sum of 0.01 * decayFactor^(i-1) for each tier beyond 3)
+ * Tier 4: +1%, Tier 5: +1.99%, Tier 6: +2.97%, etc. (progressive decay)
+ */
+function getDiminishingValue(tier, baseTable, decayFactor = 0.99) {
+    if (tier <= 3) return baseTable[tier] || 1.0;
+
+    const baseValue = baseTable[3] || 1.0;
+    const tiersBeyond = tier - 3;
+
+    // Progressive decay: each tier gives slightly less than the last
+    // Tier 4: +0.01, Tier 5: +0.0099, Tier 6: +0.009801, etc.
+    let totalBonus = 0;
+    for (let i = 1; i <= tiersBeyond; i++) {
+        totalBonus += 0.01 * Math.pow(decayFactor, i - 1);
+    }
+
+    return baseValue * (1 + totalBonus);
+}
+
+/**
+ * Calculate meta upgrade cost with slow exponential scaling
+ * Formula: baseCost * (1.2 ^ currentTier)
+ * Tier 1: base, Tier 2: *1.2, Tier 3: *1.44, etc.
+ */
+function getMetaUpgradeCost(upgradeId, baseCost) {
+    const currentTier = metaProfile.purchases[upgradeId] || 0;
+    // Tier-based shop discount: 10% per tier for first 3 tiers, then diminishing
+    const discountTier = metaProfile.purchases.shopDiscount || 0;
+    let discount = 1.0;
+    if (discountTier > 0) {
+        const discountMultiplier = 0.1 * Math.min(discountTier, 3);
+        if (discountTier > 3) {
+            const table = { 0: 1.0, 1: 0.9, 2: 0.8, 3: 0.7 };
+            const extraValue = getDiminishingValue(discountTier, table, 0.99);
+            discount = extraValue;
+        } else {
+            discount = 1.0 - discountMultiplier;
+        }
+    }
+    const cost = Math.ceil(baseCost * Math.pow(1.2, currentTier) * discount);
+    return cost;
+}
+
 function applyUpgrade(id, tier) {
     const prevTier = player.inventory[id] || 0;
     player.inventory[id] = tier;
@@ -17905,8 +18034,8 @@ function applyUpgrade(id, tier) {
         case 'turret_damage':
             {
                 const table = { 0: 1.0, 1: 1.5, 2: 2.0, 3: 3.0 };
-                const prev = table[prevTier] || 1.0;
-                const next = table[tier] || prev;
+                const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
+                const next = table[tier] || getDiminishingValue(tier, table, 0.99);
                 const ratio = (prev > 0) ? (next / prev) : 1.0;
                 player.stats.damageMult *= ratio;
             }
@@ -17914,8 +18043,8 @@ function applyUpgrade(id, tier) {
         case 'turret_fire_rate':
             {
                 const table = { 0: 1.0, 1: 1.15, 2: 1.30, 3: 1.50 };
-                const prev = table[prevTier] || 1.0;
-                const next = table[tier] || prev;
+                const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
+                const next = table[tier] || getDiminishingValue(tier, table, 0.99);
                 const ratio = (prev > 0) ? (next / prev) : 1.0;
                 player.stats.fireRateMult *= ratio;
             }
@@ -17923,8 +18052,8 @@ function applyUpgrade(id, tier) {
         case 'turret_range':
             {
                 const table = { 0: 1.0, 1: 1.25, 2: 1.50, 3: 2.0 };
-                const prev = table[prevTier] || 1.0;
-                const next = table[tier] || prev;
+                const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
+                const next = table[tier] || getDiminishingValue(tier, table, 0.99);
                 const ratio = (prev > 0) ? (next / prev) : 1.0;
                 player.stats.rangeMult *= ratio;
             }
@@ -17933,13 +18062,31 @@ function applyUpgrade(id, tier) {
             player.stats.multiShot = tier + 1; // 2, 3, 4
             break;
         case 'static_weapons':
-            // Add specific gun logic
-            if (tier === 1) player.staticWeapons.push({ type: 'forward' });
-            if (tier === 2) player.staticWeapons.push({ type: 'side' });
-            if (tier === 3) player.staticWeapons.push({ type: 'rear' });
-            if (tier === 4) player.staticWeapons.push({ type: 'dual_rear' });
-            if (tier === 5) player.staticWeapons.push({ type: 'dual_front' });
-            player.staticCannonCount = player.staticWeapons.length; // Vis only
+            {
+                // Remove old upgrade-sourced weapons to prevent duplicates when re-upgrading
+                player.staticWeapons = player.staticWeapons.filter(w => w.source !== 'upgrade');
+
+                const weaponTypes = ['forward', 'side', 'rear', 'dual_rear', 'dual_front'];
+
+                // Add weapons for current tier (with source tracking)
+                for (let i = 0; i < tier && i < weaponTypes.length; i++) {
+                    player.staticWeapons.push({ type: weaponTypes[i], source: 'upgrade' });
+                }
+
+                // Beyond defined types, add cycling duplicates with effectiveness penalty
+                if (tier > weaponTypes.length) {
+                    for (let i = weaponTypes.length; i < tier; i++) {
+                        const duplicateIndex = i - weaponTypes.length;
+                        const effectiveness = Math.max(0.2, 1 - (duplicateIndex * 0.2)); // 80%, 60%, 40%, 20%
+                        player.staticWeapons.push({
+                            type: weaponTypes[i % weaponTypes.length],
+                            source: 'upgrade',
+                            effectiveness: effectiveness
+                        });
+                    }
+                }
+                player.staticCannonCount = player.staticWeapons.length; // Vis only
+            }
             break;
         case 'homing_missiles':
             player.stats.homing = tier; // 1=weak, 2=strong, 3=perfect(implied by stronger turn rate)
@@ -17975,8 +18122,8 @@ function applyUpgrade(id, tier) {
         case 'speed':
             {
                 const table = { 0: 1.0, 1: 1.15, 2: 1.30, 3: 1.50 };
-                const prev = table[prevTier] || 1.0;
-                const next = table[tier] || prev;
+                const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
+                const next = table[tier] || getDiminishingValue(tier, table, 0.99);
                 const ratio = (prev > 0) ? (next / prev) : 1.0;
                 player.stats.speedMult *= ratio;
             }
@@ -18357,13 +18504,13 @@ function updateMenuVisuals(elements) {
 
 function killPlayer() {
     player.dead = true;
-    if (metaExtraLifeAvailable) {
-        metaExtraLifeAvailable = false;
+    if (metaExtraLifeCount > 0) {
+        metaExtraLifeCount--;
         player.dead = false;
         player.hp = Math.max(1, Math.floor(player.maxHp * 0.5));
         player.invulnerable = 180;
         spawnParticles(player.pos.x, player.pos.y, 20, '#0f0');
-        showOverlayMessage("SECOND CHANCE!", '#0f0', 1500);
+        showOverlayMessage(`SECOND CHANCE! (${metaExtraLifeCount} remaining)`, '#0f0', 1500);
         updateHealthUI();
         return;
     }
@@ -18739,7 +18886,8 @@ function gameLoopLogic(opts = null) {
         }
 
         // Single destroyer system: only 1 destroyer at a time, alternates between type 1 and 2
-        if (!warpActive && !caveMode && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone && !warpCompletedOnce) {
+        // Destroyers never spawn in sector 2 (cave mode)
+        if (!warpActive && !caveMode && sectorIndex !== 2 && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone && !warpCompletedOnce) {
             const destroyerAlive = destroyer && !destroyer.dead;
 
             if (!destroyerAlive) {
@@ -20820,7 +20968,7 @@ function startGame() {
         dreadManager.timerActive = true;
         dreadManager.timerAt = Date.now() + dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
         rerollTokens = metaProfile.purchases.rerollTokens || 0;
-        metaExtraLifeAvailable = !!metaProfile.purchases.extraLife;
+        metaExtraLifeCount = metaProfile.purchases.extraLife || 0;
 
         // Reset player stats/inventory
         player.fireDelay = 24;
@@ -20858,44 +21006,97 @@ function startGame() {
         // Setup game world (clear all entities)
         setupGameWorld();
 
-        // Apply meta bonuses
-        if (metaProfile.purchases.startDamage) {
-            player.stats.damageMult *= 1.2; // starter damage bump
+        // Apply meta bonuses (tier-based with diminishing returns)
+        const startDamageTier = metaProfile.purchases.startDamage || 0;
+        if (startDamageTier > 0) {
+            // Base 20% per tier for first 3 tiers, then diminishing
+            let bonus = 0.2 * Math.min(startDamageTier, 3);
+            if (startDamageTier > 3) {
+                const table = { 0: 1.0, 1: 1.2, 2: 1.4, 3: 1.6 };
+                const extraValue = getDiminishingValue(startDamageTier, table, 0.99);
+                bonus = extraValue - 1.0;
+            }
+            player.stats.damageMult *= (1 + bonus);
         }
-        if (metaProfile.purchases.passiveHp) {
-            player.maxHp += 10;
+
+        const passiveHpTier = metaProfile.purchases.passiveHp || 0;
+        if (passiveHpTier > 0) {
+            player.maxHp += 10 * passiveHpTier;
             player.hp = player.maxHp;
             updateHealthUI();
         }
-        if (metaProfile.purchases.hullPlating) {
-            player.maxHp += 15;
+
+        const hullPlatingTier = metaProfile.purchases.hullPlating || 0;
+        if (hullPlatingTier > 0) {
+            player.maxHp += 15 * hullPlatingTier;
             player.hp = player.maxHp;
         }
-        if (metaProfile.purchases.shieldCore) {
-            player.shieldSegments.push(2, 2);
+
+        const shieldCoreTier = metaProfile.purchases.shieldCore || 0;
+        if (shieldCoreTier > 0) {
+            for (let i = 0; i < shieldCoreTier; i++) {
+                player.shieldSegments.push(2, 2);
+            }
             player.maxShieldSegments = player.shieldSegments.length;
         }
-        if (metaProfile.purchases.staticBlueprint) {
-            player.staticWeapons.push({ type: 'forward' });
+
+        const staticBlueprintTier = metaProfile.purchases.staticBlueprint || 0;
+        if (staticBlueprintTier > 0) {
+            // Add forward lasers with effectiveness penalty for duplicates
+            for (let i = 0; i < staticBlueprintTier; i++) {
+                const effectiveness = Math.max(0.2, 1 - (i * 0.2)); // 100%, 80%, 60%, 40%, 20%
+                player.staticWeapons.push({
+                    type: 'forward',
+                    source: 'meta',
+                    effectiveness: effectiveness
+                });
+            }
         }
-        if (metaProfile.purchases.missilePrimer) {
-            player.stats.homing = Math.max(player.stats.homing, 1);
+
+        const missilePrimerTier = metaProfile.purchases.missilePrimer || 0;
+        if (missilePrimerTier > 0) {
+            // Increase homing strength with tier
+            player.stats.homing = Math.max(player.stats.homing, missilePrimerTier);
             player.missileTimer = 0;
         }
-        if (metaProfile.purchases.magnetBooster) {
-            player.magnetRadius = Math.max(player.magnetRadius, 300);
+
+        const magnetBoosterTier = metaProfile.purchases.magnetBooster || 0;
+        if (magnetBoosterTier > 0) {
+            // Base 300, then increasing with diminishing returns
+            const baseRadius = 300;
+            const extraRadius = magnetBoosterTier > 1 ? (magnetBoosterTier - 1) * 50 * Math.pow(0.9, magnetBoosterTier - 2) : 0;
+            player.magnetRadius = Math.max(player.magnetRadius, baseRadius + extraRadius);
         }
-        if (metaProfile.purchases.nukeCapacitor) {
+
+        const nukeCapacitorTier = metaProfile.purchases.nukeCapacitor || 0;
+        if (nukeCapacitorTier > 0) {
             player.nukeUnlocked = true;
             player.nukeCooldown = 0;
-            player.nukeDamage = 5;
-            player.nukeRange = 500;
+            // Base damage 5, +2 per tier with diminishing returns
+            player.nukeDamage = 5 + Math.floor(2 * nukeCapacitorTier * Math.pow(0.95, nukeCapacitorTier - 1));
+            // Base range 500, +50 per tier with diminishing returns
+            player.nukeRange = 500 + Math.floor(50 * nukeCapacitorTier * Math.pow(0.95, nukeCapacitorTier - 1));
         }
-        if (metaProfile.purchases.speedTuning) {
-            player.stats.speedMult *= 1.1;
+
+        const speedTuningTier = metaProfile.purchases.speedTuning || 0;
+        if (speedTuningTier > 0) {
+            // Base 10% per tier for first 3 tiers, then diminishing
+            let bonus = 0.1 * Math.min(speedTuningTier, 3);
+            if (speedTuningTier > 3) {
+                const table = { 0: 1.0, 1: 1.1, 2: 1.2, 3: 1.3 };
+                const extraValue = getDiminishingValue(speedTuningTier, table, 0.99);
+                bonus = extraValue - 1.0;
+            }
+            player.stats.speedMult *= (1 + bonus);
         }
-        if (metaProfile.purchases.droneFabricator) {
-            spawnDrone('shooter');
+
+        const droneFabricatorTier = metaProfile.purchases.droneFabricator || 0;
+        if (droneFabricatorTier > 0) {
+            // Spawn shooter drones (max 5 to prevent overcrowding)
+            const droneCount = Math.min(droneFabricatorTier, 5);
+            for (let i = 0; i < droneCount; i++) {
+                spawnDrone('shooter');
+            }
         }
         if (pendingProfile) {
             applyProfile(pendingProfile);
@@ -21306,182 +21507,234 @@ if (newProfileBtn) newProfileBtn.addEventListener('click', () => {
 });
 const buyStart = document.getElementById('buy-start-dmg');
 if (buyStart) buyStart.addEventListener('click', () => {
-    const cost = Math.ceil(10 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.startDamage) {
+    const currentTier = metaProfile.purchases.startDamage || 0;
+    const cost = getMetaUpgradeCost('startDamage', 10);
+    if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
-        metaProfile.purchases.startDamage = true;
+        metaProfile.purchases.startDamage = currentTier + 1;
         saveMetaProfile();
-        showOverlayMessage("START DAMAGE UNLOCKED", '#0f0', 1500);
+        showOverlayMessage(`START DAMAGE TIER ${currentTier + 1}!`, '#0f0', 1500);
+        updateMetaUI();
     } else {
-        showOverlayMessage("NEED 10 NUGS OR ALREADY OWNED", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buyPassive = document.getElementById('buy-passive-hp');
 if (buyPassive) buyPassive.addEventListener('click', () => {
-    const cost = Math.ceil(15 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.passiveHp) {
+    const currentTier = metaProfile.purchases.passiveHp || 0;
+    const cost = getMetaUpgradeCost('passiveHp', 15);
+    if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
-        metaProfile.purchases.passiveHp = true;
+        metaProfile.purchases.passiveHp = currentTier + 1;
         saveMetaProfile();
-        showOverlayMessage("PASSIVE HP UNLOCKED", '#0f0', 1500);
+        showOverlayMessage(`PASSIVE HP TIER ${currentTier + 1}!`, '#0f0', 1500);
+        updateMetaUI();
     } else {
-        showOverlayMessage("NEED 15 NUGS OR ALREADY OWNED", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buyReroll = document.getElementById('buy-reroll');
 if (buyReroll) buyReroll.addEventListener('click', () => {
-    const cost = Math.ceil(5 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+    // Calculate tier-based discount
+    const discountTier = metaProfile.purchases.shopDiscount || 0;
+    let discount = 1.0;
+    if (discountTier > 0) {
+        const discountMultiplier = 0.1 * Math.min(discountTier, 3);
+        if (discountTier > 3) {
+            const table = { 0: 1.0, 1: 0.9, 2: 0.8, 3: 0.7 };
+            const extraValue = getDiminishingValue(discountTier, table, 0.99);
+            discount = extraValue;
+        } else {
+            discount = 1.0 - discountMultiplier;
+        }
+    }
+    const cost = Math.ceil(5 * discount);
     if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
         metaProfile.purchases.rerollTokens = (metaProfile.purchases.rerollTokens || 0) + 1;
         saveMetaProfile();
         showOverlayMessage("REROLL TOKEN +1", '#0f0', 1500);
     } else {
-        showOverlayMessage("NEED 5 NUGS", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buyRerollPack = document.getElementById('buy-reroll-pack');
 if (buyRerollPack) buyRerollPack.addEventListener('click', () => {
-    const cost = Math.ceil(25 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
+    // Calculate tier-based discount
+    const discountTier = metaProfile.purchases.shopDiscount || 0;
+    let discount = 1.0;
+    if (discountTier > 0) {
+        const discountMultiplier = 0.1 * Math.min(discountTier, 3);
+        if (discountTier > 3) {
+            const table = { 0: 1.0, 1: 0.9, 2: 0.8, 3: 0.7 };
+            const extraValue = getDiminishingValue(discountTier, table, 0.99);
+            discount = extraValue;
+        } else {
+            discount = 1.0 - discountMultiplier;
+        }
+    }
+    const cost = Math.ceil(25 * discount);
     if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
         metaProfile.purchases.rerollTokens = (metaProfile.purchases.rerollTokens || 0) + 5;
         saveMetaProfile();
         showOverlayMessage("REROLL TOKENS +5", '#0f0', 1500);
     } else {
-        showOverlayMessage("NEED 25 NUGS", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buyHull = document.getElementById('buy-hull');
 if (buyHull) buyHull.addEventListener('click', () => {
-    const cost = Math.ceil(30 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.hullPlating) {
+    const currentTier = metaProfile.purchases.hullPlating || 0;
+    const cost = getMetaUpgradeCost('hullPlating', 30);
+    if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
-        metaProfile.purchases.hullPlating = true;
+        metaProfile.purchases.hullPlating = currentTier + 1;
         saveMetaProfile();
-        showOverlayMessage("HULL PLATING UNLOCKED", '#0f0', 1500);
+        showOverlayMessage(`HULL PLATING TIER ${currentTier + 1}!`, '#0f0', 1500);
+        updateMetaUI();
     } else {
-        showOverlayMessage("NEED 30 NUGS OR OWNED", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buyShield = document.getElementById('buy-shield-core');
 if (buyShield) buyShield.addEventListener('click', () => {
-    const cost = Math.ceil(30 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.shieldCore) {
+    const currentTier = metaProfile.purchases.shieldCore || 0;
+    const cost = getMetaUpgradeCost('shieldCore', 30);
+    if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
-        metaProfile.purchases.shieldCore = true;
+        metaProfile.purchases.shieldCore = currentTier + 1;
         saveMetaProfile();
-        showOverlayMessage("SHIELD CORE UNLOCKED", '#0f0', 1500);
+        showOverlayMessage(`SHIELD CORE TIER ${currentTier + 1}!`, '#0f0', 1500);
+        updateMetaUI();
     } else {
-        showOverlayMessage("NEED 30 NUGS OR OWNED", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buyStatic = document.getElementById('buy-static');
 if (buyStatic) buyStatic.addEventListener('click', () => {
-    const cost = Math.ceil(40 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.staticBlueprint) {
+    const currentTier = metaProfile.purchases.staticBlueprint || 0;
+    const cost = getMetaUpgradeCost('staticBlueprint', 40);
+    if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
-        metaProfile.purchases.staticBlueprint = true;
+        metaProfile.purchases.staticBlueprint = currentTier + 1;
         saveMetaProfile();
-        showOverlayMessage("STATIC BLUEPRINT UNLOCKED", '#0f0', 1500);
+        showOverlayMessage(`STATIC BLUEPRINT TIER ${currentTier + 1}!`, '#0f0', 1500);
+        updateMetaUI();
     } else {
-        showOverlayMessage("NEED 40 NUGS OR OWNED", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buyMissile = document.getElementById('buy-missile');
 if (buyMissile) buyMissile.addEventListener('click', () => {
-    const cost = Math.ceil(40 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.missilePrimer) {
+    const currentTier = metaProfile.purchases.missilePrimer || 0;
+    const cost = getMetaUpgradeCost('missilePrimer', 40);
+    if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
-        metaProfile.purchases.missilePrimer = true;
+        metaProfile.purchases.missilePrimer = currentTier + 1;
         saveMetaProfile();
-        showOverlayMessage("MISSILE PRIMER UNLOCKED", '#0f0', 1500);
+        showOverlayMessage(`MISSILE PRIMER TIER ${currentTier + 1}!`, '#0f0', 1500);
+        updateMetaUI();
     } else {
-        showOverlayMessage("NEED 40 NUGS OR OWNED", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buyMagnet = document.getElementById('buy-magnet');
 if (buyMagnet) buyMagnet.addEventListener('click', () => {
-    const cost = Math.ceil(25 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.magnetBooster) {
+    const currentTier = metaProfile.purchases.magnetBooster || 0;
+    const cost = getMetaUpgradeCost('magnetBooster', 25);
+    if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
-        metaProfile.purchases.magnetBooster = true;
+        metaProfile.purchases.magnetBooster = currentTier + 1;
         saveMetaProfile();
-        showOverlayMessage("MAGNET BOOSTER UNLOCKED", '#0f0', 1500);
+        showOverlayMessage(`MAGNET BOOSTER TIER ${currentTier + 1}!`, '#0f0', 1500);
+        updateMetaUI();
     } else {
-        showOverlayMessage("NEED 25 NUGS OR OWNED", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buyNuke = document.getElementById('buy-nuke');
 if (buyNuke) buyNuke.addEventListener('click', () => {
-    const cost = Math.ceil(35 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.nukeCapacitor) {
+    const currentTier = metaProfile.purchases.nukeCapacitor || 0;
+    const cost = getMetaUpgradeCost('nukeCapacitor', 35);
+    if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
-        metaProfile.purchases.nukeCapacitor = true;
+        metaProfile.purchases.nukeCapacitor = currentTier + 1;
         saveMetaProfile();
-        showOverlayMessage("NUKE CAPACITOR UNLOCKED", '#0f0', 1500);
+        showOverlayMessage(`NUKE CAPACITOR TIER ${currentTier + 1}!`, '#0f0', 1500);
+        updateMetaUI();
     } else {
-        showOverlayMessage("NEED 35 NUGS OR OWNED", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buySpeed = document.getElementById('buy-speed');
 if (buySpeed) buySpeed.addEventListener('click', () => {
-    const cost = Math.ceil(25 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.speedTuning) {
+    const currentTier = metaProfile.purchases.speedTuning || 0;
+    const cost = getMetaUpgradeCost('speedTuning', 25);
+    if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
-        metaProfile.purchases.speedTuning = true;
+        metaProfile.purchases.speedTuning = currentTier + 1;
         saveMetaProfile();
-        showOverlayMessage("SPEED TUNING UNLOCKED", '#0f0', 1500);
+        showOverlayMessage(`SPEED TUNING TIER ${currentTier + 1}!`, '#0f0', 1500);
+        updateMetaUI();
     } else {
-        showOverlayMessage("NEED 25 NUGS OR OWNED", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buyBankMult = document.getElementById('buy-bank-mult');
 if (buyBankMult) buyBankMult.addEventListener('click', () => {
-    const cost = Math.ceil(50 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.bankMultiplier) {
+    const currentTier = metaProfile.purchases.bankMultiplier || 0;
+    const cost = getMetaUpgradeCost('bankMultiplier', 50);
+    if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
-        metaProfile.purchases.bankMultiplier = true;
+        metaProfile.purchases.bankMultiplier = currentTier + 1;
         saveMetaProfile();
-        showOverlayMessage("BANK MULTIPLIER UNLOCKED", '#0f0', 1500);
+        showOverlayMessage(`BANK MULTIPLIER TIER ${currentTier + 1}!`, '#0f0', 1500);
+        updateMetaUI();
     } else {
-        showOverlayMessage("NEED 50 NUGS OR OWNED", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buyDiscount = document.getElementById('buy-discount');
 if (buyDiscount) buyDiscount.addEventListener('click', () => {
-    const cost = Math.ceil(50 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.shopDiscount) {
+    const currentTier = metaProfile.purchases.shopDiscount || 0;
+    const cost = getMetaUpgradeCost('shopDiscount', 50);
+    if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
-        metaProfile.purchases.shopDiscount = true;
+        metaProfile.purchases.shopDiscount = currentTier + 1;
         saveMetaProfile();
-        showOverlayMessage("SHOP DISCOUNT UNLOCKED", '#0f0', 1500);
+        showOverlayMessage(`SHOP DISCOUNT TIER ${currentTier + 1}!`, '#0f0', 1500);
+        updateMetaUI();
     } else {
-        showOverlayMessage("NEED 50 NUGS OR OWNED", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buyExtraLife = document.getElementById('buy-extra-life');
 if (buyExtraLife) buyExtraLife.addEventListener('click', () => {
-    const cost = Math.ceil(60 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.extraLife) {
+    const currentTier = metaProfile.purchases.extraLife || 0;
+    const cost = getMetaUpgradeCost('extraLife', 60);
+    if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
-        metaProfile.purchases.extraLife = true;
+        metaProfile.purchases.extraLife = currentTier + 1;
         saveMetaProfile();
-        showOverlayMessage("EXTRA LIFE UNLOCKED", '#0f0', 1500);
+        showOverlayMessage(`EXTRA LIFE TIER ${currentTier + 1}!`, '#0f0', 1500);
+        updateMetaUI();
     } else {
-        showOverlayMessage("NEED 60 NUGS OR OWNED", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 const buyDrone = document.getElementById('buy-drone');
 if (buyDrone) buyDrone.addEventListener('click', () => {
-    const cost = Math.ceil(40 * (metaProfile.purchases.shopDiscount ? 0.9 : 1));
-    if (metaProfile.bank >= cost && !metaProfile.purchases.droneFabricator) {
+    const currentTier = metaProfile.purchases.droneFabricator || 0;
+    const cost = getMetaUpgradeCost('droneFabricator', 40);
+    if (metaProfile.bank >= cost) {
         metaProfile.bank -= cost;
-        metaProfile.purchases.droneFabricator = true;
+        metaProfile.purchases.droneFabricator = currentTier + 1;
         saveMetaProfile();
-        showOverlayMessage("DRONE FABRICATOR UNLOCKED", '#0f0', 1500);
+        showOverlayMessage(`DRONE FABRICATOR TIER ${currentTier + 1}!`, '#0f0', 1500);
+        updateMetaUI();
     } else {
-        showOverlayMessage("NEED 40 NUGS OR OWNED", '#f00', 1500);
+        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
     }
 });
 document.getElementById('restart-btn').addEventListener('click', () => {
