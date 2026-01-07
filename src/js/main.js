@@ -7552,7 +7552,7 @@ class CaveLevel {
             : (this.startY + 600);
         this.fireWall = {
             y: baseY + gap,
-            speed: 200, // units per second (five times faster)
+            speed: 160,
             damagePerSecond: 5,
             damageTimer: 0,
             minY: this.endY + 1200
@@ -13209,7 +13209,7 @@ class CaveMonsterBase extends Entity {
                 name: 'CAVE CRYPTID',
                 texture: 'cave_monster_1',
                 ringSpeed: 0.003,
-                moveMode: 'strafe',
+                moveMode: 'artillery',
                 // Monster1: Skull on RIGHT, Tail on LEFT, 4 legs at corners
                 hullDefinition: [
                     { x: 0, y: 0, r: 100 },     // Central body
@@ -13851,29 +13851,36 @@ class CaveMonsterBase extends Entity {
 
 // ============================================================================
 // CAVE MONSTER 1: Bio-Mechanical Cryptid
-// Attacks: Wing Barrage, Drone Swarm, Siphon Beam, Tendril Mines
+// Attacks: Bio-Mortars, Neural Pulse, Spore Clouds, Tendril Mines
 // ============================================================================
 class CaveMonster1 extends CaveMonsterBase {
     constructor(x, y) {
         super(x, y, 1);
         this.displayName = 'CAVE CRYPTID';
+        this.pulseActive = false;
+        this.pulseRadius = 0;
+        this.pulseMaxRadius = 1500;
+        this.pulseExpansionSpeed = 25;
+        this.pulseHit = false;
+        this.sporeClouds = [];
+        this.artillerySpeed = 3.0;
         this.attackType = 0;
     }
 
     fireAttack(phase) {
-        const attacks = ['wingBarrage', 'droneSwarm', 'siphonBeam', 'tendrilMines'];
+        const attacks = ['bioMortars', 'neuralPulse', 'spawnSporeClouds', 'tendrilMines'];
         const attack = attacks[this.attackType % attacks.length];
         this.attackType++;
 
         switch (attack) {
-            case 'wingBarrage':
-                this.wingBarrage(phase);
+            case 'bioMortars':
+                this.bioMortars(phase);
                 break;
-            case 'droneSwarm':
-                this.droneSwarm(phase);
+            case 'neuralPulse':
+                this.neuralPulse(phase);
                 break;
-            case 'siphonBeam':
-                this.siphonBeam(phase);
+            case 'spawnSporeClouds':
+                this.spawnSporeClouds(phase);
                 break;
             case 'tendrilMines':
                 this.tendrilMines(phase);
@@ -13881,116 +13888,268 @@ class CaveMonster1 extends CaveMonsterBase {
         }
     }
 
-    wingBarrage(phase) {
-        // Alternating pod fire from wings
-        const spread = phase === 3 ? 0.4 : (phase === 2 ? 0.3 : 0.2);
-        const count = phase === 3 ? 7 : (phase === 2 ? 5 : 3);
-        const baseAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+    bioMortars(phase) {
+        const count = phase === 3 ? 8 : (phase === 2 ? 6 : 4);
+        const targetX = player ? player.pos.x : this.pos.x;
+        const targetY = player ? player.pos.y : this.pos.y;
 
         for (let i = 0; i < count; i++) {
-            const a = baseAngle - spread * 2 + (spread * 2 / (count - 1)) * i;
-            const b = new Bullet(this.pos.x, this.pos.y, a, true, 8, 10, 8, '#0f0');
-            b.life = 80;
+            const offsetX = (Math.random() - 0.5) * 1200;
+            const offsetY = (Math.random() - 0.5) * 1200;
+            const targetAngle = Math.atan2(targetY + offsetY - this.pos.y, targetX + offsetX - this.pos.x);
+
+            const b = new Bullet(this.pos.x, this.pos.y, targetAngle, true, 10, 8, 20, '#0a0');
+            b.life = 125;
+            b.isBomb = true;
+            b.explosionRadius = 150;
+            b.explosionDamage = 10;
             bullets.push(b);
         }
         playSound('shotgun');
     }
 
-    droneSwarm(phase) {
-        // Small homing bombs
-        const count = phase === 3 ? 6 : (phase === 2 ? 4 : 3);
-        for (let i = 0; i < count; i++) {
-            const offset = (Math.random() - 0.5) * 100;
-            const missile = new FlagshipGuidedMissile(this);
-            missile.pos.x += offset;
-            missile.pos.y += offset;
-            missile.hp = 1;
-            guidedMissiles.push(missile);
-        }
-        playSound('rapid_shoot');
+    neuralPulse(phase) {
+        setTimeout(() => {
+            if (this.dead) return;
+            this.pulseActive = true;
+            this.pulseRadius = 400;
+            this.pulseHit = false;
+            playSound('heavy_shoot');
+        }, 800);
+
+        playSound('powerup');
     }
 
-    siphonBeam(phase) {
-        // Telegraphed slow/damage beam
-        if (player && !player.dead) {
-            const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-            if (dist < 1200) {
-                // Damage player
-                this.applyDamageToPlayer(5);
-                // Slow effect
-                player.vel.x *= 0.5;
-                player.vel.y *= 0.5;
-            }
-        }
-        playSound('hit');
+    spawnSporeClouds(phase) {
+        const count = phase === 3 ? 6 : (phase === 2 ? 5 : 4);
 
-        // Visual beam effect
-        for (let i = 0; i < 10; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = Math.random() * 600;
-            particles.push(new Particle(
-                this.pos.x + Math.cos(angle) * dist,
-                this.pos.y + Math.sin(angle) * dist,
-                0, 0, '#0f0', 40
-            ));
-        }
+        setTimeout(() => {
+            if (this.dead) return;
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 400 + Math.random() * 800;
+                const cx = this.pos.x + Math.cos(angle) * dist;
+                const cy = this.pos.y + Math.sin(angle) * dist;
+
+                this.sporeClouds.push({
+                    x: cx,
+                    y: cy,
+                    radius: 160,
+                    life: 240,
+                    maxLife: 240,
+                    telegraphTimer: 10,
+                    maxTelegraphTime: 10,
+                    active: false
+                });
+            }
+            playSound('powerup');
+        }, 1000);
     }
 
     tendrilMines(phase) {
-        // Area denial mines
         const count = phase === 3 ? 8 : (phase === 2 ? 6 : 4);
+
         for (let i = 0; i < count; i++) {
-            const angle = (Math.PI * 2 / count) * i;
-            const dist = 300 + Math.random() * 200;
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 600 + Math.random() * 1400;
             const mx = this.pos.x + Math.cos(angle) * dist;
             const my = this.pos.y + Math.sin(angle) * dist;
 
-            // Create a stationary mine
             const mine = new Enemy('turret', { x: mx, y: my }, null);
-            mine.hp = 3;
+            mine.hp = 5;
+            mine.maxHp = 5;
             mine.radius = 30;
             mine.despawnImmune = true;
-            mine.owner = this; // Store reference to owner monster
+            mine.owner = this;
+            mine.t = 0;
+            mine.pulsePhase = Math.random() * Math.PI * 2;
+
             mine.update = function() {
+                this.t += 1;
+
                 if (player && !player.dead) {
                     const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-                    if (dist < 60) {
+                    if (dist < 100) {
                         this.dead = true;
                         spawnParticles(this.pos.x, this.pos.y, 30, '#0f0');
                         playSound('explosion');
-                        // Use owner's applyDamageToPlayer method
                         if (this.owner && typeof this.owner.applyDamageToPlayer === 'function') {
                             this.owner.applyDamageToPlayer(15);
-                        } else {
-                            // Fallback: direct damage
-                            if (player.invulnerable <= 0) {
-                                player.hp -= 15;
-                                spawnParticles(player.pos.x, player.pos.y, 14, '#f00');
-                                playSound('hit');
-                                updateHealthUI();
-                                if (player.hp <= 0) killPlayer();
-                                player.invulnerable = 22;
-                            }
                         }
                     }
                 }
             };
+
             mine.draw = function(ctx) {
                 ctx.save();
                 ctx.translate(this.pos.x, this.pos.y);
-                ctx.fillStyle = '#0f0';
+
+                const pulseScale = 1.0 + Math.sin(this.t * 0.1 + this.pulsePhase) * 0.15;
+                const pulseAlpha = 0.5 + Math.sin(this.t * 0.1 + this.pulsePhase) * 0.3;
+
+                ctx.fillStyle = `rgba(0, 255, 0, ${pulseAlpha * 0.6})`;
                 ctx.beginPath();
-                ctx.arc(0, 0, 25, 0, Math.PI * 2);
+                ctx.arc(0, 0, 25 * pulseScale, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.fillStyle = '#080';
+
+                ctx.fillStyle = '#0f0';
                 ctx.beginPath();
                 ctx.arc(0, 0, 15, 0, Math.PI * 2);
                 ctx.fill();
+
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(0, 0, 8, 0, Math.PI * 2);
+                ctx.fill();
+
                 ctx.restore();
             };
+
             enemies.push(mine);
         }
         playSound('powerup');
+    }
+
+    update(deltaTime = 16.67) {
+        if (this.dead) return;
+        const dtFactor = deltaTime / 16.67;
+
+        if (this.pulseActive) {
+            this.pulseRadius += this.pulseExpansionSpeed * dtFactor;
+
+            if (player && !player.dead) {
+                const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+
+                if (Math.abs(dist - this.pulseRadius) < 30 && !this.pulseHit) {
+                    this.pulseHit = true;
+                    if (dist > 400) {
+                        this.applyDamageToPlayer(8);
+                    } else {
+                        this.applyDamageToPlayer(4);
+                    }
+                }
+            }
+
+            if (this.pulseRadius >= this.pulseMaxRadius) {
+                this.pulseActive = false;
+                this.pulseRadius = 0;
+                this.pulseHit = false;
+            }
+        }
+
+        for (let i = this.sporeClouds.length - 1; i >= 0; i--) {
+            const cloud = this.sporeClouds[i];
+
+            if (!cloud.active) {
+                cloud.telegraphTimer -= dtFactor;
+                if (cloud.telegraphTimer <= 0) {
+                    cloud.active = true;
+                }
+            } else {
+                cloud.life -= dtFactor;
+
+                if (cloud.life <= 0) {
+                    this.sporeClouds.splice(i, 1);
+                    continue;
+                }
+
+                if (player && !player.dead && Math.floor(cloud.life) % 60 === 0) {
+                    const dist = Math.hypot(player.pos.x - cloud.x, player.pos.y - cloud.y);
+                    if (dist < cloud.radius) {
+                        this.applyDamageToPlayer(2);
+                    }
+                }
+            }
+        }
+
+        super.update(deltaTime);
+    }
+
+    draw(ctx) {
+        super.draw(ctx);
+
+        if (this.dead) return;
+
+        if (this.pulseActive && pixiVectorLayer) {
+            let gfx = this._pixiPulseGfx;
+            if (!gfx) {
+                gfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(gfx);
+                this._pixiPulseGfx = gfx;
+            } else if (!gfx.parent) {
+                pixiVectorLayer.addChild(gfx);
+            }
+
+            gfx.clear();
+            gfx.position.set(this.pos.x, this.pos.y);
+            const z = currentZoom || ZOOM_LEVEL;
+            gfx.lineStyle(4 / z, 0xff0088, 0.8);
+            gfx.drawCircle(0, 0, this.pulseRadius / z);
+        } else if (this._pixiPulseGfx) {
+            try { this._pixiPulseGfx.clear(); } catch (e) { }
+        }
+
+        if (this.sporeClouds.length > 0 && pixiVectorLayer) {
+            let gfx = this._pixiCloudGfx;
+            if (!gfx) {
+                gfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(gfx);
+                this._pixiCloudGfx = gfx;
+            } else if (!gfx.parent) {
+                pixiVectorLayer.addChild(gfx);
+            }
+
+            gfx.clear();
+            gfx.position.set(this.pos.x, this.pos.y);
+            const z = currentZoom || ZOOM_LEVEL;
+            gfx.lineStyle(3 / z, 0xff8800, 0.3);
+
+            for (const cloud of this.sporeClouds) {
+                if (!cloud.active) {
+                    const telegraphAlpha = cloud.telegraphTimer / cloud.maxTelegraphTime;
+                    gfx.lineStyle(4 / z, 0xff8800, 0.6 * telegraphAlpha);
+                    gfx.drawCircle(
+                        (cloud.x - this.pos.x) / z,
+                        (cloud.y - this.pos.y) / z,
+                        cloud.radius / z
+                    );
+                } else {
+                    const alpha = cloud.life / cloud.maxLife;
+                    gfx.beginFill(0xff8800, 0.15 * alpha);
+                    gfx.drawCircle(
+                        (cloud.x - this.pos.x) / z,
+                        (cloud.y - this.pos.y) / z,
+                        cloud.radius / z
+                    );
+                    gfx.endFill();
+                }
+            }
+        } else if (this._pixiCloudGfx) {
+            try { this._pixiCloudGfx.clear(); } catch (e) { }
+        }
+    }
+
+    kill() {
+        if (this.dead) return;
+        if (this._pixiPulseGfx) {
+            try { this._pixiPulseGfx.destroy({ children: true }); } catch (e) { }
+            this._pixiPulseGfx = null;
+        }
+        if (this._pixiCloudGfx) {
+            try { this._pixiCloudGfx.destroy({ children: true }); } catch (e) { }
+            this._pixiCloudGfx = null;
+        }
+
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            const e = enemies[i];
+            if (e && !e.dead && e.owner === this) {
+                e.dead = true;
+                spawnParticles(e.pos.x, e.pos.y, 15, '#0f0');
+            }
+        }
+
+        this.sporeClouds = [];
+        super.kill();
     }
 }
 
@@ -14077,8 +14236,8 @@ class CaveMonster2 extends CaveMonsterBase {
             const dx = player.pos.x - this.pos.x;
             const dy = player.pos.y - this.pos.y;
             const dist = Math.hypot(dx, dy);
-            if (dist < 1500) {
-                const force = (1500 - dist) / 10;
+            if (dist < 3500) {
+                const force = (3500 - dist) / 10;
                 player.vel.x += (dx / dist) * force;
                 player.vel.y += (dy / dist) * force;
             }
@@ -14130,21 +14289,27 @@ class CaveMonster2 extends CaveMonsterBase {
 
 
 // ============================================================================
-// CAVE MONSTER 3: Dreadnought
-// Attacks: Spine Salvo, Plasma Mortar, Gravity Well, Shield Drone
+// CAVE MONSTER 3: Void Terror
+// Attacks: Spine Salvo, Plasma Mortar, Beam Cannon, Shield Drone
 // ============================================================================
 class CaveMonster3 extends CaveMonsterBase {
     constructor(x, y) {
         super(x, y, 3);
         this.displayName = 'VOID TERROR';
-        this.gravityWellActive = false;
-        this.gravityWellTimer = 0;
+        this.beamCharge = 0;
+        this.beamChargeTotal = 60;
+        this.beamFire = 0;
+        this.beamFireTotal = 12;
+        this.beamAngle = 0;
+        this.beamLen = 4500;
+        this.beamWidth = 35;
+        this.beamHitThisShot = false;
         this.attackType = 0;
         this.shieldDrone = null;
     }
 
     fireAttack(phase) {
-        const attacks = ['spineSalvo', 'plasmaMortar', 'gravityWell', 'shieldDrone'];
+        const attacks = ['spineSalvo', 'plasmaMortar', 'beamCannon', 'shieldDrone'];
         const attack = attacks[this.attackType % attacks.length];
         this.attackType++;
 
@@ -14155,8 +14320,8 @@ class CaveMonster3 extends CaveMonsterBase {
             case 'plasmaMortar':
                 this.plasmaMortar(phase);
                 break;
-            case 'gravityWell':
-                this.gravityWell(phase);
+            case 'beamCannon':
+                this.beamCannon(phase);
                 break;
             case 'shieldDrone':
                 this.shieldDroneAttack(phase);
@@ -14196,48 +14361,20 @@ class CaveMonster3 extends CaveMonsterBase {
             // Slow, heavy projectile
             const b = new Bullet(this.pos.x, this.pos.y, targetAngle, true, 20, 6, 15, '#f0f');
             b.life = 120;
-            b.explodeOnDeath = true;
+            b.isBomb = true;
+            b.explosionRadius = 250;
+            b.explosionDamage = 6;
             bullets.push(b);
         }
         playSound('shotgun');
     }
 
-    gravityWell(phase) {
-        // Pull zone
-        this.gravityWellActive = true;
-        this.gravityWellTimer = 120; // 2 seconds at 60fps
-
-        const wellRadius = phase === 3 ? 1000 : (phase === 2 ? 800 : 600);
-        const pullForce = phase === 3 ? 0.8 : (phase === 2 ? 0.6 : 0.4);
-
-        const wellInterval = setInterval(() => {
-            if (this.dead || !this.gravityWellActive) {
-                clearInterval(wellInterval);
-                this.gravityWellActive = false;
-                return;
-            }
-            if (player && !player.dead) {
-                const dx = this.pos.x - player.pos.x;
-                const dy = this.pos.y - player.pos.y;
-                const dist = Math.hypot(dx, dy);
-                if (dist < wellRadius && dist > 200) {
-                    player.vel.x -= (dx / dist) * pullForce;
-                    player.vel.y -= (dy / dist) * pullForce;
-                }
-            }
-            // Visual effect
-            for (let i = 0; i < 5; i++) {
-                const a = Math.random() * Math.PI * 2;
-                const d = Math.random() * wellRadius;
-                particles.push(new Particle(
-                    this.pos.x + Math.cos(a) * d,
-                    this.pos.y + Math.sin(a) * d,
-                    (this.pos.x - (this.pos.x + Math.cos(a) * d)) * 0.02,
-                    (this.pos.y - (this.pos.y + Math.sin(a) * d)) * 0.02,
-                    '#80f', 30
-                ));
-            }
-        }, 16);
+    beamCannon(phase) {
+        const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : this.angle;
+        this.beamAngle = aim;
+        this.beamCharge = this.beamChargeTotal;
+        this.beamFire = 0;
+        this.beamHitThisShot = false;
         playSound('powerup');
     }
 
@@ -14314,9 +14451,89 @@ class CaveMonster3 extends CaveMonsterBase {
         playSound('powerup');
     }
 
+    update(deltaTime = 16.67) {
+        if (this.dead) return;
+        const dtFactor = deltaTime / 16.67;
+
+        if (this.beamFire > 0) {
+            this.beamFire -= dtFactor;
+            if (!this.beamHitThisShot) {
+                if (player && !player.dead) {
+                    const ex = this.pos.x + Math.cos(this.beamAngle) * this.beamLen;
+                    const ey = this.pos.y + Math.sin(this.beamAngle) * this.beamLen;
+                    const cp = closestPointOnSegment(player.pos.x, player.pos.y, this.pos.x, this.pos.y, ex, ey);
+                    const d = Math.hypot(player.pos.x - cp.x, player.pos.y - cp.y);
+                    const hitDist = (this.beamWidth * 0.5) + (player.radius * 0.55);
+                    if (d <= hitDist) {
+                        this.beamHitThisShot = true;
+                        this.applyDamageToPlayer(15);
+                        shakeMagnitude = Math.max(shakeMagnitude, 8);
+                        shakeTimer = Math.max(shakeTimer, 8);
+                    }
+                }
+            }
+        } else if (this.beamCharge > 0) {
+            this.beamCharge -= dtFactor;
+            if (this.beamCharge <= 0) {
+                this.beamFire = this.beamFireTotal;
+                this.beamHitThisShot = false;
+                playSound('heavy_shoot');
+            }
+        }
+
+        super.update(deltaTime);
+    }
+
+    draw(ctx) {
+        super.draw(ctx);
+
+        if (this.dead) return;
+
+        if (this.beamCharge > 0 || this.beamFire > 0) {
+            if (pixiVectorLayer) {
+                let gfx = this._pixiBeamGfx;
+                if (!gfx) {
+                    gfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(gfx);
+                    this._pixiBeamGfx = gfx;
+                } else if (!gfx.parent) {
+                    pixiVectorLayer.addChild(gfx);
+                }
+
+                gfx.clear();
+                gfx.position.set(this.pos.x, this.pos.y);
+                const z = currentZoom || ZOOM_LEVEL;
+                const a = this.beamAngle;
+                const ex = Math.cos(a) * this.beamLen;
+                const ey = Math.sin(a) * this.beamLen;
+                const charging = (this.beamCharge > 0);
+                const firing = (this.beamFire > 0);
+
+                if (charging) {
+                    const pct = 1 - (this.beamCharge / (this.beamChargeTotal || 1));
+                    gfx.lineStyle(3, 0xffff00, 0.15 + pct * 0.3);
+                    gfx.moveTo(0, 0);
+                    gfx.lineTo(ex, ey);
+                } else if (firing) {
+                    gfx.lineStyle(this.beamWidth / z, 0xffff00, 0.95);
+                    gfx.moveTo(0, 0);
+                    gfx.lineTo(ex, ey);
+                    gfx.beginFill(0xffff00, 0.85);
+                    gfx.drawCircle(ex, ey, 10 / z);
+                    gfx.endFill();
+                }
+            }
+        } else if (this._pixiBeamGfx) {
+            try { this._pixiBeamGfx.clear(); } catch (e) { }
+        }
+    }
+
     kill() {
         if (this.dead) return;
-        // Clean up shield drone
+        if (this._pixiBeamGfx) {
+            try { this._pixiBeamGfx.destroy({ children: true }); } catch (e) { }
+            this._pixiBeamGfx = null;
+        }
         if (this.shieldDrone) {
             this.shieldDrone.dead = true;
         }
