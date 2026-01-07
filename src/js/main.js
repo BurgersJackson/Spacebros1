@@ -3785,6 +3785,69 @@ class Spaceship extends Entity {
     }
 }
 
+// AOE damage function that respects shield penetration mechanics
+// Damages shield shards hit by the AOE, overflow penetrates to player
+function applyAOEDamageToPlayer(aoeX, aoeY, aoeRadius, totalDamage) {
+    if (!player || player.dead) return;
+
+    let remainingDamage = Math.max(0, Math.ceil(totalDamage));
+    const playerAngleToAOE = Math.atan2(aoeY - player.pos.y, aoeX - player.pos.x);
+
+    // Check outer shields first
+    if (player.outerShieldSegments && player.outerShieldSegments.some(s => s > 0)) {
+        const shieldAngle = playerAngleToAOE - player.outerShieldRotation;
+        const normalizedAngle = (shieldAngle + Math.PI * 2) % (Math.PI * 2);
+        const segCount = player.outerShieldSegments.length;
+
+        // Calculate the arc of shield segments hit by the AOE
+        const arcWidth = Math.atan2(aoeRadius, player.outerShieldRadius) * 2;
+        const startAngle = normalizedAngle - arcWidth / 2;
+        const endAngle = normalizedAngle + arcWidth / 2;
+
+        // Damage all segments within the AOE arc
+        for (let i = 0; i < segCount && remainingDamage > 0; i++) {
+            const segAngle = (i / segCount) * Math.PI * 2;
+            // Check if this segment is within the AOE arc
+            let angleDiff = Math.abs(segAngle - startAngle);
+            if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
+            if (angleDiff <= arcWidth / 2 && player.outerShieldSegments[i] > 0) {
+                const absorb = Math.min(remainingDamage, player.outerShieldSegments[i]);
+                player.outerShieldSegments[i] -= absorb;
+                remainingDamage -= absorb;
+                player.shieldsDirty = true;
+            }
+        }
+    }
+
+    // Check inner shields
+    if (player.shieldSegments && remainingDamage > 0) {
+        const shieldAngle = playerAngleToAOE - player.shieldRotation;
+        const normalizedAngle = (shieldAngle + Math.PI * 2) % (Math.PI * 2);
+        const segCount = player.shieldSegments.length;
+
+        const arcWidth = Math.atan2(aoeRadius, player.shieldRadius) * 2;
+        const startAngle = normalizedAngle - arcWidth / 2;
+        const endAngle = normalizedAngle + arcWidth / 2;
+
+        for (let i = 0; i < segCount && remainingDamage > 0; i++) {
+            const segAngle = (i / segCount) * Math.PI * 2;
+            let angleDiff = Math.abs(segAngle - startAngle);
+            if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
+            if (angleDiff <= arcWidth / 2 && player.shieldSegments[i] > 0) {
+                const absorb = Math.min(remainingDamage, player.shieldSegments[i]);
+                player.shieldSegments[i] -= absorb;
+                remainingDamage -= absorb;
+                player.shieldsDirty = true;
+            }
+        }
+    }
+
+    // Apply remaining damage to player (shields already handled, don't pierce)
+    if (remainingDamage > 0) {
+        player.takeHit(remainingDamage);
+    }
+}
+
 class Shockwave extends Entity {
     constructor(x, y, damage, maxRadius = 500, opts = {}) {
         super(x, y);
@@ -4622,7 +4685,8 @@ class NapalmZone extends Entity {
             const dy = player.pos.y - this.pos.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist < this.radius) {
-                player.takeHit(this.damagePerTick, true);
+                // Use AOE damage that respects shield penetration
+                applyAOEDamageToPlayer(this.pos.x, this.pos.y, this.radius, this.damagePerTick);
                 this.damageCooldown = this.damageInterval;
                 // Visual feedback - spark effect
                 if (Math.random() < 0.3) {
@@ -10572,20 +10636,22 @@ class WarpSentinelBoss extends Entity {
 
         // Crystalline shield system - indestructible shards (cave monster pattern)
         this.maxShieldHp = 999;
-        this.shieldSegments = new Array(50).fill(0);
-        this.innerShieldSegments = new Array(40).fill(0);
-        // Every other slot active (25 outer, 20 inner active segments)
-        for (let i = 0; i < 50; i += 2) {
+        this.shieldSegments = new Array(60).fill(0);
+        this.innerShieldSegments = new Array(45).fill(0);
+        // Every other slot active (30 outer, ~22 inner active segments)
+        for (let i = 0; i < 60; i += 2) {
             this.shieldSegments[i] = 999;
         }
-        for (let i = 0; i < 40; i += 2) {
+        for (let i = 0; i < 45; i += 2) {
             this.innerShieldSegments[i] = 999;
         }
         // Shield radius scaled to protect enlarged body
         this.shieldRadius = 950;
         this.innerShieldRadius = 850;
-        this.shieldRotation = Math.random() * Math.PI * 2;
-        this.innerShieldRotation = Math.random() * Math.PI * 2;
+        // Shield rotation like cave monsters (Monster 3 pattern)
+        this.baseRingSpeed = 0.007; // Match Monster 3
+        this.shieldRotation = 0;
+        this.innerShieldRotation = 0;
         this.lastShieldRegenAt = Date.now();
         this.shieldRegenMs = 500;
 
@@ -10610,7 +10676,7 @@ class WarpSentinelBoss extends Entity {
         this.flameFireTotal = 120;
         this.flameAngle = 0;
         this.flameRange = 1400;
-        this.flameCone = 0.9375; // Increased by 25% from 0.75
+        this.flameCone = Math.PI / 3; // 60 degrees
         this.flameTickCooldown = 0;
         this.flameHitCount = 0;
 
@@ -10622,6 +10688,14 @@ class WarpSentinelBoss extends Entity {
 
         // Bio-pods (slow drifting mines that burst into pellets).
         this.podCooldown = 240;
+
+        // Cave reinforcements - spawn roamers, gunboats, pinwheels
+        this.reinforcementCooldown = 300; // 5 seconds between summons
+        this.reinforcementTimer = 300; // Start with cooldown ready
+
+        // Exploding mines (50% more damage than Monster 1 mines)
+        this.mineCooldown = 200; // Between mine drops
+        this.mineTimer = 60; // Start ready to use soon
 
         // Reinforcements (like cruiser helpers).
         this.helperMax = 6;
@@ -10761,8 +10835,10 @@ class WarpSentinelBoss extends Entity {
         this.coreRot += 0.04 * dtFactor;
         if (this.ramInvulnerable > 0) this.ramInvulnerable -= dtFactor;
 
-        this.shieldRotation += 0.06 * dtFactor;
-        this.innerShieldRotation -= 0.09 * dtFactor;
+        // Shield rotation using Monster 3 pattern (baseRingSpeed × multiplier)
+        const ringMult = 1.0; // Can add escalation phases later if needed
+        this.shieldRotation += this.baseRingSpeed * ringMult * dtFactor;
+        this.innerShieldRotation -= this.baseRingSpeed * ringMult * 1.2 * dtFactor;
 
         // Shield regen (outer then inner).
         if (now - this.lastShieldRegenAt >= this.shieldRegenMs) {
@@ -10772,6 +10848,22 @@ class WarpSentinelBoss extends Entity {
             if (idx2 !== -1) { this.innerShieldSegments[idx2] = Math.min(this.shieldStrength, this.innerShieldSegments[idx2] + 1); this.shieldsDirty = true; }
             this.lastShieldRegenAt = now;
             if (Math.random() < 0.5) spawnParticles(this.pos.x, this.pos.y, 4, '#0ff');
+        }
+
+        // Cave reinforcements - spawn roamers, gunboats, pinwheels
+        if (this.reinforcementTimer > 0) {
+            this.reinforcementTimer -= dtFactor;
+        } else {
+            this.reinforcementTimer = this.reinforcementCooldown;
+            this.spawnCaveReinforcements();
+        }
+
+        // Exploding mines - 50% more damage than Monster 1 mines
+        if (this.mineTimer > 0) {
+            this.mineTimer -= dtFactor;
+        } else {
+            this.mineTimer = this.mineCooldown;
+            this.dropExplodingMines();
         }
 
         const hpPct = this.maxHp > 0 ? this.hp / this.maxHp : 0;
@@ -10877,7 +10969,7 @@ class WarpSentinelBoss extends Entity {
             if (this.flameTickCooldown <= 0 && this.flameHitCount < 2) {
                 const angleDiff = Math.atan2(Math.sin(aimToPlayer - this.flameAngle), Math.cos(aimToPlayer - this.flameAngle));
                 if (distToPlayer <= this.flameRange && Math.abs(angleDiff) <= this.flameCone * 0.5) {
-                    player.takeHit(3);
+                    player.takeHit(5);
                     const nx = Math.cos(aimToPlayer);
                     const ny = Math.sin(aimToPlayer);
                     player.vel.x += nx * 6;
@@ -11253,6 +11345,82 @@ class WarpSentinelBoss extends Entity {
 
         ctx.shadowBlur = 0;
         ctx.restore();
+    }
+
+    // Spawn cave reinforcements (roamers, gunboats, pinwheels)
+    spawnCaveReinforcements() {
+        const count = 2 + Math.floor(Math.random() * 2); // 2-3 enemies
+        const enemyTypes = ['roamer', 'gunboat', 'pinwheel'];
+
+        for (let i = 0; i < count; i++) {
+            const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 400 + Math.random() * 200;
+            const ex = this.pos.x + Math.cos(angle) * dist;
+            const ey = this.pos.y + Math.sin(angle) * dist;
+
+            // Spawn appropriate enemy type for cave level
+            const enemy = new Enemy(type, { x: ex, y: ey }, null);
+            enemies.push(enemy);
+        }
+        playSound('powerup');
+    }
+
+    // Drop exploding mines (50% more damage than Monster 1 mines)
+    dropExplodingMines() {
+        const count = 3 + Math.floor(Math.random() * 3); // 3-5 mines
+        for (let i = 0; i < count; i++) {
+            const offsetAngle = Math.random() * Math.PI * 2;
+            const offsetDist = 100 + Math.random() * 150;
+            const mx = this.pos.x + Math.cos(offsetAngle) * offsetDist;
+            const my = this.pos.y + Math.sin(offsetAngle) * offsetDist;
+
+            const mine = new Enemy('turret', { x: mx, y: my }, null);
+            mine.hp = 5;
+            mine.maxHp = 5;
+            mine.radius = 30;
+            mine.despawnImmune = true;
+            mine.owner = this;
+            mine.t = 0;
+            mine.pulsePhase = Math.random() * Math.PI * 2;
+
+            mine.update = function() {
+                this.t += 1;
+                if (player && !player.dead) {
+                    const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                    if (dist < 100) {
+                        this.dead = true;
+                        spawnFieryExplosion(this.pos.x, this.pos.y, 2.0);
+                        playSound('explosion');
+                        // 50% more damage than Monster 1 mines (15 → 23)
+                        applyAOEDamageToPlayer(this.pos.x, this.pos.y, 200, 23);
+                    }
+                }
+            };
+
+            mine.draw = function(ctx) {
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+                const pulseScale = 1.0 + Math.sin(this.t * 0.1 + this.pulsePhase) * 0.15;
+                const pulseAlpha = 0.5 + Math.sin(this.t * 0.1 + this.pulsePhase) * 0.3;
+                ctx.fillStyle = `rgba(255, 100, 0, ${pulseAlpha * 0.6})`; // Orange instead of green
+                ctx.beginPath();
+                ctx.arc(0, 0, 25 * pulseScale, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#f50';
+                ctx.beginPath();
+                ctx.arc(0, 0, 15, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(0, 0, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            };
+
+            enemies.push(mine);
+        }
+        playSound('powerup');
     }
 }
 //space station class
@@ -13298,6 +13466,7 @@ class CaveMonsterBase extends Entity {
         this.visualRadius = 350; // Increased from 280 to properly contain 512x512 sprites
         this.radius = Math.round(this.visualRadius * 1.6); // Collision radius for hull (matches sprite edge ~527px)
         this.collisionRadius = this.visualRadius * 1.5; // For ship-ship collisions
+        this.hullCollisionRadius = 550; // Simplified hull collision for bullets (550px circle)
         this.hp = config.hp;
         this.maxHp = config.hp;
         this.angle = 0;
@@ -13748,18 +13917,9 @@ class CaveMonsterBase extends Entity {
                     debugGfx.position.set(this.pos.x, this.pos.y);
                     debugGfx.rotation = this.angle || 0;
 
-                    // Draw Hull Hitbox (Green) - Multi-Circle
+                    // Draw Hull Hitbox (Green) - Simplified 550px circle for bullets
                     debugGfx.lineStyle(3, 0x00FF00, 0.8);
-                    if (this.hullDefinition) {
-                        for (const circle of this.hullDefinition) {
-                            const cx = circle.x * this.hullScale;
-                            const cy = circle.y * this.hullScale;
-                            const cr = circle.r * this.hullScale;
-                            debugGfx.drawCircle(cx, cy, cr);
-                        }
-                    } else {
-                        debugGfx.drawCircle(0, 0, this.radius);
-                    }
+                    debugGfx.drawCircle(0, 0, this.hullCollisionRadius || 550);
 
                     // Draw Shield Hitbox (Cyan)
                     if (this.shieldSegments && this.shieldSegments.some(s => s > 0)) {
@@ -13974,14 +14134,11 @@ class CaveMonster1 extends CaveMonsterBase {
                         spawnFieryExplosion(this.pos.x, this.pos.y, 2.0);
                         playSound('explosion');
 
-                        // AOE damage - 200px radius, pierces shields
+                        // AOE damage - 200px radius, respects shield penetration
                         const explosionRadius = 200;
                         if (Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y) < explosionRadius) {
-                            // Use player.takeHit() to pierce shields (ignoreShields=true)
-                            if (this.owner && typeof this.owner.applyDamageToPlayer === 'function') {
-                                // Deal 15 damage that pierces shields
-                                player.takeHit(15, true);
-                            }
+                            // Use AOE damage function that respects shield penetration
+                            applyAOEDamageToPlayer(this.pos.x, this.pos.y, explosionRadius, 15);
                         }
                     }
                 }
@@ -14029,12 +14186,9 @@ class CaveMonster1 extends CaveMonsterBase {
 
                 if (Math.abs(dist - this.pulseRadius) < 30 && !this.pulseHit) {
                     this.pulseHit = true;
-                    // Use player.takeHit() to pierce shields (ignoreShields=true)
-                    if (dist > 400) {
-                        player.takeHit(8, true);  // Pierces shields
-                    } else {
-                        player.takeHit(4, true);  // Pierces shields
-                    }
+                    // Use AOE damage that respects shield penetration
+                    const damage = dist > 400 ? 8 : 4;
+                    applyAOEDamageToPlayer(this.pos.x, this.pos.y, 60, damage);
                 }
             }
 
@@ -14238,7 +14392,7 @@ class CaveMonster3 extends CaveMonsterBase {
     }
 
     fireAttack(phase) {
-        const attacks = ['spineSalvo', 'plasmaMortar', 'beamCannon', 'shieldDrone'];
+        const attacks = ['spineSalvo', 'plasmaMortar', 'beamCannon', 'shieldDrone', 'tendrilMines'];
         const attack = attacks[this.attackType % attacks.length];
         this.attackType++;
 
@@ -14254,6 +14408,9 @@ class CaveMonster3 extends CaveMonsterBase {
                 break;
             case 'shieldDrone':
                 this.shieldDroneAttack(phase);
+                break;
+            case 'tendrilMines':
+                this.tendrilMines(phase);
                 break;
         }
     }
@@ -14389,6 +14546,76 @@ class CaveMonster3 extends CaveMonsterBase {
         playSound('powerup');
     }
 
+    tendrilMines(phase) {
+        // Copy of Monster 1's tendril mines attack
+        const count = phase === 3 ? 5 : (phase === 2 ? 4 : 3);
+
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 600 + Math.random() * 1400;
+            const mx = this.pos.x + Math.cos(angle) * dist;
+            const my = this.pos.y + Math.sin(angle) * dist;
+
+            const mine = new Enemy('turret', { x: mx, y: my }, null);
+            mine.hp = 5;
+            mine.maxHp = 5;
+            mine.radius = 30;
+            mine.despawnImmune = true;
+            mine.owner = this;
+            mine.t = 0;
+            mine.pulsePhase = Math.random() * Math.PI * 2;
+
+            mine.update = function() {
+                this.t += 1;
+
+                if (player && !player.dead) {
+                    const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                    if (dist < 100) {
+                        this.dead = true;
+                        // Fiery explosion visual
+                        spawnFieryExplosion(this.pos.x, this.pos.y, 2.0);
+                        playSound('explosion');
+
+                        // AOE damage - 200px radius, respects shield penetration
+                        const explosionRadius = 200;
+                        if (Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y) < explosionRadius) {
+                            // Use AOE damage function that respects shield penetration (15 damage)
+                            applyAOEDamageToPlayer(this.pos.x, this.pos.y, explosionRadius, 15);
+                        }
+                    }
+                }
+            };
+
+            mine.draw = function(ctx) {
+                ctx.save();
+                ctx.translate(this.pos.x, this.pos.y);
+
+                const pulseScale = 1.0 + Math.sin(this.t * 0.1 + this.pulsePhase) * 0.15;
+                const pulseAlpha = 0.5 + Math.sin(this.t * 0.1 + this.pulsePhase) * 0.3;
+
+                ctx.fillStyle = `rgba(0, 255, 0, ${pulseAlpha * 0.6})`;
+                ctx.beginPath();
+                ctx.arc(0, 0, 25 * pulseScale, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#0f0';
+                ctx.beginPath();
+                ctx.arc(0, 0, 15, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(0, 0, 8, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            };
+
+            enemies.push(mine);
+        }
+        playSound('powerup');
+    }
+
     update(deltaTime = 16.67) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
@@ -14406,7 +14633,8 @@ class CaveMonster3 extends CaveMonsterBase {
                         const hitDist = (this.beamWidth * 0.5) + (player.radius * 0.55);
                         if (d <= hitDist) {
                             this.beamHitThisShot = true;
-                            player.takeHit(15, true); // Pierces shields
+                            // Use AOE damage that respects shield penetration (wide AOE as requested)
+                            applyAOEDamageToPlayer(player.pos.x, player.pos.y, 100, 15);
                             shakeMagnitude = Math.max(shakeMagnitude, 8);
                             shakeTimer = Math.max(shakeTimer, 8);
                             break; // Only damage once per volley
@@ -19749,15 +19977,22 @@ function gameLoopLogic(opts = null) {
                                     }
                                 }
 
-                                // Hull damage
-                                if (!hit && (typeof boss.hitTestCircle === 'function' ? boss.hitTestCircle(b.pos.x, b.pos.y, b.radius) : (dist < boss.radius + b.radius))) {
-                                    boss.hp -= b.damage;
-                                    hit = true;
-                                    playSound('hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
-                                    if (boss.hp <= 0) {
-                                        boss.kill();
-                                        score += 5000;
+                                // Hull damage - use simplified 600px collision for cave monsters
+                                if (!hit) {
+                                    const hullRadius = (boss.hullCollisionRadius) ? boss.hullCollisionRadius :
+                                        (typeof boss.hitTestCircle === 'function' ? 0 : boss.radius);
+                                    const hitTest = (typeof boss.hitTestCircle === 'function' && !boss.hullCollisionRadius) ?
+                                        boss.hitTestCircle(b.pos.x, b.pos.y, b.radius) :
+                                        (dist < hullRadius + b.radius);
+                                    if (hitTest) {
+                                        boss.hp -= b.damage;
+                                        hit = true;
+                                        playSound('hit');
+                                        spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
+                                        if (boss.hp <= 0) {
+                                            boss.kill();
+                                            score += 5000;
+                                        }
                                     }
                                 }
                             }
