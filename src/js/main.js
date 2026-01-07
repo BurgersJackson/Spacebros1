@@ -13316,8 +13316,8 @@ class CaveMonsterBase extends Entity {
             this.innerShieldSegments[i] = 999;
         }
         // Shields are OUTSIDE the monster - outer shield is larger than visualRadius
-        this.shieldRadius = Math.round(this.visualRadius * 2.0) - 10; // ~690, OUTSIDE the sprite including corners
-        this.innerShieldRadius = Math.round(this.visualRadius * 1.85) - 10; // ~637, just inside outer shield
+        this.shieldRadius = Math.round(this.visualRadius * 2.0) - 30; // ~670, OUTSIDE the sprite including corners
+        this.innerShieldRadius = Math.round(this.visualRadius * 1.85) - 30; // ~617, just inside outer shield
         this.shieldRotation = 0;
         this.innerShieldRotation = 0;
         this.shieldsDirty = true;
@@ -13946,7 +13946,7 @@ class CaveMonster1 extends CaveMonsterBase {
     }
 
     tendrilMines(phase) {
-        const count = phase === 3 ? 6 : (phase === 2 ? 4 : 3);
+        const count = phase === 3 ? 5 : (phase === 2 ? 4 : 3);
 
         for (let i = 0; i < count; i++) {
             const angle = Math.random() * Math.PI * 2;
@@ -19221,11 +19221,20 @@ function gameLoopLogic(opts = null) {
                                 const count = player.outerShieldSegments.length;
                                 const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
                                 if (player.outerShieldSegments[segIndex] > 0) {
-                                    player.outerShieldSegments[segIndex] = 0;
-                                    player.shieldsDirty = true;
-                                    hit = true;
-                                    playSound('shield_hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 7, '#b0f');
+                                    const segmentHp = player.outerShieldSegments[segIndex];
+                                    if (b.damage > segmentHp) {
+                                        // Penetrate: bullet breaks through with reduced damage
+                                        player.outerShieldSegments[segIndex] = 0;
+                                        player.shieldsDirty = true;
+                                        b.damage -= segmentHp;
+                                    } else {
+                                        // Full absorb: shield stops bullet
+                                        player.outerShieldSegments[segIndex] -= b.damage;
+                                        player.shieldsDirty = true;
+                                        hit = true;
+                                        playSound('shield_hit');
+                                        spawnParticles(b.pos.x, b.pos.y, 7, '#b0f');
+                                    }
                                 }
                             }
                             if (!hit && dist < player.shieldRadius + b.radius * 1.5 && dist > player.shieldRadius - b.radius * 2) {
@@ -19234,11 +19243,20 @@ function gameLoopLogic(opts = null) {
                                 const count = player.shieldSegments.length;
                                 const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
                                 if (player.shieldSegments[segIndex] > 0) {
-                                    player.shieldSegments[segIndex]--;
-                                    player.shieldsDirty = true;
-                                    hit = true;
-                                    playSound('shield_hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
+                                    const segmentHp = player.shieldSegments[segIndex];
+                                    if (b.damage > segmentHp) {
+                                        // Penetrate: bullet breaks through with reduced damage
+                                        player.shieldSegments[segIndex] = 0;
+                                        player.shieldsDirty = true;
+                                        b.damage -= segmentHp;
+                                    } else {
+                                        // Full absorb: shield stops bullet
+                                        player.shieldSegments[segIndex] -= b.damage;
+                                        player.shieldsDirty = true;
+                                        hit = true;
+                                        playSound('shield_hit');
+                                        spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
+                                    }
                                 }
                             }
                             const hitDist = player.radius * 1.5 + b.radius * 1.5;
@@ -19301,21 +19319,39 @@ function gameLoopLogic(opts = null) {
                                 if (!b.ignoreShields && e.shieldSegments && e.shieldSegments.length > 0 && dist < e.shieldRadius + b.radius && dist > e.shieldRadius - 10) {
                                     const activeIdx = e.shieldSegments.findIndex(s => s > 0);
                                     if (activeIdx !== -1) {
-                                        e.shieldSegments[activeIdx] = 0;
-                                        e.shieldsDirty = true;
-                                        hit = true;
-                                        playSound('enemy_shield_hit');
-                                        spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
+                                        const segmentHp = e.shieldSegments[activeIdx];
+                                        if (b.damage > segmentHp) {
+                                            // Penetrate: bullet breaks through with reduced damage
+                                            e.shieldSegments[activeIdx] = 0;
+                                            e.shieldsDirty = true;
+                                            b.damage -= segmentHp;
+                                        } else {
+                                            // Full absorb: shield stops bullet
+                                            e.shieldSegments[activeIdx] = 0;
+                                            e.shieldsDirty = true;
+                                            hit = true;
+                                            playSound('enemy_shield_hit');
+                                            spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
+                                        }
                                     }
                                 }
                                 if (!hit && !b.ignoreShields && e.innerShieldSegments && e.innerShieldSegments.length > 0 && dist < e.innerShieldRadius + b.radius && dist > e.innerShieldRadius - 10) {
                                     const activeIdx = e.innerShieldSegments.findIndex(s => s > 0);
                                     if (activeIdx !== -1) {
-                                        e.innerShieldSegments[activeIdx] = Math.max(0, e.innerShieldSegments[activeIdx] - 1);
-                                        e.shieldsDirty = true;
-                                        hit = true;
-                                        playSound('enemy_shield_hit');
-                                        spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
+                                        const segmentHp = e.innerShieldSegments[activeIdx];
+                                        if (b.damage > segmentHp) {
+                                            // Penetrate: bullet breaks through with reduced damage
+                                            e.innerShieldSegments[activeIdx] = 0;
+                                            e.shieldsDirty = true;
+                                            b.damage -= segmentHp;
+                                        } else {
+                                            // Full absorb: shield stops bullet
+                                            e.innerShieldSegments[activeIdx] -= b.damage;
+                                            e.shieldsDirty = true;
+                                            hit = true;
+                                            playSound('enemy_shield_hit');
+                                            spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
+                                        }
                                     }
                                 }
 
@@ -19372,14 +19408,24 @@ function gameLoopLogic(opts = null) {
                                     const segCount = e.shieldSegments.length;
                                     const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
                                     if (e.shieldSegments[segIndex] > 0) {
-                                        e.shieldSegments[segIndex]--;
-                                        e.shieldsDirty = true;
-                                        hit = true;
-                                        playSound('enemy_shield_hit');
-                                        if (e.shieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#0ff');
-                                        else spawnParticles(b.pos.x, b.pos.y, 3, '#088');
-                                        e.aggro = true;
-                                        break;
+                                        const segmentHp = e.shieldSegments[segIndex];
+                                        if (b.damage > segmentHp) {
+                                            // Penetrate: bullet breaks through with reduced damage
+                                            e.shieldSegments[segIndex] = 0;
+                                            e.shieldsDirty = true;
+                                            b.damage -= segmentHp;
+                                            e.aggro = true;
+                                        } else {
+                                            // Full absorb: shield stops bullet
+                                            e.shieldSegments[segIndex] -= b.damage;
+                                            e.shieldsDirty = true;
+                                            hit = true;
+                                            playSound('enemy_shield_hit');
+                                            if (e.shieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#0ff');
+                                            else spawnParticles(b.pos.x, b.pos.y, 3, '#088');
+                                            e.aggro = true;
+                                            break;
+                                        }
                                     }
                                 }
                                 if (!b.ignoreShields && e.innerShieldSegments.length > 0 && dist < e.innerShieldRadius + 5 && dist > e.innerShieldRadius - 15) {
@@ -19388,14 +19434,24 @@ function gameLoopLogic(opts = null) {
                                     const count = e.innerShieldSegments.length;
                                     const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
                                     if (e.innerShieldSegments[segIndex] > 0) {
-                                        e.innerShieldSegments[segIndex]--;
-                                        e.shieldsDirty = true;
-                                        hit = true;
-                                        playSound('shield_hit');
-                                        if (e.innerShieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#f0f');
-                                        else spawnParticles(b.pos.x, b.pos.y, 3, '#808');
-                                        e.aggro = true;
-                                        break;
+                                        const segmentHp = e.innerShieldSegments[segIndex];
+                                        if (b.damage > segmentHp) {
+                                            // Penetrate: bullet breaks through with reduced damage
+                                            e.innerShieldSegments[segIndex] = 0;
+                                            e.shieldsDirty = true;
+                                            b.damage -= segmentHp;
+                                            e.aggro = true;
+                                        } else {
+                                            // Full absorb: shield stops bullet
+                                            e.innerShieldSegments[segIndex] -= b.damage;
+                                            e.shieldsDirty = true;
+                                            hit = true;
+                                            playSound('shield_hit');
+                                            if (e.innerShieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#f0f');
+                                            else spawnParticles(b.pos.x, b.pos.y, 3, '#808');
+                                            e.aggro = true;
+                                            break;
+                                        }
                                     }
                                 }
 
@@ -19591,11 +19647,20 @@ function gameLoopLogic(opts = null) {
                             const count = destroyer.shieldSegments.length;
                             const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
                             if (destroyer.shieldSegments[idx] > 0) {
-                                destroyer.shieldSegments[idx]--;
-                                destroyer.shieldsDirty = true;
-                                hit = true;
-                                playSound('shield_hit');
-                                spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
+                                const segmentHp = destroyer.shieldSegments[idx];
+                                if (b.damage > segmentHp) {
+                                    // Penetrate: bullet breaks through with reduced damage
+                                    destroyer.shieldSegments[idx] = 0;
+                                    destroyer.shieldsDirty = true;
+                                    b.damage -= segmentHp;
+                                } else {
+                                    // Full absorb: shield stops bullet
+                                    destroyer.shieldSegments[idx] -= b.damage;
+                                    destroyer.shieldsDirty = true;
+                                    hit = true;
+                                    playSound('shield_hit');
+                                    spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
+                                }
                             }
                         }
                         if (!hit && !b.ignoreShields && innerUp && dist < destroyer.innerShieldRadius + b.radius) {
@@ -19604,11 +19669,20 @@ function gameLoopLogic(opts = null) {
                             const count = destroyer.innerShieldSegments.length;
                             const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
                             if (destroyer.innerShieldSegments[idx] > 0) {
-                                destroyer.innerShieldSegments[idx]--;
-                                destroyer.shieldsDirty = true;
-                                hit = true;
-                                playSound('shield_hit');
-                                spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
+                                const segmentHp = destroyer.innerShieldSegments[idx];
+                                if (b.damage > segmentHp) {
+                                    // Penetrate: bullet breaks through with reduced damage
+                                    destroyer.innerShieldSegments[idx] = 0;
+                                    destroyer.shieldsDirty = true;
+                                    b.damage -= segmentHp;
+                                } else {
+                                    // Full absorb: shield stops bullet
+                                    destroyer.innerShieldSegments[idx] -= b.damage;
+                                    destroyer.shieldsDirty = true;
+                                    hit = true;
+                                    playSound('shield_hit');
+                                    spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
+                                }
                             }
                         }
                         if (!hit && (typeof destroyer.hitTestCircle === 'function' ? destroyer.hitTestCircle(b.pos.x, b.pos.y, b.radius) : (dist < destroyer.radius + b.radius))) {
