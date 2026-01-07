@@ -4033,8 +4033,9 @@ class FlagshipGuidedMissile extends Entity {
         if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
             for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
                 if (player.outerShieldSegments[i] > 0) {
-                    player.outerShieldSegments[i] = 0;
-                    remaining -= 1;
+                    const absorb = Math.min(remaining, player.outerShieldSegments[i]);
+                    player.outerShieldSegments[i] -= absorb;
+                    remaining -= absorb;
                 }
             }
         }
@@ -6138,8 +6139,9 @@ class CaveGuidedMissile extends Entity {
         if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
             for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
                 if (player.outerShieldSegments[i] > 0) {
-                    player.outerShieldSegments[i] = 0;
-                    remaining -= 1;
+                    const absorb = Math.min(remaining, player.outerShieldSegments[i]);
+                    player.outerShieldSegments[i] -= absorb;
+                    remaining -= absorb;
                 }
             }
         }
@@ -8206,13 +8208,10 @@ class CaveLevel {
             // Spawn Warp Sentinel Boss (25% tougher than warp version)
             boss = new WarpSentinelBoss(cx, by, null);
             bossActive = true;
-            // Increase toughness by 25%
+            // Increase toughness by 25% (HP only - shields use indestructible cave monster pattern)
             boss.hp = Math.floor(boss.hp * 1.25);
             boss.maxHp = boss.hp;
-            boss.shieldStrength = Math.ceil(boss.shieldStrength * 1.25);
-            // Update shield segments with increased strength
-            boss.shieldSegments = new Array(boss.shieldSegments.length).fill(boss.shieldStrength);
-            boss.innerShieldSegments = new Array(boss.innerShieldSegments.length).fill(boss.shieldStrength);
+            // Note: Shield segments use cave monster pattern (999 HP indestructible shards) - do not modify
             showOverlayMessage("WARP SENTINEL DETECTED", '#f80', 3500, 3);
             playSound('boss_spawn');
             if (musicEnabled) setMusicMode('cruiser');
@@ -10257,8 +10256,9 @@ class SuperFlagshipBoss extends Flagship {
         if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
             for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
                 if (player.outerShieldSegments[i] > 0) {
-                    player.outerShieldSegments[i] = 0;
-                    remaining -= 1;
+                    const absorb = Math.min(remaining, player.outerShieldSegments[i]);
+                    player.outerShieldSegments[i] -= absorb;
+                    remaining -= absorb;
                 }
             }
         }
@@ -13552,8 +13552,9 @@ class CaveMonsterBase extends Entity {
         if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
             for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
                 if (player.outerShieldSegments[i] > 0) {
-                    player.outerShieldSegments[i] = 0;
-                    remaining -= 1;
+                    const absorb = Math.min(remaining, player.outerShieldSegments[i]);
+                    player.outerShieldSegments[i] -= absorb;
+                    remaining -= absorb;
                 }
             }
         }
@@ -13969,10 +13970,18 @@ class CaveMonster1 extends CaveMonsterBase {
                     const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
                     if (dist < 100) {
                         this.dead = true;
-                        spawnParticles(this.pos.x, this.pos.y, 30, '#0f0');
+                        // Fiery explosion visual
+                        spawnFieryExplosion(this.pos.x, this.pos.y, 2.0);
                         playSound('explosion');
-                        if (this.owner && typeof this.owner.applyDamageToPlayer === 'function') {
-                            this.owner.applyDamageToPlayer(15);
+
+                        // AOE damage - 200px radius, pierces shields
+                        const explosionRadius = 200;
+                        if (Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y) < explosionRadius) {
+                            // Use player.takeHit() to pierce shields (ignoreShields=true)
+                            if (this.owner && typeof this.owner.applyDamageToPlayer === 'function') {
+                                // Deal 15 damage that pierces shields
+                                player.takeHit(15, true);
+                            }
                         }
                     }
                 }
@@ -14020,10 +14029,11 @@ class CaveMonster1 extends CaveMonsterBase {
 
                 if (Math.abs(dist - this.pulseRadius) < 30 && !this.pulseHit) {
                     this.pulseHit = true;
+                    // Use player.takeHit() to pierce shields (ignoreShields=true)
                     if (dist > 400) {
-                        this.applyDamageToPlayer(8);
+                        player.takeHit(8, true);  // Pierces shields
                     } else {
-                        this.applyDamageToPlayer(4);
+                        player.takeHit(4, true);  // Pierces shields
                     }
                 }
             }
@@ -14214,6 +14224,7 @@ class CaveMonster3 extends CaveMonsterBase {
     constructor(x, y) {
         super(x, y, 3);
         this.displayName = 'VOID TERROR';
+        this.beamAngles = []; // Array for multiple beam angles (3-beam arc)
         this.beamCharge = 0;
         this.beamChargeTotal = 60;
         this.beamFire = 0;
@@ -14290,6 +14301,12 @@ class CaveMonster3 extends CaveMonsterBase {
 
     beamCannon(phase) {
         const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : this.angle;
+        const arcSpread = Math.PI / 12; // 15 degrees in radians
+        this.beamAngles = [
+            aim - arcSpread,  // -15 degrees
+            aim,              // Center
+            aim + arcSpread   // +15 degrees
+        ];
         this.beamAngle = aim;
         this.beamCharge = this.beamChargeTotal;
         this.beamFire = 0;
@@ -14378,18 +14395,22 @@ class CaveMonster3 extends CaveMonsterBase {
 
         if (this.beamFire > 0) {
             this.beamFire -= dtFactor;
-            if (!this.beamHitThisShot) {
+            if (!this.beamHitThisShot && this.beamAngles.length > 0) {
                 if (player && !player.dead) {
-                    const ex = this.pos.x + Math.cos(this.beamAngle) * this.beamLen;
-                    const ey = this.pos.y + Math.sin(this.beamAngle) * this.beamLen;
-                    const cp = closestPointOnSegment(player.pos.x, player.pos.y, this.pos.x, this.pos.y, ex, ey);
-                    const d = Math.hypot(player.pos.x - cp.x, player.pos.y - cp.y);
-                    const hitDist = (this.beamWidth * 0.5) + (player.radius * 0.55);
-                    if (d <= hitDist) {
-                        this.beamHitThisShot = true;
-                        this.applyDamageToPlayer(15);
-                        shakeMagnitude = Math.max(shakeMagnitude, 8);
-                        shakeTimer = Math.max(shakeTimer, 8);
+                    // Check all 3 beams for collision
+                    for (const beamAngle of this.beamAngles) {
+                        const ex = this.pos.x + Math.cos(beamAngle) * this.beamLen;
+                        const ey = this.pos.y + Math.sin(beamAngle) * this.beamLen;
+                        const cp = closestPointOnSegment(player.pos.x, player.pos.y, this.pos.x, this.pos.y, ex, ey);
+                        const d = Math.hypot(player.pos.x - cp.x, player.pos.y - cp.y);
+                        const hitDist = (this.beamWidth * 0.5) + (player.radius * 0.55);
+                        if (d <= hitDist) {
+                            this.beamHitThisShot = true;
+                            player.takeHit(15, true); // Pierces shields
+                            shakeMagnitude = Math.max(shakeMagnitude, 8);
+                            shakeTimer = Math.max(shakeTimer, 8);
+                            break; // Only damage once per volley
+                        }
                     }
                 }
             }
@@ -14424,25 +14445,30 @@ class CaveMonster3 extends CaveMonsterBase {
             gfx.clear();
             gfx.position.set(this.pos.x, this.pos.y);
             const z = currentZoom || ZOOM_LEVEL;
-                const a = this.beamAngle;
-                const ex = Math.cos(a) * this.beamLen;
-                const ey = Math.sin(a) * this.beamLen;
-                const charging = (this.beamCharge > 0);
-                const firing = (this.beamFire > 0);
+            const charging = (this.beamCharge > 0);
+            const firing = (this.beamFire > 0);
 
-                if (charging) {
-                    const pct = 1 - (this.beamCharge / (this.beamChargeTotal || 1));
-                    gfx.lineStyle(3, 0xffff00, 0.15 + pct * 0.3);
-                    gfx.moveTo(0, 0);
-                    gfx.lineTo(ex, ey);
-                } else if (firing) {
-                    gfx.lineStyle(this.beamWidth / z, 0xffff00, 0.95);
-                    gfx.moveTo(0, 0);
-                    gfx.lineTo(ex, ey);
-                    gfx.beginFill(0xffff00, 0.85);
-                    gfx.drawCircle(ex, ey, 10 / z);
-                    gfx.endFill();
+            // Loop through all 3 beam angles
+            if (this.beamAngles.length > 0) {
+                for (const beamAngle of this.beamAngles) {
+                    const ex = Math.cos(beamAngle) * this.beamLen;
+                    const ey = Math.sin(beamAngle) * this.beamLen;
+
+                    if (charging) {
+                        const pct = 1 - (this.beamCharge / (this.beamChargeTotal || 1));
+                        gfx.lineStyle(3, 0xffff00, 0.15 + pct * 0.3);
+                        gfx.moveTo(0, 0);
+                        gfx.lineTo(ex, ey);
+                    } else if (firing) {
+                        gfx.lineStyle(this.beamWidth / z, 0xffff00, 0.95);
+                        gfx.moveTo(0, 0);
+                        gfx.lineTo(ex, ey);
+                        gfx.beginFill(0xffff00, 0.85);
+                        gfx.drawCircle(ex, ey, 10 / z);
+                        gfx.endFill();
+                    }
                 }
+            }
             }
         } else if (this._pixiBeamGfx) {
             try { this._pixiBeamGfx.clear(); } catch (e) { }
