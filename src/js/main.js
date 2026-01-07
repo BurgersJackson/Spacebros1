@@ -13309,8 +13309,8 @@ class CaveMonsterBase extends Entity {
             this.innerShieldSegments[i] = 999;
         }
         // Shields are OUTSIDE the monster - outer shield is larger than visualRadius
-        this.shieldRadius = Math.round(this.visualRadius * 2.0); // ~700, OUTSIDE the sprite including corners
-        this.innerShieldRadius = Math.round(this.visualRadius * 1.85); // ~647, just inside outer shield
+        this.shieldRadius = Math.round(this.visualRadius * 2.0) - 10; // ~690, OUTSIDE the sprite including corners
+        this.innerShieldRadius = Math.round(this.visualRadius * 1.85) - 10; // ~637, just inside outer shield
         this.shieldRotation = 0;
         this.innerShieldRotation = 0;
         this.shieldsDirty = true;
@@ -14153,24 +14153,13 @@ class CaveMonster2 extends CaveMonsterBase {
     }
 
     bellowShockwave(phase) {
-        // Push back
-        if (player && !player.dead) {
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
-            const dist = Math.hypot(dx, dy);
-            if (dist < 3500) {
-                const force = (3500 - dist) / 10;
-                player.vel.x += (dx / dist) * force;
-                player.vel.y += (dy / dist) * force;
-            }
-        }
         playSound('explosion');
 
-        // Visual ring
+        // Visual ring - 30 orange bullets that travel 2000px
         for (let i = 0; i < 30; i++) {
             const a = (Math.PI * 2 / 30) * i;
             const b = new Bullet(this.pos.x, this.pos.y, a, true, 5, 6, 5, '#f80');
-            b.life = 50;
+            b.life = 400; // Travel 2000px (speed 5 × 400 = 2000)
             bullets.push(b);
         }
     }
