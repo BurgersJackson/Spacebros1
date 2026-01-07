@@ -10570,10 +10570,17 @@ class WarpSentinelBoss extends Entity {
         this.hp = 500;
         this.maxHp = this.hp;
 
-        // Cruiser-style rotating shield rings + regen.
-        this.shieldStrength = 4;
-        this.shieldSegments = new Array(18).fill(this.shieldStrength);
-        this.innerShieldSegments = new Array(24).fill(this.shieldStrength);
+        // Crystalline shield system - indestructible shards (cave monster pattern)
+        this.maxShieldHp = 999;
+        this.shieldSegments = new Array(50).fill(0);
+        this.innerShieldSegments = new Array(40).fill(0);
+        // Every other slot active (25 outer, 20 inner active segments)
+        for (let i = 0; i < 50; i += 2) {
+            this.shieldSegments[i] = 999;
+        }
+        for (let i = 0; i < 40; i += 2) {
+            this.innerShieldSegments[i] = 999;
+        }
         // Shield radius scaled to protect enlarged body
         this.shieldRadius = 950;
         this.innerShieldRadius = 850;
@@ -14275,6 +14282,7 @@ class CaveMonster3 extends CaveMonsterBase {
             b.isBomb = true;
             b.explosionRadius = 250;
             b.explosionDamage = 6;
+            b.directHitDamage = 15; // Ensure direct hit damage is applied
             bullets.push(b);
         }
         playSound('shotgun');
@@ -14309,7 +14317,7 @@ class CaveMonster3 extends CaveMonsterBase {
             orbitSpeed: 0.02,
             hp: 5,
             maxHp: 5,
-            radius: 30,
+            radius: 40, // Increased from 30 for better visibility
             dead: false,
             owner: this,
             update: function(dt) {
@@ -14325,8 +14333,9 @@ class CaveMonster3 extends CaveMonsterBase {
                 // Block player bullets
                 for (const bullet of bullets) {
                     if (bullet.isEnemy) continue;
+                    const r = this.radius || 40;
                     const dist = Math.hypot(bullet.pos.x - this.pos.x, bullet.pos.y - this.pos.y);
-                    if (dist < this.radius + bullet.radius) {
+                    if (dist < r + bullet.radius) {
                         this.hp--;
                         bullet.dead = true;
                         spawnParticles(this.pos.x, this.pos.y, 5, '#80f');
@@ -14342,15 +14351,16 @@ class CaveMonster3 extends CaveMonsterBase {
                 if (this.dead) return;
                 ctx.save();
                 ctx.translate(this.pos.x, this.pos.y);
+                const r = this.radius || 40;
                 ctx.fillStyle = '#80f';
-                ctx.shadowBlur = 15;
+                ctx.shadowBlur = 20;
                 ctx.shadowColor = '#80f';
                 ctx.beginPath();
-                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.arc(0, 0, r, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.fillStyle = '#fff';
                 ctx.beginPath();
-                ctx.arc(0, 0, this.radius * 0.5, 0, Math.PI * 2);
+                ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.restore();
             }
@@ -14412,7 +14422,7 @@ class CaveMonster3 extends CaveMonsterBase {
                 }
 
             gfx.clear();
-            gfx.position.set(0, 0);
+            gfx.position.set(this.pos.x, this.pos.y);
             const z = currentZoom || ZOOM_LEVEL;
                 const a = this.beamAngle;
                 const ex = Math.cos(a) * this.beamLen;
@@ -19207,7 +19217,9 @@ function gameLoopLogic(opts = null) {
                             }
                             const hitDist = player.radius * 1.5 + b.radius * 1.5;
                             if (!hit && distSq < hitDist * hitDist) {
-                                player.takeHit(b.damage, true); // Use ignoreShields=true as they were checked above
+                                // Use directHitDamage if specified (for plasma mortar), otherwise use b.damage
+                                const damage = b.directHitDamage !== undefined ? b.directHitDamage : b.damage;
+                                player.takeHit(damage, true); // Use ignoreShields=true as they were checked above
                                 hit = true;
                             }
                         }
