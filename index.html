@@ -845,6 +845,7 @@
         <button id="restart-btn-pause">RESTART</button>
         <button id="music-btn">MUSIC: ON</button>
         <button id="quit-btn">ABORT RUN</button>
+        <button id="debug-btn" style="display: none;">DEBUG</button>
         <button id="desktop-quit-pause-btn" style="margin-top: 10px; border-color: #f00; color: #f00;">QUIT TO
             DESKTOP</button>
     </div>
@@ -874,6 +875,13 @@
         <div id="run-upgrades-container" style="max-height: 60vh; overflow-y: auto; text-align: left; padding: 10px;">
             <!-- Upgrades will be dynamically inserted here -->
         </div>
+    </div>
+
+    <!-- Debug Menu Modal -->
+    <div id="debug-menu" class="menu-screen" style="display: none; width: 800px; max-width: 95vw; max-height: 90vh; overflow-y: auto; border-color: #ff0;">
+        <h2 style="color: #ff0; margin-top: 0;">DEBUG UPGRADE MENU</h2>
+        <button id="debug-back-btn">← BACK TO PAUSE</button>
+        <div id="debug-upgrades-container" style="text-align: left; padding: 10px;"></div>
     </div>
 
     <div id="rename-prompt-modal" class="menu-screen" style="display: none; width: 450px; padding: 30px; border-color: #ff0;">

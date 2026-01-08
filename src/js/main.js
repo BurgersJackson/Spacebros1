@@ -15,7 +15,7 @@ import {
     ENABLE_NEBULA, NEBULA_ALPHA, ENABLE_PROJECTILE_IMPACT_SOUNDS,
     META_SHOP_UPGRADE_DATA
 } from './core/constants.js';
-import { Particle, SmokeParticle, Explosion, WarpParticle, Coin, FloatingText, HealthPowerUp, SpaceNugget, getOrCreateFloatingText } from './entities/index.js';
+import { Particle, SmokeParticle, Explosion, WarpParticle, Coin, FloatingText, HealthPowerUp, SpaceNugget, getOrCreateFloatingText, LightningArc } from './entities/index.js';
 import {
     initAudio, startMusic, stopMusic, setMusicMode, playSound, playMp3Sfx,
     toggleMusic as audioToggleMusic, isMusicEnabled, setProjectileImpactSoundContext,
@@ -2042,6 +2042,9 @@ let shakeMagnitude = 0;
 
 // Inputs
 const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, e: false, f: false };
+
+// Debug menu state
+let debugMenuVisible = false;
 const mouseScreen = { x: 0, y: 0 };
 const mouseWorld = { x: 0, y: 0 };
 let lastMouseInputAt = 0;
@@ -15229,6 +15232,7 @@ let napalmZones = [];
 let enemies = [];
 let pinwheels = [];
 let particles = [];
+let lightningArcs = [];
 let explosions = [];
 let floatingTexts = [];
 let coins = []; // New currency entity
@@ -15658,22 +15662,10 @@ function spawnParticles(x, y, count = 10, color = '#fff') {
  * @param {string} color - Lightning color
  */
 function spawnLightningArc(x1, y1, x2, y2, color = '#0ff') {
-    // Create particle-based lightning effect
-    const segments = 8;
-    for (let i = 0; i < segments; i++) {
-        const t = i / segments;
-        const midX = x1 + (x2 - x1) * t;
-        const midY = y1 + (y2 - y1) * t;
-        // Add randomness perpendicular to the line
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        const perpX = len > 0 ? -dy / len : 0;
-        const perpY = len > 0 ? dx / len : 0;
-        const offset = (Math.random() - 0.5) * 30; // Jagged offset
-
-        emitParticle(midX + perpX * offset, midY + perpY * offset, null, null, color, 8);
-    }
+    // Create LightningArc entity with 12-frame lifetime (200ms at 60fps, scales with dt)
+    const arc = new LightningArc(x1, y1, x2, y2, color, 12);
+    lightningArcs.push(arc);
+    return arc;
 }
 
 /**
@@ -19765,7 +19757,19 @@ function updateGamepad() {
                         }
                     }
 
-                    // 6. Check if pause menu is open - B button resumes game
+                    // 6. Check if debug menu is open
+                    if (!handled) {
+                        const debugMenu = document.getElementById('debug-menu');
+                        if (debugMenu && debugMenu.style.display === 'block') {
+                            const debugBackBtn = document.getElementById('debug-back-btn');
+                            if (debugBackBtn) {
+                                debugBackBtn.click();
+                                handled = true;
+                            }
+                        }
+                    }
+
+                    // 7. Check if pause menu is open - B button resumes game
                     if (!handled) {
                         const pauseMenu = document.getElementById('pause-menu');
                         if (pauseMenu && pauseMenu.style.display === 'block') {
@@ -19825,6 +19829,14 @@ function getActiveMenuElements() {
     if (isVisible(runUpgradesScreen)) {
         const backBtn = document.getElementById('run-upgrades-back-btn');
         return backBtn ? [backBtn] : [];
+    }
+
+    // Check for debug menu
+    const debugMenu = document.getElementById('debug-menu');
+    if (isVisible(debugMenu)) {
+        const backBtn = document.getElementById('debug-back-btn');
+        const tierButtons = Array.from(document.querySelectorAll('.debug-tier-btn'));
+        return backBtn ? [backBtn, ...tierButtons] : tierButtons;
     }
 
     const levelupScreen = document.getElementById('levelup-screen');
@@ -20881,6 +20893,27 @@ function gameLoopLogic(opts = null) {
         }
     }
 
+    // Lightning Arcs - always update, cull drawing
+    for (let i = 0, len = lightningArcs.length; i < len; i++) {
+        const arc = lightningArcs[i];
+        try {
+            if (doUpdate) arc.update(deltaTime);
+            if (doDraw) {
+                // Lightning arcs are always visible even if slightly off-screen
+                // Use pixiVectorLayer for drawing
+                arc.draw(ctx, { vectorLayer: pixiVectorLayer }, alpha);
+            }
+            // Kill dead arcs and cleanup their graphics
+            if (arc.dead) {
+                if (typeof arc.kill === 'function') arc.kill();
+            }
+        } catch (e) {
+            console.error('[LIGHTNING ARC ERROR]', e);
+            arc.dead = true;
+            if (typeof arc.kill === 'function') arc.kill();
+        }
+    }
+
     // Staggered bomb explosions - process queued explosions over multiple frames
     // This prevents sprite pool exhaustion and frame spikes when boss dies
     if (doUpdate) {
@@ -21001,6 +21034,7 @@ function gameLoopLogic(opts = null) {
         }
 
         compactParticles(particles);
+        immediateCompactArray(lightningArcs, pixiCleanupObject);
         immediateCompactArray(shootingStars, pixiCleanupObject);
         immediateCompactArray(drones);
 
@@ -21217,7 +21251,7 @@ function gameLoopLogic(opts = null) {
 
                                             for (let other of nearby) {
                                                 if (other.dead) continue;
-                                                if (!(other instanceof Enemy)) continue;
+                                                if (!(other instanceof Enemy) && !(other instanceof Pinwheel)) continue;
                                                 if (other === boss) continue; // Skip boss
                                                 if (chainTargets.has(other)) continue;
 
@@ -21357,6 +21391,53 @@ function gameLoopLogic(opts = null) {
                                     e.aggro = true;
                                     playSound('hit');
                                     spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
+
+                                    // Chain Lightning: arc to nearby enemies (same logic as for regular enemies)
+                                    if (player.chainLightningCount && player.chainLightningCount > 0 && player.chainLightningRange && !b.isEnemy) {
+                                        let chainCount = player.chainLightningCount;
+                                        let chainSource = e;
+                                        let chainTargets = new Set();
+                                        chainTargets.add(e);
+
+                                        for (let chain = 0; chain < chainCount; chain++) {
+                                            let nearestTarget = null;
+                                            let nearestDist = player.chainLightningRange;
+
+                                            for (let other of nearby) {
+                                                if (other.dead) continue;
+                                                if (!(other instanceof Enemy) && !(other instanceof Pinwheel)) continue;
+                                                if (other === boss) continue; // Skip boss
+                                                if (chainTargets.has(other)) continue;
+
+                                                const d = Math.hypot(other.pos.x - chainSource.pos.x, other.pos.y - chainSource.pos.y);
+                                                if (d < nearestDist) {
+                                                    nearestDist = d;
+                                                    nearestTarget = other;
+                                                }
+                                            }
+
+                                            if (nearestTarget) {
+                                                // Deal chain damage (reduced with each hop)
+                                                const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                                                nearestTarget.hp -= chainDamage;
+                                                chainTargets.add(nearestTarget);
+
+                                                // Visual lightning effect
+                                                spawnLightningArc(chainSource.pos.x, chainSource.pos.y, nearestTarget.pos.x, nearestTarget.pos.y, '#0ff');
+                                                spawnParticles(nearestTarget.pos.x, nearestTarget.pos.y, 3, '#0ff');
+                                                playSound('hit');
+
+                                                if (nearestTarget.hp <= 0) {
+                                                    nearestTarget.kill();
+                                                    score += 100;
+                                                }
+
+                                                chainSource = nearestTarget;
+                                            } else {
+                                                break; // No more targets in range
+                                            }
+                                        }
+                                    }
                                     if (e.hp <= 0) {
                                         e.dead = true;
                                         playSound('base_explode');
@@ -22982,6 +23063,12 @@ window.updateResumeButtonState = updateResumeButtonState;
 function togglePause() {
     if (!gameActive) return;
 
+    // If debug menu is open, close it first
+    if (document.getElementById('debug-menu').style.display === 'block') {
+        hideDebugMenu();
+        return;
+    }
+
     // Return to pause menu from start screen
     if (fromPauseMenu && gamePaused && document.getElementById('start-screen').style.display === 'block') {
         document.getElementById('start-screen').style.display = 'none';
@@ -23074,6 +23161,11 @@ window.addEventListener('keydown', e => {
     if (e.key === 'f' || e.key === 'F') keys.f = true;
     if (e.key === 'Shift') keys.shift = true;
     if (e.key === 'Escape') togglePause();
+    // Debug menu toggle (F1)
+    if (e.key === 'F1') {
+        e.preventDefault();
+        toggleDebugButton();
+    }
     // Debug: instantly destroy space station (Ctrl+Shift+K)
     if (e.ctrlKey && e.shiftKey && (e.key === 'k' || e.key === 'K')) {
         handleSpaceStationDestroyed();
@@ -23366,6 +23458,135 @@ function hideRunUpgrades() {
     }, 100);
 }
 
+// Debug menu functions
+function toggleDebugButton() {
+    const debugBtn = document.getElementById('debug-btn');
+    if (!debugBtn) return;
+
+    debugMenuVisible = !debugMenuVisible;
+    debugBtn.style.display = debugMenuVisible ? 'block' : 'none';
+
+    console.log(`[DEBUG] Debug menu button ${debugMenuVisible ? 'ENABLED' : 'DISABLED'}`);
+}
+
+function showDebugMenu() {
+    if (!player || !player.inventory) {
+        console.warn('[DEBUG] Player not initialized');
+        return;
+    }
+
+    const container = document.getElementById('debug-upgrades-container');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    import('./core/constants.js').then(({ UPGRADE_DATA }) => {
+        UPGRADE_DATA.categories.forEach(category => {
+            const categoryDiv = document.createElement('div');
+            categoryDiv.className = 'debug-category';
+
+            const categoryTitle = document.createElement('div');
+            categoryTitle.className = 'debug-category-title';
+            categoryTitle.textContent = category.name;
+            categoryDiv.appendChild(categoryTitle);
+
+            category.upgrades.forEach(upgrade => {
+                const currentTier = player.inventory[upgrade.id] || 0;
+                const maxTier = upgrade.tier5 ? 5 : (upgrade.tier4 ? 4 : 3);
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'debug-upgrade-item';
+
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'debug-upgrade-info';
+
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'debug-upgrade-name';
+                nameDiv.textContent = `${upgrade.name} (Tier ${currentTier})`;
+                infoDiv.appendChild(nameDiv);
+
+                if (upgrade.notes) {
+                    const notesDiv = document.createElement('div');
+                    notesDiv.className = 'debug-upgrade-notes';
+                    notesDiv.textContent = upgrade.notes;
+                    infoDiv.appendChild(notesDiv);
+                }
+
+                itemDiv.appendChild(infoDiv);
+
+                const buttonsDiv = document.createElement('div');
+                buttonsDiv.className = 'debug-tier-buttons';
+
+                for (let tier = 1; tier <= maxTier; tier++) {
+                    const btn = document.createElement('button');
+                    btn.className = 'debug-tier-btn';
+                    btn.textContent = `T${tier}`;
+                    btn.dataset.upgrade = upgrade.id;
+                    btn.dataset.tier = tier;
+                    btn.dataset.name = upgrade.name;
+
+                    if (tier === currentTier) {
+                        btn.classList.add('current-tier');
+                    }
+
+                    buttonsDiv.appendChild(btn);
+                }
+
+                itemDiv.appendChild(buttonsDiv);
+                categoryDiv.appendChild(itemDiv);
+            });
+
+            container.appendChild(categoryDiv);
+        });
+
+        // Attach event listeners to tier buttons
+        container.querySelectorAll('.debug-tier-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const upgradeId = btn.dataset.upgrade;
+                const tier = parseInt(btn.dataset.tier);
+                const upgradeName = btn.dataset.name;
+                grantDebugUpgrade(upgradeId, tier, upgradeName);
+            });
+        });
+
+        document.getElementById('pause-menu').style.display = 'none';
+        document.getElementById('debug-menu').style.display = 'block';
+
+        setTimeout(() => {
+            document.getElementById('debug-back-btn').focus();
+        }, 100);
+    }).catch(err => console.error('[DEBUG] Failed to load UPGRADE_DATA:', err));
+}
+
+function hideDebugMenu() {
+    document.getElementById('debug-menu').style.display = 'none';
+    document.getElementById('pause-menu').style.display = 'block';
+
+    setTimeout(() => {
+        document.getElementById('debug-btn').focus();
+    }, 100);
+}
+
+function grantDebugUpgrade(upgradeId, tier, upgradeName) {
+    if (!player) {
+        console.warn('[DEBUG] No player to grant upgrade to');
+        return;
+    }
+
+    const prevTier = player.inventory[upgradeId] || 0;
+
+    applyUpgrade(upgradeId, tier);
+
+    const action = tier > prevTier ? `UPGRADED to Tier ${tier}` :
+                  tier < prevTier ? `DOWNGRADED to Tier ${tier}` :
+                  `RESET to Tier ${tier}`;
+    showOverlayMessage(`[DEBUG] ${upgradeName}: ${action}`, '#ff0', 1500, 10);
+
+    console.log(`[DEBUG] Granted upgrade: ${upgradeId} Tier ${tier} (was Tier ${prevTier})`);
+
+    showDebugMenu();
+}
+
 const newProfileBtn = document.getElementById('new-profile-btn');
 if (newProfileBtn) newProfileBtn.addEventListener('click', () => {
     if (confirm("Reset profile? This clears all nugs/stats and saved profiles.")) {
@@ -23403,6 +23624,17 @@ if (pauseUpgradesBtn) {
 const runUpgradesBackBtn = document.getElementById('run-upgrades-back-btn');
 if (runUpgradesBackBtn) {
     runUpgradesBackBtn.addEventListener('click', hideRunUpgrades);
+}
+
+// Debug menu event listeners
+const debugBtn = document.getElementById('debug-btn');
+if (debugBtn) {
+    debugBtn.addEventListener('click', showDebugMenu);
+}
+
+const debugBackBtn = document.getElementById('debug-back-btn');
+if (debugBackBtn) {
+    debugBackBtn.addEventListener('click', hideDebugMenu);
 }
 
 

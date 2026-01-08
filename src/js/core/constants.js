@@ -75,52 +75,52 @@ export const UPGRADE_DATA = {
         {
             name: "Weapons",
             upgrades: [
-                { id: "turret_damage", name: "Turret Damage", tier1: "+20% damage", tier2: "+40% total", tier3: "+70% total", notes: "Core DPS boost." },
-                { id: "turret_fire_rate", name: "Turret Fire Rate", tier1: "+15% RPS", tier2: "+30% total", tier3: "+50% total", notes: "Stacks multiplicatively." },
-                { id: "turret_range", name: "Turret Range", tier1: "+25% range", tier2: "+50% total", tier3: "+100% total", notes: "Hits farther threats." },
-                { id: "multi_shot", name: "Multi-Shot", tier1: "Fires 2 proj.", tier2: "Fires 3 proj.", tier3: "Fires 4 proj.", notes: "Parallel fire." },
-                { id: "shotgun", name: "Flak Shotgun", tier1: "Unlock: 5 Pellets", tier2: "8 Pellets, +Range", tier3: "12 Pellets", notes: "Close-range burst." },
+                { id: "turret_damage", name: "Turret Damage", tier1: "+20% damage", tier2: "+40% total", tier3: "+70% total", tier4: "+100% total", tier5: "+140% total", notes: "Core DPS boost." },
+                { id: "turret_fire_rate", name: "Turret Fire Rate", tier1: "+15% RPS", tier2: "+30% total", tier3: "+50% total", tier4: "+75% total", tier5: "+100% total", notes: "Stacks multiplicatively." },
+                { id: "turret_range", name: "Turret Range", tier1: "+25% range", tier2: "+50% total", tier3: "+100% total", tier4: "+150% total", tier5: "+200% total", notes: "Hits farther threats." },
+                { id: "multi_shot", name: "Multi-Shot", tier1: "Fires 2 proj.", tier2: "Fires 3 proj.", tier3: "Fires 4 proj.", tier4: "Fires 5 proj.", tier5: "Fires 6 proj.", notes: "Parallel fire." },
+                { id: "shotgun", name: "Flak Shotgun", tier1: "Unlock: 5 Pellets", tier2: "8 Pellets, +Range", tier3: "12 Pellets", tier4: "16 Pellets, +Range", tier5: "20 Pellets, max range", notes: "Close-range burst." },
                 { id: "static_weapons", name: "Static Weapons", tier1: "Unlock Forward Laser", tier2: "Add Side Lasers", tier3: "Add Rear Laser", tier4: "Dual Rear Stream", tier5: "Dual Front Stream", notes: "Always-on turrets." },
-                { id: "homing_missiles", name: "Homing Missiles", tier1: "2x Missiles / 2s", tier2: "4x Missiles / 2s", tier3: "6x Missiles / 2s", notes: "Shield-piercing swarm." },
-                { id: "volley_shot", name: "Volley Shot", tier1: "Auto-fires 3-shot burst every 3s", tier2: "5-shot burst every 3s", tier3: "7-shot burst every 3s", notes: "Automatic burst damage. No input required." },
-                { id: "chain_lightning", name: "Chain Lightning", tier1: "Projectiles chain to 1 enemy (200u)", tier2: "Chain to 2 enemies (250u)", tier3: "Chain to 3 enemies (300u)", notes: "Arc damage hits grouped enemies. Great vs swarms." },
-                { id: "backstabber", name: "Backstabber", tier1: "+50% damage from behind", tier2: "+100% damage from behind", tier3: "+150% damage, slow enemies 2s", notes: "Positioning matters. Flanking = huge damage." }
+                { id: "homing_missiles", name: "Homing Missiles", tier1: "2x Missiles / 2s", tier2: "4x Missiles / 2s", tier3: "6x Missiles / 2s", tier4: "8x Missiles / 2s", tier5: "10x Missiles / 2s", notes: "Shield-piercing swarm." },
+                { id: "volley_shot", name: "Volley Shot", tier1: "Auto-fires 3-shot burst every 3s", tier2: "5-shot burst every 3s", tier3: "7-shot burst every 3s", tier4: "9-shot burst every 3s", tier5: "11-shot burst every 3s", notes: "Automatic burst damage. No input required." },
+                { id: "chain_lightning", name: "Chain Lightning", tier1: "Projectiles chain to 1 enemy (200u)", tier2: "Chain to 2 enemies (250u)", tier3: "Chain to 3 enemies (300u)", tier4: "Chain to 4 enemies (350u)", tier5: "Chain to 5 enemies (400u)", notes: "Arc damage hits grouped enemies. Great vs swarms." },
+                { id: "backstabber", name: "Backstabber", tier1: "+50% damage from behind", tier2: "+100% damage from behind", tier3: "+150% damage, slow enemies 2s", tier4: "+200% damage, slow 3s", tier5: "+250% damage, slow 4s", notes: "Positioning matters. Flanking = huge damage." }
             ]
         },
         {
             name: "Shields & Hull",
             upgrades: [
-                { id: "hull_strength", name: "Hull Strength", tier1: "+25 Max HP, Heal 25", tier2: "+25 Max HP, Heal 25", tier3: "+25 Max HP, Heal 25", notes: "Increases survival." },
-                { id: "segment_count", name: "Segment Count", tier1: "+2 segments (total 10)", tier2: "+4 total (14)", tier3: "+8 total (18)", notes: "Larger shield bubble." },
-                { id: "outer_shield", name: "Outer Shield", tier1: "6 purple segments", tier2: "8 segments (restore all)", tier3: "12 segments (restore all)", notes: "Extra rotating ring (1 HP/seg)." },
-                { id: "shield_regen", name: "Shield Regen", tier1: "Regen 1 seg./5s", tier2: "1 seg./3s", tier3: "1 seg./1s", notes: "Sustain in long fights." },
-                { id: "hp_regen", name: "Hull Regen", tier1: "Regen 1 HP / 5s", tier2: "Regen 2 HP / 5s", tier3: "Regen 3 HP / 5s", notes: "Slow passive healing." },
-                { id: "reactive_shield", name: "Reactive Shield", tier1: "Shield segments restore on kill", tier2: "Restore 2 segments per kill", tier3: "Restore 3 segments, +25% shield HP", notes: "Offensive play heals shields. Aggressive sustain." },
-                { id: "damage_mitigation", name: "Damage Mitigation", tier1: "-10% damage taken, +5% move speed", tier2: "-20% damage taken, +10% move speed", tier3: "-30% damage taken, +15% move speed", notes: "Tanky AND fast. General survivability." }
+                { id: "hull_strength", name: "Hull Strength", tier1: "+25 Max HP, Heal 25", tier2: "+25 Max HP, Heal 25", tier3: "+25 Max HP, Heal 25", tier4: "+25 Max HP, Heal 25", tier5: "+25 Max HP, Heal 25", notes: "Increases survival." },
+                { id: "segment_count", name: "Segment Count", tier1: "+2 segments (total 10)", tier2: "+4 total (14)", tier3: "+8 total (18)", tier4: "+12 total (26)", tier5: "+16 total (30)", notes: "Larger shield bubble." },
+                { id: "outer_shield", name: "Outer Shield", tier1: "6 purple segments", tier2: "8 segments (restore all)", tier3: "12 segments (restore all)", tier4: "16 segments (restore all)", tier5: "20 segments (restore all)", notes: "Extra rotating ring (1 HP/seg)." },
+                { id: "shield_regen", name: "Shield Regen", tier1: "Regen 1 seg./5s", tier2: "1 seg./3s", tier3: "1 seg./1s", tier4: "1 seg./0.75s", tier5: "1 seg./0.5s", notes: "Sustain in long fights." },
+                { id: "hp_regen", name: "Hull Regen", tier1: "Regen 1 HP / 5s", tier2: "Regen 2 HP / 5s", tier3: "Regen 3 HP / 5s", tier4: "Regen 4 HP / 5s", tier5: "Regen 5 HP / 5s", notes: "Slow passive healing." },
+                { id: "reactive_shield", name: "Reactive Shield", tier1: "Shield segments restore on kill", tier2: "Restore 2 segments per kill", tier3: "Restore 3 segments, +25% shield HP", tier4: "Restore 4 segments, +50% shield HP", tier5: "Restore 5 segments, +75% shield HP", notes: "Offensive play heals shields. Aggressive sustain." },
+                { id: "damage_mitigation", name: "Damage Mitigation", tier1: "-10% damage taken, +5% move speed", tier2: "-20% damage taken, +10% move speed", tier3: "-30% damage taken, +15% move speed", tier4: "-40% damage taken, +20% move speed", tier5: "-50% damage taken, +25% move speed", notes: "Tanky AND fast. General survivability." }
             ]
         },
         {
             name: "Mobility",
             upgrades: [
-                { id: "speed", name: "Speed", tier1: "+15% max speed", tier2: "+30% total", tier3: "+50% total", notes: "Dodge better." },
-                { id: "turbo_boost", name: "Turbo Boost", tier1: "+50% speed for 2s", tier2: "+50% speed for 3.5s", tier3: "+50% speed for 5s", notes: "Press E / Gamepad X." }
+                { id: "speed", name: "Speed", tier1: "+15% max speed", tier2: "+30% total", tier3: "+50% total", tier4: "+75% total", tier5: "+100% total", notes: "Dodge better." },
+                { id: "turbo_boost", name: "Turbo Boost", tier1: "+50% speed for 2s", tier2: "+50% speed for 3.5s", tier3: "+50% speed for 5s", tier4: "+50% speed for 6.5s", tier5: "+50% speed for 8s", notes: "Press E / Gamepad X." }
             ]
         },
         {
             name: "Specials",
             upgrades: [
-                { id: "xp_magnet", name: "XP Magnet", tier1: "2x range", tier2: "4x range", tier3: "8x range", notes: "Faster leveling." },
-                { id: "area_nuke", name: "Area Nuke", tier1: "Auto-fire 500u blast (5 dmg)", tier2: "600u range, 10 dmg", tier3: "800u range, 15 dmg", notes: "Auto-activates when ready." },
-                { id: "invincibility", name: "Phase Shield", tier1: "3s Active / 20s CD", tier2: "5s Active / 15s CD", tier3: "7s Active / 10s CD + Regen", notes: "Auto-cycling invulnerability." },
-                { id: "slow_field", name: "Stasis Field", tier1: "Stops roamers 3s", tier2: "Stops 5s, +25% Area", tier3: "Stops 8s, +25% Area", notes: "Freezes enemies." },
-                { id: "time_dilation", name: "Time Dilation", tier1: "Enemies move 20% slower near you", tier2: "40% slow, 300u radius", tier3: "60% slow, 450u radius", notes: "Passive danger zone. Easier dodging." },
-                { id: "momentum", name: "Momentum", tier1: "Moving increases fire rate (+10%)", tier2: "+20% fire rate, +15% damage", tier3: "+30% fire rate, +25% damage", notes: "Keep moving to maximize DPS. Hit-and-run style." }
+                { id: "xp_magnet", name: "XP Magnet", tier1: "2x range", tier2: "4x range", tier3: "8x range", tier4: "12x range", tier5: "16x range", notes: "Faster leveling." },
+                { id: "area_nuke", name: "Area Nuke", tier1: "Auto-fire 500u blast (5 dmg)", tier2: "600u range, 10 dmg", tier3: "800u range, 15 dmg", tier4: "1000u range, 20 dmg", tier5: "1200u range, 25 dmg", notes: "Auto-activates when ready." },
+                { id: "invincibility", name: "Phase Shield", tier1: "3s Active / 20s CD", tier2: "5s Active / 15s CD", tier3: "7s Active / 10s CD + Regen", tier4: "9s Active / 8s CD + Regen", tier5: "12s Active / 6s CD + Regen", notes: "Auto-cycling invulnerability." },
+                { id: "slow_field", name: "Stasis Field", tier1: "Stops roamers 3s", tier2: "Stops 5s, +25% Area", tier3: "Stops 8s, +25% Area", tier4: "Stops 10s, +25% Area", tier5: "Stops 12s, +50% Area", notes: "Freezes enemies." },
+                { id: "time_dilation", name: "Time Dilation", tier1: "Enemies move 20% slower near you", tier2: "40% slow, 300u radius", tier3: "60% slow, 450u radius", tier4: "80% slow, 600u radius", tier5: "100% slow (freeze), 750u radius", notes: "Passive danger zone. Easier dodging." },
+                { id: "momentum", name: "Momentum", tier1: "Moving increases fire rate (+10%)", tier2: "+20% fire rate, +15% damage", tier3: "+30% fire rate, +25% damage", tier4: "+40% fire rate, +35% damage", tier5: "+50% fire rate, +50% damage", notes: "Keep moving to maximize DPS. Hit-and-run style." }
             ]
         },
         {
             name: "Drones",
             upgrades: [
-                { id: "companion_drones", name: "Companion Drones", tier1: "Unlock Shooter Drone", tier2: "Add Shield Drone", tier3: "Add Heal Drone", notes: "Orbiting support bots." }
+                { id: "companion_drones", name: "Companion Drones", tier1: "Unlock Shooter Drone", tier2: "Add Shield Drone", tier3: "Add Heal Drone", tier4: "Add 2nd Shooter Drone", tier5: "Add 2nd Shield Drone", notes: "Orbiting support bots." }
             ]
         }
     ]

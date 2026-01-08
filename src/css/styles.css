@@ -552,3 +552,86 @@ button:hover, button:focus, button.selected {
     text-align: center;
     padding: 40px;
 }
+
+/* Debug Menu Styles */
+#debug-menu {
+    z-index: 250;
+}
+
+.debug-category {
+    margin-bottom: 25px;
+    border-bottom: 1px solid #ff0;
+    padding-bottom: 15px;
+}
+
+.debug-category-title {
+    color: #ff0;
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+}
+
+.debug-upgrade-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    margin: 8px 0;
+    background: rgba(255, 255, 0, 0.05);
+    border: 1px solid rgba(255, 255, 0, 0.2);
+    border-radius: 4px;
+}
+
+.debug-upgrade-item:hover {
+    background: rgba(255, 255, 0, 0.1);
+}
+
+.debug-upgrade-info {
+    flex: 1;
+}
+
+.debug-upgrade-name {
+    color: #fff;
+    font-size: 15px;
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.debug-upgrade-notes {
+    color: #aaa;
+    font-size: 12px;
+    font-style: italic;
+}
+
+.debug-tier-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.debug-tier-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    min-width: 45px;
+    border: 1px solid #0f0;
+    background: transparent;
+    color: #0f0;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.debug-tier-btn:hover {
+    background: #0f0;
+    color: #000;
+}
+
+.debug-tier-btn.current-tier {
+    border-color: #0ff;
+    color: #0ff;
+    background: rgba(0, 255, 255, 0.1);
+}
+
+.debug-tier-btn.current-tier:hover {
+    background: #0ff;
+    color: #000;
+}
