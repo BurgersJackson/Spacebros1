@@ -41,7 +41,10 @@ const UPGRADE_DATA = {
                 { "id": "multi_shot", "name": "Multi-Shot", "tier1": "Fires 2 proj.", "tier2": "Fires 3 proj.", "tier3": "Fires 4 proj.", "notes": "Parallel fire." },
                 { "id": "shotgun", "name": "Flak Shotgun", "tier1": "Unlock: 5 Pellets", "tier2": "8 Pellets, +Range", "tier3": "12 Pellets", "notes": "Close-range burst." },
                 { "id": "static_weapons", "name": "Static Weapons", "tier1": "Unlock Forward Laser", "tier2": "Add Side Lasers", "tier3": "Add Rear Laser", "tier4": "Dual Rear Stream", "tier5": "Dual Front Stream", "notes": "Always-on turrets." },
-                { "id": "homing_missiles", "name": "Homing Missiles", "tier1": "2x Missiles / 2s", "tier2": "4x Missiles / 2s", "tier3": "6x Missiles / 2s", "notes": "Shield-piercing swarm." }
+                { "id": "homing_missiles", "name": "Homing Missiles", "tier1": "2x Missiles / 2s", "tier2": "4x Missiles / 2s", "tier3": "6x Missiles / 2s", "notes": "Shield-piercing swarm." },
+                { "id": "volley_shot", "name": "Volley Shot", "tier1": "Hold fire to charge 3-shot burst", "tier2": "5-shot burst, faster charge", "tier3": "7-shot burst, instant charge", "notes": "Release burst on button release. Devastating burst damage." },
+                { "id": "chain_lightning", "name": "Chain Lightning", "tier1": "Projectiles chain to 1 enemy (200u)", "tier2": "Chain to 2 enemies (250u)", "tier3": "Chain to 3 enemies (300u)", "notes": "Arc damage hits grouped enemies. Great vs swarms." },
+                { "id": "backstabber", "name": "Backstabber", "tier1": "+50% damage from behind", "tier2": "+100% damage from behind", "tier3": "+150% damage, slow enemies 2s", "notes": "Positioning matters. Flanking = huge damage." }
             ]
         },
         {
@@ -51,7 +54,9 @@ const UPGRADE_DATA = {
                 { "id": "segment_count", "name": "Segment Count", "tier1": "+2 segments (total 10)", "tier2": "+4 total (14)", "tier3": "+8 total (18)", "notes": "Larger shield bubble." },
                 { "id": "outer_shield", "name": "Outer Shield", "tier1": "6 purple segments", "tier2": "8 segments (restore all)", "tier3": "12 segments (restore all)", "notes": "Extra rotating ring (1 HP/seg)." },
                 { "id": "shield_regen", "name": "Shield Regen", "tier1": "Regen 1 seg./5s", "tier2": "1 seg./3s", "tier3": "1 seg./1s", "notes": "Sustain in long fights." },
-                { "id": "hp_regen", "name": "Hull Regen", "tier1": "Regen 1 HP / 5s", "tier2": "Regen 2 HP / 5s", "tier3": "Regen 3 HP / 5s", "notes": "Slow passive healing." }
+                { "id": "hp_regen", "name": "Hull Regen", "tier1": "Regen 1 HP / 5s", "tier2": "Regen 2 HP / 5s", "tier3": "Regen 3 HP / 5s", "notes": "Slow passive healing." },
+                { "id": "reactive_shield", "name": "Reactive Shield", "tier1": "1 seg. per 50 coins", "tier2": "2 seg. per 50 coins", "tier3": "3 seg. per 50 coins, +25% shield HP", "notes": "Collecting coins restores shields." },
+                { "id": "damage_mitigation", "name": "Damage Mitigation", "tier1": "-10% damage taken, +5% move speed", "tier2": "-20% damage taken, +10% move speed", "tier3": "-30% damage taken, +15% move speed", "notes": "Tanky AND fast. General survivability." }
             ]
         },
         {
@@ -67,7 +72,9 @@ const UPGRADE_DATA = {
                 { "id": "xp_magnet", "name": "XP Magnet", "tier1": "2x range", "tier2": "4x range", "tier3": "8x range", "notes": "Faster leveling." },
                 { "id": "area_nuke", "name": "Area Nuke", "tier1": "Auto-fire 500u blast (5 dmg)", "tier2": "600u range, 10 dmg", "tier3": "800u range, 15 dmg", "notes": "Auto-activates when ready." },
                 { "id": "invincibility", "name": "Phase Shield", "tier1": "3s Active / 20s CD", "tier2": "5s Active / 15s CD", "tier3": "7s Active / 10s CD + Regen", "notes": "Auto-cycling invulnerability." },
-                { "id": "slow_field", "name": "Stasis Field", "tier1": "Stops roamers 3s", "tier2": "Stops 5s, +25% Area", "tier3": "Stops 8s, +25% Area", "notes": "Freezes enemies." }
+                { "id": "slow_field", "name": "Stasis Field", "tier1": "Stops roamers 3s", "tier2": "Stops 5s, +25% Area", "tier3": "Stops 8s, +25% Area", "notes": "Freezes enemies." },
+                { "id": "time_dilation", "name": "Time Dilation", "tier1": "Enemies move 20% slower near you", "tier2": "40% slow, 300u radius", "tier3": "60% slow, 450u radius", "notes": "Passive danger zone. Easier dodging." },
+                { "id": "momentum", "name": "Momentum", "tier1": "Moving increases fire rate (+10%)", "tier2": "+20% fire rate, +15% damage", "tier3": "+30% fire rate, +25% damage", "notes": "Keep moving to maximize DPS. Hit-and-run style." }
             ]
         },
         {
@@ -2445,7 +2452,13 @@ function endGame(elapsedMs) {
     try {
         depositMetaNuggets();
     } catch (e) { console.warn('meta deposit failed', e); }
-    try { saveEndOfRun(); } catch (e) { console.warn('save end of run failed', e); }
+    // Save both game profile and meta profile (store upgrades)
+    if (currentProfileName) {
+        try {
+            autoSaveToCurrentProfile(); // Saves game state
+            saveMetaProfile();          // Saves meta shop upgrades
+        } catch (e) { console.warn('save on end game failed', e); }
+    }
     const endEl = document.getElementById('end-screen');
     if (endEl) endEl.style.display = 'block';
     const startEl = document.getElementById('start-screen');
@@ -2530,6 +2543,7 @@ function showOverlayMessage(text, color = '#0ff', duration = 2000, priority = 0)
 let arenaCountdownActive = false;
 let arenaCountdownInterval = null;
 let arenaCountdownTimeLeft = 0;
+let arenaCountdownElement = null; // Cached DOM element
 
 function startArenaCountdown() {
     if (arenaCountdownActive) return;
@@ -2537,34 +2551,35 @@ function startArenaCountdown() {
     arenaCountdownActive = true;
     arenaCountdownTimeLeft = 10;
 
+    // Cache the element reference on first use
+    if (!arenaCountdownElement) {
+        arenaCountdownElement = document.getElementById('arena-countdown');
+    }
+
     updateArenaCountdownDisplay();
 }
 
 function updateArenaCountdownDisplay() {
-    const el = document.getElementById('arena-countdown');
+    const el = arenaCountdownElement;
     if (!el) return;
 
     if (arenaCountdownTimeLeft <= 0) {
         el.style.display = 'none';
+        el.className = ''; // Clear all classes
         return;
     }
 
     el.innerText = `ARENA FIGHT\n${arenaCountdownTimeLeft}`;
     el.style.display = 'block';
 
-    // Change color and scale based on time remaining
+    // Use CSS classes instead of inline styles for better performance
+    el.className = ''; // Clear existing classes
     if (arenaCountdownTimeLeft <= 3) {
-        el.style.color = '#f00';
-        el.style.textShadow = '0 0 30px #f00, 0 0 60px #f00';
-        el.style.fontSize = '64px';
+        el.classList.add('countdown-critical');
     } else if (arenaCountdownTimeLeft <= 5) {
-        el.style.color = '#ff0';
-        el.style.textShadow = '0 0 25px #ff0, 0 0 50px #ff0';
-        el.style.fontSize = '56px';
+        el.classList.add('countdown-warning');
     } else {
-        el.style.color = '#f80';
-        el.style.textShadow = '0 0 20px #f80, 0 0 40px #f80';
-        el.style.fontSize = '48px';
+        el.classList.add('countdown-normal');
     }
 }
 
@@ -2574,8 +2589,11 @@ function stopArenaCountdown() {
         arenaCountdownInterval = null;
     }
     arenaCountdownActive = false;
-    const el = document.getElementById('arena-countdown');
-    if (el) el.style.display = 'none';
+    const el = arenaCountdownElement;
+    if (el) {
+        el.style.display = 'none';
+        el.className = ''; // Clear all classes
+    }
 }
 
 // --- Map Entities ---
@@ -3059,6 +3077,12 @@ class Spaceship extends Entity {
         this.batteryDamage = 500;
         this.batteryRange = 800;
         this.batteryDischarging = false;
+
+        // Volley Shot Ability
+        this.volleyShotUnlocked = false;
+        this.volleyShotCount = 0;        // Number of shots in volley (3/5/7 based on tier)
+        this.volleyCooldown = 0;        // Timer until next auto-fire (180 frames = 3 seconds)
+        this.lastF = false;             // Track F key state transitions (for Battery)
     }
 
     respawn() {
@@ -3339,6 +3363,17 @@ class Spaceship extends Entity {
             this.fireNuke();
         }
 
+        // Volley Shot Auto-Fire (every 3 seconds = 180 frames at 60fps)
+        if (this.volleyShotUnlocked) {
+            if (this.volleyCooldown > 0) {
+                this.volleyCooldown -= dtScale;
+            } else {
+                // Fire the volley!
+                this.fireVolleyShot();
+                this.volleyCooldown = 180; // 3 seconds at 60fps
+            }
+        }
+
         if (this.canWarp) {
             if (this.warpCooldown > 0) {
                 this.warpCooldown -= dtScale;
@@ -3386,12 +3421,22 @@ class Spaceship extends Entity {
             this.batteryCharge = Math.min(this.batteryMaxCharge, this.batteryCharge + this.batteryChargeRate * dtScale);
         }
 
-        // Battery discharge (manual)
-        if (this.batteryUnlocked && (keys.f || gpState.battery)) {
-            this.dischargeBattery();
-            keys.f = false; // Prevent continuous discharge
-            gpState.battery = false;
+        // F key / Battery button handling (Battery discharge)
+        const fPressed = keys.f || gpState.battery;
+        const batteryReady = this.batteryUnlocked && this.batteryCharge >= this.batteryMaxCharge;
+
+        // Track F key state transitions
+        if (fPressed && !this.lastF) {
+            // F key just pressed (keydown)
+            if (batteryReady) {
+                // Battery discharge immediately
+                this.dischargeBattery();
+                // Reset input to prevent continuous battery discharge
+                keys.f = false;
+                gpState.battery = false;
+            }
         }
+        this.lastF = fPressed;
 
         // Update battery UI
         if (this.batteryUnlocked) {
@@ -3404,6 +3449,27 @@ class Spaceship extends Entity {
             if (batteryFill) {
                 batteryFill.style.width = `${chargePercent}%`;
                 batteryFill.style.background = this.batteryCharge >= 100 ? '#fff' : '#0ff';
+            }
+        }
+
+        // Update volley cooldown UI
+        if (this.volleyShotUnlocked) {
+            const volleyUi = document.getElementById('volley-ui');
+            const volleyText = document.getElementById('volley-text');
+            const volleyFill = document.getElementById('volley-fill');
+
+            if (volleyUi) volleyUi.style.display = 'flex';
+
+            // Calculate remaining seconds (180 frames = 3 seconds at 60fps)
+            const cooldownSeconds = Math.ceil(this.volleyCooldown / 60);
+            if (volleyText) volleyText.textContent = cooldownSeconds > 0 ? `${cooldownSeconds}s` : 'READY';
+
+            // Bar fill: empty when just fired, full when ready
+            const fillPercent = ((180 - this.volleyCooldown) / 180) * 100;
+            if (volleyFill) {
+                volleyFill.style.width = `${fillPercent}%`;
+                // White when ready, yellow when charging
+                volleyFill.style.background = this.volleyCooldown <= 0 ? '#fff' : '#ff0';
             }
         }
 
@@ -3504,6 +3570,37 @@ class Spaceship extends Entity {
             bullets.push(b);
             spawnSmoke(this.pos.x, this.pos.y, 1);
         }
+    }
+
+    fireVolleyShot() {
+        const shots = this.volleyShotCount || 3;
+        const spread = 0.15; // Slight spread between shots
+
+        for (let i = 0; i < shots; i++) {
+            // Stagger the angle for spread effect
+            const angleOffset = (i - (shots - 1) / 2) * spread;
+            const angle = this.turretAngle + angleOffset;
+
+            // Use player's damage multiplier
+            let damage = 2 * this.stats.damageMult;
+
+            // Combo Meter bonus to damage
+            if (this.stats.comboMeter > 0 && this.comboStacks > 0) {
+                const comboBonus = 1 + (this.comboStacks / this.comboMaxStacks) * this.stats.comboMaxBonus;
+                damage *= comboBonus;
+            }
+
+            const b = new Bullet(this.pos.x, this.pos.y, angle, false, damage, 14, 4, '#ff0');
+
+            // Slight damage reduction for volley (balance)
+            b.damage *= 0.7;
+
+            bullets.push(b);
+        }
+
+        // Visual feedback
+        spawnBarrelSmoke(this.pos.x, this.pos.y, this.turretAngle);
+        playSound('rapid_shoot');
     }
 
     shoot() {
@@ -4024,6 +4121,9 @@ class Shockwave extends Entity {
                     }
 
                     e.hp -= damage;
+                    if (e === destroyer) {
+                        console.log(`[DESTROYER DEBUG] SHOCKWAVE: ${damage} damage | HP: ${e.hp + damage} -> ${e.hp} | Source: ${this.damageType || 'unknown'}`);
+                    }
                     this.hitList.push(e);
                     playSound('hit');
                     spawnParticles(e.pos.x, e.pos.y, 5, this.hasCrit ? '#ffd700' : '#ff0');
@@ -4037,7 +4137,13 @@ class Shockwave extends Entity {
                             if (other === e || other.dead || this.hitList.includes(other)) continue;
                             const d = Math.hypot(other.pos.x - this.pos.x, other.pos.y - this.pos.y);
                             if (d < explodeRadius + other.radius) {
-                                other.hp -= explodeDmg;
+                                if (other === destroyer) {
+                                    const hpBefore = other.hp;
+                                    other.hp -= explodeDmg;
+                                    console.log(`[DESTROYER DEBUG] EXPLOSIVE SECONDARY: ${explodeDmg} damage | HP: ${hpBefore} -> ${other.hp}`);
+                                } else {
+                                    other.hp -= explodeDmg;
+                                }
                                 spawnParticles(other.pos.x, other.pos.y, 4, '#f80');
                                 if (other.hp <= 0 && typeof other.kill === 'function') other.kill();
                             }
@@ -4586,16 +4692,14 @@ class Bullet extends Entity {
     }
     init(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0, shape = null) {
         this.pos.x = x; this.pos.y = y;
-        // Initialize prevPos for interpolation
         if (this.prevPos) { this.prevPos.x = x; this.prevPos.y = y; }
-        this.speed = speed * 2; // Doubled for 60Hz
+        this.speed = speed * 2;
         this.angle = angle;
         this.vel.x = Math.cos(angle) * this.speed;
         this.vel.y = Math.sin(angle) * this.speed;
         this.isEnemy = isEnemy;
         this.damage = damage;
         this.radius = radius;
-        this.life = 50 * player.stats.rangeMult; // 100 / 2
         this.color = color;
         this.homing = homing;
         this.ignoreShields = false;
@@ -4603,11 +4707,17 @@ class Bullet extends Entity {
         this.shape = shape;
         this.dead = false;
         this.sprite = null;
-        // New upgrade properties
-        this.pierceCount = player.stats.piercing || 0;
-        this.isExplosive = Math.random() < (player.stats.explosiveRounds || 0);
         this.isSplitShot = false;
         this.hasCrit = false;
+        if (isEnemy) {
+            this.life = 50;
+            this.pierceCount = 0;
+            this.isExplosive = false;
+        } else {
+            this.life = 50 * (player.stats.rangeMult || 1);
+            this.pierceCount = player.stats.piercing || 0;
+            this.isExplosive = Math.random() < (player.stats.explosiveRounds || 0);
+        }
     }
     reset(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0, shape = null) {
         return this.init(x, y, angle, isEnemy, damage, speed, radius, color, homing, shape);
@@ -4770,6 +4880,7 @@ class ClusterBomb extends Entity {
         this.vel.y = Math.sin(angle) * this.speed;
         this.radius = 8;
         this.damage = 8;
+        this.isEnemy = true; // Mark as enemy projectile so it doesn't hit owner (friendly fire)
         this.dead = false;
         this.hasSplit = false;
         this.color = '#f80'; // Orange like turret bullets
@@ -6431,7 +6542,13 @@ class CaveGuidedMissile extends Entity {
             // Thorn Armor - reflect damage back to attacker
             if (player.stats.thornArmor > 0 && this.hp) {
                 const reflectDamage = Math.ceil(remaining * player.stats.thornArmor);
-                this.hp -= reflectDamage;
+                if (this === destroyer || (this.displayName && this.displayName.includes('DESTROYER'))) {
+                    const hpBefore = this.hp;
+                    this.hp -= reflectDamage;
+                    console.log(`[DESTROYER DEBUG] THORN ARMOR REFLECT: ${reflectDamage} damage | HP: ${hpBefore} -> ${this.hp}`);
+                } else {
+                    this.hp -= reflectDamage;
+                }
                 spawnParticles(this.pos.x, this.pos.y, 6, '#f80');
                 if (this.hp <= 0 && typeof this.kill === 'function') {
                     this.kill();
@@ -12286,6 +12403,32 @@ class SpaceStation extends Entity {
         drawShieldRing(this.shieldSegments, this.shieldRadius, this.shieldRotation, '#0ff');
         drawShieldRing(this.innerShieldSegments, this.innerShieldRadius, this.innerShieldRotation, '#f0f');
 
+        // Health Bar
+        const hpBarWidth = 80;
+        const hpBarHeight = 6;
+        const hpBarY = -this.radius - 45;
+        const hpPercent = Math.max(0, this.hp / this.maxHp);
+
+        // Background (empty)
+        ctx.fillStyle = '#300';
+        ctx.fillRect(-hpBarWidth / 2, hpBarY, hpBarWidth, hpBarHeight);
+
+        // Foreground (health)
+        const healthColor = hpPercent > 0.6 ? '#0f0' : (hpPercent > 0.3 ? '#ff0' : '#f00');
+        ctx.fillStyle = healthColor;
+        ctx.fillRect(-hpBarWidth / 2, hpBarY, hpBarWidth * hpPercent, hpBarHeight);
+
+        // Border
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(-hpBarWidth / 2, hpBarY, hpBarWidth, hpBarHeight);
+
+        // HP Text
+        ctx.fillStyle = '#fff';
+        ctx.font = '10px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${this.hp}/${this.maxHp}`, 0, hpBarY - 3);
+
         // Nameplate
         if (this.displayName) {
             ctx.fillStyle = '#0ff';
@@ -12353,17 +12496,22 @@ class Destroyer extends Entity {
         this.farTurnSpeed = 0.05;
         this.chaseDistance = 8000;
 
-        // Outer + inner shields for destroyer (optimized segment count for performance)
-        this.maxShieldHp = 3;
-        this.shieldSegments = new Array(80).fill(3);
-        this.innerShieldSegments = new Array(70).fill(3);
+        // Outer + inner shields for destroyer (cave monster style)
+        this.maxShieldHp = 999;  // Indestructible like cave monsters
+        this.shieldSegments = new Array(60).fill(0);
+        this.innerShieldSegments = new Array(50).fill(0);
+        // Every other segment active (like cave monsters)
+        for (let i = 0; i < 60; i += 2) {
+            this.shieldSegments[i] = 999;
+        }
+        for (let i = 0; i < 50; i += 2) {
+            this.innerShieldSegments[i] = 999;
+        }
         this.shieldRadius = Math.round(this.visualRadius * 0.85);
         this.innerShieldRadius = Math.round(this.visualRadius * 0.78);
         this.shieldRotation = 0;
         this.innerShieldRotation = 0;
         this.shieldsDirty = true;
-        this.shieldRegenMs = 3000;
-        this.lastShieldRegenAt = Date.now();
         this.invulnerable = 0;
         this.invincibilityCycle = {
             unlocked: true,
@@ -12493,25 +12641,9 @@ class Destroyer extends Entity {
             this.roamAngle = Math.atan2(-this.pos.y, -this.pos.x);
         }
 
-        // Outer/inner shield rotation (opposite directions)
-        this.shieldRotation += 0.004 * dtFactor;
-        this.innerShieldRotation -= 0.006 * dtFactor;
-
-        // Shield regen: restore 1 segment every 5s (outer first, then inner)
-        if (now - this.lastShieldRegenAt >= this.shieldRegenMs) {
-            const outerIdx = this.shieldSegments.findIndex(s => s < 3);
-            if (outerIdx !== -1) {
-                this.shieldSegments[outerIdx] = 3;
-                this.shieldsDirty = true;
-            } else {
-                const innerIdx = this.innerShieldSegments.findIndex(s => s < 3);
-                if (innerIdx !== -1) {
-                    this.innerShieldSegments[innerIdx] = 3;
-                    this.shieldsDirty = true;
-                }
-            }
-            this.lastShieldRegenAt = now;
-        }
+        // Outer/inner shield rotation (opposite directions, cave monster style)
+        this.shieldRotation += 0.003 * dtFactor;
+        this.innerShieldRotation -= 0.0036 * dtFactor;
 
         // Auto-cycling invincibility phase shield
         if (this.invincibilityCycle && this.invincibilityCycle.unlocked) {
@@ -12662,7 +12794,10 @@ class Destroyer extends Entity {
 
     takeHit(dmg = 1) {
         if (this.dead || this.invulnerable > 0) return false;
+        const hpBefore = this.hp;
         this.hp -= dmg;
+        console.log(`[DESTROYER DEBUG] takeHit(): ${dmg} damage | HP: ${hpBefore} -> ${this.hp} | Invulnerable: ${this.invulnerable}`);
+        console.trace('takeHit() call stack:');
         playSound('hit');
         if (this.hp <= 0) {
             this.kill();
@@ -12854,6 +12989,57 @@ class Destroyer extends Entity {
                 if (!txt.parent) pixiVectorLayer.addChild(txt);
                 txt.visible = true;
                 txt.position.set(this.pos.x, this.pos.y - this.visualRadius - 20);
+            }
+
+            // Health Bar
+            if (pixiVectorLayer) {
+                let hpBarGfx = this._pixiHealthBar;
+                if (!hpBarGfx) {
+                    hpBarGfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(hpBarGfx);
+                    this._pixiHealthBar = hpBarGfx;
+                } else if (!hpBarGfx.parent) {
+                    pixiVectorLayer.addChild(hpBarGfx);
+                }
+
+                const hpBarWidth = 80;
+                const hpBarHeight = 6;
+                const hpPercent = Math.max(0, this.hp / this.maxHp);
+                const healthColor = hpPercent > 0.6 ? 0x00ff00 : (hpPercent > 0.3 ? 0xffff00 : 0xff0000);
+
+                hpBarGfx.clear();
+                hpBarGfx.position.set(this.pos.x, this.pos.y - this.visualRadius - 45);
+
+                // Background
+                hpBarGfx.beginFill(0x330000);
+                hpBarGfx.drawRect(-hpBarWidth / 2, 0, hpBarWidth, hpBarHeight);
+                hpBarGfx.endFill();
+
+                // Health fill
+                hpBarGfx.beginFill(healthColor);
+                hpBarGfx.drawRect(-hpBarWidth / 2, 0, hpBarWidth * hpPercent, hpBarHeight);
+                hpBarGfx.endFill();
+
+                // Border
+                hpBarGfx.lineStyle(1, 0xffffff);
+                hpBarGfx.drawRect(-hpBarWidth / 2, 0, hpBarWidth, hpBarHeight);
+
+                // HP Text
+                let hpText = this._pixiHealthText;
+                if (!hpText) {
+                    hpText = new PIXI.Text('', {
+                        fontFamily: 'Courier New',
+                        fontSize: 10,
+                        fill: 0xffffff
+                    });
+                    hpText.anchor.set(0.5, 1);
+                    pixiVectorLayer.addChild(hpText);
+                    this._pixiHealthText = hpText;
+                } else if (!hpText.parent) {
+                    pixiVectorLayer.addChild(hpText);
+                }
+                hpText.text = `${this.hp}/${this.maxHp}`;
+                hpText.position.set(this.pos.x, this.pos.y - this.visualRadius - 48);
             }
 
             // Draw Tractor Beam (red ring like arena)
@@ -13051,17 +13237,22 @@ class Destroyer2 extends Entity {
         this.farTurnSpeed = 0.05;
         this.chaseDistance = 8000;
 
-        // Outer + inner shields for destroyer (optimized segment count for performance)
-        this.maxShieldHp = 3;
-        this.shieldSegments = new Array(80).fill(3);
-        this.innerShieldSegments = new Array(70).fill(3);
+        // Outer + inner shields for destroyer (cave monster style)
+        this.maxShieldHp = 999;  // Indestructible like cave monsters
+        this.shieldSegments = new Array(60).fill(0);
+        this.innerShieldSegments = new Array(50).fill(0);
+        // Every other segment active (like cave monsters)
+        for (let i = 0; i < 60; i += 2) {
+            this.shieldSegments[i] = 999;
+        }
+        for (let i = 0; i < 50; i += 2) {
+            this.innerShieldSegments[i] = 999;
+        }
         this.shieldRadius = Math.round(this.visualRadius * 0.85);
         this.innerShieldRadius = Math.round(this.visualRadius * 0.78);
         this.shieldRotation = 0;
         this.innerShieldRotation = 0;
         this.shieldsDirty = true;
-        this.shieldRegenMs = 3000;
-        this.lastShieldRegenAt = Date.now();
         this.invulnerable = 0;
         this.invincibilityCycle = {
             unlocked: true,
@@ -13180,25 +13371,9 @@ class Destroyer2 extends Entity {
             this.roamAngle = Math.atan2(-this.pos.y, -this.pos.x);
         }
 
-        // Outer/inner shield rotation (opposite directions)
-        this.shieldRotation += 0.004 * dtFactor;
-        this.innerShieldRotation -= 0.006 * dtFactor;
-
-        // Shield regen: restore 1 segment every 5s (outer first, then inner)
-        if (now - this.lastShieldRegenAt >= this.shieldRegenMs) {
-            const outerIdx = this.shieldSegments.findIndex(s => s < 3);
-            if (outerIdx !== -1) {
-                this.shieldSegments[outerIdx] = 3;
-                this.shieldsDirty = true;
-            } else {
-                const innerIdx = this.innerShieldSegments.findIndex(s => s < 3);
-                if (innerIdx !== -1) {
-                    this.innerShieldSegments[innerIdx] = 3;
-                    this.shieldsDirty = true;
-                }
-            }
-            this.lastShieldRegenAt = now;
-        }
+        // Outer/inner shield rotation (opposite directions, cave monster style)
+        this.shieldRotation += 0.003 * dtFactor;
+        this.innerShieldRotation -= 0.0036 * dtFactor;
 
         // Auto-cycling invincibility phase shield
         if (this.invincibilityCycle && this.invincibilityCycle.unlocked) {
@@ -13313,7 +13488,10 @@ class Destroyer2 extends Entity {
 
     takeHit(dmg = 1) {
         if (this.dead || this.invulnerable > 0) return false;
+        const hpBefore = this.hp;
         this.hp -= dmg;
+        console.log(`[DESTROYER DEBUG] takeHit(): ${dmg} damage | HP: ${hpBefore} -> ${this.hp} | Invulnerable: ${this.invulnerable}`);
+        console.trace('takeHit() call stack:');
         playSound('hit');
         if (this.hp <= 0) {
             this.kill();
@@ -13497,6 +13675,57 @@ class Destroyer2 extends Entity {
                 txt.position.set(this.pos.x, this.pos.y - this.visualRadius - 20);
             }
 
+            // Health Bar
+            if (pixiVectorLayer) {
+                let hpBarGfx = this._pixiHealthBar;
+                if (!hpBarGfx) {
+                    hpBarGfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(hpBarGfx);
+                    this._pixiHealthBar = hpBarGfx;
+                } else if (!hpBarGfx.parent) {
+                    pixiVectorLayer.addChild(hpBarGfx);
+                }
+
+                const hpBarWidth = 80;
+                const hpBarHeight = 6;
+                const hpPercent = Math.max(0, this.hp / this.maxHp);
+                const healthColor = hpPercent > 0.6 ? 0x00ff00 : (hpPercent > 0.3 ? 0xffff00 : 0xff0000);
+
+                hpBarGfx.clear();
+                hpBarGfx.position.set(this.pos.x, this.pos.y - this.visualRadius - 45);
+
+                // Background
+                hpBarGfx.beginFill(0x330000);
+                hpBarGfx.drawRect(-hpBarWidth / 2, 0, hpBarWidth, hpBarHeight);
+                hpBarGfx.endFill();
+
+                // Health fill
+                hpBarGfx.beginFill(healthColor);
+                hpBarGfx.drawRect(-hpBarWidth / 2, 0, hpBarWidth * hpPercent, hpBarHeight);
+                hpBarGfx.endFill();
+
+                // Border
+                hpBarGfx.lineStyle(1, 0xffffff);
+                hpBarGfx.drawRect(-hpBarWidth / 2, 0, hpBarWidth, hpBarHeight);
+
+                // HP Text
+                let hpText = this._pixiHealthText;
+                if (!hpText) {
+                    hpText = new PIXI.Text('', {
+                        fontFamily: 'Courier New',
+                        fontSize: 10,
+                        fill: 0xffffff
+                    });
+                    hpText.anchor.set(0.5, 1);
+                    pixiVectorLayer.addChild(hpText);
+                    this._pixiHealthText = hpText;
+                } else if (!hpText.parent) {
+                    pixiVectorLayer.addChild(hpText);
+                }
+                hpText.text = `${this.hp}/${this.maxHp}`;
+                hpText.position.set(this.pos.x, this.pos.y - this.visualRadius - 48);
+            }
+
             // DEBUG HITBOX
             if (pixiVectorLayer) {
                 let debugGfx = this._pixiDebugGfx;
@@ -13616,6 +13845,33 @@ class Destroyer2 extends Entity {
 
         // Nameplate
         ctx.restore();
+
+        // Health Bar
+        const hpBarWidth = 80;
+        const hpBarHeight = 6;
+        const hpBarY = this.pos.y - this.visualRadius - 45;
+        const hpPercent = Math.max(0, this.hp / this.maxHp);
+
+        // Background (empty)
+        ctx.fillStyle = '#300';
+        ctx.fillRect(this.pos.x - hpBarWidth / 2, hpBarY, hpBarWidth, hpBarHeight);
+
+        // Foreground (health)
+        const healthColor = hpPercent > 0.6 ? '#0f0' : (hpPercent > 0.3 ? '#ff0' : '#f00');
+        ctx.fillStyle = healthColor;
+        ctx.fillRect(this.pos.x - hpBarWidth / 2, hpBarY, hpBarWidth * hpPercent, hpBarHeight);
+
+        // Border
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(this.pos.x - hpBarWidth / 2, hpBarY, hpBarWidth, hpBarHeight);
+
+        // HP Text
+        ctx.fillStyle = '#fff';
+        ctx.font = '10px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${this.hp}/${this.maxHp}`, this.pos.x, hpBarY - 3);
+
         if (this.displayName) {
             ctx.fillStyle = '#ff8000';
             ctx.font = 'bold 18px Courier New';
@@ -15394,6 +15650,40 @@ function spawnParticles(x, y, count = 10, color = '#fff') {
 }
 
 /**
+ * Spawn a lightning arc visual effect between two points
+ * @param {number} x1 - Start X position
+ * @param {number} y1 - Start Y position
+ * @param {number} x2 - End X position
+ * @param {number} y2 - End Y position
+ * @param {string} color - Lightning color
+ */
+function spawnLightningArc(x1, y1, x2, y2, color = '#0ff') {
+    // Create particle-based lightning effect
+    const segments = 8;
+    for (let i = 0; i < segments; i++) {
+        const t = i / segments;
+        const midX = x1 + (x2 - x1) * t;
+        const midY = y1 + (y2 - y1) * t;
+        // Add randomness perpendicular to the line
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const perpX = len > 0 ? -dy / len : 0;
+        const perpY = len > 0 ? dx / len : 0;
+        const offset = (Math.random() - 0.5) * 30; // Jagged offset
+
+        emitParticle(midX + perpX * offset, midY + perpY * offset, null, null, color, 8);
+    }
+}
+
+/**
+ * Process and render lightning effects (placeholder - handled by particles)
+ */
+function processLightningEffects() {
+    // Lightning is handled by the particle system, nothing to do here
+}
+
+/**
  * Schedule particle bursts to be spread across multiple frames
  * This prevents sprite pool exhaustion when many particles need to spawn at once
  * @param {number} x - X position
@@ -15662,8 +15952,46 @@ function spawnBarrelSmoke(x, y, angle) {
 // --- Meta Progression ---
 function loadMetaProfile() {
     try {
-        const raw = localStorage.getItem('meta_profile_v1');
-        if (raw) metaProfile = JSON.parse(raw);
+        // Use profile-specific key for meta data
+        const profileKey = currentProfileName
+            ? `meta_profile_v1_${currentProfileName}`
+            : 'meta_profile_v1';
+        let raw = localStorage.getItem(profileKey);
+        console.log('[META LOAD] Loading meta profile from key:', profileKey, '| Found:', !!raw);
+
+        // Migration: if no data found in profile-specific key, check the legacy key
+        // This recovers data saved before the initialization order fix
+        if (!raw && currentProfileName) {
+            const legacyKey = 'meta_profile_v1';
+            const legacyRaw = localStorage.getItem(legacyKey);
+            if (legacyRaw) {
+                console.log('[META LOAD] Migration: Found legacy data, migrating to profile key');
+                raw = legacyRaw;
+                // Migrate the data to the correct key
+                localStorage.setItem(profileKey, legacyRaw);
+                // Optionally keep legacy data for fallback, or remove it:
+                // localStorage.removeItem(legacyKey);
+            }
+        }
+
+        // Always reset to defaults first, then load saved data
+        metaProfile = {
+            bank: 0,
+            purchases: {}
+        };
+
+        if (raw) {
+            try {
+                const saved = JSON.parse(raw);
+                // Merge saved data over defaults
+                if (typeof saved.bank === 'number') metaProfile.bank = saved.bank;
+                if (saved.purchases) {
+                    metaProfile.purchases = Object.assign(metaProfile.purchases, saved.purchases);
+                }
+            } catch (e) {
+                console.warn('Failed to parse meta profile, using defaults', e);
+            }
+        }
         if (!metaProfile.purchases) metaProfile.purchases = {};
         metaProfile.purchases = Object.assign({
             startDamage: 0,
@@ -15700,7 +16028,8 @@ function loadMetaProfile() {
             bountyHunter: 0,
             comboMeter: 0,
             startingWeapon: 0,
-            secondWind: 0
+            secondWind: 0,
+            batteryCapacitor: 0
         }, metaProfile.purchases);
         if (metaProfile.purchases.warpPrecharge) delete metaProfile.purchases.warpPrecharge;
         if (typeof metaProfile.bank !== 'number') metaProfile.bank = 0;
@@ -15716,6 +16045,12 @@ function loadMetaProfile() {
                 metaProfile.purchases[key] = 0;
             }
         }
+
+        // Log loaded purchases for debugging
+        const purchasedItems = Object.entries(metaProfile.purchases || {})
+            .filter(([k, v]) => v > 0)
+            .map(([k, v]) => `${k}:${v}`);
+        console.log('[META LOAD] Loaded bank:', metaProfile.bank, '| Purchases:', purchasedItems.length > 0 ? purchasedItems.join(', ') : 'none');
     } catch (e) {
         console.warn('failed to load meta profile', e);
     }
@@ -15763,7 +16098,14 @@ function resetMetaProfile() {
 }
 function saveMetaProfile() {
     try {
-        localStorage.setItem('meta_profile_v1', JSON.stringify(metaProfile));
+        // Use profile-specific key for meta data
+        const profileKey = currentProfileName
+            ? `meta_profile_v1_${currentProfileName}`
+            : 'meta_profile_v1';
+        metaProfile.lastSavedAt = Date.now();
+        const dataToSave = JSON.stringify(metaProfile);
+        localStorage.setItem(profileKey, dataToSave);
+        console.log('[META SAVE] Saved meta profile to key:', profileKey, '| Purchases:', Object.keys(metaProfile.purchases || {}).length, 'items');
         updateMetaUI();
     } catch (e) { console.warn('failed to save meta profile', e); }
 }
@@ -17466,6 +17808,48 @@ function resolveEntityCollision() {
                 score += c.value;
                 player.addXp(c.value);
                 addPickupFloatingText('gold', c.value, '#ff0');
+
+                // Reactive Shield: restore shield segments on collect (50 coins per restore)
+                if (player.stats.reactiveShield && player.stats.reactiveShield > 0) {
+                    // Track coins toward next restore
+                    if (!player.reactiveShieldCoins) player.reactiveShieldCoins = 0;
+                    player.reactiveShieldCoins += c.value;
+
+                    // Every 50 coins, restore segments
+                    while (player.reactiveShieldCoins >= 50) {
+                        player.reactiveShieldCoins -= 50;
+                        const restoreAmount = player.stats.reactiveShield;
+                        // Tier 3 bonus: +25% shield HP (2 → 3)
+                        const innerShieldMaxHp = player.stats.reactiveShieldBonusHp ? 3 : 2;
+
+                        // Restore outer shield segments first
+                        for (let i = 0; i < restoreAmount && player.outerShieldSegments && player.outerShieldSegments.length > 0; i++) {
+                            const idx = player.outerShieldSegments.findIndex(s => s <= 0);
+                            if (idx !== -1) {
+                                player.outerShieldSegments[idx] = 1;
+                                player.shieldsDirty = true;
+                            } else {
+                                // Outer shields full, try inner shields
+                                const innerIdx = player.shieldSegments.findIndex(s => s < innerShieldMaxHp);
+                                if (innerIdx !== -1) {
+                                    player.shieldSegments[innerIdx] = Math.min(innerShieldMaxHp, player.shieldSegments[innerIdx] + 1);
+                                    player.shieldsDirty = true;
+                                }
+                            }
+                        }
+                        // If outer shields were full, restore remaining to inner shields
+                        if (restoreAmount > 0 && player.shieldSegments) {
+                            for (let i = 0; i < restoreAmount; i++) {
+                                const innerIdx = player.shieldSegments.findIndex(s => s < innerShieldMaxHp);
+                                if (innerIdx !== -1) {
+                                    player.shieldSegments[innerIdx] = Math.min(innerShieldMaxHp, player.shieldSegments[innerIdx] + 1);
+                                    player.shieldsDirty = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (typeof c.kill === 'function') c.kill();
                 else c.dead = true;
             }
@@ -17937,6 +18321,124 @@ function showAbortConfirmDialog() {
     });
 }
 
+function showRenamePromptDialog(defaultName) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('rename-prompt-modal');
+        const input = document.getElementById('rename-input');
+        const confirmBtn = document.getElementById('rename-confirm');
+        const cancelBtn = document.getElementById('rename-cancel');
+
+        if (!modal || !input || !confirmBtn || !cancelBtn) {
+            resolve(null);
+            return;
+        }
+
+        input.value = defaultName || '';
+        modal.style.display = 'block';
+
+        // Reset gamepad navigation for this modal
+        menuSelectionIndex = 0;
+        gpState.lastMenuElements = null;
+
+        const cleanup = () => {
+            confirmBtn.removeEventListener('click', onConfirm);
+            cancelBtn.removeEventListener('click', onCancel);
+            window.removeEventListener('keydown', onEscape);
+            window.removeEventListener('keydown', onEnter);
+            modal.style.display = 'none';
+        };
+
+        const onConfirm = () => {
+            const newName = input.value.trim();
+            cleanup();
+            resolve(newName || null);
+        };
+
+        const onCancel = () => {
+            cleanup();
+            resolve(null);
+        };
+
+        const onEscape = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                onCancel();
+            }
+        };
+
+        const onEnter = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                onConfirm();
+            }
+        };
+
+        confirmBtn.addEventListener('click', onConfirm);
+        cancelBtn.addEventListener('click', onCancel);
+        window.addEventListener('keydown', onEscape);
+        window.addEventListener('keydown', onEnter);
+
+        // Set up gamepad navigation - only the buttons, not the input
+        const setupGamepadNav = () => {
+            // Create a custom elements array for gamepad navigation (buttons only)
+            const navElements = [confirmBtn, cancelBtn];
+            gpState.lastMenuElements = navElements;
+
+            // Store the input reference so it doesn't get blurred
+            const inputElement = input;
+
+            // Override updateMenuVisuals for this modal to not blur the input
+            const originalUpdateMenuVisuals = window.updateMenuVisuals;
+            window.updateMenuVisuals = function(elements) {
+                elements.forEach((el, idx) => {
+                    if (idx === menuSelectionIndex) {
+                        el.classList.add('selected');
+                        if (typeof el.focus === 'function') {
+                            el.focus();
+                        }
+                    } else {
+                        el.classList.remove('selected');
+                        // Don't blur the input field
+                        if (el !== inputElement && typeof el.blur === 'function') {
+                            el.blur();
+                        }
+                    }
+                });
+            };
+
+            // Restore original function on cleanup
+            const originalCleanup = cleanup;
+            const newCleanup = () => {
+                window.updateMenuVisuals = originalUpdateMenuVisuals;
+                originalCleanup();
+            };
+
+            // Replace cleanup references
+            confirmBtn.removeEventListener('click', onConfirm);
+            cancelBtn.removeEventListener('click', onCancel);
+            confirmBtn.addEventListener('click', () => {
+                const newName = input.value.trim();
+                newCleanup();
+                resolve(newName || null);
+            });
+            cancelBtn.addEventListener('click', () => {
+                newCleanup();
+                resolve(null);
+            });
+        };
+
+        // Wait one frame to ensure DOM has updated, then setup
+        requestAnimationFrame(() => {
+            menuDebounce = Date.now() + 300;
+            input.focus();
+            input.select();
+            setupGamepadNav();
+            const active = [confirmBtn, cancelBtn];
+            updateMenuVisuals(active);
+        });
+    });
+}
+
 function listSaveSlots() {
     const slots = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -18014,14 +18516,32 @@ function updateProfileSelectionVisuals() {
 }
 
 function selectProfile(name) {
+    // Reset stats when switching profiles to prevent carryover
+    resetProfileStats();
+
     currentProfileName = name;
     localStorage.setItem(SAVE_LAST_KEY, name);
+
+    // Reload meta profile for the selected profile
+    metaProfile = { purchases: {}, bank: 0 };
+    loadMetaProfile();
+
     updateStartScreenDisplay();
     showOverlayMessage(`SELECTED: ${name}`, '#ff0', 1200);
 }
 
+function resetProfileStats() {
+    totalKills = 0;
+    highScore = 0;
+    totalPlayTimeMs = 0;
+}
+
 function createNewProfile() {
     const existingProfiles = listSaveSlots();
+
+    // Clear legacy global meta profile key to prevent migration to new profiles
+    localStorage.removeItem('meta_profile_v1');
+
     let counter = 1;
     let newName;
     do {
@@ -18043,6 +18563,48 @@ function createNewProfile() {
 
     try {
         localStorage.setItem(SAVE_PREFIX + newName, JSON.stringify(template));
+
+        // Initialize empty meta profile for new profile
+        const newMetaProfile = {
+            bank: 0,
+            purchases: {
+                startDamage: 0,
+                passiveHp: 0,
+                rerollTokens: 0,
+                hullPlating: 0,
+                shieldCore: 0,
+                staticBlueprint: 0,
+                missilePrimer: 0,
+                magnetBooster: 0,
+                nukeCapacitor: 0,
+                speedTuning: 0,
+                bankMultiplier: 0,
+                shopDiscount: 0,
+                extraLife: 0,
+                droneFabricator: 0,
+                piercingRounds: 0,
+                explosiveRounds: 0,
+                criticalStrike: 0,
+                splitShot: 0,
+                thornArmor: 0,
+                lifesteal: 0,
+                evasionBoost: 0,
+                shieldRecharge: 0,
+                dashCooldown: 0,
+                dashDuration: 0,
+                xpMagnetPlus: 0,
+                autoReroll: 0,
+                nuggetMagnet: 0,
+                contractSpeed: 0,
+                startingRerolls: 0,
+                luckyDrop: 0,
+                bountyHunter: 0,
+                comboMeter: 0,
+                startingWeapon: 0,
+                secondWind: 0
+            }
+        };
+        localStorage.setItem(`meta_profile_v1_${newName}`, JSON.stringify(newMetaProfile));
     } catch (e) {
         showOverlayMessage("PROFILE CREATE FAILED", '#f00', 1500);
         return;
@@ -18055,19 +18617,83 @@ function createNewProfile() {
     showOverlayMessage(`CREATED: ${newName}`, '#0f0', 1200);
 }
 
+async function renameSelectedProfile() {
+    if (!selectedProfileName) {
+        showOverlayMessage("NO PROFILE SELECTED", '#f00', 1200);
+        return;
+    }
+
+    // Close the profile menu first so the rename dialog appears on top
+    const menu = document.getElementById('save-menu');
+    if (menu) menu.style.display = 'none';
+
+    const oldName = selectedProfileName;
+    const newName = await showRenamePromptDialog(oldName);
+
+    // Re-open the profile menu after dialog closes
+    showSaveMenu();
+
+    if (!newName || newName === oldName) return;
+
+    // Check if name already exists
+    const existingProfiles = listSaveSlots();
+    if (existingProfiles.includes(newName)) {
+        showOverlayMessage("PROFILE NAME EXISTS", '#f00', 1500);
+        return;
+    }
+
+    try {
+        // Load profile data
+        const profileData = localStorage.getItem(SAVE_PREFIX + oldName);
+        const metaData = localStorage.getItem(`meta_profile_v1_${oldName}`);
+
+        // Save under new name
+        if (profileData) localStorage.setItem(SAVE_PREFIX + newName, profileData);
+        if (metaData) localStorage.setItem(`meta_profile_v1_${newName}`, metaData);
+
+        // Delete old profile
+        localStorage.removeItem(SAVE_PREFIX + oldName);
+        localStorage.removeItem(`meta_profile_v1_${oldName}`);
+
+        // Update references
+        if (currentProfileName === oldName) {
+            currentProfileName = newName;
+            localStorage.setItem(SAVE_LAST_KEY, newName);
+        }
+        if (selectedProfileName === oldName) {
+            selectedProfileName = newName;
+        }
+
+        showSaveMenu();
+        showOverlayMessage(`RENAMED TO: ${newName}`, '#0f0', 1200);
+    } catch (e) {
+        showOverlayMessage("RENAME FAILED", '#f00', 1500);
+    }
+}
+
 async function deleteSelectedProfile() {
     if (!selectedProfileName) {
         showOverlayMessage("NO PROFILE SELECTED", '#f00', 1200);
         return;
     }
 
+    // Close the profile menu first so the confirmation dialog appears on top
+    const menu = document.getElementById('save-menu');
+    if (menu) menu.style.display = 'none';
+
     const confirmed = await showAbortConfirmDialog();
-    if (!confirmed) return;
+    if (!confirmed) {
+        // If cancelled, re-open the profile menu
+        showSaveMenu();
+        return;
+    }
 
     localStorage.removeItem(SAVE_PREFIX + selectedProfileName);
+    localStorage.removeItem(`meta_profile_v1_${selectedProfileName}`);
     if (currentProfileName === selectedProfileName) {
         currentProfileName = null;
         localStorage.removeItem(SAVE_LAST_KEY);
+        resetProfileStats();
         updateStartScreenDisplay();
     }
 
@@ -18082,6 +18708,14 @@ function showSaveMenu() {
 
     const profiles = getProfileList();
     listEl.innerHTML = '';
+
+    // Auto-select a profile: current profile if it exists and is valid, otherwise first profile
+    if (profiles.length > 0) {
+        const currentProfileExists = currentProfileName && profiles.some(p => p.name === currentProfileName);
+        selectedProfileName = currentProfileExists ? currentProfileName : profiles[0].name;
+    } else {
+        selectedProfileName = null;
+    }
 
     if (profiles.length === 0) {
         listEl.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">No profiles found</div>';
@@ -18112,6 +18746,7 @@ function showSaveMenu() {
     }
 
     document.getElementById('create-new-profile').onclick = () => createNewProfile();
+    document.getElementById('rename-profile').onclick = () => renameSelectedProfile();
     document.getElementById('delete-profile').onclick = () => deleteSelectedProfile();
     document.getElementById('select-profile').onclick = () => {
         if (selectedProfileName) {
@@ -18127,7 +18762,6 @@ function showSaveMenu() {
     };
 
     menu.style.display = 'block';
-    selectedProfileName = currentProfileName;
     updateProfileSelectionVisuals();
 
     menuSelectionIndex = 0;
@@ -18849,9 +19483,9 @@ function applyUpgrade(id, tier) {
         }
         case 'volley_shot':
             player.volleyShotUnlocked = true;
-            if (tier === 1) { player.volleyShotCount = 3; player.volleyChargeRate = 1; }
-            if (tier === 2) { player.volleyShotCount = 5; player.volleyChargeRate = 2; }
-            if (tier === 3) { player.volleyShotCount = 7; player.volleyChargeRate = 999; }
+            if (tier === 1) { player.volleyShotCount = 3; }
+            if (tier === 2) { player.volleyShotCount = 5; }
+            if (tier === 3) { player.volleyShotCount = 7; }
             break;
         case 'chain_lightning':
             if (tier === 1) { player.chainLightningCount = 1; player.chainLightningRange = 200; }
@@ -18866,7 +19500,17 @@ function applyUpgrade(id, tier) {
         case 'reactive_shield':
             if (tier === 1) player.stats.reactiveShield = 1;
             if (tier === 2) player.stats.reactiveShield = 2;
-            if (tier === 3) { player.stats.reactiveShield = 3; player.stats.reactiveShieldBonusHp = true; }
+            if (tier === 3) {
+                player.stats.reactiveShield = 3;
+                player.stats.reactiveShieldBonusHp = true;
+                // Upgrade existing shield segments from 2 HP to 3 HP
+                if (player.shieldSegments) {
+                    for (let i = 0; i < player.shieldSegments.length; i++) {
+                        if (player.shieldSegments[i] === 2) player.shieldSegments[i] = 3;
+                    }
+                    player.shieldsDirty = true;
+                }
+            }
             break;
         case 'damage_mitigation':
             if (tier === 1) { player.stats.damageMitigation = 0.9; player.stats.speedBonusFromMit = 1.05; }
@@ -19109,6 +19753,27 @@ function updateGamepad() {
                         }
                     }
 
+                    // 5. Check if run upgrades screen is open
+                    if (!handled) {
+                        const runUpgradesScreen = document.getElementById('run-upgrades-screen');
+                        if (runUpgradesScreen && runUpgradesScreen.style.display === 'block') {
+                            const runUpgradesBackBtn = document.getElementById('run-upgrades-back-btn');
+                            if (runUpgradesBackBtn) {
+                                runUpgradesBackBtn.click();
+                                handled = true;
+                            }
+                        }
+                    }
+
+                    // 6. Check if pause menu is open - B button resumes game
+                    if (!handled) {
+                        const pauseMenu = document.getElementById('pause-menu');
+                        if (pauseMenu && pauseMenu.style.display === 'block') {
+                            togglePause();
+                            handled = true;
+                        }
+                    }
+
                     if (handled) {
                         menuDebounce = now + 200;
                     }
@@ -19153,6 +19818,13 @@ function getActiveMenuElements() {
             result.push(backBtn);
         }
         return result.length ? result : (backBtn ? [backBtn] : []);
+    }
+
+    // Check for run upgrades screen (pause menu upgrades display)
+    const runUpgradesScreen = document.getElementById('run-upgrades-screen');
+    if (isVisible(runUpgradesScreen)) {
+        const backBtn = document.getElementById('run-upgrades-back-btn');
+        return backBtn ? [backBtn] : [];
     }
 
     const levelupScreen = document.getElementById('levelup-screen');
@@ -19226,6 +19898,12 @@ function getActiveMenuElements() {
     const abortModal = document.getElementById('abort-modal');
     if (isVisible(abortModal)) {
         return Array.from(document.querySelectorAll('#abort-modal button'));
+    }
+
+    // Rename prompt modal
+    const renameModal = document.getElementById('rename-prompt-modal');
+    if (isVisible(renameModal)) {
+        return Array.from(document.querySelectorAll('#rename-prompt-modal button'));
     }
 
     const pauseMenu = document.getElementById('pause-menu');
@@ -19305,7 +19983,10 @@ function killPlayer() {
         resetWarpState();
         stopMusic();
         try { depositMetaNuggets(); } catch (e) { console.warn('meta deposit failed', e); }
-        if (currentProfileName) autoSaveToCurrentProfile();
+        if (currentProfileName) {
+            autoSaveToCurrentProfile(); // Saves game state
+            saveMetaProfile();          // Saves meta shop upgrades
+        }
         document.getElementById('start-screen').style.display = 'block';
         document.querySelector('#start-screen h1').innerText = "SYSTEM FAILURE";
         document.getElementById('start-btn').innerText = "REBOOT SYSTEM";
@@ -20205,6 +20886,7 @@ function gameLoopLogic(opts = null) {
     if (doUpdate) {
         processStaggeredBombExplosions();
         processStaggeredParticleBursts();
+        processLightningEffects();
     }
 
     // Explosions - always update, cull drawing
@@ -20521,6 +21203,60 @@ function gameLoopLogic(opts = null) {
                                     hit = true;
                                     playSound('hit');
                                     spawnParticles(e.pos.x, e.pos.y, 3, '#fff');
+
+                                    // Chain Lightning: arc to nearby enemies
+                                    if (player.chainLightningCount && player.chainLightningCount > 0 && player.chainLightningRange && !b.isEnemy) {
+                                        let chainCount = player.chainLightningCount;
+                                        let chainSource = e;
+                                        let chainTargets = new Set();
+                                        chainTargets.add(e);
+
+                                        for (let chain = 0; chain < chainCount; chain++) {
+                                            let nearestTarget = null;
+                                            let nearestDist = player.chainLightningRange;
+
+                                            for (let other of nearby) {
+                                                if (other.dead) continue;
+                                                if (!(other instanceof Enemy)) continue;
+                                                if (other === boss) continue; // Skip boss
+                                                if (chainTargets.has(other)) continue;
+
+                                                const d = Math.hypot(other.pos.x - chainSource.pos.x, other.pos.y - chainSource.pos.y);
+                                                if (d < nearestDist) {
+                                                    nearestDist = d;
+                                                    nearestTarget = other;
+                                                }
+                                            }
+
+                                            if (nearestTarget) {
+                                                // Deal chain damage (reduced with each hop)
+                                                const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                                                if (nearestTarget === destroyer) {
+                                                    const hpBefore = nearestTarget.hp;
+                                                    nearestTarget.hp -= chainDamage;
+                                                    console.log(`[DESTROYER DEBUG] CHAIN LIGHTNING: ${chainDamage.toFixed(1)} damage | HP: ${hpBefore} -> ${nearestTarget.hp} | Chain: ${chain + 1}`);
+                                                } else {
+                                                    nearestTarget.hp -= chainDamage;
+                                                }
+                                                chainTargets.add(nearestTarget);
+
+                                                // Visual lightning effect
+                                                spawnLightningArc(chainSource.pos.x, chainSource.pos.y, nearestTarget.pos.x, nearestTarget.pos.y, '#0ff');
+                                                spawnParticles(nearestTarget.pos.x, nearestTarget.pos.y, 3, '#0ff');
+                                                playSound('hit');
+
+                                                if (nearestTarget.hp <= 0) {
+                                                    nearestTarget.kill();
+                                                    score += 100;
+                                                }
+
+                                                chainSource = nearestTarget;
+                                            } else {
+                                                break; // No more targets in range
+                                            }
+                                        }
+                                    }
+
                                     if (e.hp <= 0) {
                                         e.kill();
                                         score += 100;
@@ -20846,7 +21582,9 @@ function gameLoopLogic(opts = null) {
                             }
                         }
                         if (!hit && (typeof destroyer.hitTestCircle === 'function' ? destroyer.hitTestCircle(b.pos.x, b.pos.y, b.radius) : (dist < destroyer.radius + b.radius))) {
+                            const hpBefore = destroyer.hp;
                             destroyer.hp -= b.damage;
+                            console.log(`[DESTROYER DEBUG] BULLET HIT: ${b.damage} dmg | HP: ${hpBefore} -> ${destroyer.hp} | isEnemy=${b.isEnemy} | color=${b.color} | owner=${b.owner?.displayName || b.owner?.constructor?.name || 'none'} | homing=${b.homing}`);
                             hit = true;
                             playSound('hit');
                             spawnParticles(b.pos.x, b.pos.y, 5, '#ff0');
@@ -21731,9 +22469,7 @@ function startGame() {
             }
         } else {
             // Reset stats if no profile
-            totalKills = 0;
-            highScore = 0;
-            totalPlayTimeMs = 0;
+            resetProfileStats();
         }
 
         score = 0;
@@ -21763,6 +22499,7 @@ function startGame() {
         player.outerShieldSegments = new Array(12).fill(2);
         player.hp = player.maxHp;
         player.inventory = {};
+        player.reactiveShieldCoins = 0;
         player.xp = 0;
         player.level = 1;
         player.nextLevelXp = 100;
@@ -21806,6 +22543,11 @@ function startGame() {
         player.nukeMaxCooldown = 600;
         player.magnetRadius = 150;
         player.nukeUnlocked = false;
+        // Volley shot initialization
+        player.volleyShotUnlocked = false;
+        player.volleyShotCount = 0;
+        player.volleyCooldown = 0;
+        player.lastF = false;
         gameEnded = false;
 
         // Setup game world (clear all entities)
@@ -22275,12 +23017,26 @@ function togglePause() {
 }
 
 function quitGame() {
-    // Pause the game and show the start menu overlay
-    if (!gamePaused) {
-        gamePaused = true;
-        pauseStartTime = getGameNowMs();
+    // Deposit nuggets and save before aborting
+    try {
+        depositMetaNuggets();
+    } catch (e) { console.warn('meta deposit failed on abort', e); }
+
+    // Save game state and meta profile
+    if (currentProfileName) {
+        try {
+            autoSaveToCurrentProfile();
+            saveMetaProfile();
+        } catch (e) { console.warn('save failed on abort', e); }
     }
+
+    // End the game properly
+    gameActive = false;
+    gameEnded = true;
     stopArenaCountdown();
+    stopMusic();
+
+    // Show start screen with ABORTED message
     document.getElementById('pause-menu').style.display = 'none';
     document.getElementById('start-screen').style.display = 'block';
     const endScreen = document.getElementById('end-screen');
@@ -22290,25 +23046,16 @@ function quitGame() {
     setTimeout(() => document.getElementById('resume-btn-start').focus(), 100);
     menuSelectionIndex = 0;
 
-    // Set flag that we came from pause menu
-    fromPauseMenu = true;
+    // Cannot resume an aborted run
+    canResumeGame = false;
 
-    // Mark that we can resume this game
-    canResumeGame = gameActive;
-
-    // Update resume button state based on whether we can resume
+    // Update resume button state
     const updateResumeButtonState = () => {
         const resumeBtn = document.getElementById('resume-btn-start');
         if (resumeBtn) {
-            if (canResumeGame) {
-                resumeBtn.disabled = false;
-                resumeBtn.style.opacity = '1';
-                resumeBtn.style.cursor = 'pointer';
-            } else {
-                resumeBtn.disabled = true;
-                resumeBtn.style.opacity = '0.5';
-                resumeBtn.style.cursor = 'not-allowed';
-            }
+            resumeBtn.disabled = true;
+            resumeBtn.style.opacity = '0.5';
+            resumeBtn.style.cursor = 'not-allowed';
         }
     };
     updateResumeButtonState();
@@ -22546,6 +23293,79 @@ function showUpgradesMenu() {
         }
     });
 }
+
+function showRunUpgrades() {
+    if (!player || !player.inventory) {
+        console.warn('[RUN UPGRADES] Player not initialized');
+        return;
+    }
+
+    const container = document.getElementById('run-upgrades-container');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    // Get all collected upgrades
+    const collectedUpgrades = Object.entries(player.inventory).filter(([id, tier]) => tier > 0);
+
+    if (collectedUpgrades.length === 0) {
+        container.innerHTML = '<div class="run-upgrades-empty">No upgrades collected yet</div>';
+    } else {
+        // Group by category
+        UPGRADE_DATA.categories.forEach(category => {
+            const categoryUpgrades = category.upgrades.filter(u => player.inventory[u.id] > 0);
+            if (categoryUpgrades.length === 0) return;
+
+            const categoryDiv = document.createElement('div');
+            categoryDiv.className = 'run-upgrade-category';
+
+            const categoryTitle = document.createElement('div');
+            categoryTitle.className = 'run-upgrade-category-title';
+            categoryTitle.textContent = category.name;
+            categoryDiv.appendChild(categoryTitle);
+
+            categoryUpgrades.forEach(upgrade => {
+                const tier = player.inventory[upgrade.id];
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'run-upgrade-item';
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'run-upgrade-name';
+                nameSpan.textContent = upgrade.name;
+
+                const tierSpan = document.createElement('span');
+                tierSpan.className = 'run-upgrade-tier';
+                tierSpan.textContent = `TIER ${tier}`;
+
+                itemDiv.appendChild(nameSpan);
+                itemDiv.appendChild(tierSpan);
+                categoryDiv.appendChild(itemDiv);
+            });
+
+            container.appendChild(categoryDiv);
+        });
+    }
+
+    // Hide pause menu, show run upgrades screen
+    document.getElementById('pause-menu').style.display = 'none';
+    document.getElementById('run-upgrades-screen').style.display = 'block';
+
+    // Focus on back button for keyboard/gamepad navigation
+    setTimeout(() => {
+        document.getElementById('run-upgrades-back-btn').focus();
+    }, 100);
+}
+
+function hideRunUpgrades() {
+    document.getElementById('run-upgrades-screen').style.display = 'none';
+    document.getElementById('pause-menu').style.display = 'block';
+
+    // Focus back on upgrades button
+    setTimeout(() => {
+        document.getElementById('pause-upgrades-btn').focus();
+    }, 100);
+}
+
 const newProfileBtn = document.getElementById('new-profile-btn');
 if (newProfileBtn) newProfileBtn.addEventListener('click', () => {
     if (confirm("Reset profile? This clears all nugs/stats and saved profiles.")) {
@@ -22572,6 +23392,18 @@ document.getElementById('quit-btn').addEventListener('click', async () => {
     }
 });
 document.getElementById('music-btn').addEventListener('click', toggleMusic);
+
+// Pause menu upgrades button - shows current run upgrades
+const pauseUpgradesBtn = document.getElementById('pause-upgrades-btn');
+if (pauseUpgradesBtn) {
+    pauseUpgradesBtn.addEventListener('click', showRunUpgrades);
+}
+
+// Run upgrades back button
+const runUpgradesBackBtn = document.getElementById('run-upgrades-back-btn');
+if (runUpgradesBackBtn) {
+    runUpgradesBackBtn.addEventListener('click', hideRunUpgrades);
+}
 
 
 // --- Settings Menu Logic ---
@@ -22735,7 +23567,7 @@ if (qStart) {
 }
 if (qPause) {
     qPause.addEventListener('click', () => {
-        if (confirm("Quit to desktop? Any unsaved progress will be lost.")) {
+        if (confirm("Quit to desktop? Game and upgrades will be auto-saved.")) {
             window.SpacebrosApp.settings.quit();
         }
     });
@@ -22761,11 +23593,42 @@ requestAnimationFrame(() => {
     }
 });
 
+// Initialize profile system BEFORE loading meta profile
+currentProfileName = localStorage.getItem(SAVE_LAST_KEY) || null;
+
 loadMetaProfile();
 updateMetaUI();
-
-// Initialize profile system
-currentProfileName = localStorage.getItem(SAVE_LAST_KEY) || null;
 updateStartScreenDisplay();
+
+// Save on app close (beforeunload event)
+window.addEventListener('beforeunload', () => {
+    if (currentProfileName) {
+        try {
+            autoSaveToCurrentProfile(); // Saves game state
+            saveMetaProfile();          // Saves meta shop upgrades
+        } catch (e) {
+            // Silent fail on beforeunload - console won't be visible anyway
+        }
+    }
+});
+
+// Electron-specific save handler (more reliable than beforeunload)
+if (window.SpacebrosApp && window.SpacebrosApp.ipcRenderer) {
+    window.SpacebrosApp.ipcRenderer.on('app-before-quit', () => {
+        console.log('[SAVE] App quit detected, saving profiles...');
+        if (currentProfileName) {
+            try {
+                autoSaveToCurrentProfile(); // Saves game state
+                console.log('[SAVE] Game profile saved');
+                saveMetaProfile();          // Saves meta shop upgrades
+                console.log('[SAVE] Meta profile saved');
+            } catch (e) {
+                console.warn('[SAVE] Save on quit failed:', e);
+            }
+        } else {
+            console.log('[SAVE] No profile, skipping save');
+        }
+    });
+}
 
 mainLoop();

@@ -382,16 +382,26 @@ button:hover, button:focus, button.selected {
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 10px;
     width: 100%;
+    justify-content: center;
 }
 .meta-item button {
     width: 100%;
     box-sizing: border-box;
+    text-align: center;
+    text-align-last: center;
+    text-justify: none;
+    padding: 8px 4px;
+    font-size: 11px;
+    line-height: 1.2;
+    word-wrap: break-word;
+    hyphens: auto;
 }
 .meta-item span {
     display: block;
     margin-top: 4px;
     font-size: 12px;
     color: #9f9;
+    text-align: center;
 }
 
 .upgrade-description-panel {
@@ -486,4 +496,59 @@ button:hover, button:focus, button.selected {
 #meta-modal-buy:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* Run Upgrades Display Styles */
+#run-upgrades-screen {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 700px;
+    max-width: 90vw;
+    background: rgba(0, 10, 20, 0.95);
+    border: 2px solid #0ff;
+    padding: 20px;
+    z-index: 200;
+}
+
+.run-upgrade-category {
+    margin-bottom: 20px;
+}
+
+.run-upgrade-category-title {
+    color: #ff0;
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #ff0;
+    padding-bottom: 5px;
+}
+
+.run-upgrade-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    margin: 5px 0;
+    background: rgba(0, 255, 255, 0.1);
+    border-left: 3px solid #0ff;
+}
+
+.run-upgrade-name {
+    color: #fff;
+    font-size: 14px;
+}
+
+.run-upgrade-tier {
+    color: #0f0;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.run-upgrades-empty {
+    color: #888;
+    font-size: 18px;
+    text-align: center;
+    padding: 40px;
 }

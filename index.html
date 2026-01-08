@@ -309,13 +309,33 @@
             transform: translate(-50%, -50%);
             text-align: center;
             font-size: 48px;
-            color: #f00;
-            text-shadow: 0 0 20px #f00, 0 0 40px #f00;
             font-weight: bold;
             letter-spacing: 4px;
             display: none;
             width: 100%;
             z-index: 6;
+            will-change: transform; /* Hint browser for animation optimization */
+        }
+
+        /* Base countdown state (10-6 seconds) */
+        #arena-countdown.countdown-normal {
+            color: #f80;
+            text-shadow: 0 0 20px #f80;
+            font-size: 48px;
+        }
+
+        /* Warning state (5-4 seconds) */
+        #arena-countdown.countdown-warning {
+            color: #ff0;
+            text-shadow: 0 0 25px #ff0;
+            font-size: 56px;
+        }
+
+        /* Critical state (3-1 seconds) */
+        #arena-countdown.countdown-critical {
+            color: #f00;
+            text-shadow: 0 0 30px #f00;
+            font-size: 64px;
             animation: pulse 0.5s ease-in-out infinite alternate;
         }
 
@@ -461,12 +481,14 @@
         .meta-item button {
             width: 100%;
             box-sizing: border-box;
+            text-align: center;
         }
 
         .meta-item.selected {
             background: rgba(0, 255, 0, 0.2);
             border: 2px solid #0f0;
             box-shadow: 0 0 10px #0f0;
+            overflow: hidden;
         }
 
         .meta-item span {
@@ -474,6 +496,7 @@
             margin-top: 4px;
             font-size: 12px;
             color: #9f9;
+            text-align: center;
         }
 
         .objective-text {
@@ -622,6 +645,14 @@
                     <div class="hp-value" id="battery-text" style="color: #0ff;">0%</div>
                 </div>
 
+                <div class="status-group" id="volley-ui" style="display: none;">
+                    <span style="color: #ff0;">VOLLEY:</span>
+                    <div class="bar-container">
+                        <div id="volley-fill" style="width: 0%; height: 100%; background: #ff0; transition: width 0.05s;"></div>
+                    </div>
+                    <div class="hp-value" id="volley-text" style="color: #ff0;">READY</div>
+                </div>
+
                 <div class="status-group nugget-display">
                     <span>NUGS:</span>
                     <div class="nugget-icon"></div>
@@ -664,7 +695,7 @@
         <button id="resume-btn-start">RESUME GAME</button>
         <button id="start-btn">INITIATE LAUNCH</button>
         <button id="profile-btn">SELECT PROFILE</button>
-        <button id="upgrades-btn" style="margin-top: 10px;">UPGRADES</button>
+        <button id="upgrades-btn" style="margin-top: 10px;">STORE</button>
         <button id="settings-btn" style="margin-top: 10px;">SETTINGS</button>
         <button id="desktop-quit-start-btn" style="margin-top: 10px;">QUIT TO DESKTOP</button>
     </div>
@@ -809,6 +840,7 @@
     <div id="pause-menu" class="menu-screen">
         <h1>PAUSED</h1>
         <button id="resume-btn">RESUME</button>
+        <button id="pause-upgrades-btn">UPGRADES</button>
         <button id="pause-settings-btn">SETTINGS</button>
         <button id="restart-btn-pause">RESTART</button>
         <button id="music-btn">MUSIC: ON</button>
@@ -835,11 +867,31 @@
         </div>
     </div>
 
+    <!-- Run Upgrades Display Modal -->
+    <div id="run-upgrades-screen" class="menu-screen" style="display: none; width: 700px; max-width: 90vw; background: rgba(0, 10, 20, 0.95); border: 2px solid #0ff; padding: 20px;">
+        <h2 style="color: #0ff; margin-top: 0; font-family: 'Courier New', monospace;">CURRENT RUN UPGRADES</h2>
+        <button id="run-upgrades-back-btn" style="margin-bottom: 15px;">← BACK</button>
+        <div id="run-upgrades-container" style="max-height: 60vh; overflow-y: auto; text-align: left; padding: 10px;">
+            <!-- Upgrades will be dynamically inserted here -->
+        </div>
+    </div>
+
+    <div id="rename-prompt-modal" class="menu-screen" style="display: none; width: 450px; padding: 30px; border-color: #ff0;">
+        <h2 style="color: #ff0; margin-top: 0; font-family: 'Courier New', monospace;">RENAME PROFILE</h2>
+        <p style="color: #ccc; margin: 20px 0; line-height: 1.6;">Enter new name:</p>
+        <input type="text" id="rename-input" style="width: 100%; padding: 10px; font-size: 16px; background: #111; color: #fff; border: 2px solid #ff0; font-family: 'Courier New', monospace; margin-bottom: 20px;" />
+        <div style="display: flex; gap: 20px; justify-content: center; margin-top: 25px;">
+            <button id="rename-confirm">OK</button>
+            <button id="rename-cancel">CANCEL</button>
+        </div>
+    </div>
+
     <div id="save-menu" class="menu-screen" style="display: none; width: 600px; max-height: 80vh; overflow-y: auto; border-color: #ff0;">
         <h2 style="color: #ff0; margin-top: 0; font-family: 'Courier New', monospace;">SELECT PROFILE</h2>
         <div id="profile-list" style="max-height: 50vh; overflow-y: auto; margin-bottom: 20px;"></div>
         <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
             <button id="create-new-profile">CREATE NEW</button>
+            <button id="rename-profile">RENAME SELECTED</button>
             <button id="delete-profile">DELETE SELECTED</button>
             <button id="select-profile">SELECT</button>
             <button id="close-save-menu" style="border-color: #0f0; color: #0f0;">CLOSE</button>
