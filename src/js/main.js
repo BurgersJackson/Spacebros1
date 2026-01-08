@@ -12,7 +12,8 @@ import { Entity } from './entities/Entity.js';
 import {
     ZOOM_LEVEL, SIM_FPS, SIM_STEP_MS, SIM_MAX_STEPS_PER_FRAME,
     PIXI_SPRITE_POOL_MAX, USE_PIXI_OVERLAY, BACKGROUND_MUSIC_URL,
-    ENABLE_NEBULA, NEBULA_ALPHA, ENABLE_PROJECTILE_IMPACT_SOUNDS
+    ENABLE_NEBULA, NEBULA_ALPHA, ENABLE_PROJECTILE_IMPACT_SOUNDS,
+    META_SHOP_UPGRADE_DATA
 } from './core/constants.js';
 import { Particle, SmokeParticle, Explosion, WarpParticle, Coin, FloatingText, HealthPowerUp, SpaceNugget, getOrCreateFloatingText } from './entities/index.js';
 import {
@@ -99,6 +100,11 @@ let gameMode = 'normal'; // 'normal' or 'arcade'
 let arcadeBoss = null;
 let arcadeWave = 0;
 let arcadeWaveNextAt = 0;
+
+// --- Meta Shop Modal State ---
+let currentModalUpgradeId = null;
+let modalSourceButtonIndex = null; // Remember which button index opened the modal
+let returningFromModal = false; // Flag to prevent index reset when returning from modal
 
 // --- Spatial Grid (SpatialHash imported from module) ---
 const asteroidGrid = new SpatialHash(300); // Cell size approx max asteroid size + buffer
@@ -2028,7 +2034,7 @@ let shakeTimer = 0;
 let shakeMagnitude = 0;
 
 // Inputs
-const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, e: false };
+const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, e: false, f: false };
 const mouseScreen = { x: 0, y: 0 };
 const mouseWorld = { x: 0, y: 0 };
 let lastMouseInputAt = 0;
@@ -2042,6 +2048,7 @@ let gpState = {
     fire: false,
     warp: false,
     turbo: false,
+    battery: false,
     pausePressed: false,
     lastMenuElements: null
 };
@@ -3040,6 +3047,18 @@ class Spaceship extends Entity {
             speedMult: 1.25, // +25% speed
             buttonHeld: false
         };
+
+        // Battery Ability
+        this.batteryUnlocked = false;
+        this.batteryCharge = 0; // 0-100
+        this.batteryMaxCharge = 100;
+        // Charge rate: 100 units over 30 seconds, independent of framerate
+        // deltaTime is in ms, dtScale = deltaTime / SIM_STEP_MS
+        // chargeRate is the amount to add per SIM_STEP_MS (16.67ms)
+        this.batteryChargeRate = (100 / 30000) * SIM_STEP_MS;
+        this.batteryDamage = 500;
+        this.batteryRange = 800;
+        this.batteryDischarging = false;
     }
 
     respawn() {
@@ -3284,8 +3303,8 @@ class Spaceship extends Entity {
                 // showOverlayMessage("PHASE SHIELD ACTIVE", '#ff0', 1000);
             } else if (this.invincibilityCycle.state === 'active') {
                 this.invulnerable = 2; // Sustain invulnerability each frame
-                // Tier 3 Regen - check every ~1 second (60 frames at 60fps)
-                if (this.invincibilityCycle.stats.regen && Math.floor(this.invincibilityCycle.timer / 60) !== Math.floor((this.invincibilityCycle.timer + dtScale) / 60)) {
+                // Tier 3 Regen - check every ~1 second (SIM_FPS frames at 60fps reference)
+                if (this.invincibilityCycle.stats.regen && Math.floor(this.invincibilityCycle.timer / SIM_FPS) !== Math.floor((this.invincibilityCycle.timer + dtScale) / SIM_FPS)) {
                     const emptyIdx = this.shieldSegments.findIndex(s => s < 2);
                     if (emptyIdx !== -1) {
                         this.shieldSegments[emptyIdx] = 2;
@@ -3328,6 +3347,63 @@ class Spaceship extends Entity {
                 if (!suppressWarpInputUntil || getGameNowMs() >= suppressWarpInputUntil) {
                     this.warp();
                 }
+            }
+        }
+
+        // Shield Recharge (meta upgrade)
+        if (this.stats.shieldRechargeRate > 0 && this.shieldSegments && this.shieldSegments.length > 0) {
+            const now = Date.now();
+            const rechargeInterval = this.stats.shieldRechargeRate * 1000;
+            if (now - (this.lastShieldRegenTime || 0) >= rechargeInterval) {
+                const emptyIdx = this.shieldSegments.findIndex(s => s < 2);
+                if (emptyIdx !== -1) {
+                    this.shieldSegments[emptyIdx] = 2;
+                    this.shieldsDirty = true;
+                    spawnParticles(this.pos.x, this.pos.y, 4, '#0ff');
+                }
+                this.lastShieldRegenTime = now;
+            }
+        }
+
+        // Second Wind timer update
+        if (this.stats.secondWindActive > 0) {
+            this.stats.secondWindActive -= dtScale;
+            if (this.stats.secondWindActive <= 0) {
+                this.stats.secondWindActive = 0;
+            }
+        }
+
+        // Combo Meter decay (resets after 5 seconds of no hits)
+        if (this.stats.comboMeter > 0 && this.comboStacks > 0) {
+            const now = Date.now();
+            if (now - (this.lastHitTime || 0) > 5000) {
+                this.comboStacks = 0;
+            }
+        }
+
+        // Battery charging logic
+        if (this.batteryUnlocked && !this.batteryDischarging) {
+            this.batteryCharge = Math.min(this.batteryMaxCharge, this.batteryCharge + this.batteryChargeRate * dtScale);
+        }
+
+        // Battery discharge (manual)
+        if (this.batteryUnlocked && (keys.f || gpState.battery)) {
+            this.dischargeBattery();
+            keys.f = false; // Prevent continuous discharge
+            gpState.battery = false;
+        }
+
+        // Update battery UI
+        if (this.batteryUnlocked) {
+            const batteryUi = document.getElementById('battery-ui');
+            const batteryText = document.getElementById('battery-text');
+            const batteryFill = document.getElementById('battery-fill');
+            if (batteryUi) batteryUi.style.display = 'flex';
+            const chargePercent = Math.floor(this.batteryCharge);
+            if (batteryText) batteryText.textContent = `${chargePercent}%`;
+            if (batteryFill) {
+                batteryFill.style.width = `${chargePercent}%`;
+                batteryFill.style.background = this.batteryCharge >= 100 ? '#fff' : '#0ff';
             }
         }
 
@@ -3383,6 +3459,39 @@ class Spaceship extends Entity {
         updateWarpUI();
     }
 
+    dischargeBattery() {
+        if (!this.batteryUnlocked || this.batteryCharge < 100 || this.batteryDischarging) return;
+
+        this.batteryDischarging = true;
+        this.batteryCharge = 0;
+
+        // Primary blast
+        shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.batteryDamage, this.batteryRange, {
+            damageAsteroids: true,
+            damageMissiles: true,
+            color: '#0ff',
+            travelSpeed: 15
+        }));
+
+        // Secondary ring effect (delayed)
+        setTimeout(() => {
+            if (!this.dead) {
+                shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.batteryDamage * 0.3, this.batteryRange * 1.2, {
+                    damageAsteroids: true,
+                    damageMissiles: true,
+                    color: '#08f',
+                    travelSpeed: 10
+                }));
+            }
+        }, 200);
+
+        showOverlayMessage("BATTERY DISCHARGED!", '#0ff', 1000);
+
+        setTimeout(() => {
+            this.batteryDischarging = false;
+        }, 500);
+    }
+
     fireMissiles() {
         const count = this.stats.homing * 2;
         for (let i = 0; i < count; i++) {
@@ -3398,7 +3507,14 @@ class Spaceship extends Entity {
     }
 
     shoot() {
-        const damage = 2 * this.stats.damageMult; //turret damage
+        let damage = 2 * this.stats.damageMult; //turret damage
+
+        // Combo Meter bonus to damage
+        if (this.stats.comboMeter > 0 && this.comboStacks > 0) {
+            const comboBonus = 1 + (this.comboStacks / this.comboMaxStacks) * this.stats.comboMaxBonus;
+            damage *= comboBonus;
+        }
+
         const bulletSpeed = 15;
         const shots = this.stats.multiShot;
 
@@ -3421,6 +3537,14 @@ class Spaceship extends Entity {
 
             bullets.push(new Bullet(bx, by, this.turretAngle, false, damage, bulletSpeed, 4, null, 0));
             spawnBarrelSmoke(bx, by, this.turretAngle);
+
+            // Split Shot - chance to fire additional projectile at angle
+            if (this.stats.splitShot > 0 && Math.random() < this.stats.splitShot) {
+                const splitAngle = this.turretAngle + (Math.random() - 0.5) * 0.5;
+                const splitBullet = new Bullet(bx, by, splitAngle, false, damage, bulletSpeed, 4, '#f80', 0);
+                splitBullet.isSplitShot = true;
+                bullets.push(splitBullet);
+            }
         }
         // Player shooting SFX (MP3), rate-limited.
         const now = Date.now();
@@ -3891,11 +4015,61 @@ class Shockwave extends Entity {
                     player.takeHit(this.damage);
                     this.hitList.push(e);
                 } else {
-                    e.hp -= this.damage;
+                    // Critical Strike
+                    let damage = this.damage;
+                    if (!this.isEnemy && player.stats.critChance > 0 && Math.random() < player.stats.critChance) {
+                        damage *= player.stats.critDamage;
+                        this.hasCrit = true;
+                        spawnParticles(e.pos.x, e.pos.y, 8, '#ff0');
+                    }
+
+                    e.hp -= damage;
                     this.hitList.push(e);
                     playSound('hit');
-                    spawnParticles(e.pos.x, e.pos.y, 5, '#ff0');
-                    if (e.hp <= 0) e.kill();
+                    spawnParticles(e.pos.x, e.pos.y, 5, this.hasCrit ? '#ffd700' : '#ff0');
+
+                    // Explosive Rounds
+                    if (!this.isEnemy && this.isExplosive) {
+                        const explodeRadius = player.stats.explosiveRadius || 200;
+                        const explodeDmg = player.stats.explosiveDamage || 30;
+                        spawnParticles(this.pos.x, this.pos.y, 12, '#f80');
+                        for (let other of targets) {
+                            if (other === e || other.dead || this.hitList.includes(other)) continue;
+                            const d = Math.hypot(other.pos.x - this.pos.x, other.pos.y - this.pos.y);
+                            if (d < explodeRadius + other.radius) {
+                                other.hp -= explodeDmg;
+                                spawnParticles(other.pos.x, other.pos.y, 4, '#f80');
+                                if (other.hp <= 0 && typeof other.kill === 'function') other.kill();
+                            }
+                        }
+                    }
+
+                    // Piercing Rounds - allow hitting multiple enemies
+                    if (this.pierceCount > 0) {
+                        this.pierceCount--;
+                        // Don't add to hitList, allowing piercing through enemies
+                    } else {
+                        this.hitList.push(e);
+                    }
+
+                    // Combo Meter - increment combo stacks on hit
+                    if (!this.isEnemy && player.stats.comboMeter > 0) {
+                        player.comboStacks = Math.min(player.comboStacks + 1, player.comboMaxStacks);
+                        player.lastHitTime = Date.now();
+                    }
+
+                    if (e.hp <= 0) {
+                        e.kill();
+                        // Lifesteal - heal on kill
+                        if (!this.isEnemy && player.stats.lifestealAmount > 0) {
+                            const healAmount = player.stats.lifestealAmount;
+                            if (player.hp < player.maxHp) {
+                                player.hp = Math.min(player.maxHp, player.hp + healAmount);
+                                updateHealthUI();
+                                spawnParticles(player.pos.x, player.pos.y, 5, '#0f0');
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -3989,7 +4163,8 @@ class CruiserMineBomb extends Entity {
         this._pixiGfx = null;
     }
     update(deltaTime = 16.67) {
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         this.pos.add(this.vel);
 
         if (player && !player.dead) {
@@ -4000,7 +4175,7 @@ class CruiserMineBomb extends Entity {
             }
         }
 
-        if (this.t % 2 === 0) {
+        if (Math.floor(this.t) % 2 === 0) {
             emitParticle(
                 this.pos.x + (Math.random() - 0.5) * 6,
                 this.pos.y + (Math.random() - 0.5) * 6,
@@ -4145,7 +4320,8 @@ class FlagshipGuidedMissile extends Entity {
 
     update(deltaTime = 16.67) {
         if (this.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         this.lifeMs -= deltaTime;
         if (this.lifeMs <= 0) { this.explode(); return; }
         if (!player || player.dead) { this.explode(); return; }
@@ -4155,7 +4331,6 @@ class FlagshipGuidedMissile extends Entity {
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-        const dtFactor = deltaTime / 16.67;
         this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), this.turnRate * dtFactor);
 
         this.vel.x = Math.cos(this.angle) * this.speed;
@@ -4164,7 +4339,7 @@ class FlagshipGuidedMissile extends Entity {
         // Use Entity.update for scaled movement
         super.update(deltaTime);
 
-        if (this.t % 2 === 0) {
+        if (Math.floor(this.t) % 2 === 0) {
             emitParticle(
                 this.pos.x + (Math.random() - 0.5) * 6,
                 this.pos.y + (Math.random() - 0.5) * 6,
@@ -4428,6 +4603,11 @@ class Bullet extends Entity {
         this.shape = shape;
         this.dead = false;
         this.sprite = null;
+        // New upgrade properties
+        this.pierceCount = player.stats.piercing || 0;
+        this.isExplosive = Math.random() < (player.stats.explosiveRounds || 0);
+        this.isSplitShot = false;
+        this.hasCrit = false;
     }
     reset(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0, shape = null) {
         return this.init(x, y, angle, isEnemy, damage, speed, radius, color, homing, shape);
@@ -4851,7 +5031,7 @@ class Enemy extends Entity {
             if (this.shieldRadius) this.shieldRadius = Math.round(this.shieldRadius * sizeMult);
         }
 
-        this.turnSpeed = (Math.PI * 2) / (4 * 60);
+        this.turnSpeed = (Math.PI * 2) / (4 * SIM_FPS);
         this.smoothDir = new Vector(Math.random(), Math.random());
 
         this.aiState = 'SEEK';
@@ -6073,7 +6253,8 @@ class WarpGate extends Entity {
     update(deltaTime = 16.67) {
         if (!player || player.dead) return;
         if (suppressWarpGateUntil && getGameNowMs() < suppressWarpGateUntil) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
         if (dist > this.radius + player.radius) return;
 
@@ -6208,6 +6389,22 @@ class CaveGuidedMissile extends Entity {
     applyDamageToPlayer(amount) {
         if (!player || player.dead) return;
         if (player.invulnerable > 0) return;
+
+        // Second Wind - check if invulnerability is active
+        if (player.stats.secondWindActive > 0) {
+            // Already in second wind, skip damage
+            spawnParticles(player.pos.x, player.pos.y, 5, '#80f');
+            return;
+        }
+
+        // Evasion Boost - chance to avoid damage entirely
+        if (player.stats.evasion > 0 && Math.random() < player.stats.evasion) {
+            spawnParticles(player.pos.x, player.pos.y, 8, '#0ff');
+            playSound('shield_hit');
+            // Reset combo on dodge (optional - can be removed if we want to keep combo on dodge)
+            return;
+        }
+
         let remaining = Math.max(0, Math.ceil(amount));
 
         if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
@@ -6230,6 +6427,29 @@ class CaveGuidedMissile extends Entity {
 
         if (remaining > 0) {
             player.hp -= remaining;
+
+            // Thorn Armor - reflect damage back to attacker
+            if (player.stats.thornArmor > 0 && this.hp) {
+                const reflectDamage = Math.ceil(remaining * player.stats.thornArmor);
+                this.hp -= reflectDamage;
+                spawnParticles(this.pos.x, this.pos.y, 6, '#f80');
+                if (this.hp <= 0 && typeof this.kill === 'function') {
+                    this.kill();
+                }
+            }
+
+            // Second Wind - grant invulnerability after taking damage
+            if (player.stats.secondWindFrames > 0) {
+                player.stats.secondWindActive = player.stats.secondWindFrames;
+                spawnParticles(player.pos.x, player.pos.y, 10, '#80f');
+            }
+
+            // Reset combo meter when taking damage
+            if (player.stats.comboMeter > 0) {
+                player.comboStacks = 0;
+            }
+            player.lastDamageTakenTime = Date.now();
+
             spawnParticles(player.pos.x, player.pos.y, 10, '#f00');
             playSound('hit');
             updateHealthUI();
@@ -6243,8 +6463,8 @@ class CaveGuidedMissile extends Entity {
 
     update(deltaTime = 16.67) {
         if (this.dead) return;
-        this.t++;
         const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
 
         this.life -= dtFactor;
         if (this.life <= 0) { this.explode(); return; }
@@ -6262,7 +6482,7 @@ class CaveGuidedMissile extends Entity {
         // Use Entity.update for scaled movement
         super.update(deltaTime);
 
-        if (this.t % 2 === 0) {
+        if (Math.floor(this.t) % 2 === 0) {
             emitParticle(
                 this.pos.x + (Math.random() - 0.5) * 6,
                 this.pos.y + (Math.random() - 0.5) * 6,
@@ -6475,11 +6695,10 @@ class CaveWallTurret extends Entity {
 
     update(deltaTime = 16.67) {
         if (this.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         if (!caveMode || !caveLevel || !caveLevel.active) return;
         if (!player || player.dead) return;
-
-        const dtFactor = deltaTime / 16.67;
 
         const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
         const engageRange = (this.mode === 'rapid') ? (5200 * 1.25) : 5200;
@@ -7038,8 +7257,9 @@ class CaveGasVent extends Entity {
             pixiCleanupObject(this);
             return;
         }
-        this.t++;
-        this.timer -= deltaTime / 16.67;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+        this.timer -= dtFactor;
         if (this.timer <= 0) {
             if (this.state === 'off') { this.state = 'warn'; this.timer = 60; }
             else if (this.state === 'warn') { this.state = 'on'; this.timer = 140; }
@@ -7149,16 +7369,17 @@ class CaveRockfall extends Entity {
     }
     update(deltaTime = 16.67) {
         if (this.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         if (!player || player.dead) return;
         if (this.state === 'idle') {
             const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
             if (d < 2200) this.trigger();
         } else if (this.state === 'warn') {
-            this.timer -= deltaTime / 16.67;
+            this.timer -= dtFactor;
             if (this.timer <= 0) this.fall();
-            // Falling debris visuals 
-            if (this.t % 3 === 0) {
+            // Falling debris visuals
+            if (Math.floor(this.t) % 3 === 0) {
                 emitParticle(this.pos.x + (Math.random() - 0.5) * 700, this.pos.y - 800 + Math.random() * 400, (Math.random() - 0.5) * 0.8, 3 + Math.random() * 2, '#888', 50);
             }
         }
@@ -7242,7 +7463,8 @@ class CaveDraftZone extends Entity {
         return (entity.pos.x > this.pos.x - this.w / 2 && entity.pos.x < this.pos.x + this.w / 2 && entity.pos.y > this.pos.y - this.h / 2 && entity.pos.y < this.pos.y + this.h / 2);
     }
     update(deltaTime = 16.67) {
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         const apply = (e) => {
             if (!this.contains(e)) return;
             e.vel.y += this.forceY;
@@ -7319,7 +7541,8 @@ class CaveCritter extends Entity {
     }
     update(deltaTime = 16.67) {
         if (this.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         if (player && !player.dead) {
             const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
             if (d < 520) this.scatter(player.pos.x, player.pos.y);
@@ -8657,7 +8880,8 @@ class WarpTurret extends Entity {
     }
     update(deltaTime = 16.67) {
         if (this.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         if (!warpZone || !warpZone.active) return;
         if (!player || player.dead) return;
         // Keep maze turrets as "obstacles", not part of the boss arena phase.
@@ -8666,7 +8890,7 @@ class WarpTurret extends Entity {
         const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
         if (dist > 4200) return;
 
-        this.reload--;
+        this.reload -= dtFactor;
         if (this.reload > 0) return;
 
         const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
@@ -8807,11 +9031,12 @@ class WarpMazeZone extends Entity {
 
     update(deltaTime = 16.67) {
         if (!this.active) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         if (!this.generated) this.generate();
 
         // Spawn roamers in waves as the player moves inward.
-        if (this.mobSpawnCooldown > 0) this.mobSpawnCooldown--;
+        if (this.mobSpawnCooldown > 0) this.mobSpawnCooldown -= dtFactor;
         if (this.state === 'maze' && player && !player.dead) {
             const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
         const band =
@@ -8941,7 +9166,8 @@ class RadiationStorm extends Entity {
     }
     update(deltaTime = 16.67) {
         if (!player || player.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
         if (now >= this.endsAt) {
             this.kill();
@@ -9116,7 +9342,8 @@ class MiniEventDefendCache extends Entity {
         const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
         const dt = Math.min(120, Math.max(0, now - this.lastUpdateAt));
         this.lastUpdateAt = now;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
 
         const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
         if (!this.activated && d < 900) {
@@ -9308,7 +9535,8 @@ class SectorPOI extends Entity {
     }
     update(deltaTime = 16.67) {
         if (this.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         if (this.canClaim()) this.claim();
     }
     draw(ctx) {
@@ -9415,7 +9643,8 @@ class DebrisFieldPOI extends SectorPOI {
     }
     update(deltaTime = 16.67) {
         if (this.dead || this.claimed) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         if (!player || player.dead) return;
         const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
         const dt = Math.min(120, Math.max(0, now - (this.lastUpdateAt || now)));
@@ -9666,7 +9895,7 @@ class Cruiser extends Enemy {
         this.guidedMissileCap = 2;
 
         // Heavier turning to feel like a capital ship
-        this.turnSpeed = (Math.PI * 2) / (18 * 60);
+        this.turnSpeed = (Math.PI * 2) / (18 * SIM_FPS);
         this.wallElasticity = 0.25;
 
         const hardHp = Math.round((18 + boost * 6) * hpScale);
@@ -11490,7 +11719,8 @@ class SpaceStation extends Entity {
 
     update(deltaTime = 16.67) {
         if (this.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
 
         // Keep station completely stationary (immovable)
         if (this.fixedPos) {
@@ -11514,7 +11744,6 @@ class SpaceStation extends Entity {
         }
 
         // Rotate shields in opposite directions for visual effect (scale by deltaTime)
-        const dtFactor = deltaTime / 16.67;
         this.shieldRotation += 0.006 * dtFactor;
         this.innerShieldRotation -= 0.009 * dtFactor;
 
@@ -12223,12 +12452,12 @@ class Destroyer extends Entity {
 
     update(deltaTime = 16.67) {
         if (this.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
 
         const now = Date.now();
 
         // Roaming movement - slowly move around the map, always moving forward
-        const dtFactor = deltaTime / 16.67;
         this.roamTimer -= dtFactor;
 
         const playerAlive = player && !player.dead;
@@ -12910,12 +13139,12 @@ class Destroyer2 extends Entity {
 
     update(deltaTime = 16.67) {
         if (this.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
 
         const now = Date.now();
 
         // Roaming movement - slowly move around the map, always moving forward
-        const dtFactor = deltaTime / 16.67;
         this.roamTimer -= dtFactor;
 
         const playerAlive = player && !player.dead;
@@ -13599,9 +13828,9 @@ class CaveMonsterBase extends Entity {
 
     update(deltaTime = 16.67) {
         if (this.dead) return;
-        this.t++;
-
         const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+
         const phase = this.getEscalationPhase();
         const mult = this.getEscalationMultiplier();
         const ringMult = this.getRingSpeedMultiplier();
@@ -14797,7 +15026,7 @@ let gunboatLevel2Unlocked = false;
 let cruiserEncounterCount = 0;
 let initialSpawnDelayAt = null;
 let initialSpawnDone = false;
-let metaProfile = { bank: 0, purchases: { startDamage: 0, passiveHp: 0, rerollTokens: 0, hullPlating: 0, shieldCore: 0, staticBlueprint: 0, missilePrimer: 0, magnetBooster: 0, nukeCapacitor: 0, speedTuning: 0, bankMultiplier: 0, shopDiscount: 0, extraLife: 0, droneFabricator: 0 } };
+let metaProfile = { bank: 0, purchases: { startDamage: 0, passiveHp: 0, rerollTokens: 0, hullPlating: 0, shieldCore: 0, staticBlueprint: 0, missilePrimer: 0, magnetBooster: 0, nukeCapacitor: 0, speedTuning: 0, bankMultiplier: 0, shopDiscount: 0, extraLife: 0, droneFabricator: 0, piercingRounds: 0, explosiveRounds: 0, criticalStrike: 0, splitShot: 0, thornArmor: 0, lifesteal: 0, evasionBoost: 0, shieldRecharge: 0, dashCooldown: 0, dashDuration: 0, xpMagnetPlus: 0, autoReroll: 0, nuggetMagnet: 0, contractSpeed: 0, startingRerolls: 0, luckyDrop: 0, bountyHunter: 0, comboMeter: 0, startingWeapon: 0, secondWind: 0, batteryCapacitor: 0 } };
 let rerollTokens = 0;
 let metaExtraLifeCount = 0;
 
@@ -15450,7 +15679,28 @@ function loadMetaProfile() {
             bankMultiplier: 0,
             shopDiscount: 0,
             extraLife: 0,
-            droneFabricator: 0
+            droneFabricator: 0,
+            // New upgrades
+            piercingRounds: 0,
+            explosiveRounds: 0,
+            criticalStrike: 0,
+            splitShot: 0,
+            thornArmor: 0,
+            lifesteal: 0,
+            evasionBoost: 0,
+            shieldRecharge: 0,
+            dashCooldown: 0,
+            dashDuration: 0,
+            xpMagnetPlus: 0,
+            autoReroll: 0,
+            nuggetMagnet: 0,
+            contractSpeed: 0,
+            startingRerolls: 0,
+            luckyDrop: 0,
+            bountyHunter: 0,
+            comboMeter: 0,
+            startingWeapon: 0,
+            secondWind: 0
         }, metaProfile.purchases);
         if (metaProfile.purchases.warpPrecharge) delete metaProfile.purchases.warpPrecharge;
         if (typeof metaProfile.bank !== 'number') metaProfile.bank = 0;
@@ -15486,7 +15736,28 @@ function resetMetaProfile() {
             bankMultiplier: 0,
             shopDiscount: 0,
             extraLife: 0,
-            droneFabricator: 0
+            droneFabricator: 0,
+            // New upgrades
+            piercingRounds: 0,
+            explosiveRounds: 0,
+            criticalStrike: 0,
+            splitShot: 0,
+            thornArmor: 0,
+            lifesteal: 0,
+            evasionBoost: 0,
+            shieldRecharge: 0,
+            dashCooldown: 0,
+            dashDuration: 0,
+            xpMagnetPlus: 0,
+            autoReroll: 0,
+            nuggetMagnet: 0,
+            contractSpeed: 0,
+            startingRerolls: 0,
+            luckyDrop: 0,
+            bountyHunter: 0,
+            comboMeter: 0,
+            startingWeapon: 0,
+            secondWind: 0
         }
     };
 }
@@ -15591,6 +15862,404 @@ function updateMetaUI() {
         const cost = getMetaUpgradeCost('droneFabricator', 40);
         droneEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
+    // New upgrades
+    const piercingEl = document.getElementById('meta-piercing');
+    if (piercingEl) {
+        const tier = metaProfile.purchases.piercingRounds || 0;
+        const cost = getMetaUpgradeCost('piercingRounds', 45);
+        piercingEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const explosiveEl = document.getElementById('meta-explosive');
+    if (explosiveEl) {
+        const tier = metaProfile.purchases.explosiveRounds || 0;
+        const cost = getMetaUpgradeCost('explosiveRounds', 55);
+        explosiveEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const critEl = document.getElementById('meta-crit');
+    if (critEl) {
+        const tier = metaProfile.purchases.criticalStrike || 0;
+        const cost = getMetaUpgradeCost('criticalStrike', 50);
+        critEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const splitEl = document.getElementById('meta-split');
+    if (splitEl) {
+        const tier = metaProfile.purchases.splitShot || 0;
+        const cost = getMetaUpgradeCost('splitShot', 60);
+        splitEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const thornEl = document.getElementById('meta-thorn');
+    if (thornEl) {
+        const tier = metaProfile.purchases.thornArmor || 0;
+        const cost = getMetaUpgradeCost('thornArmor', 35);
+        thornEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const lifestealEl = document.getElementById('meta-lifesteal');
+    if (lifestealEl) {
+        const tier = metaProfile.purchases.lifesteal || 0;
+        const cost = getMetaUpgradeCost('lifesteal', 40);
+        lifestealEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const evasionEl = document.getElementById('meta-evasion');
+    if (evasionEl) {
+        const tier = metaProfile.purchases.evasionBoost || 0;
+        const cost = getMetaUpgradeCost('evasionBoost', 45);
+        evasionEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const shieldRegenEl = document.getElementById('meta-shieldregen');
+    if (shieldRegenEl) {
+        const tier = metaProfile.purchases.shieldRecharge || 0;
+        const cost = getMetaUpgradeCost('shieldRecharge', 30);
+        shieldRegenEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const dashCdEl = document.getElementById('meta-dashcd');
+    if (dashCdEl) {
+        const tier = metaProfile.purchases.dashCooldown || 0;
+        const cost = getMetaUpgradeCost('dashCooldown', 35);
+        dashCdEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const dashDurEl = document.getElementById('meta-dashdur');
+    if (dashDurEl) {
+        const tier = metaProfile.purchases.dashDuration || 0;
+        const cost = getMetaUpgradeCost('dashDuration', 30);
+        dashDurEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const xpMagEl = document.getElementById('meta-xpmag');
+    if (xpMagEl) {
+        const tier = metaProfile.purchases.xpMagnetPlus || 0;
+        const cost = getMetaUpgradeCost('xpMagnetPlus', 25);
+        xpMagEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const autoRerollEl = document.getElementById('meta-autoreroll');
+    if (autoRerollEl) {
+        const tier = metaProfile.purchases.autoReroll || 0;
+        const cost = getMetaUpgradeCost('autoReroll', 50);
+        autoRerollEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const nuggetMagEl = document.getElementById('meta-nuggetmag');
+    if (nuggetMagEl) {
+        const tier = metaProfile.purchases.nuggetMagnet || 0;
+        const cost = getMetaUpgradeCost('nuggetMagnet', 35);
+        nuggetMagEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const contractSpeedEl = document.getElementById('meta-contractspeed');
+    if (contractSpeedEl) {
+        const tier = metaProfile.purchases.contractSpeed || 0;
+        const cost = getMetaUpgradeCost('contractSpeed', 40);
+        contractSpeedEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const startRerollEl = document.getElementById('meta-startreroll');
+    if (startRerollEl) {
+        const tier = metaProfile.purchases.startingRerolls || 0;
+        const cost = getMetaUpgradeCost('startingRerolls', 30);
+        startRerollEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const luckyEl = document.getElementById('meta-lucky');
+    if (luckyEl) {
+        const tier = metaProfile.purchases.luckyDrop || 0;
+        const cost = getMetaUpgradeCost('luckyDrop', 55);
+        luckyEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const bountyEl = document.getElementById('meta-bounty');
+    if (bountyEl) {
+        const tier = metaProfile.purchases.bountyHunter || 0;
+        const cost = getMetaUpgradeCost('bountyHunter', 45);
+        bountyEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const comboEl = document.getElementById('meta-combo');
+    if (comboEl) {
+        const tier = metaProfile.purchases.comboMeter || 0;
+        const cost = getMetaUpgradeCost('comboMeter', 50);
+        comboEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const startWeaponEl = document.getElementById('meta-startweapon');
+    if (startWeaponEl) {
+        const tier = metaProfile.purchases.startingWeapon || 0;
+        const cost = getMetaUpgradeCost('startingWeapon', 60);
+        startWeaponEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const secondWindEl = document.getElementById('meta-secondwind');
+    if (secondWindEl) {
+        const tier = metaProfile.purchases.secondWind || 0;
+        const cost = getMetaUpgradeCost('secondWind', 70);
+        secondWindEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+    const batteryEl = document.getElementById('meta-battery');
+    if (batteryEl) {
+        const tier = metaProfile.purchases.batteryCapacitor || 0;
+        const cost = getMetaUpgradeCost('batteryCapacitor', 45);
+        batteryEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+
+    // Setup click handlers for upgrade descriptions
+    const upgradeButtonMap = {
+        'buy-start-dmg': 'startDamage',
+        'buy-passive-hp': 'passiveHp',
+        'buy-hull': 'hullPlating',
+        'buy-shield-core': 'shieldCore',
+        'buy-static': 'staticBlueprint',
+        'buy-missile': 'missilePrimer',
+        'buy-magnet': 'magnetBooster',
+        'buy-nuke': 'nukeCapacitor',
+        'buy-speed': 'speedTuning',
+        'buy-bank-mult': 'bankMultiplier',
+        'buy-discount': 'shopDiscount',
+        'buy-extra-life': 'extraLife',
+        'buy-drone': 'droneFabricator',
+        'buy-piercing': 'piercingRounds',
+        'buy-explosive': 'explosiveRounds',
+        'buy-crit': 'criticalStrike',
+        'buy-split': 'splitShot',
+        'buy-thorn': 'thornArmor',
+        'buy-lifesteal': 'lifesteal',
+        'buy-evasion': 'evasionBoost',
+        'buy-shieldregen': 'shieldRecharge',
+        'buy-dashcd': 'dashCooldown',
+        'buy-dashdur': 'dashDuration',
+        'buy-xpmag': 'xpMagnetPlus',
+        'buy-autoreroll': 'autoReroll',
+        'buy-nuggetmag': 'nuggetMagnet',
+        'buy-contractspeed': 'contractSpeed',
+        'buy-startreroll': 'startingRerolls',
+        'buy-lucky': 'luckyDrop',
+        'buy-bounty': 'bountyHunter',
+        'buy-combo': 'comboMeter',
+        'buy-startweapon': 'startingWeapon',
+        'buy-secondwind': 'secondWind',
+        'buy-battery': 'batteryCapacitor'
+    };
+    Object.entries(upgradeButtonMap).forEach(([btnId, upgradeId]) => {
+        const button = document.getElementById(btnId);
+        if (button) {
+            button.onclick = (e) => showMetaShopUpgradeModal(upgradeId, e.target);
+        }
+    });
+}
+
+function showUpgradeDescription(upgradeId) {
+    const data = META_SHOP_UPGRADE_DATA[upgradeId];
+    if (!data) return;
+
+    const titleEl = document.getElementById('desc-panel-title');
+    const contentEl = document.getElementById('desc-panel-content');
+    const tierInfoEl = document.getElementById('desc-panel-tier-info');
+
+    const currentTier = metaProfile.purchases[upgradeId] || 0;
+
+    titleEl.textContent = data.name.toUpperCase();
+
+    let html = `<div style="margin-bottom: 8px;">${data.description}</div>`;
+    if (currentTier === 0) {
+        html += `<div style="color: #ff0;">First Tier: ${data.tier1}</div>`;
+    } else {
+        html += `<div style="color: #0f0;">Current Tier: ${currentTier}</div>`;
+        html += `<div style="color: #ff0;">Next Tier Benefits:</div>`;
+        if (data[`tier${currentTier + 1}`]) {
+            html += `<div>- ${data[`tier${currentTier + 1}`]}</div>`;
+        }
+    }
+    html += `<div style="color: #888; font-size: 12px; margin-top: 8px;">${data.notes}</div>`;
+
+    contentEl.innerHTML = html;
+    tierInfoEl.textContent = `OWNED: TIER ${currentTier}`;
+}
+
+/**
+ * Show the meta shop upgrade modal with full details
+ * @param {string} upgradeId - The upgrade ID from META_SHOP_UPGRADE_DATA
+ * @param {HTMLElement} clickedButton - The button that was clicked to open this modal
+ */
+function showMetaShopUpgradeModal(upgradeId, clickedButton) {
+    const data = META_SHOP_UPGRADE_DATA[upgradeId];
+    if (!data) {
+        console.error(`Unknown upgrade ID: ${upgradeId}`);
+        return;
+    }
+
+    // Store current upgrade for the Buy button
+    currentModalUpgradeId = upgradeId;
+
+    // Store the index of the clicked button so we can restore it when closing
+    if (clickedButton) {
+        const shopButtons = Array.from(document.querySelectorAll('#meta-shop .meta-item button'));
+        modalSourceButtonIndex = shopButtons.indexOf(clickedButton);
+    } else {
+        modalSourceButtonIndex = null;
+    }
+
+    // Get modal elements
+    const modal = document.getElementById('meta-shop-modal');
+    const titleEl = document.getElementById('meta-modal-title');
+    const contentEl = document.getElementById('meta-modal-content');
+    const costEl = document.getElementById('meta-modal-cost');
+    const tierEl = document.getElementById('meta-modal-tier-info');
+    const buyBtn = document.getElementById('meta-modal-buy');
+
+    if (!modal || !titleEl || !contentEl || !costEl || !tierEl || !buyBtn) {
+        console.error('Meta shop modal elements missing');
+        return;
+    }
+
+    // Get current tier and calculate cost
+    const currentTier = metaProfile.purchases[upgradeId] || 0;
+
+    // Get base cost from mapping (same mapping used in updateMetaUI)
+    const baseCostMap = {
+        'startDamage': 10, 'passiveHp': 15, 'hullPlating': 30, 'shieldCore': 30,
+        'staticBlueprint': 40, 'missilePrimer': 40, 'magnetBooster': 25,
+        'nukeCapacitor': 35, 'speedTuning': 25, 'bankMultiplier': 50,
+        'shopDiscount': 50, 'extraLife': 60, 'droneFabricator': 40,
+        'piercingRounds': 45, 'explosiveRounds': 55, 'criticalStrike': 50,
+        'splitShot': 60, 'thornArmor': 35, 'lifesteal': 40,
+        'evasionBoost': 45, 'shieldRecharge': 30, 'dashCooldown': 35,
+        'dashDuration': 30, 'xpMagnetPlus': 25, 'autoReroll': 50,
+        'nuggetMagnet': 35, 'contractSpeed': 40, 'startingRerolls': 30,
+        'luckyDrop': 55, 'bountyHunter': 45, 'comboMeter': 50,
+        'startingWeapon': 60, 'secondWind': 70, 'batteryCapacitor': 45
+    };
+
+    const baseCost = baseCostMap[upgradeId] || 50;
+    const cost = getMetaUpgradeCost(upgradeId, baseCost);
+    const canAfford = metaProfile.bank >= cost;
+
+    // Populate modal content
+    titleEl.textContent = data.name.toUpperCase();
+
+    let html = `<div style="margin-bottom: 12px;">${data.description}</div>`;
+
+    if (currentTier === 0) {
+        html += `<div style="color: #ff0; margin-top: 10px;"><strong>First Tier:</strong> ${data.tier1}</div>`;
+    } else {
+        html += `<div style="color: #0f0; margin-top: 10px;"><strong>Current Tier:</strong> ${currentTier}</div>`;
+
+        // Check if there are more tiers available
+        const nextTierKey = `tier${currentTier + 1}`;
+        if (data[nextTierKey]) {
+            html += `<div style="color: #ff0; margin-top: 8px;"><strong>Next Tier Benefits:</strong></div>`;
+            html += `<div style="margin-left: 15px;">- ${data[nextTierKey]}</div>`;
+        } else {
+            html += `<div style="color: #888; margin-top: 8px;"><em>(Max tier reached)</em></div>`;
+        }
+    }
+
+    html += `<div style="color: #888; font-size: 13px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #333;">${data.notes}</div>`;
+
+    contentEl.innerHTML = html;
+    costEl.textContent = `Cost: ${cost} Meta Nuggets`;
+    costEl.style.color = canAfford ? '#0f0' : '#f00';
+    tierEl.textContent = `OWNED: TIER ${currentTier}`;
+
+    // Enable/disable Buy button based on affordability
+    buyBtn.disabled = !canAfford;
+    buyBtn.textContent = canAfford ? `BUY (${cost} NUGS)` : `NEED ${cost} NUGS`;
+
+    // Show modal
+    modal.style.display = 'block';
+
+    // Setup modal button handlers
+    setupMetaShopModalHandlers(upgradeId, cost, currentTier);
+}
+
+/**
+ * Setup event handlers for the meta shop modal buttons
+ * @param {string} upgradeId - The upgrade ID
+ * @param {number} cost - The cost to purchase
+ * @param {number} currentTier - Current tier before purchase
+ */
+function setupMetaShopModalHandlers(upgradeId, cost, currentTier) {
+    const modal = document.getElementById('meta-shop-modal');
+    const backBtn = document.getElementById('meta-modal-back');
+    const buyBtn = document.getElementById('meta-modal-buy');
+
+    if (!modal || !backBtn || !buyBtn) return;
+
+    // Remove old handlers to prevent duplicates
+    const newBackBtn = backBtn.cloneNode(true);
+    const newBuyBtn = buyBtn.cloneNode(true);
+    backBtn.parentNode.replaceChild(newBackBtn, backBtn);
+    buyBtn.parentNode.replaceChild(newBuyBtn, buyBtn);
+
+    // Reset gamepad navigation for this modal
+    menuSelectionIndex = 0;
+    gpState.lastMenuElements = null;
+
+    // Wait one frame to ensure DOM has updated, then setup navigation
+    requestAnimationFrame(() => {
+        const activeElements = getActiveMenuElements();
+        if (activeElements.length > 0) {
+            updateMenuVisuals(activeElements);
+            // Focus on the first button (Buy button since it comes first in DOM)
+            activeElements[0].focus();
+        }
+    });
+
+    // Function to close modal
+    const closeModal = () => {
+        modal.style.display = 'none';
+        currentModalUpgradeId = null;
+
+        // Save the index we want to restore
+        const savedIndex = modalSourceButtonIndex;
+        modalSourceButtonIndex = null;
+
+        // Set flag to preserve index when transitioning back to shop
+        if (savedIndex !== null && savedIndex >= 0) {
+            menuSelectionIndex = savedIndex;
+            returningFromModal = true;
+        }
+
+        // Reset gamepad navigation to return to shop menu
+        gpState.lastMenuElements = null;
+    };
+
+    // Back button - just close modal
+    newBackBtn.addEventListener('click', closeModal);
+
+    // Buy button - execute purchase
+    newBuyBtn.addEventListener('click', () => {
+        if (metaProfile.bank >= cost) {
+            // Execute purchase
+            metaProfile.bank -= cost;
+            metaProfile.purchases[upgradeId] = currentTier + 1;
+            saveMetaProfile();
+
+            // Show success message
+            const data = META_SHOP_UPGRADE_DATA[upgradeId];
+            showOverlayMessage(`${data.name.toUpperCase()} TIER ${currentTier + 1}!`, '#0f0', 1500);
+
+            // Update UI
+            updateMetaUI();
+
+            // Close modal
+            closeModal();
+        } else {
+            showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
+        }
+    });
+
+    // Escape key to close - use same logic as closeModal
+    const onEscape = (e) => {
+        if (e.key === 'Escape' && modal.style.display === 'block') {
+            e.preventDefault();
+
+            // Save the index we want to restore
+            const savedIndex = modalSourceButtonIndex;
+            modalSourceButtonIndex = null;
+
+            modal.style.display = 'none';
+            currentModalUpgradeId = null;
+
+            // Set flag to preserve index when transitioning back to shop
+            if (savedIndex !== null && savedIndex >= 0) {
+                menuSelectionIndex = savedIndex;
+                returningFromModal = true;
+            }
+
+            gpState.lastMenuElements = null;
+
+            window.removeEventListener('keydown', onEscape);
+        }
+    };
+    window.addEventListener('keydown', onEscape);
 }
 
 // Companion Drones
@@ -15773,7 +16442,8 @@ class ContractBeacon extends Entity {
     }
     update(deltaTime = 16.67) {
         if (!player || player.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         if (!activeContract || activeContract.type !== 'scan_beacon') return;
         const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
         if (d < this.radius) {
@@ -15954,7 +16624,8 @@ class GateRing extends Entity {
     }
     update(deltaTime = 16.67) {
         if (!player || player.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         if (!activeContract || activeContract.type !== 'gate_run') return;
         if (activeContract.gateIndex !== this.index) return;
         const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
@@ -16169,7 +16840,8 @@ class AnomalyZone extends Entity {
 
     update(deltaTime = 16.67) {
         if (!player || player.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         if (!activeContract || activeContract.type !== 'anomaly') return;
 
         const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
@@ -16371,14 +17043,15 @@ class WallTurret extends Entity {
 
     update(deltaTime = 16.67) {
         if (this.dead) return;
-        this.t++;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
         if (!player || player.dead) return;
         if (!activeContract || activeContract.type !== 'anomaly' || activeContract.id !== this.contractId) return;
 
         const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
         if (dist > 3600) return;
 
-        this.reload--;
+        this.reload -= dtFactor;
         if (this.reload > 0) return;
 
         const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
@@ -18174,6 +18847,42 @@ function applyUpgrade(id, tier) {
             if (tier >= 3) ensureDrone('heal');
             break;
         }
+        case 'volley_shot':
+            player.volleyShotUnlocked = true;
+            if (tier === 1) { player.volleyShotCount = 3; player.volleyChargeRate = 1; }
+            if (tier === 2) { player.volleyShotCount = 5; player.volleyChargeRate = 2; }
+            if (tier === 3) { player.volleyShotCount = 7; player.volleyChargeRate = 999; }
+            break;
+        case 'chain_lightning':
+            if (tier === 1) { player.chainLightningCount = 1; player.chainLightningRange = 200; }
+            if (tier === 2) { player.chainLightningCount = 2; player.chainLightningRange = 250; }
+            if (tier === 3) { player.chainLightningCount = 3; player.chainLightningRange = 300; }
+            break;
+        case 'backstabber':
+            if (tier === 1) player.stats.backstabberBonus = 1.5;
+            if (tier === 2) player.stats.backstabberBonus = 2.0;
+            if (tier === 3) { player.stats.backstabberBonus = 2.5; player.stats.backstabberSlow = 120; }
+            break;
+        case 'reactive_shield':
+            if (tier === 1) player.stats.reactiveShield = 1;
+            if (tier === 2) player.stats.reactiveShield = 2;
+            if (tier === 3) { player.stats.reactiveShield = 3; player.stats.reactiveShieldBonusHp = true; }
+            break;
+        case 'damage_mitigation':
+            if (tier === 1) { player.stats.damageMitigation = 0.9; player.stats.speedBonusFromMit = 1.05; }
+            if (tier === 2) { player.stats.damageMitigation = 0.8; player.stats.speedBonusFromMit = 1.10; }
+            if (tier === 3) { player.stats.damageMitigation = 0.7; player.stats.speedBonusFromMit = 1.15; }
+            break;
+        case 'time_dilation':
+            if (tier === 1) { player.stats.timeDilation = 0.8; player.stats.timeDilationRange = 200; }
+            if (tier === 2) { player.stats.timeDilation = 0.6; player.stats.timeDilationRange = 300; }
+            if (tier === 3) { player.stats.timeDilation = 0.4; player.stats.timeDilationRange = 450; }
+            break;
+        case 'momentum':
+            if (tier === 1) { player.stats.momentumFireRate = 1.10; player.stats.momentumDamage = 1.0; }
+            if (tier === 2) { player.stats.momentumFireRate = 1.20; player.stats.momentumDamage = 1.15; }
+            if (tier === 3) { player.stats.momentumFireRate = 1.30; player.stats.momentumDamage = 1.25; }
+            break;
     }
 
     showOverlayMessage(`${id.replace('_', ' ').toUpperCase()} UPGRADED!`, '#ff0', 1500);
@@ -18231,16 +18940,7 @@ function updateGamepad() {
 
     gpState.warp = gp.buttons[0].pressed;
     gpState.turbo = gp.buttons[2].pressed; // Button 2 (X/Square)
-
-    // DEBUG: Y button (button 3) spawns space station
-    if (gp.buttons[3].pressed && !gpState.yPressed) {
-        gpState.yPressed = true;
-        if (typeof window.spawnStation === 'function') {
-            window.spawnStation();
-        }
-    } else if (!gp.buttons[3].pressed) {
-        gpState.yPressed = false;
-    }
+    gpState.battery = gp.buttons[3].pressed; // Button 3 (Y) - Battery discharge
 
     // Menu Navigation Support
     if ((!gameActive || gamePaused) && now - menuDebounce > 150) {
@@ -18252,9 +18952,17 @@ function updateGamepad() {
                 gpState.lastMenuElements[0] !== activeElements[0];
 
             if (menuChanged) {
-                menuSelectionIndex = 0;
+                // Preserve index when returning from modal to shop
+                if (!returningFromModal) {
+                    menuSelectionIndex = 0;
+                }
                 gpState.lastMenuElements = activeElements;
                 updateMenuVisuals(activeElements);
+            }
+
+            // Reset the flag after processing menu change
+            if (returningFromModal && menuChanged) {
+                returningFromModal = false;
             }
 
             const selectedEl = activeElements[menuSelectionIndex];
@@ -18340,6 +19048,71 @@ function updateGamepad() {
                     }
                     menuDebounce = now + 200;
                 }
+
+                // B Button / Circle - universal back button for all menus
+                if (gp.buttons[1].pressed) {
+                    let handled = false;
+
+                    // 1. Check if meta shop modal is open
+                    const modal = document.getElementById('meta-shop-modal');
+                    if (modal && modal.style.display === 'block') {
+                        // Close the modal and restore saved index
+                        modal.style.display = 'none';
+                        currentModalUpgradeId = null;
+
+                        // Set flag to preserve index when transitioning back to shop
+                        const savedIndex = modalSourceButtonIndex;
+                        modalSourceButtonIndex = null;
+
+                        if (savedIndex !== null && savedIndex >= 0) {
+                            menuSelectionIndex = savedIndex;
+                            returningFromModal = true;
+                        }
+
+                        gpState.lastMenuElements = null;
+                        handled = true;
+                    }
+
+                    // 2. Check if settings menu is open
+                    if (!handled) {
+                        const settingsMenu = document.getElementById('settings-menu');
+                        if (settingsMenu && settingsMenu.style.display === 'block') {
+                            const settingsCloseBtn = document.getElementById('settings-close-btn');
+                            if (settingsCloseBtn) {
+                                settingsCloseBtn.click();
+                                handled = true;
+                            }
+                        }
+                    }
+
+                    // 3. Check if meta shop upgrades menu is open
+                    if (!handled) {
+                        const upgradesMenu = document.getElementById('upgrades-menu');
+                        if (upgradesMenu && upgradesMenu.style.display !== 'none') {
+                            const upgradesBackBtn = document.getElementById('upgrades-back-btn');
+                            if (upgradesBackBtn) {
+                                upgradesBackBtn.click();
+                                handled = true;
+                            }
+                        }
+                    }
+
+                    // 4. Check if profile select is open
+                    if (!handled) {
+                        const profileSelect = document.getElementById('profile-select');
+                        if (profileSelect && profileSelect.style.display === 'block') {
+                            const profileBackBtn = document.getElementById('profile-back-btn');
+                            if (profileBackBtn) {
+                                profileBackBtn.click();
+                                handled = true;
+                            }
+                        }
+                    }
+
+                    if (handled) {
+                        menuDebounce = now + 200;
+                    }
+                }
             }
         } else {
             gpState.lastMenuElements = null;
@@ -18356,6 +19129,17 @@ function getActiveMenuElements() {
         const style = window.getComputedStyle(el);
         return style.display !== 'none' && style.visibility !== 'hidden';
     };
+
+    // Check for meta shop modal FIRST (highest priority)
+    const metaShopModal = document.getElementById('meta-shop-modal');
+    if (isVisible(metaShopModal)) {
+        const buyBtn = document.getElementById('meta-modal-buy');
+        const backBtn = document.getElementById('meta-modal-back');
+        const result = [];
+        if (buyBtn) result.push(buyBtn);
+        if (backBtn) result.push(backBtn);
+        return result;
+    }
 
     const upgradesMenu = document.getElementById('upgrades-menu');
     if (isVisible(upgradesMenu)) {
@@ -20994,8 +21778,29 @@ function startGame() {
             hpRegenRate: 10,
             speedMult: 1.0,
             slowField: 0,
-            slowFieldDuration: 0
+            slowFieldDuration: 0,
+            // New upgrade stats
+            critChance: 0,
+            critDamage: 2.0,
+            lifestealAmount: 0,
+            lifestealThreshold: 100,
+            thornArmor: 0,
+            evasion: 0,
+            piercing: 0,
+            explosiveRounds: 0,
+            explosiveDamage: 30,
+            explosiveRadius: 200,
+            splitShot: 0,
+            comboMeter: 0,
+            comboMaxBonus: 0,
+            secondWindFrames: 0,
+            secondWindCooldown: 0,
+            secondWindActive: 0
         };
+        player.comboStacks = 0;
+        player.comboMaxStacks = 100;
+        player.lastHitTime = Date.now();
+        player.lastDamageTakenTime = 0;
         player.lastHpRegenTime = Date.now();
         player.staticWeapons = [];
         player.nukeMaxCooldown = 600;
@@ -21098,6 +21903,246 @@ function startGame() {
                 spawnDrone('shooter');
             }
         }
+
+        // ========== NEW UPGRADES ==========
+
+        // Piercing Rounds - Projectiles pierce through enemies
+        const piercingRoundsTier = metaProfile.purchases.piercingRounds || 0;
+        if (piercingRoundsTier > 0) {
+            // Base: 1, 2, 3 pierce, then diminishing
+            let pierceCount = Math.min(piercingRoundsTier, 3);
+            if (piercingRoundsTier > 3) {
+                pierceCount += (piercingRoundsTier - 3) * 0.5;
+            }
+            player.stats.pierceCount = (player.stats.pierceCount || 0) + pierceCount;
+        }
+
+        // Explosive Rounds - Chance for mini-explosions on impact
+        const explosiveRoundsTier = metaProfile.purchases.explosiveRounds || 0;
+        if (explosiveRoundsTier > 0) {
+            let explosiveChance = 0.2 * Math.min(explosiveRoundsTier, 3);
+            if (explosiveRoundsTier > 3) {
+                explosiveChance += 0.05 * (explosiveRoundsTier - 3);
+            }
+            player.stats.explosiveChance = (player.stats.explosiveChance || 0) + Math.min(explosiveChance, 1.0);
+            player.stats.explosiveDamage = (player.stats.explosiveDamage || 0) + 30;
+        }
+
+        // Critical Strike - Chance to deal double damage
+        const criticalStrikeTier = metaProfile.purchases.criticalStrike || 0;
+        if (criticalStrikeTier > 0) {
+            let critChance = 0.05 * Math.min(criticalStrikeTier, 3);
+            if (criticalStrikeTier > 3) {
+                critChance += 0.02 * (criticalStrikeTier - 3);
+            }
+            player.stats.critChance = (player.stats.critChance || 0) + Math.min(critChance, 0.30);
+            player.stats.critDamage = (player.stats.critDamage || 1.0) + 1.0; // 2x damage
+        }
+
+        // Split Shot - Chance to fire additional projectile
+        const splitShotTier = metaProfile.purchases.splitShot || 0;
+        if (splitShotTier > 0) {
+            let splitChance = 0.1 * Math.min(splitShotTier, 3);
+            if (splitShotTier > 3) {
+                splitChance += 0.03 * (splitShotTier - 3);
+            }
+            player.stats.splitChance = (player.stats.splitChance || 0) + Math.min(splitChance, 0.50);
+        }
+
+        // Thorn Armor - Reflect damage when hit
+        const thornArmorTier = metaProfile.purchases.thornArmor || 0;
+        if (thornArmorTier > 0) {
+            let thornPercent = 0.1 * Math.min(thornArmorTier, 3);
+            if (thornArmorTier > 3) {
+                thornPercent += 0.02 * (thornArmorTier - 3);
+            }
+            player.stats.thornReflect = Math.min(thornPercent, 0.35);
+        }
+
+        // Lifesteal - Heal on dealing damage
+        const lifestealTier = metaProfile.purchases.lifesteal || 0;
+        if (lifestealTier > 0) {
+            // Thresholds: 100, 75, 50, then diminishing
+            const thresholds = [100, 75, 50];
+            let threshold = thresholds[Math.min(lifestealTier - 1, 2)];
+            if (lifestealTier > 3) {
+                threshold -= 5 * (lifestealTier - 3);
+            }
+            player.stats.lifestealThreshold = Math.max(threshold, 25);
+            player.stats.lifestealTracking = 0; // Track damage dealt
+        }
+
+        // Evasion Boost - Chance to avoid damage entirely
+        const evasionBoostTier = metaProfile.purchases.evasionBoost || 0;
+        if (evasionBoostTier > 0) {
+            let evasionChance = 0.05 * Math.min(evasionBoostTier, 3);
+            if (evasionBoostTier > 3) {
+                evasionChance += 0.02 * (evasionBoostTier - 3);
+            }
+            player.stats.evasionChance = (player.stats.evasionChance || 0) + Math.min(evasionChance, 0.25);
+        }
+
+        // Shield Recharge - Shield segments regenerate during combat
+        const shieldRechargeTier = metaProfile.purchases.shieldRecharge || 0;
+        if (shieldRechargeTier > 0) {
+            const intervals = [30, 20, 15]; // seconds
+            let interval = intervals[Math.min(shieldRechargeTier - 1, 2)];
+            if (shieldRechargeTier > 3) {
+                interval = Math.max(interval - (shieldRechargeTier - 3), 5);
+            }
+            player.stats.shieldRechargeInterval = interval * 60; // Convert to frames
+            player.stats.shieldRechargeTimer = 0;
+            player.stats.shieldRechargeLast = Date.now();
+        }
+
+        // Dash Cooldown - Reduce turbo boost cooldown
+        const dashCooldownTier = metaProfile.purchases.dashCooldown || 0;
+        if (dashCooldownTier > 0) {
+            let cooldownReduction = Math.min(dashCooldownTier, 3);
+            if (dashCooldownTier > 3) {
+                cooldownReduction += 0.3 * (dashCooldownTier - 3);
+            }
+            player.stats.turboCooldownReduction = cooldownReduction; // In seconds
+        }
+
+        // Dash Duration - Longer turbo boost duration
+        const dashDurationTier = metaProfile.purchases.dashDuration || 0;
+        if (dashDurationTier > 0) {
+            let durationBonus = 0.5 * Math.min(dashDurationTier, 3);
+            if (dashDurationTier > 3) {
+                durationBonus += 0.2 * (dashDurationTier - 3);
+            }
+            player.stats.turboDurationBonus = durationBonus * 60; // Convert to frames
+        }
+
+        // XP Magnet Range+ - Increases existing magnet booster effect
+        const xpMagnetPlusTier = metaProfile.purchases.xpMagnetPlus || 0;
+        if (xpMagnetPlusTier > 0) {
+            let magnetBonus = 0.2 * Math.min(xpMagnetPlusTier, 3);
+            if (xpMagnetPlusTier > 3) {
+                magnetBonus += 0.1 * (xpMagnetPlusTier - 3);
+            }
+            player.stats.magnetBonusMult = (player.stats.magnetBonusMult || 1.0) + magnetBonus;
+        }
+
+        // Auto-Reroll - Chance for free reroll on level-up
+        const autoRerollTier = metaProfile.purchases.autoReroll || 0;
+        if (autoRerollTier > 0) {
+            let autoRerollChance = 0.1 * Math.min(autoRerollTier, 3);
+            if (autoRerollTier > 3) {
+                autoRerollChance += 0.03 * (autoRerollTier - 3);
+            }
+            player.stats.autoRerollChance = Math.min(autoRerollChance, 0.50);
+        }
+
+        // Nugget Magnet - Increase magnet radius specifically for Space Nuggets
+        const nuggetMagnetTier = metaProfile.purchases.nuggetMagnet || 0;
+        if (nuggetMagnetTier > 0) {
+            let nuggetMagnetBonus = 0.5 * Math.min(nuggetMagnetTier, 3);
+            if (nuggetMagnetTier > 3) {
+                nuggetMagnetBonus += 0.25 * (nuggetMagnetTier - 3);
+            }
+            player.stats.nuggetMagnetBonus = (player.stats.nuggetMagnetBonus || 1.0) + nuggetMagnetBonus;
+        }
+
+        // Contract Speed - Contract objectives complete faster
+        const contractSpeedTier = metaProfile.purchases.contractSpeed || 0;
+        if (contractSpeedTier > 0) {
+            let contractSpeedBonus = 0.1 * Math.min(contractSpeedTier, 3);
+            if (contractSpeedTier > 3) {
+                contractSpeedBonus += 0.05 * (contractSpeedTier - 3);
+            }
+            player.stats.contractSpeedMult = (player.stats.contractSpeedMult || 1.0) + contractSpeedBonus;
+        }
+
+        // Starting Rerolls - Start each run with free reroll tokens
+        const startingRerollsTier = metaProfile.purchases.startingRerolls || 0;
+        if (startingRerollsTier > 0) {
+            let startingTokens = Math.min(startingRerollsTier, 3);
+            if (startingRerollsTier > 3) {
+                startingTokens += 0.5 * (startingRerollsTier - 3);
+            }
+            rerollTokens += Math.floor(startingTokens);
+        }
+
+        // Lucky Drop - Increased chance for rare pickups
+        const luckyDropTier = metaProfile.purchases.luckyDrop || 0;
+        if (luckyDropTier > 0) {
+            let healthDropBonus = 0.05 * Math.min(luckyDropTier, 3);
+            let nuggetBonus = 0.02 * Math.min(luckyDropTier, 3);
+            if (luckyDropTier > 3) {
+                healthDropBonus += 0.02 * (luckyDropTier - 3);
+                nuggetBonus += 0.01 * (luckyDropTier - 3);
+            }
+            player.stats.luckyHealthDrop = healthDropBonus;
+            player.stats.luckyNuggetDrop = nuggetBonus;
+        }
+
+        // Bounty Hunter - Bonus nuggets for elite/boss kills
+        const bountyHunterTier = metaProfile.purchases.bountyHunter || 0;
+        if (bountyHunterTier > 0) {
+            let eliteBonus = 5 * Math.min(bountyHunterTier, 3);
+            let bossBonus = 20 * Math.min(bountyHunterTier, 3);
+            if (bountyHunterTier > 3) {
+                eliteBonus += 3 * (bountyHunterTier - 3);
+                bossBonus += 10 * (bountyHunterTier - 3);
+            }
+            player.stats.bountyEliteBonus = eliteBonus;
+            player.stats.bountyBossBonus = bossBonus;
+        }
+
+        // Combo Meter - Damage increases with consecutive hits without taking damage
+        const comboMeterTier = metaProfile.purchases.comboMeter || 0;
+        if (comboMeterTier > 0) {
+            let comboDamagePer10 = 0.01 * Math.min(comboMeterTier, 3);
+            let maxComboDamage = 0.10 * Math.min(comboMeterTier, 3);
+            if (comboMeterTier > 3) {
+                comboDamagePer10 += 0.003 * (comboMeterTier - 3);
+                maxComboDamage += 0.05 * (comboMeterTier - 3);
+            }
+            player.stats.comboDamagePer10 = comboDamagePer10;
+            player.stats.maxComboDamage = maxComboDamage;
+            player.stats.comboStacks = 0;
+            player.stats.comboLastHitTime = 0;
+        }
+
+        // Starting Weapon - Start with shotgun unlocked
+        const startingWeaponTier = metaProfile.purchases.startingWeapon || 0;
+        if (startingWeaponTier > 0) {
+            player.inventory['shotgun'] = Math.min(startingWeaponTier, 3);
+            if (startingWeaponTier > 3) {
+                // Damage boost for tier 4+
+                let damageBonus = 0.05 * (startingWeaponTier - 3);
+                player.stats.startingShotgunDamageMult = 1.0 + damageBonus;
+            }
+        }
+
+        // Second Wind - Short invulnerability after taking damage
+        const secondWindTier = metaProfile.purchases.secondWind || 0;
+        if (secondWindTier > 0) {
+            const durations = [0.5, 1.0, 1.5]; // seconds
+            const cooldowns = [10, 8, 6]; // seconds
+            let duration = durations[Math.min(secondWindTier - 1, 2)];
+            let cooldown = cooldowns[Math.min(secondWindTier - 1, 2)];
+            if (secondWindTier > 3) {
+                duration += 0.2 * (secondWindTier - 3);
+                cooldown = Math.max(cooldown - 0.5 * (secondWindTier - 3), 3);
+            }
+            player.stats.secondWindDuration = duration * 60; // frames
+            player.stats.secondWindCooldown = cooldown * 60; // frames
+            player.stats.secondWindTimer = 0;
+            player.stats.secondWindReady = true;
+        }
+
+        // Battery Capacitor - Manual discharge AOE ability
+        const batteryTier = metaProfile.purchases.batteryCapacitor || 0;
+        if (batteryTier > 0) {
+            player.batteryUnlocked = true;
+            if (batteryTier === 1) { player.batteryDamage = 500; player.batteryRange = 800; }
+            if (batteryTier === 2) { player.batteryDamage = 800; player.batteryRange = 900; }
+            if (batteryTier === 3) { player.batteryDamage = 1200; player.batteryRange = 1000; }
+        }
+
         if (pendingProfile) {
             applyProfile(pendingProfile);
         }
@@ -21279,6 +22324,7 @@ window.addEventListener('keydown', e => {
     if (e.key === 'd' || e.key === 'D') keys.d = true;
     if (e.key === ' ') keys.space = true;
     if (e.key === 'e' || e.key === 'E') keys.e = true;
+    if (e.key === 'f' || e.key === 'F') keys.f = true;
     if (e.key === 'Shift') keys.shift = true;
     if (e.key === 'Escape') togglePause();
     // Debug: instantly destroy space station (Ctrl+Shift+K)
@@ -21329,6 +22375,7 @@ window.addEventListener('keyup', e => {
     if (e.key === 'd' || e.key === 'D') keys.d = false;
     if (e.key === ' ') keys.space = false;
     if (e.key === 'e' || e.key === 'E') keys.e = false;
+    if (e.key === 'f' || e.key === 'F') keys.f = false;
     if (e.key === 'Shift') keys.shift = false;
 });
 
@@ -21505,238 +22552,9 @@ if (newProfileBtn) newProfileBtn.addEventListener('click', () => {
         wipeProfiles();
     }
 });
-const buyStart = document.getElementById('buy-start-dmg');
-if (buyStart) buyStart.addEventListener('click', () => {
-    const currentTier = metaProfile.purchases.startDamage || 0;
-    const cost = getMetaUpgradeCost('startDamage', 10);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.startDamage = currentTier + 1;
-        saveMetaProfile();
-        showOverlayMessage(`START DAMAGE TIER ${currentTier + 1}!`, '#0f0', 1500);
-        updateMetaUI();
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buyPassive = document.getElementById('buy-passive-hp');
-if (buyPassive) buyPassive.addEventListener('click', () => {
-    const currentTier = metaProfile.purchases.passiveHp || 0;
-    const cost = getMetaUpgradeCost('passiveHp', 15);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.passiveHp = currentTier + 1;
-        saveMetaProfile();
-        showOverlayMessage(`PASSIVE HP TIER ${currentTier + 1}!`, '#0f0', 1500);
-        updateMetaUI();
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buyReroll = document.getElementById('buy-reroll');
-if (buyReroll) buyReroll.addEventListener('click', () => {
-    // Calculate tier-based discount
-    const discountTier = metaProfile.purchases.shopDiscount || 0;
-    let discount = 1.0;
-    if (discountTier > 0) {
-        const discountMultiplier = 0.1 * Math.min(discountTier, 3);
-        if (discountTier > 3) {
-            const table = { 0: 1.0, 1: 0.9, 2: 0.8, 3: 0.7 };
-            const extraValue = getDiminishingValue(discountTier, table, 0.99);
-            discount = extraValue;
-        } else {
-            discount = 1.0 - discountMultiplier;
-        }
-    }
-    const cost = Math.ceil(5 * discount);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.rerollTokens = (metaProfile.purchases.rerollTokens || 0) + 1;
-        saveMetaProfile();
-        showOverlayMessage("REROLL TOKEN +1", '#0f0', 1500);
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buyRerollPack = document.getElementById('buy-reroll-pack');
-if (buyRerollPack) buyRerollPack.addEventListener('click', () => {
-    // Calculate tier-based discount
-    const discountTier = metaProfile.purchases.shopDiscount || 0;
-    let discount = 1.0;
-    if (discountTier > 0) {
-        const discountMultiplier = 0.1 * Math.min(discountTier, 3);
-        if (discountTier > 3) {
-            const table = { 0: 1.0, 1: 0.9, 2: 0.8, 3: 0.7 };
-            const extraValue = getDiminishingValue(discountTier, table, 0.99);
-            discount = extraValue;
-        } else {
-            discount = 1.0 - discountMultiplier;
-        }
-    }
-    const cost = Math.ceil(25 * discount);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.rerollTokens = (metaProfile.purchases.rerollTokens || 0) + 5;
-        saveMetaProfile();
-        showOverlayMessage("REROLL TOKENS +5", '#0f0', 1500);
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buyHull = document.getElementById('buy-hull');
-if (buyHull) buyHull.addEventListener('click', () => {
-    const currentTier = metaProfile.purchases.hullPlating || 0;
-    const cost = getMetaUpgradeCost('hullPlating', 30);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.hullPlating = currentTier + 1;
-        saveMetaProfile();
-        showOverlayMessage(`HULL PLATING TIER ${currentTier + 1}!`, '#0f0', 1500);
-        updateMetaUI();
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buyShield = document.getElementById('buy-shield-core');
-if (buyShield) buyShield.addEventListener('click', () => {
-    const currentTier = metaProfile.purchases.shieldCore || 0;
-    const cost = getMetaUpgradeCost('shieldCore', 30);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.shieldCore = currentTier + 1;
-        saveMetaProfile();
-        showOverlayMessage(`SHIELD CORE TIER ${currentTier + 1}!`, '#0f0', 1500);
-        updateMetaUI();
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buyStatic = document.getElementById('buy-static');
-if (buyStatic) buyStatic.addEventListener('click', () => {
-    const currentTier = metaProfile.purchases.staticBlueprint || 0;
-    const cost = getMetaUpgradeCost('staticBlueprint', 40);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.staticBlueprint = currentTier + 1;
-        saveMetaProfile();
-        showOverlayMessage(`STATIC BLUEPRINT TIER ${currentTier + 1}!`, '#0f0', 1500);
-        updateMetaUI();
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buyMissile = document.getElementById('buy-missile');
-if (buyMissile) buyMissile.addEventListener('click', () => {
-    const currentTier = metaProfile.purchases.missilePrimer || 0;
-    const cost = getMetaUpgradeCost('missilePrimer', 40);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.missilePrimer = currentTier + 1;
-        saveMetaProfile();
-        showOverlayMessage(`MISSILE PRIMER TIER ${currentTier + 1}!`, '#0f0', 1500);
-        updateMetaUI();
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buyMagnet = document.getElementById('buy-magnet');
-if (buyMagnet) buyMagnet.addEventListener('click', () => {
-    const currentTier = metaProfile.purchases.magnetBooster || 0;
-    const cost = getMetaUpgradeCost('magnetBooster', 25);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.magnetBooster = currentTier + 1;
-        saveMetaProfile();
-        showOverlayMessage(`MAGNET BOOSTER TIER ${currentTier + 1}!`, '#0f0', 1500);
-        updateMetaUI();
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buyNuke = document.getElementById('buy-nuke');
-if (buyNuke) buyNuke.addEventListener('click', () => {
-    const currentTier = metaProfile.purchases.nukeCapacitor || 0;
-    const cost = getMetaUpgradeCost('nukeCapacitor', 35);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.nukeCapacitor = currentTier + 1;
-        saveMetaProfile();
-        showOverlayMessage(`NUKE CAPACITOR TIER ${currentTier + 1}!`, '#0f0', 1500);
-        updateMetaUI();
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buySpeed = document.getElementById('buy-speed');
-if (buySpeed) buySpeed.addEventListener('click', () => {
-    const currentTier = metaProfile.purchases.speedTuning || 0;
-    const cost = getMetaUpgradeCost('speedTuning', 25);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.speedTuning = currentTier + 1;
-        saveMetaProfile();
-        showOverlayMessage(`SPEED TUNING TIER ${currentTier + 1}!`, '#0f0', 1500);
-        updateMetaUI();
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buyBankMult = document.getElementById('buy-bank-mult');
-if (buyBankMult) buyBankMult.addEventListener('click', () => {
-    const currentTier = metaProfile.purchases.bankMultiplier || 0;
-    const cost = getMetaUpgradeCost('bankMultiplier', 50);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.bankMultiplier = currentTier + 1;
-        saveMetaProfile();
-        showOverlayMessage(`BANK MULTIPLIER TIER ${currentTier + 1}!`, '#0f0', 1500);
-        updateMetaUI();
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buyDiscount = document.getElementById('buy-discount');
-if (buyDiscount) buyDiscount.addEventListener('click', () => {
-    const currentTier = metaProfile.purchases.shopDiscount || 0;
-    const cost = getMetaUpgradeCost('shopDiscount', 50);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.shopDiscount = currentTier + 1;
-        saveMetaProfile();
-        showOverlayMessage(`SHOP DISCOUNT TIER ${currentTier + 1}!`, '#0f0', 1500);
-        updateMetaUI();
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buyExtraLife = document.getElementById('buy-extra-life');
-if (buyExtraLife) buyExtraLife.addEventListener('click', () => {
-    const currentTier = metaProfile.purchases.extraLife || 0;
-    const cost = getMetaUpgradeCost('extraLife', 60);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.extraLife = currentTier + 1;
-        saveMetaProfile();
-        showOverlayMessage(`EXTRA LIFE TIER ${currentTier + 1}!`, '#0f0', 1500);
-        updateMetaUI();
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
-const buyDrone = document.getElementById('buy-drone');
-if (buyDrone) buyDrone.addEventListener('click', () => {
-    const currentTier = metaProfile.purchases.droneFabricator || 0;
-    const cost = getMetaUpgradeCost('droneFabricator', 40);
-    if (metaProfile.bank >= cost) {
-        metaProfile.bank -= cost;
-        metaProfile.purchases.droneFabricator = currentTier + 1;
-        saveMetaProfile();
-        showOverlayMessage(`DRONE FABRICATOR TIER ${currentTier + 1}!`, '#0f0', 1500);
-        updateMetaUI();
-    } else {
-        showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-    }
-});
+
+// Note: Duplicate buy handlers removed - modal system now handles all upgrade purchases
+
 document.getElementById('restart-btn').addEventListener('click', () => {
     initAudio();
     startGame();

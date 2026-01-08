@@ -394,6 +394,18 @@ button:hover, button:focus, button.selected {
     color: #9f9;
 }
 
+.upgrade-description-panel {
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(0, 20, 40, 0.9);
+    border: 1px solid #0f0;
+    border-radius: 5px;
+    min-height: 120px;
+    max-width: 750px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
 .objective-text {
     color: #f0f;
 }
@@ -435,4 +447,43 @@ button:hover, button:focus, button.selected {
     height: 100%;
     background-color: #f00;
     transition: width 0.1s linear;
+}
+
+/* Meta Shop Modal Styles */
+#meta-shop-modal {
+    z-index: 150; /* Above the upgrades menu (z-index: 100) */
+}
+
+#meta-modal-content {
+    min-height: 150px;
+    background: rgba(0, 20, 40, 0.8);
+    padding: 15px;
+    border: 1px solid #0f0;
+    border-radius: 5px;
+}
+
+#meta-modal-cost {
+    font-weight: bold;
+}
+
+#meta-modal-tier-info {
+    font-style: italic;
+}
+
+#meta-modal-back {
+    border-color: #f00;
+    color: #fff;
+    background: rgba(255, 0, 0, 0.3);
+}
+
+#meta-modal-buy {
+    border-color: #0f0;
+    color: #0f0;
+    background: rgba(0, 255, 0, 0.2);
+    min-width: 120px;
+}
+
+#meta-modal-buy:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }

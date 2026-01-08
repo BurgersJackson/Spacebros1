@@ -614,6 +614,14 @@
                     </div>
                 </div>
 
+                <div class="status-group" id="battery-ui" style="display: none;">
+                    <span style="color: #0ff;">BATTERY:</span>
+                    <div class="bar-container">
+                        <div id="battery-fill" style="width: 0%; height: 100%; background: #0ff; transition: width 0.1s;"></div>
+                    </div>
+                    <div class="hp-value" id="battery-text" style="color: #0ff;">0%</div>
+                </div>
+
                 <div class="status-group nugget-display">
                     <span>NUGS:</span>
                     <div class="nugget-icon"></div>
@@ -746,7 +754,48 @@
                 </div>
                 <div class="meta-item"><button id="buy-drone">DRONE FABRICATOR</button><span id="meta-drone"></span>
                 </div>
+                <!-- New Upgrades -->
+                <div class="meta-item"><button id="buy-piercing">PIERCING ROUNDS</button><span id="meta-piercing"></span></div>
+                <div class="meta-item"><button id="buy-explosive">EXPLOSIVE ROUNDS</button><span id="meta-explosive"></span></div>
+                <div class="meta-item"><button id="buy-crit">CRITICAL STRIKE</button><span id="meta-crit"></span></div>
+                <div class="meta-item"><button id="buy-split">SPLIT SHOT</button><span id="meta-split"></span></div>
+                <div class="meta-item"><button id="buy-thorn">THORN ARMOR</button><span id="meta-thorn"></span></div>
+                <div class="meta-item"><button id="buy-lifesteal">LIFESTEAL</button><span id="meta-lifesteal"></span></div>
+                <div class="meta-item"><button id="buy-evasion">EVASION BOOST</button><span id="meta-evasion"></span></div>
+                <div class="meta-item"><button id="buy-shieldregen">SHIELD RECHARGE</button><span id="meta-shieldregen"></span></div>
+                <div class="meta-item"><button id="buy-dashcd">DASH COOLDOWN</button><span id="meta-dashcd"></span></div>
+                <div class="meta-item"><button id="buy-dashdur">DASH DURATION</button><span id="meta-dashdur"></span></div>
+                <div class="meta-item"><button id="buy-xpmag">XP MAGNET+</button><span id="meta-xpmag"></span></div>
+                <div class="meta-item"><button id="buy-autoreroll">AUTO-REROLL</button><span id="meta-autoreroll"></span></div>
+                <div class="meta-item"><button id="buy-nuggetmag">NUGGET MAGNET</button><span id="meta-nuggetmag"></span></div>
+                <div class="meta-item"><button id="buy-contractspeed">CONTRACT SPEED</button><span id="meta-contractspeed"></span></div>
+                <div class="meta-item"><button id="buy-startreroll">STARTING REROLLS</button><span id="meta-startreroll"></span></div>
+                <div class="meta-item"><button id="buy-lucky">LUCKY DROP</button><span id="meta-lucky"></span></div>
+                <div class="meta-item"><button id="buy-bounty">BOUNTY HUNTER</button><span id="meta-bounty"></span></div>
+                <div class="meta-item"><button id="buy-combo">COMBO METER</button><span id="meta-combo"></span></div>
+                <div class="meta-item"><button id="buy-startweapon">STARTING WEAPON</button><span id="meta-startweapon"></span></div>
+                <div class="meta-item"><button id="buy-secondwind">SECOND WIND</button><span id="meta-secondwind"></span></div>
+                <div class="meta-item"><button id="buy-battery">BATTERY CAPACITOR</button><span id="meta-battery"></span></div>
             </div>
+            <div id="upgrade-description-panel" class="upgrade-description-panel">
+                <h3 id="desc-panel-title" style="color: #ff0; margin: 0 0 10px 0;">SELECT AN UPGRADE</h3>
+                <div id="desc-panel-content" style="color: #9f9; font-size: 14px; line-height: 1.6;">
+                    Click any upgrade button to see details
+                </div>
+                <div id="desc-panel-tier-info" style="color: #ff0; font-size: 12px; margin-top: 10px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Meta Shop Upgrade Detail Modal -->
+    <div id="meta-shop-modal" class="menu-screen" style="display: none; width: 600px; padding: 30px; border-color: #ff0;">
+        <h2 id="meta-modal-title" style="color: #ff0; margin-top: 0; font-family: 'Courier New', monospace;">UPGRADE DETAILS</h2>
+        <div id="meta-modal-content" style="color: #9f9; font-size: 16px; line-height: 1.8; margin: 20px 0; text-align: left;"></div>
+        <div id="meta-modal-cost" style="color: #ff0; font-size: 18px; margin: 15px 0;"></div>
+        <div id="meta-modal-tier-info" style="color: #0ff; font-size: 14px; margin: 10px 0;"></div>
+        <div style="display: flex; gap: 20px; justify-content: center; margin-top: 25px;">
+            <button id="meta-modal-back">BACK</button>
+            <button id="meta-modal-buy">BUY</button>
         </div>
     </div>
 
