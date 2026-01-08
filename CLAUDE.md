@@ -21,14 +21,13 @@ Available in browser console (F12) during gameplay:
 - `memStats()` - Memory usage statistics
 - `perfCheck()` - Quick performance check with warnings
 - `window.spawnCruiser()` - DEBUG: Spawn cruiser boss instantly
-- `window.spawnStation()` - DEBUG: Spawn space station instantly
 
 ## Architecture Overview
 
 ### Monolithic Game Loop
-This is an Electron wrapper for "Neon Space Cave," a 2D space shooter. The core game logic (`src/js/main.js`) is a large monolithic file (~750KB) that contains:
+This is an Electron wrapper for "Neon Space Cave," a 2D space shooter. The core game logic (`src/js/main.js`) is a large monolithic file (~800KB) that contains:
 
-- **Game Loop**: Fixed timestep simulation (60 FPS) with configurable max catch-up steps
+- **Game Loop**: Variable timestep simulation with `dtScale` (deltaTime / SIM_STEP_MS) for frame-rate independence
 - **Entity System**: Class-based entities with manual lifecycle management (not ECS)
 - **Rendering**: Hybrid DOM (primary UI) + PixiJS (game world sprites) + Canvas 2D overlays (directional arrows, minimap)
 - **Collision Detection**: Spatial hash grids for efficient collision queries
@@ -36,10 +35,14 @@ This is an Electron wrapper for "Neon Space Cave," a 2D space shooter. The core 
 
 ### Key Systems
 
-**Simulation Timing** (`src/js/core/constants.js`):
-- `SIM_FPS = 60` - Fixed simulation framerate
-- `SIM_STEP_MS = 16.67` - Milliseconds per simulation step
+**Variable Timestep Timing** (`src/js/core/constants.js`):
+- Game uses **variable timestep** - NOT locked to 60fps
+- `SIM_FPS = 60` - Reference framerate for calibration (kept for backwards compatibility)
+- `SIM_STEP_MS = 16.67` - Milliseconds per simulation step at reference framerate
 - `SIM_MAX_STEPS_PER_FRAME = 4` - Max catch-up steps to prevent spiral of death
+- **IMPORTANT**: All timing must use `dtScale = deltaTime / SIM_STEP_MS` or `dtFactor = deltaTime / 16.67`
+- Time-based counters use `this.t += dtFactor` instead of `this.t++`
+- Frame-based checks use `Math.floor(this.t) % N === 0` for compatibility with time-scaled counters
 
 **Sprite Pooling** (`src/js/rendering/pixi-setup.js`):
 - Pre-allocated sprite pools for performance: bullets, particles, enemies, pickups, asteroids, stars
@@ -62,6 +65,7 @@ src/js/
 ├── main.js              # Monolithic game loop (contains all entity classes)
 ├── core/
 │   ├── constants.js     # Game configuration (physics, graphics, audio, balance)
+│   │                    # Includes UPGRADE_DATA and META_SHOP_UPGRADE_DATA
 │   ├── math.js          # Vector class, SpatialHash for collision detection
 │   ├── state.js         # Global game state management
 │   ├── profiler.js      # Performance profiling
@@ -87,6 +91,48 @@ src/js/
 - `preload.js` - Context bridge between renderer and Node.js
 - Settings persisted to `userData/settings.json`
 - Cache management configured for temp directory
+
+## Variable Timestep Timing Patterns
+
+### Time Scaling in update() Methods
+All entity `update(deltaTime)` methods must use time scaling:
+
+```javascript
+update(deltaTime = 16.67) {
+    if (this.dead) return;
+
+    const dtFactor = deltaTime / 16.67;  // or use SIM_STEP_MS
+    // or simply use dtScale if passed from parent
+
+    // Use dtFactor for all time-based operations:
+    this.timer -= dtFactor;
+    this.cooldown -= dtFactor;
+
+    // Counter increments MUST be time-scaled:
+    this.t += dtFactor;  // NOT this.t++
+
+    // Frame-based checks need Math.floor():
+    if (Math.floor(this.t) % 2 === 0) {
+        emitParticle(...);
+    }
+}
+```
+
+### Constants for Time Values
+When defining duration constants, use frame counts at 60fps reference:
+- 1 second = 60 frames
+- 0.5 seconds = 30 frames
+- These work correctly with dtScale because it normalizes to reference framerate
+
+### Using SIM_FPS for Calibration
+When calculating rates that depend on framerate, use `SIM_FPS` instead of hardcoded 60:
+```javascript
+// CORRECT
+this.turnSpeed = (Math.PI * 2) / (4 * SIM_FPS);
+
+// WRONG
+this.turnSpeed = (Math.PI * 2) / (4 * 60);
+```
 
 ## Important Patterns and Gotchas
 
@@ -157,20 +203,72 @@ draw(ctx) {
 }
 ```
 
-## Known Issues and Fixes
+## Upgrade System
 
-See `ENTITY_CLEANUP_FINAL.md`, `JITTER_FIXES.md`, and related fix documents for detailed explanations of:
-- Radiation storm cleanup (self-nullification pattern)
-- Shield ring scaling at different zoom levels
-- Entity sprite cleanup patterns
-- Stutter/jitter fixes (upgrade menu timing, staggered cleanup)
+### Popup/Level-Up Upgrades
+Defined in `UPGRADE_DATA` in `src/js/core/constants.js`:
+
+**Weapons Category:**
+- Turret Damage, Turret Fire Rate, Turret Range
+- Multi-Shot, Flak Shotgun, Static Weapons, Homing Missiles
+- **NEW**: Volley Shot (hold to charge burst), Chain Lightning (chains to enemies), Backstabber (bonus damage from behind)
+
+**Shields & Hull Category:**
+- Hull Strength, Segment Count, Outer Shield
+- Shield Regen, Hull Regen
+- **NEW**: Reactive Shield (restore on kill), Damage Mitigation (reduce damage taken + speed)
+
+**Mobility Category:**
+- Speed, Turbo Boost
+
+**Specials Category:**
+- XP Magnet, Area Nuke, Phase Shield, Stasis Field
+- **NEW**: Time Dilation (slow nearby enemies), Momentum (DPS while moving)
+
+**Drones Category:**
+- Companion Drones
+
+### Meta Shop Upgrades
+Permanent progression upgrades purchased with Space Nuggets. Defined in `META_SHOP_UPGRADE_DATA`:
+
+**Core Upgrades:**
+- Start Damage Boost, Passive +HP, Hull Plating, Shield Core
+- Static Blueprint, Missile Primer, Magnet Booster, Nuke Capacitor
+- Speed Tuning, Bank Multiplier, Shop Discount, Extra Life
+
+**Combat Upgrades:**
+- Piercing Rounds, Explosive Rounds, Critical Strike, Split Shot
+- Thorn Armor, Lifesteal, Evasion Boost
+
+**Utility Upgrades:**
+- Shield Recharge, Dash Cooldown, Dash Duration
+- XP Magnet+, Auto-Reroll, Nugget Magnet, Contract Speed
+- Starting Rerolls, Lucky Drop, Bounty Hunter
+
+**Advanced Upgrades:**
+- Combo Meter, Starting Weapon, Second Wind
+- **NEW**: Battery Capacitor (manual discharge AOE ability)
+
+### Battery Power-Up
+Store-bought ability that charges during gameplay and discharges manually:
+- **Activation**: Press F key (keyboard) or Y button (gamepad)
+- **Charge Time**: 30 seconds to full charge (all tiers)
+- **Tier Scaling**:
+  - Tier 1: 500 damage, 800u range
+  - Tier 2: 800 damage, 900u range
+  - Tier 3: 1200 damage, 1000u range
+- **Visual**: Electric blue (#0ff) with expanding ring effect
+- **UI**: Battery HUD shows charge percentage and turns white when fully charged
 
 ## Game Configuration
 
 Key constants in `src/js/core/constants.js`:
 - `ZOOM_LEVEL` - Default camera zoom
-- `SIM_FPS` - Simulation framerate
+- `SIM_FPS` - Reference simulation framerate (60)
+- `SIM_STEP_MS` - Milliseconds per step at reference framerate (16.67)
 - `PIXI_SPRITE_POOL_MAX` - Max sprites per pool type
 - `USE_PIXI_OVERLAY` - Whether to use PixiJS for rendering
 - `ENABLE_NEBULA` - Nebula background rendering
 - `BACKGROUND_MUSIC_URL` - Music file location
+- `UPGRADE_DATA` - All popup/level-up upgrade definitions
+- `META_SHOP_UPGRADE_DATA` - All meta shop upgrade descriptions
