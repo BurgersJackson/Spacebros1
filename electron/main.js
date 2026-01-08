@@ -71,6 +71,18 @@ function createWindow() {
     if (process.env.ELECTRON_SMOKE === "1") setTimeout(() => app.quit(), 250);
   });
 
+  // Intercept window close to save game data before quitting
+  win.on("close", (e) => {
+    // Prevent immediate close
+    e.preventDefault();
+    // Send save request to renderer process
+    win.webContents.send("app-before-quit");
+    // Allow a short time for save to complete, then close
+    setTimeout(() => {
+      win.destroy(); // Force close after save attempt
+    }, 500);
+  });
+
   if (process.env.ELECTRON_DEVTOOLS === "1") {
     win.webContents.openDevTools({ mode: "detach" });
   }

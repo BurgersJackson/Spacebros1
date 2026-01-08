@@ -6,21 +6,24 @@
 import { globalProfiler } from './profiler.js';
 import { globalJitterMonitor } from './jitter-monitor.js';
 
+// DEBUG: Disabled console logging for Destroyer debugging
+const NOOP = () => {};
+
 // Make performance tools available in browser console
 if (typeof window !== 'undefined') {
-    
+
     // Enable/disable profiler
     window.perfEnable = () => {
         globalProfiler.enabled = true;
-        console.log('✅ Profiler ENABLED');
+        // console.log('✅ Profiler ENABLED');
         return globalProfiler;
     };
-    
+
     window.perfDisable = () => {
         globalProfiler.enabled = false;
-        console.log('❌ Profiler DISABLED');
+        // console.log('❌ Profiler DISABLED');
     };
-    
+
     // Get current performance stats
     window.perfStats = () => {
         return {
@@ -33,17 +36,17 @@ if (typeof window !== 'undefined') {
             recommendations: globalJitterMonitor.getRecommendations()
         };
     };
-    
+
     // Log performance report immediately
     window.perfReport = () => {
         globalProfiler.report();
         globalJitterMonitor.report();
         return window.perfStats();
     };
-    
+
     // Monitor frame times for specified duration
     window.perfWatch = (seconds = 10) => {
-        console.log(`👀 Watching performance for ${seconds} seconds...`);
+        // console.log(`👀 Watching performance for ${seconds} seconds...`);
         const originalInterval = globalJitterMonitor.reportInterval;
         globalJitterMonitor.reportInterval = seconds * 1000;
         setTimeout(() => {
@@ -51,20 +54,20 @@ if (typeof window !== 'undefined') {
             globalJitterMonitor.reportInterval = originalInterval;
         }, seconds * 1000);
     };
-    
+
     // Force garbage collection (if available)
     window.forceGC = () => {
         if (typeof window.gc === 'function') {
             const start = performance.now();
             window.gc();
             const duration = performance.now() - start;
-            console.log(`🗑️ Forced GC in ${duration.toFixed(2)}ms`);
+            // console.log(`🗑️ Forced GC in ${duration.toFixed(2)}ms`);
             return duration;
         } else {
-            console.log('⚠️ GC not exposed. Use Chrome DevTools with --js-flags="--expose-gc"');
+            // console.log('⚠️ GC not exposed. Use Chrome DevTools with --js-flags="--expose-gc"');
         }
     };
-    
+
     // Check memory usage
     window.memStats = () => {
         if (performance.memory) {
@@ -73,7 +76,7 @@ if (typeof window !== 'undefined') {
             const totalMB = (mem.totalJSHeapSize / 1048576).toFixed(2);
             const limitMB = (mem.jsHeapSizeLimit / 1048576).toFixed(2);
             const percent = ((mem.usedJSHeapSize / mem.jsHeapSizeLimit) * 100).toFixed(1);
-            
+
             return {
                 usedMB,
                 totalMB,
@@ -82,10 +85,10 @@ if (typeof window !== 'undefined') {
                 status: percent > 80 ? '⚠️ HIGH' : '✅ OK'
             };
         } else {
-            console.log('⚠️ Memory stats not available in this browser');
+            // console.log('⚠️ Memory stats not available in this browser');
         }
     };
-    
+
     // Entity count report
     window.entityCount = () => {
         const stats = {
@@ -99,58 +102,58 @@ if (typeof window !== 'undefined') {
             powerups: window.powerups?.length || 0,
             drones: window.drones?.length || 0
         };
-        
+
         const total = Object.values(stats).reduce((a, b) => a + b, 0);
-        
-        console.table(stats);
-        console.log(`Total entities: ${total}`);
-        
+
+        // console.table(stats);
+        // console.log(`Total entities: ${total}`);
+
         return stats;
     };
-    
+
     // Quick performance check
     window.perfCheck = () => {
-        console.group('🔍 Performance Check');
-        
+        // console.group('🔍 Performance Check');
+
         // Memory
         const mem = window.memStats();
         if (mem) {
-            console.log(`Memory: ${mem.usedMB}MB / ${mem.limitMB}MB (${mem.percent}%) ${mem.status}`);
+            // console.log(`Memory: ${mem.usedMB}MB / ${mem.limitMB}MB (${mem.percent}%) ${mem.status}`);
         }
-        
+
         // Entities
         const entities = window.entityCount();
         const totalEntities = Object.values(entities).reduce((a, b) => a + b, 0);
-        
+
         // FPS estimation
         if (window.fpsSmoothMs) {
             const fps = 1000 / window.fpsSmoothMs;
-            console.log(`FPS: ${fps.toFixed(1)}`);
+            // console.log(`FPS: ${fps.toFixed(1)}`);
         }
-        
+
         // Jitter
         if (window.jitterStats) {
             const { fps, jitterPercent, spikes } = window.jitterStats;
-            console.log(`Jitter: ${jitterPercent?.toFixed(1)}% (spikes: ${spikes})`);
+            // console.log(`Jitter: ${jitterPercent?.toFixed(1)}% (spikes: ${spikes})`);
         }
-        
+
         // Warnings
         if (totalEntities > 500) {
-            console.warn('⚠️ High entity count - may cause performance issues');
+            // console.warn('⚠️ High entity count - may cause performance issues');
         }
         if (mem && mem.percent > 80) {
-            console.warn('⚠️ High memory usage - GC spikes likely');
+            // console.warn('⚠️ High memory usage - GC spikes likely');
         }
-        
-        console.groupEnd();
-        
+
+        // console.groupEnd();
+
         return {
             mem,
             entities,
             totalEntities
         };
     };
-    
+
     // Help
     window.perfHelp = () => {
         console.log(`
@@ -173,8 +176,8 @@ Tips for smooth gameplay:
 - Use perfWatch(30) to observe during gameplay
         `);
     };
-    
-    console.log('🚀 Performance debug commands loaded. Type perfHelp() for commands.');
+
+    // console.log('🚀 Performance debug commands loaded. Type perfHelp() for commands.');
 }
 
 

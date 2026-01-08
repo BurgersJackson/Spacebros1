@@ -43,7 +43,7 @@ export class Profiler {
     }
 
     report() {
-        console.group('--- Performance Report (Avg per frame over last ' + this.reportInterval + ' frames) ---');
+        // console.group('--- Performance Report (Avg per frame over last ' + this.reportInterval + ' frames) ---');
         // Also log to screen for better visibility
         if (typeof window !== 'undefined') {
             window.lastPerfReport = this.metrics;
@@ -71,8 +71,8 @@ export class Profiler {
             };
         }
 
-        console.table(tableData);
-        console.groupEnd();
+        // console.table(tableData);
+        // console.groupEnd();
     }
 
     reset() {
