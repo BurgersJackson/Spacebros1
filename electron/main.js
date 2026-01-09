@@ -5,7 +5,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 // Settings Persistence
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'settings.json');
-const defaultSettings = { width: 1280, height: 720, fullscreen: false, frameless: false };
+const defaultSettings = { width: 1280, height: 720, fullscreen: false, frameless: false, vsync: true };
 
 function loadSettings() {
   try {
@@ -39,6 +39,11 @@ let mainWindow = null;
 
 function createWindow() {
   const settings = loadSettings();
+
+  // Apply vsync setting (disable vsync if setting is false)
+  if (settings.vsync === false) {
+    app.commandLine.appendSwitch('--disable-gpu-vsync');
+  }
 
   const win = new BrowserWindow({
     width: settings.fullscreen ? undefined : settings.width,

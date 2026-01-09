@@ -42,7 +42,7 @@ const UPGRADE_DATA = {
                 { "id": "shotgun", "name": "Flak Shotgun", "tier1": "Unlock: 5 Pellets", "tier2": "8 Pellets, +Range", "tier3": "12 Pellets", "notes": "Close-range burst." },
                 { "id": "static_weapons", "name": "Static Weapons", "tier1": "Unlock Forward Laser", "tier2": "Add Side Lasers", "tier3": "Add Rear Laser", "tier4": "Dual Rear Stream", "tier5": "Dual Front Stream", "notes": "Always-on turrets." },
                 { "id": "homing_missiles", "name": "Homing Missiles", "tier1": "2x Missiles / 2s", "tier2": "4x Missiles / 2s", "tier3": "6x Missiles / 2s", "notes": "Shield-piercing swarm." },
-                { "id": "volley_shot", "name": "Volley Shot", "tier1": "Hold fire to charge 3-shot burst", "tier2": "5-shot burst, faster charge", "tier3": "7-shot burst, instant charge", "notes": "Release burst on button release. Devastating burst damage." },
+                { "id": "volley_shot", "name": "Volley Shot", "tier1": "Auto-fires 3-shot burst every 3s", "tier2": "5-shot burst every 3s", "tier3": "7-shot burst every 3s", "tier4": "9-shot burst every 3s", "tier5": "11-shot burst every 3s", "notes": "Automatic burst damage. No input required." },
                 { "id": "chain_lightning", "name": "Chain Lightning", "tier1": "Projectiles chain to 1 enemy (200u)", "tier2": "Chain to 2 enemies (250u)", "tier3": "Chain to 3 enemies (300u)", "notes": "Arc damage hits grouped enemies. Great vs swarms." },
                 { "id": "backstabber", "name": "Backstabber", "tier1": "+50% damage from behind", "tier2": "+100% damage from behind", "tier3": "+150% damage, slow enemies 2s", "notes": "Positioning matters. Flanking = huge damage." }
             ]
@@ -2437,6 +2437,7 @@ function completeSectorWarp() {
     pendingStations = 0;
     if (spaceStation) pixiCleanupObject(spaceStation);
     spaceStation = null;
+    stationHealthBarVisible = false;
     nextSpaceStationTime = null;
     if (destroyer) pixiCleanupObject(destroyer);
     destroyer = null;
@@ -2497,6 +2498,7 @@ function handleSpaceStationDestroyed() {
     showOverlayMessage("SPACE STATION DESTROYED - WARP SIGNAL IN 30s", '#f80', 5000);
     pixiCleanupObject(spaceStation);
     spaceStation = null;
+    stationHealthBarVisible = false;
     setTimeout(() => {
         warpGateUnlocked = true;
     }, 30000);
@@ -2626,12 +2628,10 @@ class EnvironmentAsteroid extends Entity {
     }
 
     update(deltaTime = 16.67) {
-        // Save previous state for interpolation
-        this.prevPos.x = this.pos.x;
-        this.prevPos.y = this.pos.y;
+        // Save previous angle for interpolation (Entity.update handles prevPos)
         this.prevAngle = this.angle;
 
-        // Use Entity.update for scaled movement
+        // Use Entity.update for scaled movement (it saves prevPos correctly)
         super.update(deltaTime);
 
         const dtFactor = deltaTime / 16.67;
@@ -3086,6 +3086,13 @@ class Spaceship extends Entity {
         this.volleyShotCount = 0;        // Number of shots in volley (3/5/7 based on tier)
         this.volleyCooldown = 0;        // Timer until next auto-fire (180 frames = 3 seconds)
         this.lastF = false;             // Track F key state transitions (for Battery)
+
+        // CIWS (Close-In Weapon System)
+        this.ciwsUnlocked = false;
+        this.ciwsDamage = 1;            // Damage per bullet (1-5 based on tier)
+        this.ciwsRange = 400;            // Target acquisition range
+        this.ciwsCooldown = 0;          // Frames until next shot (6 = 2x player fire rate)
+        this.ciwsMaxCooldown = 6;        // Fire rate: every 6 frames at 60fps
     }
 
     respawn() {
@@ -3377,6 +3384,20 @@ class Spaceship extends Entity {
             }
         }
 
+        // CIWS Auto-Fire (rapid-fire defense system)
+        if (this.ciwsUnlocked) {
+            if (this.ciwsCooldown > 0) {
+                this.ciwsCooldown -= dtScale;
+            } else {
+                // Find target (missiles first, then nearest enemy)
+                const target = this.findCIWSTarget();
+                if (target) {
+                    this.fireCIWS(target);
+                    this.ciwsCooldown = this.ciwsMaxCooldown;
+                }
+            }
+        }
+
         if (this.canWarp) {
             if (this.warpCooldown > 0) {
                 this.warpCooldown -= dtScale;
@@ -3509,7 +3530,7 @@ class Spaceship extends Entity {
     }
 
     fireNuke() {
-        shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.nukeDamage, this.nukeRange, { damageAsteroids: true, damageMissiles: true }));
+        shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.nukeDamage, this.nukeRange, { damageAsteroids: true, damageMissiles: true, damageBases: true }));
         this.nukeCooldown = this.nukeMaxCooldown;
         //    showOverlayMessage("NUKE DEPLOYED", '#ff0', 1000);
     }
@@ -3604,6 +3625,56 @@ class Spaceship extends Entity {
         // Visual feedback
         spawnBarrelSmoke(this.pos.x, this.pos.y, this.turretAngle);
         playSound('rapid_shoot');
+    }
+
+    findCIWSTarget() {
+        let nearestTarget = null;
+        let minDist = Infinity;
+        const range = this.ciwsRange;
+
+        // Check all enemy bullets (including missiles, pinwheels, etc.)
+        for (let b of bullets) {
+            if (b.isEnemy && !b.dead) {
+                const dist = Math.hypot(b.pos.x - this.pos.x, b.pos.y - this.pos.y);
+                if (dist <= range && dist < minDist) {
+                    minDist = dist;
+                    nearestTarget = b;
+                }
+            }
+        }
+
+        // Check guided missiles array (destroyer missiles)
+        if (typeof guidedMissiles !== 'undefined') {
+            for (let m of guidedMissiles) {
+                if (!m.dead) {
+                    const dist = Math.hypot(m.pos.x - this.pos.x, m.pos.y - this.pos.y);
+                    if (dist <= range && dist < minDist) {
+                        minDist = dist;
+                        nearestTarget = m;
+                    }
+                }
+            }
+        }
+
+        // Also check enemies array
+        for (let e of enemies) {
+            if (e.dead) continue;
+            const dist = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
+            if (dist <= range && dist < minDist) {
+                minDist = dist;
+                nearestTarget = e;
+            }
+        }
+
+        return nearestTarget;
+    }
+
+    fireCIWS(target) {
+        const angle = Math.atan2(target.pos.y - this.pos.y, target.pos.x - this.pos.x);
+        const bulletSpeed = 18; // Same as player turret
+        const damage = this.ciwsDamage;
+        // White bullets for visibility (#fff, 3px)
+        bullets.push(new Bullet(this.pos.x, this.pos.y, angle, false, damage, bulletSpeed, 3, '#fff'));
     }
 
     shoot() {
@@ -3906,7 +3977,7 @@ class Spaceship extends Entity {
                         pixiVectorLayer.addChild(gfx);
                     }
                     gfx.clear();
-                    gfx.position.set(this.pos.x, this.pos.y);
+                    gfx.position.set(rPos.x, rPos.y);
 
                     if (this.invincibilityCycle && this.invincibilityCycle.unlocked && this.invincibilityCycle.state === 'active') {
                         const outerR = (hasOuter ? this.outerShieldRadius : 0);
@@ -3930,7 +4001,7 @@ class Spaceship extends Entity {
                             this.shieldsDirty = true;
                         } else if (!outerGfx.parent) pixiVectorLayer.addChild(outerGfx);
 
-                        outerGfx.position.set(this.pos.x, this.pos.y);
+                        outerGfx.position.set(rPos.x, rPos.y);
                         outerGfx.rotation = this.outerShieldRotation || 0;
                     } else if (outerGfx) {
                         try { outerGfx.destroy(true); } catch (e) { }
@@ -3948,7 +4019,7 @@ class Spaceship extends Entity {
                             this.shieldsDirty = true;
                         } else if (!innerGfx.parent) pixiVectorLayer.addChild(innerGfx);
 
-                        innerGfx.position.set(this.pos.x, this.pos.y);
+                        innerGfx.position.set(rPos.x, rPos.y);
                         innerGfx.rotation = this.shieldRotation || 0;
                     } else if (innerGfx) {
                         try { innerGfx.destroy(true); } catch (e) { }
@@ -5939,7 +6010,7 @@ class Enemy extends Entity {
                     pixiVectorLayer.addChild(t);
                 }
                 t.visible = true;
-                t.position.set(this.pos.x, this.pos.y - this.radius - 15);
+                t.position.set(rPos.x, rPos.y - this.radius - 15);
                 t.alpha = stealthAlpha;
             } else if (this._pixiNameText) {
                 try { this._pixiNameText.destroy(true); } catch (e) { }
@@ -6020,6 +6091,10 @@ class Pinwheel extends Entity {
 
     update(deltaTime = 16.67) {
         if (this.dead) return;
+
+        // Save previous position for interpolation (required for fixed timestep rendering)
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
 
         const dtFactor = deltaTime / 16.67;
 
@@ -8919,6 +8994,7 @@ function startCaveSector2() {
     pendingStations = 0;
     if (spaceStation) pixiCleanupObject(spaceStation);
     spaceStation = null;
+    stationHealthBarVisible = false;
     nextSpaceStationTime = null;
 
     // Ensure no destroyers in cave mode
@@ -9458,6 +9534,11 @@ class MiniEventDefendCache extends Entity {
     }
     update(deltaTime = 16.67) {
         if (this.dead) return;
+
+        // Save previous position for interpolation (required for fixed timestep rendering)
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+
         if (!player || player.dead) { this.fail(); return; }
         const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
         const dt = Math.min(120, Math.max(0, now - this.lastUpdateAt));
@@ -9630,7 +9711,14 @@ class SectorPOI extends Entity {
         this._pixiNameText = null;
     }
     kill() {
-        if (this.dead) return;
+        if (this.dead) {
+            // Already dead, but still need to clean up Pixi graphics
+            // Check if cleanup has already been done to avoid double-cleanup
+            if (!this._pixiIsCleaning) {
+                pixiCleanupObject(this);
+            }
+            return;
+        }
         this.dead = true;
         pixiCleanupObject(this);
     }
@@ -9655,6 +9743,11 @@ class SectorPOI extends Entity {
     }
     update(deltaTime = 16.67) {
         if (this.dead) return;
+
+        // Save previous position for interpolation (required for fixed timestep rendering)
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
         if (this.canClaim()) this.claim();
@@ -9682,8 +9775,9 @@ class SectorPOI extends Entity {
             this._pixiNameText.visible = true;
 
             const pulse = 0.8 + Math.sin(this.t * 0.08) * 0.2;
-            this._pixiGfx.position.set(this.pos.x, this.pos.y);
-            this._pixiNameText.position.set(this.pos.x, this.pos.y - this.radius - 18);
+            const rPos = this.getRenderPos(renderAlpha);
+            this._pixiGfx.position.set(rPos.x, rPos.y);
+            this._pixiNameText.position.set(rPos.x, rPos.y - this.radius - 18);
 
             this._pixiGfx.clear();
             const c = parseInt(this.color.replace('#', '0x'), 16) || 0x00ffff;
@@ -9757,10 +9851,6 @@ class DebrisFieldPOI extends SectorPOI {
         this.captureActive = false;
         this.lastUpdateAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
     }
-    kill() {
-        if (this.dead) return;
-        super.kill();
-    }
     update(deltaTime = 16.67) {
         if (this.dead || this.claimed) return;
         const dtFactor = deltaTime / 16.67;
@@ -9833,7 +9923,25 @@ class DebrisFieldPOI extends SectorPOI {
         ctx.restore();
     }
     kill() {
-        if (this.dead) return;
+        if (this.dead) {
+            // Already dead, but still need to clean up DebrisFieldPOI-specific graphics
+            if (!this._pixiIsCleaning) {
+                // Clean up ALL Pixi graphics
+                if (this._pixiProgressGfx) {
+                    try { this._pixiProgressGfx.destroy({ children: true }); } catch (e) { }
+                    this._pixiProgressGfx = null;
+                }
+                if (this._pixiGfx) {
+                    try { this._pixiGfx.destroy({ children: true }); } catch (e) { }
+                    this._pixiGfx = null;
+                }
+                if (this._pixiNameText) {
+                    try { this._pixiNameText.destroy(); } catch (e) { }
+                    this._pixiNameText = null;
+                }
+            }
+            return;
+        }
         super.kill();
         // Clean up ALL Pixi graphics
         if (this._pixiProgressGfx) {
@@ -12116,7 +12224,8 @@ class SpaceStation extends Entity {
             }
 
             container.visible = true;
-            container.position.set(this.pos.x, this.pos.y);
+            const rPos = this.getRenderPos(renderAlpha);
+            container.position.set(rPos.x, rPos.y);
 
             const now = (typeof frameNow === 'number' && frameNow > 0) ? frameNow : Date.now();
             const hullScale = (this.visualRadius && isFinite(this.visualRadius)) ? (this.visualRadius / 340) : 1;
@@ -12156,7 +12265,7 @@ class SpaceStation extends Entity {
                             this.shieldsDirty = true;
                         } else if (!gfx.parent) pixiVectorLayer.addChild(gfx);
 
-                        gfx.position.set(this.pos.x, this.pos.y);
+                        gfx.position.set(rPos.x, rPos.y);
                         gfx.rotation = this.shieldRotation || 0;
                     } else if (gfx) {
                         try { gfx.destroy(true); } catch (e) { }
@@ -12174,7 +12283,7 @@ class SpaceStation extends Entity {
                             this.shieldsDirty = true;
                         } else if (!innerGfx.parent) pixiVectorLayer.addChild(innerGfx);
 
-                        innerGfx.position.set(this.pos.x, this.pos.y);
+                        innerGfx.position.set(rPos.x, rPos.y);
                         innerGfx.rotation = this.innerShieldRotation || 0;
                     } else if (innerGfx) {
                         try { innerGfx.destroy(true); } catch (e) { }
@@ -12238,7 +12347,7 @@ class SpaceStation extends Entity {
                     }
                     if (!t.parent) pixiVectorLayer.addChild(t);
                     t.visible = true;
-                    t.position.set(this.pos.x, this.pos.y - this.radius - 20);
+                    t.position.set(rPos.x, rPos.y - this.radius - 20);
                 } else if (this._pixiNameText) {
                     try { this._pixiNameText.destroy(true); } catch (e) { }
                     this._pixiNameText = null;
@@ -12872,7 +12981,8 @@ class Destroyer extends Entity {
             }
 
             container.visible = true;
-            container.position.set(this.pos.x, this.pos.y);
+            const rPos = this.getRenderPos(renderAlpha);
+            container.position.set(rPos.x, rPos.y);
             container.rotation = this.angle || 0;
 
             const now = (typeof frameNow === 'number' && frameNow > 0) ? frameNow : Date.now();
@@ -12891,7 +13001,7 @@ class Destroyer extends Entity {
                     pixiVectorLayer.addChild(gfx);
                 }
 
-                gfx.position.set(this.pos.x, this.pos.y);
+                gfx.position.set(rPos.x, rPos.y);
                 gfx.rotation = this.shieldRotation || 0;
                 if (this.shieldsDirty) {
                     gfx.clear();
@@ -12927,7 +13037,7 @@ class Destroyer extends Entity {
                     pixiVectorLayer.addChild(innerGfx);
                 }
 
-                innerGfx.position.set(this.pos.x, this.pos.y);
+                innerGfx.position.set(rPos.x, rPos.y);
                 innerGfx.rotation = this.innerShieldRotation || 0;
                 if (this.shieldsDirty) {
                     innerGfx.clear();
@@ -12964,7 +13074,7 @@ class Destroyer extends Entity {
                     pixiVectorLayer.addChild(phaseGfx);
                 }
                 phaseGfx.clear();
-                phaseGfx.position.set(this.pos.x, this.pos.y);
+                phaseGfx.position.set(rPos.x, rPos.y);
                 phaseGfx.lineStyle(3, 0xffdc00, 0.6);
                 phaseGfx.drawCircle(0, 0, (this.shieldRadius || this.radius || 0) + 14);
             } else if (this._pixiPhaseGfx) {
@@ -12991,7 +13101,7 @@ class Destroyer extends Entity {
                 }
                 if (!txt.parent) pixiVectorLayer.addChild(txt);
                 txt.visible = true;
-                txt.position.set(this.pos.x, this.pos.y - this.visualRadius - 20);
+                txt.position.set(rPos.x, rPos.y - this.visualRadius - 20);
             }
 
             // Health Bar
@@ -13011,7 +13121,7 @@ class Destroyer extends Entity {
                 const healthColor = hpPercent > 0.6 ? 0x00ff00 : (hpPercent > 0.3 ? 0xffff00 : 0xff0000);
 
                 hpBarGfx.clear();
-                hpBarGfx.position.set(this.pos.x, this.pos.y - this.visualRadius - 45);
+                hpBarGfx.position.set(rPos.x, rPos.y - this.visualRadius - 45);
 
                 // Background
                 hpBarGfx.beginFill(0x330000);
@@ -13042,7 +13152,7 @@ class Destroyer extends Entity {
                     pixiVectorLayer.addChild(hpText);
                 }
                 hpText.text = `${this.hp}/${this.maxHp}`;
-                hpText.position.set(this.pos.x, this.pos.y - this.visualRadius - 48);
+                hpText.position.set(rPos.x, rPos.y - this.visualRadius - 48);
             }
 
             // Draw Tractor Beam (red ring like arena)
@@ -13056,7 +13166,7 @@ class Destroyer extends Entity {
                     pixiVectorLayer.addChild(beamGfx);
                 }
                 beamGfx.clear();
-                beamGfx.position.set(this.pos.x, this.pos.y);
+                beamGfx.position.set(rPos.x, rPos.y);
 
                 // Pulsing red like boss arena
                 const pulse = 0.5 + Math.sin(Date.now() * 0.005) * 0.2;
@@ -13081,7 +13191,7 @@ class Destroyer extends Entity {
                 if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
                     debugGfx.visible = true;
                     debugGfx.clear();
-                    debugGfx.position.set(this.pos.x, this.pos.y);
+                    debugGfx.position.set(rPos.x, rPos.y);
                     debugGfx.rotation = this.angle || 0; // Rotate debug gfx with ship
                     
                     // Draw Hull Hitbox (Green) - Multi-Circle
@@ -13556,7 +13666,8 @@ class Destroyer2 extends Entity {
             }
 
             container.visible = true;
-            container.position.set(this.pos.x, this.pos.y);
+            const rPos = this.getRenderPos(renderAlpha);
+            container.position.set(rPos.x, rPos.y);
             container.rotation = this.angle || 0;
 
             const now = (typeof frameNow === 'number' && frameNow > 0) ? frameNow : Date.now();
@@ -13575,7 +13686,7 @@ class Destroyer2 extends Entity {
                     pixiVectorLayer.addChild(gfx);
                 }
 
-                gfx.position.set(this.pos.x, this.pos.y);
+                gfx.position.set(rPos.x, rPos.y);
                 gfx.rotation = this.shieldRotation || 0;
                 if (this.shieldsDirty) {
                     gfx.clear();
@@ -13611,7 +13722,7 @@ class Destroyer2 extends Entity {
                     pixiVectorLayer.addChild(innerGfx);
                 }
 
-                innerGfx.position.set(this.pos.x, this.pos.y);
+                innerGfx.position.set(rPos.x, rPos.y);
                 innerGfx.rotation = this.innerShieldRotation || 0;
                 if (this.shieldsDirty) {
                     innerGfx.clear();
@@ -13648,7 +13759,7 @@ class Destroyer2 extends Entity {
                     pixiVectorLayer.addChild(phaseGfx);
                 }
                 phaseGfx.clear();
-                phaseGfx.position.set(this.pos.x, this.pos.y);
+                phaseGfx.position.set(rPos.x, rPos.y);
                 phaseGfx.lineStyle(3, 0xffdc00, 0.6);
                 phaseGfx.drawCircle(0, 0, (this.shieldRadius || this.radius || 0) + 14);
             } else if (this._pixiPhaseGfx) {
@@ -13675,7 +13786,7 @@ class Destroyer2 extends Entity {
                 }
                 if (!txt.parent) pixiVectorLayer.addChild(txt);
                 txt.visible = true;
-                txt.position.set(this.pos.x, this.pos.y - this.visualRadius - 20);
+                txt.position.set(rPos.x, rPos.y - this.visualRadius - 20);
             }
 
             // Health Bar
@@ -13695,7 +13806,7 @@ class Destroyer2 extends Entity {
                 const healthColor = hpPercent > 0.6 ? 0x00ff00 : (hpPercent > 0.3 ? 0xffff00 : 0xff0000);
 
                 hpBarGfx.clear();
-                hpBarGfx.position.set(this.pos.x, this.pos.y - this.visualRadius - 45);
+                hpBarGfx.position.set(rPos.x, rPos.y - this.visualRadius - 45);
 
                 // Background
                 hpBarGfx.beginFill(0x330000);
@@ -13726,7 +13837,7 @@ class Destroyer2 extends Entity {
                     pixiVectorLayer.addChild(hpText);
                 }
                 hpText.text = `${this.hp}/${this.maxHp}`;
-                hpText.position.set(this.pos.x, this.pos.y - this.visualRadius - 48);
+                hpText.position.set(rPos.x, rPos.y - this.visualRadius - 48);
             }
 
             // DEBUG HITBOX
@@ -13743,7 +13854,7 @@ class Destroyer2 extends Entity {
                 if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
                     debugGfx.visible = true;
                     debugGfx.clear();
-                    debugGfx.position.set(this.pos.x, this.pos.y);
+                    debugGfx.position.set(rPos.x, rPos.y);
                     debugGfx.rotation = this.angle || 0;
                     
                     // Draw Hull Hitbox (Green) - Multi-Circle
@@ -14315,7 +14426,8 @@ class CaveMonsterBase extends Entity {
             }
 
             container.visible = true;
-            container.position.set(this.pos.x, this.pos.y);
+            const rPos = this.getRenderPos(renderAlpha);
+            container.position.set(rPos.x, rPos.y);
             container.rotation = this.angle || 0;
 
             const hullScale = (this.visualRadius && isFinite(this.visualRadius)) ? (this.visualRadius / 170) : 1;
@@ -14333,7 +14445,7 @@ class CaveMonsterBase extends Entity {
                     pixiVectorLayer.addChild(gfx);
                 }
 
-                gfx.position.set(this.pos.x, this.pos.y);
+                gfx.position.set(rPos.x, rPos.y);
                 gfx.rotation = this.shieldRotation || 0;
                 if (this.shieldsDirty) {
                     gfx.clear();
@@ -14363,7 +14475,7 @@ class CaveMonsterBase extends Entity {
                     pixiVectorLayer.addChild(innerGfx);
                 }
 
-                innerGfx.position.set(this.pos.x, this.pos.y);
+                innerGfx.position.set(rPos.x, rPos.y);
                 innerGfx.rotation = this.innerShieldRotation || 0;
                 if (this.shieldsDirty) {
                     innerGfx.clear();
@@ -14400,7 +14512,7 @@ class CaveMonsterBase extends Entity {
                 }
                 if (!txt.parent) pixiVectorLayer.addChild(txt);
                 txt.visible = true;
-                txt.position.set(this.pos.x, this.pos.y - this.visualRadius - 20);
+                txt.position.set(rPos.x, rPos.y - this.visualRadius - 20);
             }
 
             // DEBUG HITBOX (Ctrl+H)
@@ -14417,7 +14529,7 @@ class CaveMonsterBase extends Entity {
                 if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
                     debugGfx.visible = true;
                     debugGfx.clear();
-                    debugGfx.position.set(this.pos.x, this.pos.y);
+                    debugGfx.position.set(rPos.x, rPos.y);
                     debugGfx.rotation = this.angle || 0;
 
                     // Draw Hull Hitbox (Green) - Simplified 550px circle for bullets
@@ -14710,6 +14822,9 @@ class CaveMonster1 extends CaveMonsterBase {
 
         if (this.dead) return;
 
+        // Get interpolated position for smooth rendering
+        const rPos = this.getRenderPos ? this.getRenderPos(renderAlpha) : this.pos;
+
         if (this.pulseActive && pixiVectorLayer) {
             let gfx = this._pixiPulseGfx;
             if (!gfx) {
@@ -14721,7 +14836,7 @@ class CaveMonster1 extends CaveMonsterBase {
             }
 
             gfx.clear();
-            gfx.position.set(this.pos.x, this.pos.y);
+            gfx.position.set(rPos.x, rPos.y);
             const z = currentZoom || ZOOM_LEVEL;
             gfx.lineStyle(4 / z, 0xff0088, 0.8);
             gfx.drawCircle(0, 0, this.pulseRadius / z);
@@ -15162,6 +15277,9 @@ class CaveMonster3 extends CaveMonsterBase {
 
         if (this.dead) return;
 
+        // Get interpolated position for smooth rendering
+        const rPos = this.getRenderPos ? this.getRenderPos(renderAlpha) : this.pos;
+
         if (this.beamCharge > 0 || this.beamFire > 0) {
             if (pixiVectorLayer) {
                 let gfx = this._pixiBeamGfx;
@@ -15174,7 +15292,7 @@ class CaveMonster3 extends CaveMonsterBase {
                 }
 
             gfx.clear();
-            gfx.position.set(this.pos.x, this.pos.y);
+            gfx.position.set(rPos.x, rPos.y);
             const z = currentZoom || ZOOM_LEVEL;
             const charging = (this.beamCharge > 0);
             const firing = (this.beamFire > 0);
@@ -15269,6 +15387,7 @@ let bossActive = false;
 let spaceStation = null;
 let pendingStations = 0;
 let nextSpaceStationTime = null;
+let stationHealthBarVisible = false; // Track visibility state to avoid unnecessary DOM updates
 let destroyer = null; // Current active destroyer (either Destroyer or Destroyer2)
 let nextDestroyerSpawnTime = null; // Time for next destroyer to spawn
 let currentDestroyerType = 1; // Track which type to spawn (1 or 2)
@@ -15405,6 +15524,7 @@ function enterWarpMaze() {
 
     if (spaceStation) pixiCleanupObject(spaceStation);
     spaceStation = null;
+    stationHealthBarVisible = false;
     pendingStations = 0;
     nextSpaceStationTime = null;
     roamerRespawnQueue = [];
@@ -18953,6 +19073,7 @@ function setupGameWorld() {
     boss = null;
     if (spaceStation) pixiCleanupObject(spaceStation);
     spaceStation = null;
+    stationHealthBarVisible = false;
     if (destroyer) {
         pixiCleanupObject(destroyer);
         destroyer = null;
@@ -19183,7 +19304,18 @@ function showLevelUpMenu() {
     choices.forEach((choice, index) => {
         const currentTier = player.inventory[choice.id] || 0;
         const nextTier = currentTier + 1;
-        const desc = choice[`tier${nextTier}`];
+        // Get tier description with fallback to previous tier if undefined
+        let desc = choice[`tier${nextTier}`];
+        if (!desc) {
+            // Fallback: try lower tiers or show max tier message
+            for (let t = nextTier - 1; t >= 1; t--) {
+                if (choice[`tier${t}`]) {
+                    desc = choice[`tier${t}`];
+                    break;
+                }
+            }
+            if (!desc) desc = "Further upgrade";
+        }
 
         const card = document.createElement('div');
         card.className = 'upgrade-card';
@@ -19394,12 +19526,16 @@ function applyUpgrade(id, tier) {
             if (tier === 1) player.shieldSegments.push(2, 2); // 8+2=10
             if (tier === 2) player.shieldSegments.push(2, 2, 2, 2); // 10+4=14
             if (tier === 3) player.shieldSegments.push(2, 2, 2, 2); // 14+4=18
+            if (tier === 4) player.shieldSegments.push(2, 2, 2, 2, 2, 2, 2, 2); // 18+8=26
+            if (tier === 5) player.shieldSegments.push(2, 2, 2, 2, 2, 2, 2, 2); // 26+8=30
             player.maxShieldSegments = player.shieldSegments.length;
             break;
         case 'outer_shield':
             if (tier === 1) player.maxOuterShieldSegments = 6;
             if (tier === 2) player.maxOuterShieldSegments = 8;
             if (tier === 3) player.maxOuterShieldSegments = 12;
+            if (tier === 4) player.maxOuterShieldSegments = 16;
+            if (tier === 5) player.maxOuterShieldSegments = 20;
             player.outerShieldRadius = player.shieldRadius + (26 * PLAYER_SHIELD_RADIUS_SCALE);
             player.outerShieldSegments = new Array(player.maxOuterShieldSegments).fill(1);
             break;
@@ -19407,6 +19543,8 @@ function applyUpgrade(id, tier) {
             if (tier === 1) player.stats.shieldRegenRate = 5;
             if (tier === 2) player.stats.shieldRegenRate = 3;
             if (tier === 3) player.stats.shieldRegenRate = 1;
+            if (tier === 4) player.stats.shieldRegenRate = 0.75;
+            if (tier === 5) player.stats.shieldRegenRate = 0.5;
             break;
         case 'hp_regen':
             player.stats.hpRegenAmount = tier; // 1/2/3 HP per tick
@@ -19432,6 +19570,8 @@ function applyUpgrade(id, tier) {
             if (tier === 1) player.turboBoost.durationFrames = 120; // 2.0s
             if (tier === 2) player.turboBoost.durationFrames = 210; // 3.5s
             if (tier === 3) player.turboBoost.durationFrames = 300; // 5.0s
+            if (tier === 4) player.turboBoost.durationFrames = 390; // 6.5s
+            if (tier === 5) player.turboBoost.durationFrames = 480; // 8.0s
             player.turboBoost.cooldownTotalFrames = 600; // fixed 10s cooldown
             player.turboBoost.speedMult = 1.5;
             player.turboBoost.activeFrames = 0;
@@ -19443,6 +19583,8 @@ function applyUpgrade(id, tier) {
             if (tier === 1) player.magnetRadius = 300;
             if (tier === 2) player.magnetRadius = 600;
             if (tier === 3) player.magnetRadius = 1200;
+            if (tier === 4) player.magnetRadius = 1800;
+            if (tier === 5) player.magnetRadius = 2400;
             break;
         case 'area_nuke':
             player.nukeUnlocked = true;
@@ -19450,12 +19592,16 @@ function applyUpgrade(id, tier) {
             if (tier === 1) { player.nukeDamage = 5; player.nukeRange = 600; }
             if (tier === 2) { player.nukeDamage = 10; player.nukeRange = 700; }
             if (tier === 3) { player.nukeDamage = 15; player.nukeRange = 900; }
+            if (tier === 4) { player.nukeDamage = 20; player.nukeRange = 1000; }
+            if (tier === 5) { player.nukeDamage = 25; player.nukeRange = 1200; }
             break;
         case 'invincibility':
             player.invincibilityCycle.unlocked = true;
             if (tier === 1) player.invincibilityCycle.stats = { duration: 180, cooldown: 1200, regen: false }; // 3s / 20s
             if (tier === 2) player.invincibilityCycle.stats = { duration: 300, cooldown: 900, regen: false }; // 5s / 15s
             if (tier === 3) player.invincibilityCycle.stats = { duration: 420, cooldown: 600, regen: true }; // 7s / 10s
+            if (tier === 4) player.invincibilityCycle.stats = { duration: 540, cooldown: 480, regen: true }; // 9s / 8s
+            if (tier === 5) player.invincibilityCycle.stats = { duration: 720, cooldown: 360, regen: true }; // 12s / 6s
             player.invincibilityCycle.state = 'ready';
             player.invincibilityCycle.timer = 0;
             break;
@@ -19463,6 +19609,8 @@ function applyUpgrade(id, tier) {
             if (tier === 1) { player.stats.slowField = 250; player.stats.slowFieldDuration = 180; }
             if (tier === 2) { player.stats.slowField = 312; player.stats.slowFieldDuration = 300; }
             if (tier === 3) { player.stats.slowField = 390; player.stats.slowFieldDuration = 480; }
+            if (tier === 4) { player.stats.slowField = 390; player.stats.slowFieldDuration = 600; }
+            if (tier === 5) { player.stats.slowField = 487; player.stats.slowFieldDuration = 720; }
             break;
         case 'companion_drones': {
             const ensureDrone = (t) => {
@@ -19471,6 +19619,8 @@ function applyUpgrade(id, tier) {
             if (tier >= 1) ensureDrone('shooter');
             if (tier >= 2) ensureDrone('shield');
             if (tier >= 3) ensureDrone('heal');
+            if (tier >= 4) ensureDrone('shooter'); // 2nd shooter
+            if (tier >= 5) ensureDrone('shield'); // 2nd shield
             break;
         }
         case 'volley_shot':
@@ -19478,16 +19628,29 @@ function applyUpgrade(id, tier) {
             if (tier === 1) { player.volleyShotCount = 3; }
             if (tier === 2) { player.volleyShotCount = 5; }
             if (tier === 3) { player.volleyShotCount = 7; }
+            if (tier === 4) { player.volleyShotCount = 9; }
+            if (tier === 5) { player.volleyShotCount = 11; }
+            break;
+        case 'ciws':
+            console.log('[CIWS] Applying CIWS upgrade, tier:', tier);
+            player.ciwsUnlocked = true;
+            // Tier determines damage: 1, 2, 3, 4, 5
+            player.ciwsDamage = tier;
+            console.log('[CIWS] CIWS unlocked:', player.ciwsUnlocked, 'damage:', player.ciwsDamage);
             break;
         case 'chain_lightning':
             if (tier === 1) { player.chainLightningCount = 1; player.chainLightningRange = 200; }
             if (tier === 2) { player.chainLightningCount = 2; player.chainLightningRange = 250; }
             if (tier === 3) { player.chainLightningCount = 3; player.chainLightningRange = 300; }
+            if (tier === 4) { player.chainLightningCount = 4; player.chainLightningRange = 350; }
+            if (tier === 5) { player.chainLightningCount = 5; player.chainLightningRange = 400; }
             break;
         case 'backstabber':
             if (tier === 1) player.stats.backstabberBonus = 1.5;
             if (tier === 2) player.stats.backstabberBonus = 2.0;
             if (tier === 3) { player.stats.backstabberBonus = 2.5; player.stats.backstabberSlow = 120; }
+            if (tier === 4) { player.stats.backstabberBonus = 3.0; player.stats.backstabberSlow = 180; }
+            if (tier === 5) { player.stats.backstabberBonus = 3.5; player.stats.backstabberSlow = 240; }
             break;
         case 'reactive_shield':
             if (tier === 1) player.stats.reactiveShield = 1;
@@ -19503,21 +19666,49 @@ function applyUpgrade(id, tier) {
                     player.shieldsDirty = true;
                 }
             }
+            if (tier === 4) {
+                player.stats.reactiveShield = 4;
+                player.stats.reactiveShieldBonusHp = true;
+                // Upgrade existing shield segments from 2/3 HP to 4 HP
+                if (player.shieldSegments) {
+                    for (let i = 0; i < player.shieldSegments.length; i++) {
+                        if (player.shieldSegments[i] < 4) player.shieldSegments[i] = 4;
+                    }
+                    player.shieldsDirty = true;
+                }
+            }
+            if (tier === 5) {
+                player.stats.reactiveShield = 5;
+                player.stats.reactiveShieldBonusHp = true;
+                // Upgrade existing shield segments to 5 HP
+                if (player.shieldSegments) {
+                    for (let i = 0; i < player.shieldSegments.length; i++) {
+                        if (player.shieldSegments[i] < 5) player.shieldSegments[i] = 5;
+                    }
+                    player.shieldsDirty = true;
+                }
+            }
             break;
         case 'damage_mitigation':
             if (tier === 1) { player.stats.damageMitigation = 0.9; player.stats.speedBonusFromMit = 1.05; }
             if (tier === 2) { player.stats.damageMitigation = 0.8; player.stats.speedBonusFromMit = 1.10; }
             if (tier === 3) { player.stats.damageMitigation = 0.7; player.stats.speedBonusFromMit = 1.15; }
+            if (tier === 4) { player.stats.damageMitigation = 0.6; player.stats.speedBonusFromMit = 1.20; }
+            if (tier === 5) { player.stats.damageMitigation = 0.5; player.stats.speedBonusFromMit = 1.25; }
             break;
         case 'time_dilation':
             if (tier === 1) { player.stats.timeDilation = 0.8; player.stats.timeDilationRange = 200; }
             if (tier === 2) { player.stats.timeDilation = 0.6; player.stats.timeDilationRange = 300; }
             if (tier === 3) { player.stats.timeDilation = 0.4; player.stats.timeDilationRange = 450; }
+            if (tier === 4) { player.stats.timeDilation = 0.2; player.stats.timeDilationRange = 600; }
+            if (tier === 5) { player.stats.timeDilation = 0.0; player.stats.timeDilationRange = 750; }
             break;
         case 'momentum':
             if (tier === 1) { player.stats.momentumFireRate = 1.10; player.stats.momentumDamage = 1.0; }
             if (tier === 2) { player.stats.momentumFireRate = 1.20; player.stats.momentumDamage = 1.15; }
             if (tier === 3) { player.stats.momentumFireRate = 1.30; player.stats.momentumDamage = 1.25; }
+            if (tier === 4) { player.stats.momentumFireRate = 1.40; player.stats.momentumDamage = 1.35; }
+            if (tier === 5) { player.stats.momentumFireRate = 1.50; player.stats.momentumDamage = 1.50; }
             break;
     }
 
@@ -19863,10 +20054,14 @@ function getActiveMenuElements() {
             elements.push(resSelect);
         }
 
-        // Add checkboxes (fullscreen, frameless)
+        // Add checkboxes (fullscreen, vsync, frameless)
         const fullscreenCheck = document.getElementById('fullscreen-check');
         if (fullscreenCheck) {
             elements.push(fullscreenCheck);
+        }
+        const vsyncCheck = document.getElementById('vsync-check');
+        if (vsyncCheck) {
+            elements.push(vsyncCheck);
         }
         const framelessCheck = document.getElementById('frameless-check');
         if (framelessCheck) {
@@ -20059,11 +20254,31 @@ function mainLoop() {
         // Update simulation time
         simNowMs += frameDt;
 
-        // Use variable timestep - pass actual delta time to game logic
-        const originalDateNow = Date.now;
+        // Fixed timestep with interpolation
+        // Accumulate time and run physics at fixed SIM_STEP_MS (16.67ms = 60fps)
+        simAccMs += frameDt;
+
+        // Run physics updates at fixed timestep
+        let steps = 0;
+        const STEP = SIM_STEP_MS;
+        while (simAccMs >= STEP && steps < SIM_MAX_STEPS_PER_FRAME) {
+            const originalDateNow = Date.now;
+            Date.now = () => Math.floor(simNowMs - (simAccMs - STEP));
+            gameLoopLogic({ doUpdate: true, doDraw: false, deltaTime: STEP });
+            Date.now = originalDateNow;
+            simAccMs -= STEP;
+            steps++;
+        }
+
+        // Calculate render alpha (0-1) for interpolation between last two physics states
+        // alpha = 0 means "at previous physics state", alpha = 1 means "at current physics state"
+        const alpha = steps > 0 ? Math.min(1, simAccMs / STEP) : 1.0;
+
+        // Render with interpolation
+        const originalDateNow2 = Date.now;
         Date.now = () => Math.floor(simNowMs);
-        gameLoopLogic({ doUpdate: true, doDraw: true, deltaTime: frameDt });
-        Date.now = originalDateNow;
+        gameLoopLogic({ doUpdate: false, doDraw: true, deltaTime: 0, alpha: alpha });
+        Date.now = originalDateNow2;
     } else {
         // Reset timing so we don't "catch up" a large paused interval on resume.
         simLastPerfAt = 0;
@@ -20081,6 +20296,12 @@ function gameLoopLogic(opts = null) {
     const doDraw = !(opts && opts.doDraw === false);
     const doUpdate = !(opts && opts.doUpdate === false);
     const deltaTime = (opts && opts.deltaTime) || SIM_STEP_MS; // Default to 60fps step for backwards compatibility
+    // Update global render interpolation alpha from opts (used by draw methods for smooth rendering)
+    if (opts && typeof opts.alpha === 'number') {
+        renderAlpha = opts.alpha;
+    } else {
+        renderAlpha = 1.0;
+    }
     if (!player) return;
 
     const now = Date.now();
@@ -20820,17 +21041,27 @@ function gameLoopLogic(opts = null) {
         if (doUpdate) spaceStation.update(deltaTime);
         if (doDraw) spaceStation.draw(ctx);
 
-        // Update Station Health Bar
-        const sContainer = document.getElementById('station-health-container');
+        // Update Station Health Bar (only update display when state changes)
+        if (!stationHealthBarVisible) {
+            const sContainer = document.getElementById('station-health-container');
+            if (sContainer) {
+                sContainer.style.display = 'flex';
+                stationHealthBarVisible = true;
+            }
+        }
         const sFill = document.getElementById('station-health-fill');
-        if (doDraw && sContainer && sFill) {
-            sContainer.style.display = 'flex';
+        if (doDraw && sFill) {
             const pct = Math.max(0, (spaceStation.hp / spaceStation.maxHp) * 100);
             sFill.style.width = `${pct}%`;
         }
     } else {
-        const sContainer = document.getElementById('station-health-container');
-        if (doDraw && sContainer) sContainer.style.display = 'none';
+        if (stationHealthBarVisible) {
+            const sContainer = document.getElementById('station-health-container');
+            if (sContainer) {
+                sContainer.style.display = 'none';
+                stationHealthBarVisible = false;
+            }
+        }
     }
 
     // Destroyer update and draw
@@ -20990,7 +21221,7 @@ function gameLoopLogic(opts = null) {
         });
         immediateCompactArray(enemies, pixiCleanupObject);
         immediateCompactArray(pinwheels, pixiCleanupObject);
-        immediateCompactArray(environmentAsteroids);
+        immediateCompactArray(environmentAsteroids, pixiCleanupObject);
 
         // Explosion cleanup with safety check for uncleaned sprites
         for (let i = explosions.length - 1; i >= 0; i--) {
@@ -21046,7 +21277,7 @@ function gameLoopLogic(opts = null) {
             }
         }
         immediateCompactArray(caches);
-        immediateCompactArray(pois);
+        immediateCompactArray(pois, (poi) => { if (typeof poi.kill === 'function') poi.kill(); });
         immediateCompactArray(contractEntities.beacons);
         immediateCompactArray(contractEntities.gates);
         immediateCompactArray(contractEntities.anomalies);
@@ -23646,6 +23877,7 @@ const settingsCloseBtn = document.getElementById('settings-close-btn');
 const settingsApplyBtn = document.getElementById('settings-apply-btn');
 const resSelect = document.getElementById('res-select');
 const fullscreenCheck = document.getElementById('fullscreen-check');
+const vsyncCheck = document.getElementById('vsync-check');
 const framelessCheck = document.getElementById('frameless-check');
 
 // Only enable if running in Electron environment with exposed API
@@ -23683,6 +23915,8 @@ async function openSettingsMenu() {
             }
         }
         framelessCheck.checked = !!current.frameless;
+        // vsync defaults to true if not set
+        vsyncCheck.checked = current.vsync !== false;
     }
 
     // Set volume sliders to current values
@@ -23746,18 +23980,21 @@ if (settingsCloseBtn) {
 if (settingsApplyBtn && isElectron) {
     settingsApplyBtn.addEventListener('click', async () => {
         const isFullscreen = fullscreenCheck.checked;
+        const isVsync = vsyncCheck.checked;
         const isFrameless = framelessCheck.checked;
         const [w, h] = resSelect.value.split('x').map(Number);
 
         // Get old settings to compare for restart requirement
         const old = await window.SpacebrosApp.settings.get();
         const framelessChanged = old.frameless !== isFrameless;
+        const vsyncChanged = old.vsync !== isVsync;
 
         // Save everything
         await window.SpacebrosApp.settings.save({
             width: w,
             height: h,
             fullscreen: isFullscreen,
+            vsync: isVsync,
             frameless: isFrameless
         });
 
@@ -23767,9 +24004,9 @@ if (settingsApplyBtn && isElectron) {
             window.SpacebrosApp.settings.setResolution(w, h);
         }
 
-        // Handle restart if frameless changed
-        if (framelessChanged) {
-            if (confirm("Changing window frame style requires a restart. Restart now?")) {
+        // Handle restart if frameless or vsync changed
+        if (framelessChanged || vsyncChanged) {
+            if (confirm("Changing vsync or window frame style requires a restart. Restart now?")) {
                 window.SpacebrosApp.settings.relaunch();
             }
         } else {
