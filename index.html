@@ -265,7 +265,6 @@
             transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s;
         }
 
-        .upgrade-card:hover,
         .upgrade-card.selected {
             transform: scale(1.05);
             box-shadow: 0 0 20px #ff0;
@@ -296,6 +295,32 @@
 
         #start-screen {
             display: block;
+        }
+
+        .ship-select-btn {
+            background: transparent;
+            color: #0f0;
+            border: 2px solid #0f0;
+            padding: 8px 16px;
+            margin: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+        .ship-select-btn.selected {
+            background: #0f0;
+            color: #000;
+            box-shadow: 0 0 10px #0f0;
+        }
+        .ship-select-btn:hover {
+            background: rgba(0, 255, 0, 0.2);
+        }
+        .ship-select-btn.selected:hover {
+            background: #0f0;
+            color: #000;
         }
 
         #end-screen {
@@ -711,6 +736,17 @@
         <h1>NEON SPACE</h1>
         <p>MOUSE: Aim • WASD/L-STICK: Move<br>Collect Coins to Upgrade Ship!</p>
         <div id="current-profile-display" style="color: #ff0; margin-bottom: 10px; font-size: 14px;">Current: None</div>
+
+        <!-- NEW: Ship Selection -->
+        <div style="margin-bottom: 15px; border: 1px solid #0ff; padding: 10px;">
+            <div style="color: #0ff; font-size: 14px; margin-bottom: 8px;">SHIP TYPE</div>
+            <button id="ship-standard-btn" class="ship-select-btn">STANDARD</button>
+            <button id="ship-slacker-btn" class="ship-select-btn">SLACKER SPECIAL</button>
+            <div id="ship-description" style="color: #888; font-size: 11px; margin-top: 8px; min-height: 40px;">
+                Manual turret control • Mouse/Gamepad aiming
+            </div>
+        </div>
+
         <button id="resume-btn-start">RESUME GAME</button>
         <button id="start-btn">INITIATE LAUNCH</button>
         <button id="profile-btn">SELECT PROFILE</button>

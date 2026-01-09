@@ -3071,8 +3071,9 @@ function rayCast(x1, y1, angle, maxDist) {
 const PLAYER_SHIELD_RADIUS_SCALE = 1.5;
 
 class Spaceship extends Entity {
-    constructor() {
+    constructor(shipType = 'standard') {
         super(0, 0);
+        this.shipType = shipType; // 'standard' or 'slacker'
         this.radius = 30;
         this.angle = -Math.PI / 2;
         this.turretAngle = -Math.PI / 2;
@@ -3140,6 +3141,10 @@ class Spaceship extends Entity {
         this.shotgunDelay = this.baseShotgunDelay;
         this.shotgunTimer = 0;
         this.turretLevel = 1;
+
+        // NEW: Forward laser for Slacker Special (fires independently)
+        this.forwardLaserDelay = 20; // Fire rate between shots
+        this.forwardLaserTimer = 0;
 
         this.staticWeapons = []; // Array of objects {type: 'forward'|'side'|'rear'}
 
@@ -3350,15 +3355,36 @@ class Spaceship extends Entity {
         const aimMag = Math.sqrt(gpState.aim.x * gpState.aim.x + gpState.aim.y * gpState.aim.y);
         const aimThresh = 0.08;
         const moveAimThresh = 0.08;
-        if (usingGamepad) {
-            // In gamepad mode, never snap aim back to mouse when sticks go idle.
-            if (aimMag > aimThresh) {
-                this.turretAngle = Math.atan2(gpState.aim.y, gpState.aim.x);
-            } else if (moveMag > moveAimThresh) {
-                this.turretAngle = Math.atan2(moveY, moveX);
+        if (this.shipType === 'slacker') {
+            // SLACKER SPECIAL: Auto-target nearest enemy (prioritizes bosses)
+            const target = this.findAutoTurretTarget();
+            if (target) {
+                // Aim at the target, but slightly toward its front based on facing angle
+                let targetX = target.pos.x;
+                let targetY = target.pos.y;
+
+                // Add lead offset based on target's facing direction
+                if (target.angle !== undefined) {
+                    const leadOffset = 80; // Aim 80 units ahead of target
+                    targetX += Math.cos(target.angle) * leadOffset;
+                    targetY += Math.sin(target.angle) * leadOffset;
+                }
+
+                this.turretAngle = Math.atan2(targetY - this.pos.y, targetX - this.pos.x);
             }
+            // If no target, keep last turretAngle (don't reset)
         } else {
-            this.turretAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
+            // STANDARD: Manual turret control (existing behavior)
+            if (usingGamepad) {
+                // In gamepad mode, never snap aim back to mouse when sticks go idle.
+                if (aimMag > aimThresh) {
+                    this.turretAngle = Math.atan2(gpState.aim.y, gpState.aim.x);
+                } else if (moveMag > moveAimThresh) {
+                    this.turretAngle = Math.atan2(moveY, moveX);
+                }
+            } else {
+                this.turretAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
+            }
         }
 
         // Removed acceleration stat multiplier, using base or 1.0 implicitly
@@ -3400,6 +3426,15 @@ class Spaceship extends Entity {
         if (this.shotgunTimer <= 0) {
             this.shootShotgun();
             this.shotgunTimer = Math.max(4, this.shotgunDelay);
+        }
+
+        // NEW: Slacker Special forward laser (fires independently)
+        if (this.shipType === 'slacker') {
+            this.forwardLaserTimer -= dtScale;
+            if (this.forwardLaserTimer <= 0) {
+                this.fireForwardLaser();
+                this.forwardLaserTimer = Math.max(4, this.forwardLaserDelay);
+            }
         }
 
         // Shield Regen
@@ -3806,6 +3841,48 @@ class Spaceship extends Entity {
         return nearestTarget;
     }
 
+    // Auto-targeting for Slacker Special ship - prioritizes boss ships
+    findAutoTurretTarget() {
+        let nearestTarget = null;
+        let minDist = Infinity;
+        const range = 2000; // Same as main turret range with rangeMult
+
+        // First priority: Boss ships (Cruiser or Destroyer)
+        if (boss && !boss.dead) {
+            const dist = Math.hypot(boss.pos.x - this.pos.x, boss.pos.y - this.pos.y);
+            if (dist <= range) {
+                return boss; // Always target boss if in range
+            }
+        }
+
+        // Check enemies for boss types (Cruiser, Destroyer)
+        for (let e of enemies) {
+            if (e.dead) continue;
+            if (e.constructor.name === 'Cruiser' || e.constructor.name === 'Destroyer' ||
+                e.constructor.name === 'Destroyer2') {
+                const dist = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
+                if (dist <= range && dist < minDist) {
+                    minDist = dist;
+                    nearestTarget = e;
+                }
+            }
+        }
+
+        // If no boss found, fall back to nearest enemy of any type
+        if (!nearestTarget) {
+            for (let e of enemies) {
+                if (e.dead) continue;
+                const dist = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
+                if (dist <= range && dist < minDist) {
+                    minDist = dist;
+                    nearestTarget = e;
+                }
+            }
+        }
+
+        return nearestTarget;
+    }
+
     fireCIWS(target) {
         const angle = Math.atan2(target.pos.y - this.pos.y, target.pos.x - this.pos.x);
         const bulletSpeed = 18; // Same as player turret
@@ -3911,6 +3988,17 @@ class Spaceship extends Entity {
             bullets.push(b);
         }
         spawnBarrelSmoke(this.pos.x, this.pos.y, this.turretAngle);
+    }
+
+    fireForwardLaser() {
+        const damage = 2 * this.stats.damageMult;
+        // Combo Meter bonus
+        if (this.stats.comboMeter > 0 && this.comboStacks > 0) {
+            const comboBonus = 1 + (this.comboStacks / this.comboMaxStacks) * this.stats.comboMaxBonus;
+            damage *= comboBonus;
+        }
+        const forwardAngle = this.angle; // Forward in facing direction
+        bullets.push(new Bullet(this.pos.x, this.pos.y, forwardAngle, false, damage, 15, 4, '#0f0'));
     }
 
     drawLaser(ctx) {
@@ -4490,6 +4578,9 @@ class CruiserMineBomb extends Entity {
         this.pos.y += Math.sin(angle) * off;
         this.startX = this.pos.x;
         this.startY = this.pos.y;
+
+        // Set prevPos to prevent ghosting on first render
+        this.prevPos = { x: this.pos.x, y: this.pos.y };
 
         this._pixiGfx = null;
     }
@@ -10306,6 +10397,9 @@ class Cruiser extends Enemy {
         const dist = 3000;
         this.pos.x = player.pos.x + Math.cos(angle) * dist;
         this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        // Sync prevPos to prevent ghosting on first render
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
     }
 
     hardpointWorld(hp) {
@@ -10618,7 +10712,7 @@ class Cruiser extends Enemy {
         for (let i = 0; i < n; i++) {
             const a = (Math.PI * 2 / n) * i;
             const b = new Bullet(p.x, p.y, a, true, dmg, speed, 4, color);
-            b.life = Math.round(70 * this.cruiserWeaponRangeMult);
+            b.life = Math.round(113 * this.cruiserWeaponRangeMult);
             bullets.push(b);
         }
         playSound('shotgun');
@@ -22956,7 +23050,7 @@ function startGame() {
         currentZoom = ZOOM_LEVEL;
         stopMusic();
         if (player) pixiCleanupObject(player);
-        player = new Spaceship();
+        player = new Spaceship(selectedShipType || 'standard');
 
         // Load current profile data if available
         if (currentProfileName) {
@@ -23694,6 +23788,40 @@ window.addEventListener("gamepaddisconnected", (e) => {
     if (gamepadIndex === e.gamepad.index) gamepadIndex = null;
     lastGamepadInputAt = 0;
     updateInputMode(Date.now());
+});
+
+// Ship Selection System
+const SHIP_SELECTION_KEY = 'neon_space_ship_selection';
+let selectedShipType = localStorage.getItem(SHIP_SELECTION_KEY) || 'standard';
+
+function updateShipSelectionUI() {
+    const standardBtn = document.getElementById('ship-standard-btn');
+    const slackerBtn = document.getElementById('ship-slacker-btn');
+    const descEl = document.getElementById('ship-description');
+
+    if (selectedShipType === 'slacker') {
+        standardBtn.classList.remove('selected');
+        slackerBtn.classList.add('selected');
+        descEl.textContent = 'Auto-firing turret • Targets nearest enemy (prioritizes bosses)\nLeading aim on moving targets • No aiming required';
+    } else {
+        standardBtn.classList.add('selected');
+        slackerBtn.classList.remove('selected');
+        descEl.textContent = 'Manual turret control • Mouse/Gamepad aiming\nClassic combat experience';
+    }
+    localStorage.setItem(SHIP_SELECTION_KEY, selectedShipType);
+}
+
+// Initialize ship selection UI on page load
+updateShipSelectionUI();
+
+document.getElementById('ship-standard-btn').addEventListener('click', () => {
+    selectedShipType = 'standard';
+    updateShipSelectionUI();
+});
+
+document.getElementById('ship-slacker-btn').addEventListener('click', () => {
+    selectedShipType = 'slacker';
+    updateShipSelectionUI();
 });
 
 document.getElementById('start-btn').addEventListener('click', () => {
