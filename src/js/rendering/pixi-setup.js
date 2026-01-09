@@ -46,8 +46,8 @@ export const pixiStarSpritePool = [];
 
 /**
  * Initialize PixiJS application and all rendering layers.
- * @param {number} width - Initial width
- * @param {number} height - Initial height
+ * @param {number} width - Internal render resolution width (fixed)
+ * @param {number} height - Internal render resolution height (fixed)
  * @returns {boolean} True if PixiJS was initialized successfully
  */
 export function initPixi(width, height) {
@@ -59,22 +59,33 @@ export function initPixi(width, height) {
         PIXI.settings.ROUND_PIXELS = true;
     } catch (e) { }
 
+    // CRITICAL: Use fixed internal resolution, NOT window size
+    // This ensures consistent rendering regardless of actual screen size
     pixiApp = new PIXI.Application({
-        resizeTo: window,
+        width: width,           // Use internal resolution width
+        height: height,         // Use internal resolution height
         backgroundAlpha: 0,
         antialias: false,
-        autoDensity: true
+        autoDensity: true,
+        resolution: window.devicePixelRatio || 1
     });
 
     try { pixiApp.renderer.roundPixels = true; } catch (e) { }
     // Render manually in main loop to avoid double work
     try { pixiApp.stop(); } catch (e) { }
 
+    // CRITICAL: Set canvas to internal resolution size and enable CSS scaling
     pixiApp.view.style.position = 'absolute';
     pixiApp.view.style.top = '0';
     pixiApp.view.style.left = '0';
     pixiApp.view.style.pointerEvents = 'none';
     pixiApp.view.style.zIndex = '1';
+
+    // CRITICAL: Enable CSS scaling for letterboxing/pillarboxing
+    pixiApp.view.style.width = '100%';
+    pixiApp.view.style.height = '100%';
+    pixiApp.view.style.objectFit = 'contain';  // Maintains aspect ratio with letterboxing
+
     document.body.appendChild(pixiApp.view);
 
     pixiTextureWhite = PIXI.Texture.WHITE;

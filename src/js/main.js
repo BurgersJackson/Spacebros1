@@ -228,19 +228,117 @@ if (ctx) ctx.imageSmoothingEnabled = false;
 if (uiCtx) uiCtx.imageSmoothingEnabled = false;
 if (minimapCtx) minimapCtx.imageSmoothingEnabled = false;
 
-// Handle Resizing for both Canvases
-function resizeGameCanvases() {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    canvas.width = w;
-    canvas.height = h;
-    uiCanvas.width = w;
-    uiCanvas.height = h;
+// Handle Canvas Resolution Setup
+// Sets up canvas at fixed internal resolution with CSS scaling for letterboxing
+function setupCanvasResolution(internalW, internalH) {
+    // Set main canvas to internal resolution
+    canvas.width = internalW;
+    canvas.height = internalH;
+
+    // Set UI canvas to internal resolution
+    uiCanvas.width = internalW;
+    uiCanvas.height = internalH;
+
+    // Apply CSS scaling for letterboxing/pillarboxing
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.objectFit = 'contain';
+    canvas.style.position = 'absolute';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+
+    uiCanvas.style.width = '100%';
+    uiCanvas.style.height = '100%';
+    uiCanvas.style.objectFit = 'contain';
+    uiCanvas.style.position = 'absolute';
+    uiCanvas.style.top = '0';
+    uiCanvas.style.left = '0';
+    uiCanvas.style.pointerEvents = 'none';
+
+    // Update local variables
+    width = internalW;
+    height = internalH;
+    internalWidth = internalW;
+    internalHeight = internalH;
+    aspectRatio = internalW / internalH;
+
+    // Disable image smoothing for pixel-perfect rendering
     if (ctx) ctx.imageSmoothingEnabled = false;
     if (uiCtx) uiCtx.imageSmoothingEnabled = false;
+
+    // Update PixiJS renderer if it exists
+    if (pixiApp && pixiApp.renderer) {
+        pixiApp.renderer.resize(internalW, internalH);
+    }
+
+    // Update background sprites
+    if (pixiCaveGridSprite) {
+        pixiCaveGridSprite.width = internalW;
+        pixiCaveGridSprite.height = internalH;
+    }
+    if (pixiStarTiles && pixiStarTiles.length) {
+        for (const t of pixiStarTiles) {
+            if (!t || !t.spr) continue;
+            t.spr.width = internalW;
+            t.spr.height = internalH;
+        }
+    }
+    if (pixiNebulaTiles && pixiNebulaTiles.length) {
+        for (const t of pixiNebulaTiles) {
+            if (!t || !t.spr) continue;
+            t.spr.width = internalW;
+            t.spr.height = internalH;
+        }
+    }
 }
-window.addEventListener('resize', resizeGameCanvases);
-resizeGameCanvases();
+
+// Handle window resize - maintain canvas at internal resolution, CSS handles scaling
+function handleWindowResize() {
+    // Canvas size stays at internal resolution
+    // CSS scaling automatically handles letterboxing
+    // Just need to update stars for background
+    initStars();
+}
+window.addEventListener('resize', handleWindowResize);
+
+// Initialize canvas with internal resolution from settings
+async function initializeCanvasResolution() {
+    let internalW = 1920;
+    let internalH = 1080;
+
+    if (window.SpacebrosApp && window.SpacebrosApp.settings) {
+        try {
+            const settings = await window.SpacebrosApp.settings.get();
+            const internalRes = settings.internalResolution || { width: 1920, height: 1080 };
+            internalW = internalRes.width;
+            internalH = internalRes.height;
+        } catch (e) {
+            console.warn("Failed to load internal resolution from settings:", e);
+        }
+    } else {
+        // Browser mode: use window size
+        internalW = window.innerWidth;
+        internalH = window.innerHeight;
+    }
+
+    // Setup canvas with internal resolution
+    setupCanvasResolution(internalW, internalH);
+
+    // Listen for resolution changes from main process
+    if (window.SpacebrosApp && window.SpacebrosApp.ipcRenderer) {
+        window.SpacebrosApp.ipcRenderer.on('internal-resolution-changed', (res) => {
+            setupCanvasResolution(res.width, res.height);
+            initStars();
+        });
+    }
+}
+
+// Initialize resolution on DOM ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeCanvasResolution);
+} else {
+    initializeCanvasResolution();
+}
 
 // PixiJS overlay (optional; falls back to Canvas if unavailable)
 // Note: Pixi is rendered manually inside our main loop to avoid running a second render/ticker.
@@ -2023,6 +2121,11 @@ let suppressWarpGateUntil = 0;
 let suppressWarpInputUntil = 0;
 
 let width, height;
+// Internal resolution (absolute - game renders at this fixed resolution)
+let internalWidth = 1920;
+let internalHeight = 1080;
+let aspectRatio = internalWidth / internalHeight;
+
 let animationId;
 let gameActive = false;
 let gamePaused = false;
@@ -2085,29 +2188,34 @@ function updateInputMode(now = Date.now()) {
 }
 
 function resize() {
-    width = canvas.width = window.innerWidth;
-    height = canvas.height = window.innerHeight;
+    // CRITICAL: Do NOT change canvas size - keep internal resolution fixed
+    // Canvas size is set via setupCanvasResolution() based on internal resolution
+    // CSS scaling (set in setupCanvasResolution) handles visual scaling to window
+
+    // Update minimap (fixed size, unaffected by resolution)
     minimapCanvas.width = 200;
     minimapCanvas.height = 200;
-    if (pixiApp && pixiApp.renderer) {
-        pixiApp.renderer.resize(width, height);
-    }
+
+    // CRITICAL: Do NOT resize PixiJS renderer - it stays at internal resolution
+    // The CSS scaling (set in pixi-setup.js) handles visual scaling
+
+    // Update background sprites to internal resolution
     if (pixiCaveGridSprite) {
-        pixiCaveGridSprite.width = width;
-        pixiCaveGridSprite.height = height;
+        pixiCaveGridSprite.width = internalWidth;
+        pixiCaveGridSprite.height = internalHeight;
     }
     if (pixiStarTiles && pixiStarTiles.length) {
         for (const t of pixiStarTiles) {
             if (!t || !t.spr) continue;
-            t.spr.width = width;
-            t.spr.height = height;
+            t.spr.width = internalWidth;
+            t.spr.height = internalHeight;
         }
     }
     if (pixiNebulaTiles && pixiNebulaTiles.length) {
         for (const t of pixiNebulaTiles) {
             if (!t || !t.spr) continue;
-            t.spr.width = width;
-            t.spr.height = height;
+            t.spr.width = internalWidth;
+            t.spr.height = internalHeight;
         }
     }
     initStars();
@@ -23520,21 +23628,30 @@ window.addEventListener('keyup', e => {
 
 window.addEventListener('mousemove', e => {
     const now = Date.now();
-    const dx = Math.abs(e.clientX - mouseScreen.x);
-    const dy = Math.abs(e.clientY - mouseScreen.y);
+
+    // Map from screen coordinates to internal resolution
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = internalWidth / rect.width;
+    const scaleY = internalHeight / rect.height;
+
+    const scaledX = (e.clientX - rect.left) * scaleX;
+    const scaledY = (e.clientY - rect.top) * scaleY;
+
+    const dx = Math.abs(scaledX - mouseScreen.x);
+    const dy = Math.abs(scaledY - mouseScreen.y);
     // Ignore tiny pointer jitter so it doesn't steal aim from the gamepad.
     if (dx + dy >= 10) lastMouseInputAt = now;
     updateInputMode(now);
     if (typeof mouseScreen !== 'undefined') {
-        mouseScreen.x = e.clientX;
-        mouseScreen.y = e.clientY;
+        mouseScreen.x = scaledX;
+        mouseScreen.y = scaledY;
     }
     if (player) {
         const z = currentZoom || ZOOM_LEVEL;
         const camX = player.pos.x - width / (2 * z);
         const camY = player.pos.y - height / (2 * z);
-        mouseWorld.x = (e.clientX / z) + camX;
-        mouseWorld.y = (e.clientY / z) + camY;
+        mouseWorld.x = (scaledX / z) + camX;
+        mouseWorld.y = (scaledY / z) + camY;
     }
 });
 
@@ -23952,6 +24069,59 @@ const framelessCheck = document.getElementById('frameless-check');
 // Only enable if running in Electron environment with exposed API
 const isElectron = window.SpacebrosApp && window.SpacebrosApp.settings;
 
+// Populate resolution selector with supported resolutions
+async function populateResolutionSelector() {
+    if (!isElectron || !resSelect) return;
+
+    try {
+        const resolutions = await window.SpacebrosApp.settings.getSupportedResolutions();
+        if (!resolutions || !Array.isArray(resolutions)) {
+            // Fallback to default resolution if API fails
+            addResolutionOption(1920, 1080, true);
+            return;
+        }
+
+        // Clear existing options
+        resSelect.innerHTML = '';
+
+        // Add each resolution as an option
+        resolutions.forEach(res => {
+            const isDefault = res.width === 1920 && res.height === 1080;
+            addResolutionOption(res.width, res.height, isDefault);
+        });
+    } catch (e) {
+        console.error("Failed to populate resolutions:", e);
+        // Fallback to default resolution
+        resSelect.innerHTML = '';
+        addResolutionOption(1920, 1080, true);
+    }
+}
+
+function addResolutionOption(width, height, isDefault = false) {
+    const option = document.createElement('option');
+    option.value = `${width}x${height}`;
+
+    // Generate label with common name
+    let label = `${width} x ${height}`;
+    if (width === 1280 && height === 720) label += ' (HD)';
+    else if (width === 1600 && height === 900) label += ' (HD+)';
+    else if (width === 1920 && height === 1080) label += ' (Full HD)';
+    else if (width === 2560 && height === 1440) label += ' (QHD)';
+    else if (width === 3840 && height === 2160) label += ' (4K UHD)';
+    else label += ' (Native)';
+
+    option.textContent = label;
+    resSelect.appendChild(option);
+
+    // Set as default if specified
+    if (isDefault) {
+        resSelect.value = option.value;
+    }
+}
+
+// Populate selector on initialization
+populateResolutionSelector();
+
 if (settingsBtn) {
     if (!isElectron) {
         settingsBtn.style.display = 'none';
@@ -23972,17 +24142,29 @@ async function openSettingsMenu() {
     const current = await window.SpacebrosApp.settings.get();
     if (current) {
         // Populate UI
-        if (current.fullscreen) {
-            fullscreenCheck.checked = true;
-            resSelect.disabled = true;
+        fullscreenCheck.checked = !!current.fullscreen;
+
+        // Resolution select is now always enabled (applies in both windowed and fullscreen)
+        resSelect.disabled = false;
+
+        // Use internalResolution if available, otherwise fall back to width/height
+        const internalRes = current.internalResolution || { width: current.width || 1920, height: current.height || 1080 };
+        const resString = `${internalRes.width}x${internalRes.height}`;
+
+        // Check if the current resolution exists in the list
+        const optionExists = [...resSelect.options].some(o => o.value === resString);
+        if (optionExists) {
+            resSelect.value = resString;
         } else {
-            fullscreenCheck.checked = false;
-            resSelect.disabled = false;
-            const resString = `${current.width}x${current.height}`;
-            if ([...resSelect.options].some(o => o.value === resString)) {
-                resSelect.value = resString;
-            }
+            // If the saved resolution is not in the list (e.g., after monitor change),
+            // add it as a custom option and select it
+            const customOption = document.createElement('option');
+            customOption.value = resString;
+            customOption.textContent = `${internalRes.width} x ${internalRes.height} (Custom)`;
+            resSelect.appendChild(customOption);
+            resSelect.value = resString;
         }
+
         framelessCheck.checked = !!current.frameless;
         // vsync defaults to true if not set
         vsyncCheck.checked = current.vsync !== false;
@@ -24057,20 +24239,32 @@ if (settingsApplyBtn && isElectron) {
         const old = await window.SpacebrosApp.settings.get();
         const framelessChanged = old.frameless !== isFrameless;
         const vsyncChanged = old.vsync !== isVsync;
+        const oldRes = old.internalResolution || { width: old.width || 1920, height: old.height || 1080 };
+        const resolutionChanged = oldRes.width !== w || oldRes.height !== h;
 
-        // Save everything
+        // Save everything with internalResolution
         await window.SpacebrosApp.settings.save({
-            width: w,
-            height: h,
+            width: w,          // Keep for backwards compatibility
+            height: h,         // Keep for backwards compatibility
+            internalResolution: { width: w, height: h },
             fullscreen: isFullscreen,
             vsync: isVsync,
             frameless: isFrameless
         });
 
-        // Apply runtime changes
+        // Apply fullscreen changes
         window.SpacebrosApp.settings.setFullscreen(isFullscreen);
+
+        // Apply window size if not fullscreen (for windowed mode convenience)
         if (!isFullscreen) {
             window.SpacebrosApp.settings.setResolution(w, h);
+        }
+
+        // CRITICAL: Apply internal resolution change (works in both windowed and fullscreen)
+        if (resolutionChanged) {
+            setupCanvasResolution(w, h);
+            // Reinitialize background sprites
+            initStars();
         }
 
         // Handle restart if frameless or vsync changed
@@ -24090,11 +24284,8 @@ if (settingsApplyBtn && isElectron) {
     });
 }
 
-if (fullscreenCheck) {
-    fullscreenCheck.addEventListener('change', (e) => {
-        resSelect.disabled = e.target.checked;
-    });
-}
+// Resolution select is now always enabled - no need to disable on fullscreen
+// The old handler that disabled resSelect in fullscreen has been removed
 
 // Desktop Quit Support
 const qStart = document.getElementById('desktop-quit-start-btn');

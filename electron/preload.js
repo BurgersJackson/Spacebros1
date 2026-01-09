@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld("SpacebrosApp", {
     save: (s) => ipcRenderer.invoke('app:save-settings', s),
     setResolution: (w, h) => ipcRenderer.invoke('app:set-resolution', w, h),
     setFullscreen: (f) => ipcRenderer.invoke('app:set-fullscreen', f),
+    getInternalResolution: () => ipcRenderer.invoke('app:get-internal-resolution'),
+    setInternalResolution: (w, h) => ipcRenderer.invoke('app:set-internal-resolution', w, h),
+    getSupportedResolutions: () => ipcRenderer.invoke('app:get-supported-resolutions'),
     relaunch: () => ipcRenderer.invoke('app:relaunch'),
     quit: () => ipcRenderer.invoke('app:quit')
   }

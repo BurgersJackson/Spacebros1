@@ -322,8 +322,8 @@ export function playSound(type, volumeMult = 1) {
                 osc1.connect(g);
                 osc2.connect(g);
                 g.connect(audioCtx.destination);
-                g.gain.setValueAtTime(0.5, now);
-                g.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+                g.gain.setValueAtTime(0.5 * volumeMult, now);
+                g.gain.exponentialRampToValueAtTime(0.01 * volumeMult, now + 0.8);
                 osc1.start(now);
                 osc2.start(now);
                 osc1.stop(now + 0.8);
@@ -345,7 +345,7 @@ export function playSound(type, volumeMult = 1) {
                 osc2.connect(g);
                 g.connect(audioCtx.destination);
                 g.gain.setValueAtTime(0, now);
-                g.gain.linearRampToValueAtTime(0.4, now + 0.5);
+                g.gain.linearRampToValueAtTime(0.4 * volumeMult, now + 0.5);
                 g.gain.linearRampToValueAtTime(0, now + 3);
                 osc1.start(now);
                 osc2.start(now);
@@ -368,7 +368,7 @@ export function playSound(type, volumeMult = 1) {
                 osc2.connect(g);
                 g.connect(audioCtx.destination);
                 g.gain.setValueAtTime(0, now);
-                g.gain.linearRampToValueAtTime(0.4, now + 1);
+                g.gain.linearRampToValueAtTime(0.4 * volumeMult, now + 1);
                 g.gain.linearRampToValueAtTime(0, now + 6);
                 osc1.start(now);
                 osc2.start(now);
@@ -384,8 +384,8 @@ export function playSound(type, volumeMult = 1) {
                 oscA.type = 'square';
                 oscB.type = 'triangle';
                 g.gain.setValueAtTime(0.0001, now);
-                g.gain.exponentialRampToValueAtTime(0.22, now + 0.03);
-                g.gain.exponentialRampToValueAtTime(0.14, now + 0.45);
+                g.gain.exponentialRampToValueAtTime(0.22 * volumeMult, now + 0.03);
+                g.gain.exponentialRampToValueAtTime(0.14 * volumeMult, now + 0.45);
                 g.gain.exponentialRampToValueAtTime(0.0001, now + 0.95);
                 const seq = [{ t: 0.00, f: 880 }, { t: 0.28, f: 1320 }, { t: 0.56, f: 1760 }];
                 for (const n of seq) {
@@ -421,7 +421,7 @@ export function playSound(type, volumeMult = 1) {
                 osc2.frequency.exponentialRampToValueAtTime(peak * 0.7, now + dur * 0.4);
                 osc2.frequency.exponentialRampToValueAtTime(base * 0.4, now + dur);
                 g.gain.setValueAtTime(0.0001, now);
-                g.gain.exponentialRampToValueAtTime(isScream ? 0.45 : 0.35, now + dur * 0.2);
+                g.gain.exponentialRampToValueAtTime((isScream ? 0.45 : 0.35) * volumeMult, now + dur * 0.2);
                 g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
                 osc1.connect(g);
                 osc2.connect(g);
@@ -438,7 +438,7 @@ export function playSound(type, volumeMult = 1) {
                 osc.type = 'square';
                 osc.frequency.setValueAtTime(900, now);
                 osc.frequency.exponentialRampToValueAtTime(220, now + 0.15);
-                g.gain.setValueAtTime(0.18, now);
+                g.gain.setValueAtTime(0.18 * volumeMult, now);
                 g.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
                 osc.connect(g);
                 g.connect(audioCtx.destination);
@@ -452,7 +452,7 @@ export function playSound(type, volumeMult = 1) {
                 osc.type = 'sine';
                 osc.frequency.setValueAtTime(120, now);
                 osc.frequency.exponentialRampToValueAtTime(70, now + 0.25);
-                g.gain.setValueAtTime(0.22, now);
+                g.gain.setValueAtTime(0.22 * volumeMult, now);
                 g.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
                 osc.connect(g);
                 g.connect(audioCtx.destination);
@@ -466,7 +466,7 @@ export function playSound(type, volumeMult = 1) {
                 osc.type = 'sawtooth';
                 osc.frequency.setValueAtTime(220, now);
                 osc.frequency.exponentialRampToValueAtTime(60, now + 0.18);
-                g.gain.setValueAtTime(0.25, now);
+                g.gain.setValueAtTime(0.25 * volumeMult, now);
                 g.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
                 osc.connect(g);
                 g.connect(audioCtx.destination);
@@ -491,7 +491,7 @@ export function playSound(type, volumeMult = 1) {
                 filter.connect(g);
                 g.connect(audioCtx.destination);
                 g.gain.setValueAtTime(0.0001, now);
-                g.gain.exponentialRampToValueAtTime(0.25, now + 0.2);
+                g.gain.exponentialRampToValueAtTime(0.25 * volumeMult, now + 0.2);
                 g.gain.exponentialRampToValueAtTime(0.0001, now + 0.8);
                 osc.start(now);
                 noise.start(now);

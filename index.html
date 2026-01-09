@@ -16,8 +16,24 @@
             user-select: none;
         }
 
+        /* Canvas container for letterboxing/pillarboxing */
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #000;
+            z-index: 0;
+        }
+
         canvas {
             display: block;
+            /* These are now set via JavaScript for each canvas */
+            /* max-width/max-height + object-fit is handled in JS */
         }
 
         #ui-layer {
@@ -604,8 +620,10 @@
 
 <body>
     <div id="root"></div>
-    <canvas id="gameCanvas"></canvas>
-    <canvas id="uiCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 10;"></canvas>
+    <div id="canvas-container">
+        <canvas id="gameCanvas"></canvas>
+        <canvas id="uiCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 10;"></canvas>
+    </div>
     <div id="xp-bar-container">
         <div id="xp-fill"></div>
     </div>
@@ -706,13 +724,12 @@
         <h2 style="color: #0ff; margin-top: 0; font-family: 'Courier New', monospace;">SYSTEM CONFIG</h2>
 
         <div style="margin: 15px 0;">
-            <label style="color: #fff; display: block; margin-bottom: 5px;">RESOLUTION</label>
+            <label style="color: #fff; display: block; margin-bottom: 5px;">INTERNAL RESOLUTION</label>
             <select id="res-select"
                 style="background: #000; color: #0f0; border: 1px solid #0f0; padding: 5px; width: 100%; font-family: inherit;">
-                <option value="1280x720">1280 x 720</option>
-                <option value="1600x900">1600 x 900</option>
-                <option value="1920x1080">1920 x 1080</option>
+                <!-- Options populated dynamically by JavaScript -->
             </select>
+            <div style="color: #888; font-size: 10px; margin-top: 2px;">Renders at this resolution, scales to fit screen</div>
         </div>
 
         <div style="margin: 15px 0;">
@@ -721,6 +738,7 @@
                 FULLSCREEN
                 <input type="checkbox" id="fullscreen-check">
             </label>
+            <div style="color: #888; font-size: 10px; margin-top: 2px;">Resolution still applies in fullscreen</div>
         </div>
 
         <div style="margin: 15px 0;">

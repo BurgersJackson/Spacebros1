@@ -51,6 +51,12 @@ export let shakeOffsetY = 0;
 export let width = typeof window !== 'undefined' ? window.innerWidth : 1920;
 export let height = typeof window !== 'undefined' ? window.innerHeight : 1080;
 
+// --- Internal Resolution (Absolute) ---
+// Game renders at this fixed resolution, then scales to fit screen via CSS
+export let internalWidth = 1920;
+export let internalHeight = 1080;
+export let aspectRatio = internalWidth / internalHeight;
+
 // --- Input State ---
 export const keys = {
     w: false, a: false, s: false, d: false,
@@ -97,6 +103,15 @@ export function setSectorIndex(idx) { sectorIndex = idx; }
 export function setMenuSelectionIndex(idx) { menuSelectionIndex = idx; }
 export function setCurrentZoom(zoom) { currentZoom = zoom; }
 export function setDimensions(w, h) { width = w; height = h; }
+
+// --- Internal Resolution Setter ---
+export function setInternalResolution(w, h) {
+    internalWidth = w;
+    internalHeight = h;
+    aspectRatio = w / h;
+    // Update game state dimensions to match internal resolution
+    setDimensions(w, h);
+}
 export function setUsingGamepad(val) { usingGamepad = val; }
 export function setGamepadIndex(idx) { gamepadIndex = idx; }
 export function setOverlayTimeout(t) { overlayTimeout = t; }
