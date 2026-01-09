@@ -3642,7 +3642,12 @@ class Spaceship extends Entity {
     }
 
     fireNuke() {
-        shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.nukeDamage, this.nukeRange, { damageAsteroids: true, damageMissiles: true, damageBases: true }));
+        shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.nukeDamage, this.nukeRange, {
+            damageAsteroids: true,
+            damageMissiles: true,
+            damageBases: true,
+            followPlayer: true
+        }));
         this.nukeCooldown = this.nukeMaxCooldown;
         //    showOverlayMessage("NUKE DEPLOYED", '#ff0', 1000);
     }
@@ -3672,7 +3677,8 @@ class Spaceship extends Entity {
             damageAsteroids: true,
             damageMissiles: true,
             color: '#0ff',
-            travelSpeed: 15
+            travelSpeed: 15,
+            followPlayer: true
         }));
 
         // Secondary ring effect (delayed)
@@ -3682,7 +3688,8 @@ class Spaceship extends Entity {
                     damageAsteroids: true,
                     damageMissiles: true,
                     color: '#08f',
-                    travelSpeed: 10
+                    travelSpeed: 10,
+                    followPlayer: true
                 }));
             }
         }, 200);
@@ -4289,7 +4296,7 @@ class Shockwave extends Entity {
         this.damage = damage;
         this.currentRadius = 10;
         this.maxRadius = maxRadius;
-        this.speed = opts.travelSpeed !== undefined ? opts.travelSpeed : 12;
+        this.speed = opts.travelSpeed !== undefined ? opts.travelSpeed : 16;
         this.hitList = [];
         this.damagePlayer = !!opts.damagePlayer;
         this.damageBases = !!opts.damageBases;
@@ -4297,9 +4304,23 @@ class Shockwave extends Entity {
         this.damageMissiles = !!opts.damageMissiles;
         this.ignoreEntity = opts.ignoreEntity || null;
         this.color = opts.color || '#ff0';
+        this.followPlayer = !!opts.followPlayer;
     }
     update(deltaTime = 16.67) {
-        this.currentRadius += this.speed;
+        // Calculate time scale for variable framerate support
+        const dtFactor = deltaTime / 16.67;
+
+        // Track player position if following
+        if (this.followPlayer && player && !player.dead) {
+            this.pos.x = player.pos.x;
+            this.pos.y = player.pos.y;
+            // Also update prevPos to prevent interpolation trails
+            this.prevPos.x = player.pos.x;
+            this.prevPos.y = player.pos.y;
+        }
+
+        // Apply time-scaled expansion
+        this.currentRadius += this.speed * dtFactor;
         if (this.currentRadius >= this.maxRadius) this.dead = true;
 
         const targets = [...enemies];

@@ -11,7 +11,8 @@
     "start:dev": "node scripts/start-electron.js --devtools",
     "start:smoke": "node scripts/start-electron.js --smoke",
     "dist": "electron-builder",
-    "dist:win": "electron-builder --win --x64"
+    "dist:win": "electron-builder --win --x64",
+    "dist:linux": "electron-builder --linux"
   },
   "dependencies": {
     "phaser": "^3.90.0"
@@ -38,6 +39,15 @@
       "target": [
         "nsis"
       ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "tar.gz"
+      ],
+      "category": "Game",
+      "description": "A 2D space shooter with neon graphics and upgrade systems"
     }
   }
 }
