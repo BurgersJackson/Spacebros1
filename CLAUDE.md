@@ -260,6 +260,99 @@ Store-bought ability that charges during gameplay and discharges manually:
 - **Visual**: Electric blue (#0ff) with expanding ring effect
 - **UI**: Battery HUD shows charge percentage and turns white when fully charged
 
+## Ship Types
+
+### Standard Ship
+Manual turret control with mouse/gamepad aiming. Default ship type.
+
+### Slacker Special (shipType = 'slacker')
+Auto-targeting ship designed for easier gameplay:
+
+**Features:**
+- **Auto-turret**: Automatically targets nearest enemy, prioritizing bosses
+  - Lead targeting: Aims ahead of moving targets
+  - Range: 2000 units
+- **Forward Laser**: Fires green laser independently in ship's facing direction
+  - Fire rate: Every 20 frames
+  - Damage: 2 × damage multiplier
+
+**Controls:**
+- **Mouse-based movement**: Ship moves toward mouse cursor position
+  - Additive with WASD keyboard input (both work together)
+  - Dead zone: 50 units (prevents jitter when mouse is near ship)
+- **Left mouse button (hold)**: Rotation mode - stops movement, only rotates to face cursor
+  - Braking: 0.85 friction when in rotation mode
+- **Right mouse button**: Turbo boost (same as E key)
+  - Triggers on press (not release)
+  - Re-triggers when cooldown expires if button held
+
+**Cursor Behavior:**
+- Cursor hidden during gameplay
+- Cursor visible in menus (pause, level-up, start screen, settings)
+
+**Code Location:**
+- Mouse movement: `src/js/main.js:3387-3400`
+- Rotation mode: `src/js/main.js:3396, 3482-3492`
+- Turbo boost with right-click: `src/js/main.js:3354`
+- Cursor hiding: `src/js/main.js:2192-2201`
+
+## PixiJS Rendering Best Practices
+
+### Anti-Ghosting Pattern
+When drawing dynamic graphics with PixiJS, always call `endFill()` after drawing lines to prevent ghost trails:
+
+```javascript
+gfx.lineStyle(2, color, alpha);
+gfx.moveTo(x1, y1);
+gfx.lineTo(x2, y2);
+gfx.endFill();  // CRITICAL: prevents ghosting
+```
+
+### Persistent Graphics Objects (Like Outer Shield)
+For graphics that update every frame, use persistent graphics objects stored on the entity:
+
+```javascript
+// In constructor
+this._pixiCustomGfx = null;
+
+// In draw/update method
+let gfx = this._pixiCustomGfx;
+if (!gfx) {
+    gfx = new PIXI.Graphics();
+    pixiVectorLayer.addChild(gfx);
+    this._pixiCustomGfx = gfx;
+} else if (!gfx.parent) {
+    pixiVectorLayer.addChild(gfx);
+}
+
+// Clear and redraw each frame (prevents ghosting)
+gfx.clear();
+gfx.lineStyle(width, color, alpha);
+gfx.moveTo(...);
+gfx.lineTo(...);
+gfx.endFill();
+```
+
+**Benefits:**
+- No ghosting (graphics explicitly cleared before redraw)
+- Better performance (object reused, not recreated)
+- Proper cleanup (destroyed with entity)
+
+### PixiJS Layer Structure
+- `pixiBaseLayer` - Player ship, static elements
+- `pixiEnemyLayer` - Enemy ships
+- `pixiBossLayer` - Stations, bosses
+- `pixiVectorLayer` - Graphics (shields, rings, lines, UI overlays)
+- `pixiBulletLayer` - Projectiles
+- `pixiParticleLayer` - Particles, explosions
+
+### Laser Aiming Line (Turret Indicator)
+The dashed cyan laser that shows where the turret is aiming:
+- **Location**: `Spaceship.drawLaser()` in `src/js/main.js:4123-4171`
+- **Uses**: `this._pixiLaserGfx` (persistent graphics object)
+- **Pattern**: Dashed line (10px dash, 20px gap) with target circle
+- **Anti-ghosting**: Always call `gfx.endFill()` after drawing line segments
+
 ## Game Configuration
 
 Key constants in `src/js/core/constants.js`:

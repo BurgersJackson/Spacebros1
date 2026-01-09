@@ -2153,6 +2153,12 @@ const mouseWorld = { x: 0, y: 0 };
 let lastMouseInputAt = 0;
 let lastGamepadInputAt = 0;
 
+// Mouse movement direction for Slacker ship arrow
+let mouseMovementDir = { x: 0, y: 0 };  // Normalized direction vector
+let mouseLastPos = { x: 0, y: 0 };      // Previous mouse position
+// Smoothed direction for Slacker line
+let smoothedDir = { x: 0, y: 0 };       // Smoothed direction vector
+
 // Gamepad State
 let gamepadIndex = null;
 let gpState = {
@@ -2183,8 +2189,16 @@ function updateInputMode(now = Date.now()) {
         usingGamepad = gamepadRecent && !mouseRecent;
     }
 
-    if (usingGamepad) document.body.classList.add('no-cursor');
-    else document.body.classList.remove('no-cursor');
+    // Hide cursor for gamepad OR Slacker ship mouse mode
+    // But show cursor when menus are open (pause, levelup, etc.) or game is not active
+    const levelupScreen = document.getElementById('levelup-screen');
+    const isMenuOpen = gamePaused || !gameActive || (levelupScreen && levelupScreen.style.display === 'flex');
+
+    if ((usingGamepad || (player && player.shipType === 'slacker')) && !isMenuOpen) {
+        document.body.classList.add('no-cursor');
+    } else {
+        document.body.classList.remove('no-cursor');
+    }
 }
 
 function resize() {
@@ -4147,6 +4161,7 @@ class Spaceship extends Entity {
                 gfx.moveTo(startX + ux * a0, startY + uy * a0);
                 gfx.lineTo(startX + ux * a1, startY + uy * a1);
             }
+            gfx.endFill();  // Properly close the path to prevent ghosting
 
             gfx.beginFill(0xaaffff, 0.8);
             gfx.drawCircle(hit.x, hit.y, 4);
@@ -11459,12 +11474,12 @@ class WarpSentinelBoss extends Entity {
         // Crystalline shield system - indestructible shards (cave monster pattern)
         this.maxShieldHp = 999;
         this.shieldSegments = new Array(60).fill(0);
-        this.innerShieldSegments = new Array(45).fill(0);
-        // Every other slot active (30 outer, ~22 inner active segments)
+        this.innerShieldSegments = new Array(55).fill(0);
+        // Every other slot active (30 outer, ~27 inner active segments)
         for (let i = 0; i < 60; i += 2) {
             this.shieldSegments[i] = 999;
         }
-        for (let i = 0; i < 45; i += 2) {
+        for (let i = 0; i < 55; i += 2) {
             this.innerShieldSegments[i] = 999;
         }
         // Shield radius scaled to protect enlarged body
@@ -11538,18 +11553,13 @@ class WarpSentinelBoss extends Entity {
         this.ramInvulnerable = 0;
 
 
-        // Collision hull (head + body, no tail) - tuned for 512x256 sprite scaled by 3
-        // Sprite is ~1360 wide x ~738 high.
-        // Center is (0,0). Visible range relative to center: X[-680, +680], Y[-370, +370].
-        // We use 3 overlapping circles to approximate the oblong shape.
-        // Scale 3 is baked into these values.
+        // Collision hull - single large circle for simplicity
+        // 20px less than inner shield radius (850 - 20 = 830)
         this.collisionHull = [
-            { x: 100 * this.sizeScale, y: 0, r: 115 * this.sizeScale }, // Head (Right)
-            { x: 0, y: 0, r: 120 * this.sizeScale },                    // Body (Center)
-            { x: -100 * this.sizeScale, y: 0, r: 115 * this.sizeScale } // Tail (Left)
+            { x: 0, y: 0, r: 830 }
         ];
-        // Broad phase radius covers the whole ship
-        this.collisionRadius = 240 * this.sizeScale;
+        // Broad phase radius matches the single collision circle
+        this.collisionRadius = 830;
 
         // Sprite properties
         this._pixiSprite = null;
@@ -11557,21 +11567,11 @@ class WarpSentinelBoss extends Entity {
 
     hitTestCircle(x, y, r) {
         if (this.dead) return false;
+        // Simple circle collision - just check distance against collisionRadius
         const dx = x - this.pos.x;
         const dy = y - this.pos.y;
         const distSq = dx * dx + dy * dy;
-        if (distSq > (this.collisionRadius + r) * (this.collisionRadius + r)) return false;
-        const aimToPlayer = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
-        const cos = Math.cos(-aimToPlayer);
-        const sin = Math.sin(-aimToPlayer);
-        const localX = dx * cos - dy * sin;
-        const localY = dx * sin + dy * cos;
-        for (const circle of this.collisionHull) {
-            const cdx = localX - circle.x;
-            const cdy = localY - circle.y;
-            if (cdx * cdx + cdy * cdy < (circle.r + r) * (circle.r + r)) return true;
-        }
-        return false;
+        return distSq < (this.collisionRadius + r) * (this.collisionRadius + r);
     }
 
     drawBossHud(ctx) {
@@ -11842,7 +11842,7 @@ class WarpSentinelBoss extends Entity {
         }
 
         if (this.screamCooldown <= 0 && distToPlayer < 2400) {
-            shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 0, 1100, { damageAsteroids: true, color: '#f0f', ignoreEntity: this }));
+            shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 0, 1600, { damageAsteroids: true, color: '#f0f', ignoreEntity: this }));
             if (distToPlayer < 1200) {
                 const nx = Math.cos(aimToPlayer);
                 const ny = Math.sin(aimToPlayer);
@@ -15868,6 +15868,9 @@ function enterWarpMaze() {
     radiationStorm = null;
     clearMiniEvent();
 
+    // Reset cave state so cave walls don't persist in warp level
+    resetCaveState();
+
     activeContract = null;
     contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
     nextContractAt = Date.now() + 999999999;
@@ -18018,7 +18021,8 @@ function findSpawnPointRelative(random = false, min = 1500, max = 2500) {
 
 function resolveEntityCollision() {
     const allEntities = [player, ...enemies, ...pinwheels, ...(contractEntities.fortresses || [])].filter(e => e && !e.dead);
-    if (boss && !boss.dead) allEntities.push(boss);
+    // Don't include warp boss in collision physics - it should push others but not be pushed itself
+    // if (boss && !boss.dead) allEntities.push(boss);
     if (spaceStation) allEntities.push(spaceStation);
     if (destroyer && !destroyer.dead) allEntities.push(destroyer);
 
@@ -23766,6 +23770,9 @@ function quitGame() {
     stopArenaCountdown();
     stopMusic();
 
+    // Reset sector index so new game starts at level 1
+    sectorIndex = 1;
+
     // Show start screen with ABORTED message
     document.getElementById('pause-menu').style.display = 'none';
     document.getElementById('start-screen').style.display = 'block';
@@ -23887,6 +23894,24 @@ window.addEventListener('mousemove', e => {
         const camY = player.pos.y - height / (2 * z);
         mouseWorld.x = (scaledX / z) + camX;
         mouseWorld.y = (scaledY / z) + camY;
+
+        // Track mouse movement direction for Slacker line
+        const deltaX = scaledX - mouseLastPos.x;
+        const deltaY = scaledY - mouseLastPos.y;
+        const moveDist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+        // Only update direction if mouse moved significantly (avoid jitter)
+        if (moveDist > 2) {
+            mouseMovementDir.x = deltaX / moveDist;
+            mouseMovementDir.y = deltaY / moveDist;
+        }
+        mouseLastPos.x = scaledX;
+        mouseLastPos.y = scaledY;
+
+        // Smooth the direction using lerp (lerp factor 0.15 for smooth response)
+        const lerpFactor = 0.15;
+        smoothedDir.x = smoothedDir.x + (mouseMovementDir.x - smoothedDir.x) * lerpFactor;
+        smoothedDir.y = smoothedDir.y + (mouseMovementDir.y - smoothedDir.y) * lerpFactor;
     }
 });
 

@@ -44,8 +44,10 @@ export class Entity {
      * @returns {Object} {x, y}
      */
     getRenderPos(alpha) {
-        if (alpha <= 0) return this.prevPos;
-        if (alpha >= 1) return this.pos;
+        // Always return a plain object for consistency (never return Vector references)
+        // This prevents issues where PixiJS or other code might modify the Vector object
+        if (alpha <= 0) return { x: this.prevPos.x, y: this.prevPos.y };
+        if (alpha >= 1) return { x: this.pos.x, y: this.pos.y };
         return {
             x: this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha,
             y: this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
