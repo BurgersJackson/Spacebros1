@@ -3864,6 +3864,14 @@ class Spaceship extends Entity {
             }
         }
 
+        // Check space station (high priority target)
+        if (typeof spaceStation !== 'undefined' && spaceStation && !spaceStation.dead) {
+            const dist = Math.hypot(spaceStation.pos.x - this.pos.x, spaceStation.pos.y - this.pos.y);
+            if (dist <= range) {
+                return spaceStation; // Always target space station if in range
+            }
+        }
+
         // Check enemies for boss types (Cruiser, Destroyer, Destroyer2)
         for (let e of enemies) {
             if (e.dead) continue;
@@ -12232,6 +12240,11 @@ class SpaceStation extends Entity {
         if (this.fixedPos) {
             this.pos.x = this.fixedPos.x;
             this.pos.y = this.fixedPos.y;
+            // Also sync prevPos to prevent ghosting when getRenderPos is used
+            if (this.prevPos) {
+                this.prevPos.x = this.fixedPos.x;
+                this.prevPos.y = this.fixedPos.y;
+            }
             this.vel.set(0, 0);
             this.angleVel = 0;
         }
