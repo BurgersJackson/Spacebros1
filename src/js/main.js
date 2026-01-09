@@ -11474,13 +11474,16 @@ class WarpSentinelBoss extends Entity {
         // Crystalline shield system - indestructible shards (cave monster pattern)
         this.maxShieldHp = 999;
         this.shieldSegments = new Array(60).fill(0);
-        this.innerShieldSegments = new Array(55).fill(0);
-        // Every other slot active (30 outer, ~27 inner active segments)
-        for (let i = 0; i < 60; i += 2) {
-            this.shieldSegments[i] = 999;
+        this.innerShieldSegments = new Array(60).fill(0);
+        // Fill pattern: consecutive segments with small gaps between groups
+        // More segments = smaller gaps proportionally
+        const outerFillEvery = 3;  // Fill 2, skip 1 (2/3 coverage)
+        const innerFillEvery = 4;  // Fill 3, skip 1 (3/4 coverage)
+        for (let i = 0; i < 60; i++) {
+            if (i % outerFillEvery < 2) this.shieldSegments[i] = 999;
         }
-        for (let i = 0; i < 55; i += 2) {
-            this.innerShieldSegments[i] = 999;
+        for (let i = 0; i < 60; i++) {
+            if (i % innerFillEvery < 3) this.innerShieldSegments[i] = 999;
         }
         // Shield radius scaled to protect enlarged body
         this.shieldRadius = 950;
@@ -12189,7 +12192,7 @@ class WarpSentinelBoss extends Entity {
         playSound('powerup');
     }
 
-    // Drop exploding mines (50% more damage than Monster 1 mines)
+    // Drop exploding mines (5 damage, 1 HP each)
     dropExplodingMines() {
         const count = 3 + Math.floor(Math.random() * 3); // 3-5 mines
         for (let i = 0; i < count; i++) {
@@ -12199,8 +12202,8 @@ class WarpSentinelBoss extends Entity {
             const my = this.pos.y + Math.sin(offsetAngle) * offsetDist;
 
             const mine = new Enemy('turret', { x: mx, y: my }, null);
-            mine.hp = 5;
-            mine.maxHp = 5;
+            mine.hp = 1;
+            mine.maxHp = 1;
             mine.radius = 30;
             mine.despawnImmune = true;
             mine.owner = this;
@@ -12215,8 +12218,8 @@ class WarpSentinelBoss extends Entity {
                         this.dead = true;
                         spawnFieryExplosion(this.pos.x, this.pos.y, 2.0);
                         playSound('explosion');
-                        // 50% more damage than Monster 1 mines (15 → 23)
-                        applyAOEDamageToPlayer(this.pos.x, this.pos.y, 200, 23);
+                        // Mine explosion damage (5 HP)
+                        applyAOEDamageToPlayer(this.pos.x, this.pos.y, 200, 5);
                     }
                 }
             };
@@ -15077,6 +15080,7 @@ class CaveMonster1 extends CaveMonsterBase {
     }
 
     tendrilMines(phase) {
+        // Tendril mines attack (5 damage, 1 HP each)
         const count = phase === 3 ? 5 : (phase === 2 ? 4 : 3);
 
         for (let i = 0; i < count; i++) {
@@ -15086,8 +15090,8 @@ class CaveMonster1 extends CaveMonsterBase {
             const my = this.pos.y + Math.sin(angle) * dist;
 
             const mine = new Enemy('turret', { x: mx, y: my }, null);
-            mine.hp = 5;
-            mine.maxHp = 5;
+            mine.hp = 1;
+            mine.maxHp = 1;
             mine.radius = 30;
             mine.despawnImmune = true;
             mine.owner = this;
@@ -15108,8 +15112,8 @@ class CaveMonster1 extends CaveMonsterBase {
                         // AOE damage - 200px radius, respects shield penetration
                         const explosionRadius = 200;
                         if (Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y) < explosionRadius) {
-                            // Use AOE damage function that respects shield penetration
-                            applyAOEDamageToPlayer(this.pos.x, this.pos.y, explosionRadius, 15);
+                            // Use AOE damage function that respects shield penetration (5 damage)
+                            applyAOEDamageToPlayer(this.pos.x, this.pos.y, explosionRadius, 5);
                         }
                     }
                 }
@@ -15521,7 +15525,7 @@ class CaveMonster3 extends CaveMonsterBase {
     }
 
     tendrilMines(phase) {
-        // Copy of Monster 1's tendril mines attack
+        // Tendril mines attack (5 damage, 1 HP each)
         const count = phase === 3 ? 5 : (phase === 2 ? 4 : 3);
 
         for (let i = 0; i < count; i++) {
@@ -15531,8 +15535,8 @@ class CaveMonster3 extends CaveMonsterBase {
             const my = this.pos.y + Math.sin(angle) * dist;
 
             const mine = new Enemy('turret', { x: mx, y: my }, null);
-            mine.hp = 5;
-            mine.maxHp = 5;
+            mine.hp = 1;
+            mine.maxHp = 1;
             mine.radius = 30;
             mine.despawnImmune = true;
             mine.owner = this;
