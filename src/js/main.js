@@ -3848,6 +3848,7 @@ class Spaceship extends Entity {
         const range = 2000; // Same as main turret range with rangeMult
 
         // First priority: Boss ships (Cruiser or Destroyer)
+        // Check global boss variable (Cruiser)
         if (boss && !boss.dead) {
             const dist = Math.hypot(boss.pos.x - this.pos.x, boss.pos.y - this.pos.y);
             if (dist <= range) {
@@ -3855,7 +3856,15 @@ class Spaceship extends Entity {
             }
         }
 
-        // Check enemies for boss types (Cruiser, Destroyer)
+        // Check global destroyer variable (Destroyer boss)
+        if (typeof destroyer !== 'undefined' && destroyer && !destroyer.dead) {
+            const dist = Math.hypot(destroyer.pos.x - this.pos.x, destroyer.pos.y - this.pos.y);
+            if (dist <= range) {
+                return destroyer; // Always target destroyer if in range
+            }
+        }
+
+        // Check enemies for boss types (Cruiser, Destroyer, Destroyer2)
         for (let e of enemies) {
             if (e.dead) continue;
             if (e.constructor.name === 'Cruiser' || e.constructor.name === 'Destroyer' ||
@@ -3876,6 +3885,30 @@ class Spaceship extends Entity {
                 if (dist <= range && dist < minDist) {
                     minDist = dist;
                     nearestTarget = e;
+                }
+            }
+        }
+
+        // Check pinwheels array
+        if (typeof pinwheels !== 'undefined') {
+            for (let p of pinwheels) {
+                if (p.dead) continue;
+                const dist = Math.hypot(p.pos.x - this.pos.x, p.pos.y - this.pos.y);
+                if (dist <= range && dist < minDist) {
+                    minDist = dist;
+                    nearestTarget = p;
+                }
+            }
+        }
+
+        // Check guided missiles array (destroyer missiles)
+        if (typeof guidedMissiles !== 'undefined') {
+            for (let m of guidedMissiles) {
+                if (m.dead) continue;
+                const dist = Math.hypot(m.pos.x - this.pos.x, m.pos.y - this.pos.y);
+                if (dist <= range && dist < minDist) {
+                    minDist = dist;
+                    nearestTarget = m;
                 }
             }
         }
