@@ -11587,6 +11587,11 @@ class WarpSentinelBoss extends Entity {
     update(deltaTime = 16.67) {
         if (this.dead) return;
         if (!player || player.dead) return;
+
+        // Call Entity.update to properly save prevPos at the START of the frame
+        // This ensures smooth rendering interpolation
+        super.update(deltaTime);
+
         const now = Date.now();
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -11817,11 +11822,7 @@ class WarpSentinelBoss extends Entity {
                 player.invulnerable = 22;
             }
         }
-
-        // Save previous position for interpolation
-        this.prevPos.x = this.pos.x;
-        this.prevPos.y = this.pos.y;
-        this.pos.add(this.vel);
+        // Note: super.update() at the start of this method handles prevPos saving and position update
     }
 
     maybeCallHelpers() {
