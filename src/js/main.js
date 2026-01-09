@@ -87,7 +87,7 @@ const UPGRADE_DATA = {
 };
 
 // --- Globals ---
-let mouseState = { down: false };
+let mouseState = { down: false, leftDown: false, rightDown: false };
 let overlayTimeout = null;
 let warpParticles = [];
 let starfield = [];
@@ -3176,6 +3176,7 @@ class Spaceship extends Entity {
             unlocked: true,
             activeFrames: 0,
             cooldownFrames: 0,
+            lastCooldownFrames: 0,
             durationFrames: 60, // 1.0s
             cooldownTotalFrames: 600, // fixed 10s cooldown
             speedMult: 1.25, // +25% speed
@@ -3235,6 +3236,7 @@ class Spaceship extends Entity {
         this.invincibilityCycle.timer = 0;
         this.turboBoost.activeFrames = 0;
         this.turboBoost.cooldownFrames = 0;
+        this.turboBoost.lastCooldownFrames = 0;
         this.turboBoost.buttonHeld = false;
         this.shotgunTimer = 0;
         updateHealthUI();
@@ -3323,19 +3325,38 @@ class Spaceship extends Entity {
             this.outerShieldRotation -= 0.026 * dtScale;
         }
 
-        // Turbo boost timers + activation (E / gamepad X)
+        // Turbo boost timers + activation (E / gamepad X / right mouse button)
         if (this.turboBoost && this.turboBoost.unlocked) {
             if (this.turboBoost.activeFrames > 0) this.turboBoost.activeFrames -= dtScale;
+
+            // Track if cooldown just expired this frame
+            const wasOnCooldown = this.turboBoost.lastCooldownFrames > 0;
+            const nowOnCooldown = this.turboBoost.cooldownFrames > 0;
+            const cooldownJustExpired = wasOnCooldown && !nowOnCooldown;
+            this.turboBoost.lastCooldownFrames = this.turboBoost.cooldownFrames;
             if (this.turboBoost.cooldownFrames > 0) this.turboBoost.cooldownFrames -= dtScale;
-            const turboInput = !(keys.e || gpState.turbo);
-            if (turboInput && !this.turboBoost.buttonHeld) {
+
+            // Check if turbo button is pressed
+            const turboPressed = (keys.e || gpState.turbo || mouseState.rightDown);
+
+            // Trigger on press (not press -> press transition)
+            if (turboPressed && !this.turboBoost.buttonHeld) {
                 if (this.turboBoost.activeFrames <= 0 && this.turboBoost.cooldownFrames <= 0) {
                     this.turboBoost.activeFrames = this.turboBoost.durationFrames;
                     this.turboBoost.cooldownFrames = this.turboBoost.cooldownTotalFrames;
                     playSound('powerup');
                 }
             }
-            this.turboBoost.buttonHeld = turboInput;
+            // Re-trigger if button is still held and cooldown just expired
+            else if (turboPressed && cooldownJustExpired) {
+                if (this.turboBoost.activeFrames <= 0) {
+                    this.turboBoost.activeFrames = this.turboBoost.durationFrames;
+                    this.turboBoost.cooldownFrames = this.turboBoost.cooldownTotalFrames;
+                    playSound('powerup');
+                }
+            }
+
+            this.turboBoost.buttonHeld = turboPressed;
             updateTurboUI();
         }
 
@@ -3347,6 +3368,36 @@ class Spaceship extends Entity {
             if (keys.s) moveY += 1;
             if (keys.a) moveX -= 1;
             if (keys.d) moveX += 1;
+        }
+
+        // NEW: Slacker ship mouse movement
+        if (this.shipType === 'slacker' && !usingGamepad) {
+            // Calculate direction from ship to mouse cursor
+            const dx = mouseWorld.x - this.pos.x;
+            const dy = mouseWorld.y - this.pos.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            // Rotation mode: if left mouse button is held, stop movement
+            // and only rotate to face mouse cursor
+            const isRotationMode = mouseState.leftDown;
+
+            if (!isRotationMode) {
+                // Normal movement mode: add mouse input to movement
+                if (dist > 50) {
+                    // Normalize to -1 to 1 range
+                    const mouseMoveX = dx / dist;
+                    const mouseMoveY = dy / dist;
+
+                    // Add to existing keyboard input (allows combining mouse + keyboard)
+                    moveX += mouseMoveX;
+                    moveY += mouseMoveY;
+                }
+
+                // Clamp to prevent overshoot when combining inputs
+                moveX = Math.max(-1, Math.min(1, moveX));
+                moveY = Math.max(-1, Math.min(1, moveY));
+            }
+            // In rotation mode, only rotate toward mouse (don't add to movement)
         }
 
         const moveMag = Math.sqrt(moveX * moveX + moveY * moveY);
@@ -3412,6 +3463,17 @@ class Spaceship extends Entity {
             this.vel.x += normMoveX * (currentThrust * finalMag);
             this.vel.y += normMoveY * (currentThrust * finalMag);
             thrusting = true;
+        }
+
+        // NEW: Slacker rotation mode - rotate toward mouse even without movement
+        if (this.shipType === 'slacker' && !usingGamepad && mouseState.leftDown) {
+            const targetAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
+            let angleDiff = targetAngle - this.angle;
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+            if (Math.abs(angleDiff) > 0.05) {
+                this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), 0.15 * dtScale);
+            }
         }
 
         this.fireDelay = this.baseFireDelay / this.stats.fireRateMult;
@@ -3659,7 +3721,9 @@ class Spaceship extends Entity {
 
         // Time-scaled friction
         // friction^dtScale
-        this.vel.mult(Math.pow(this.friction, dtScale));
+        // NEW: Slacker rotation mode - apply stronger braking when left mouse button held
+        const rotationModeBrake = (this.shipType === 'slacker' && !usingGamepad && mouseState.leftDown) ? 0.85 : 1.0;
+        this.vel.mult(Math.pow(this.friction * rotationModeBrake, dtScale));
 
         super.update(deltaTime);
         checkWallCollision(this, 0.0);
@@ -19621,8 +19685,17 @@ function showLevelUpMenu() {
                 `;
 
         card.onmouseenter = () => {
-            menuSelectionIndex = index;
             const active = getActiveMenuElements();
+            const cardIndex = active.indexOf(card);
+            if (cardIndex >= 0) {
+                menuSelectionIndex = cardIndex;
+                updateMenuVisuals(active);
+            }
+        };
+
+        card.onmouseleave = () => {
+            const active = getActiveMenuElements();
+            menuSelectionIndex = active.indexOf(document.getElementById('reroll-btn'));
             updateMenuVisuals(active);
         };
 
@@ -23819,10 +23892,14 @@ window.addEventListener('mousemove', e => {
 
 window.addEventListener('mousedown', (e) => {
     mouseState.down = true;
+    if (e.button === 0) mouseState.leftDown = true;
+    if (e.button === 2) mouseState.rightDown = true;
 });
 
-window.addEventListener('mouseup', () => {
+window.addEventListener('mouseup', (e) => {
     mouseState.down = false;
+    if (e.button === 0) mouseState.leftDown = false;
+    if (e.button === 2) mouseState.rightDown = false;
 });
 
 window.addEventListener("gamepadconnected", (e) => {
@@ -24226,6 +24303,39 @@ document.getElementById('quit-btn').addEventListener('click', async () => {
     }
 });
 document.getElementById('music-btn').addEventListener('click', toggleMusic);
+
+// Pause menu hover handlers - update menuSelectionIndex when hovering
+const pauseMenuButtons = [
+    'resume-btn',
+    'pause-upgrades-btn',
+    'pause-settings-btn',
+    'restart-btn-pause',
+    'music-btn',
+    'quit-btn',
+    'debug-btn',
+    'desktop-quit-pause-btn'
+];
+
+pauseMenuButtons.forEach(btnId => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+        btn.addEventListener('mouseenter', () => {
+            const active = getActiveMenuElements();
+            const index = active.indexOf(btn);
+            if (index >= 0) {
+                menuSelectionIndex = index;
+                updateMenuVisuals(active);
+            }
+        });
+
+        btn.addEventListener('mouseleave', () => {
+            const active = getActiveMenuElements();
+            // Default back to resume button (index 0)
+            menuSelectionIndex = 0;
+            updateMenuVisuals(active);
+        });
+    }
+});
 
 // Pause menu upgrades button - shows current run upgrades
 const pauseUpgradesBtn = document.getElementById('pause-upgrades-btn');
