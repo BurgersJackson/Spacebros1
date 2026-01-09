@@ -41,7 +41,7 @@ const UPGRADE_DATA = {
                 { "id": "multi_shot", "name": "Multi-Shot", "tier1": "Fires 2 proj.", "tier2": "Fires 3 proj.", "tier3": "Fires 4 proj.", "notes": "Parallel fire." },
                 { "id": "shotgun", "name": "Flak Shotgun", "tier1": "Unlock: 5 Pellets", "tier2": "8 Pellets, +Range", "tier3": "12 Pellets", "notes": "Close-range burst." },
                 { "id": "static_weapons", "name": "Static Weapons", "tier1": "Unlock Forward Laser", "tier2": "Add Side Lasers", "tier3": "Add Rear Laser", "tier4": "Dual Rear Stream", "tier5": "Dual Front Stream", "notes": "Always-on turrets." },
-                { "id": "homing_missiles", "name": "Homing Missiles", "tier1": "2x Missiles / 2s", "tier2": "4x Missiles / 2s", "tier3": "6x Missiles / 2s", "notes": "Shield-piercing swarm." },
+                { "id": "homing_missiles", "name": "Homing Missiles", "tier1": "2 Missiles, 1 DMG", "tier2": "2 Missiles, 2 DMG", "tier3": "2 Missiles, 3 DMG", "tier4": "2 Missiles, 4 DMG", "tier5": "2 Missiles, 5 DMG", "notes": "Precision swarm." },
                 { "id": "volley_shot", "name": "Volley Shot", "tier1": "Auto-fires 3-shot burst every 3s", "tier2": "5-shot burst every 3s", "tier3": "7-shot burst every 3s", "tier4": "9-shot burst every 3s", "tier5": "11-shot burst every 3s", "notes": "Automatic burst damage. No input required." },
                 { "id": "chain_lightning", "name": "Chain Lightning", "tier1": "Projectiles chain to 1 enemy (200u)", "tier2": "Chain to 2 enemies (250u)", "tier3": "Chain to 3 enemies (300u)", "notes": "Arc damage hits grouped enemies. Great vs swarms." },
                 { "id": "backstabber", "name": "Backstabber", "tier1": "+50% damage from behind", "tier2": "+100% damage from behind", "tier3": "+150% damage, slow enemies 2s", "notes": "Positioning matters. Flanking = huge damage." }
@@ -3093,6 +3093,10 @@ class Spaceship extends Entity {
         this.ciwsRange = 400;            // Target acquisition range
         this.ciwsCooldown = 0;          // Frames until next shot (6 = 2x player fire rate)
         this.ciwsMaxCooldown = 6;        // Fire rate: every 6 frames at 60fps
+
+        // Homing Missiles - track sources separately for stacking
+        this.stats.homingFromUpgrade = 0;   // Tier from in-game upgrade (0-5)
+        this.stats.homingFromMeta = 0;      // Tier from meta shop (0-3)
     }
 
     respawn() {
@@ -3583,16 +3587,34 @@ class Spaceship extends Entity {
     }
 
     fireMissiles() {
-        const count = this.stats.homing * 2;
-        for (let i = 0; i < count; i++) {
-            const angleOffset = (i - (count - 1) / 2) * 0.3;
-            const angle = this.turretAngle + angleOffset + (Math.random() - 0.5) * 0.2;
-            // Homing strength 2 (strong), damage 1
-            const b = new Bullet(this.pos.x, this.pos.y, angle, false, 1, 12, 3, '#f80', 2);
-            b.ignoreShields = false; // missiles now respect shields
-            b.isMissile = true;
-            bullets.push(b);
-            spawnSmoke(this.pos.x, this.pos.y, 1);
+        const hasUpgrade = this.stats.homingFromUpgrade > 0;
+        const hasMeta = this.stats.homingFromMeta > 0;
+        const bothOwned = hasUpgrade && hasMeta;
+
+        const upgradeDamage = this.stats.homingFromUpgrade || 1;
+        const metaDamage = this.stats.homingFromMeta || 1;
+
+        // Fire 2 missiles normally, or 4 if both upgrades owned
+        const missilePairs = bothOwned ? 2 : 1;
+
+        for (let pair = 0; pair < missilePairs; pair++) {
+            // Each pair fires 2 missiles
+            const count = 2;
+            // Determine damage for this pair
+            const damage = (pair === 0) ? upgradeDamage : metaDamage;
+
+            for (let i = 0; i < count; i++) {
+                const angleOffset = (i - (count - 1) / 2) * 0.3;
+                // Add slight spread between pairs if firing 4 missiles
+                const pairSpread = bothOwned ? 0.15 : 0;
+                const spreadOffset = (pair - 0.5) * pairSpread;
+                const angle = this.turretAngle + angleOffset + spreadOffset + (Math.random() - 0.5) * 0.2;
+                const b = new Bullet(this.pos.x, this.pos.y, angle, false, damage, 12, 3, '#f80', 2);
+                b.ignoreShields = false;
+                b.isMissile = true;
+                bullets.push(b);
+                spawnSmoke(this.pos.x, this.pos.y, 1);
+            }
         }
     }
 
@@ -18722,10 +18744,8 @@ function createNewProfile() {
         return;
     }
 
-    currentProfileName = newName;
-    localStorage.setItem(SAVE_LAST_KEY, newName);
+    selectProfile(newName);
     showSaveMenu();
-    updateStartScreenDisplay();
     showOverlayMessage(`CREATED: ${newName}`, '#0f0', 1200);
 }
 
@@ -18806,6 +18826,8 @@ async function deleteSelectedProfile() {
         currentProfileName = null;
         localStorage.removeItem(SAVE_LAST_KEY);
         resetProfileStats();
+        resetMetaProfile(); // Clear in-memory upgrades
+        updateMetaUI();     // Update UI to show 0 bank/upgrades
         updateStartScreenDisplay();
     }
 
@@ -18973,7 +18995,9 @@ function wipeProfiles() {
     const toDelete = [];
     for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && k.startsWith(SAVE_PREFIX)) toDelete.push(k);
+        if (k && (k.startsWith(SAVE_PREFIX) || k.startsWith('meta_profile_v1_'))) {
+            toDelete.push(k);
+        }
     }
     toDelete.forEach(k => localStorage.removeItem(k));
     localStorage.removeItem(SAVE_LAST_KEY);
@@ -19520,7 +19544,9 @@ function applyUpgrade(id, tier) {
             }
             break;
         case 'homing_missiles':
-            player.stats.homing = tier; // 1=weak, 2=strong, 3=perfect(implied by stronger turn rate)
+            player.stats.homingFromUpgrade = tier;
+            // Update effective value (for backward compatibility with auto-fire check)
+            player.stats.homing = Math.max(player.stats.homingFromUpgrade, player.stats.homingFromMeta);
             break;
         case 'segment_count':
             if (tier === 1) player.shieldSegments.push(2, 2); // 8+2=10
@@ -22742,6 +22768,48 @@ function colorToHex(colorStr) {
 
 function startGame() {
     console.log('[DEBUG] startGame() called');
+    
+    // Auto-create profile if none exists (e.g. after deleting all profiles)
+    if (!currentProfileName) {
+        console.log('[START] No profile selected, checking for auto-create');
+        const existing = listSaveSlots();
+        if (existing.length === 0) {
+            console.log('[START] Auto-creating default profile');
+            const newName = 'profile1';
+            const template = {
+                version: 1,
+                timestamp: Date.now(),
+                lastSavedAt: Date.now(),
+                score: 0,
+                sectorIndex: 1,
+                totalKills: 0,
+                highScore: 0,
+                totalPlayTimeMs: 0,
+                player: null
+            };
+            try {
+                localStorage.setItem(SAVE_PREFIX + newName, JSON.stringify(template));
+                const newMetaProfile = {
+                    bank: 0,
+                    purchases: {
+                        startDamage: 0, passiveHp: 0, rerollTokens: 0, hullPlating: 0, shieldCore: 0,
+                        staticBlueprint: 0, missilePrimer: 0, magnetBooster: 0, nukeCapacitor: 0,
+                        speedTuning: 0, bankMultiplier: 0, shopDiscount: 0, extraLife: 0, droneFabricator: 0,
+                        piercingRounds: 0, explosiveRounds: 0, criticalStrike: 0, splitShot: 0,
+                        thornArmor: 0, lifesteal: 0, evasionBoost: 0, shieldRecharge: 0,
+                        dashCooldown: 0, dashDuration: 0, xpMagnetPlus: 0, autoReroll: 0,
+                        nuggetMagnet: 0, contractSpeed: 0, startingRerolls: 0, luckyDrop: 0,
+                        bountyHunter: 0, comboMeter: 0, startingWeapon: 0, secondWind: 0, batteryCapacitor: 0
+                    }
+                };
+                localStorage.setItem(`meta_profile_v1_${newName}`, JSON.stringify(newMetaProfile));
+                selectProfile(newName);
+            } catch (e) {
+                console.warn('[START] Auto-create failed', e);
+            }
+        }
+    }
+
     try {
         // Reset fromPauseMenu flag for fresh start
         fromPauseMenu = false;
@@ -22913,9 +22981,10 @@ function startGame() {
         }
 
         const missilePrimerTier = metaProfile.purchases.missilePrimer || 0;
+        player.stats.homingFromMeta = missilePrimerTier;
         if (missilePrimerTier > 0) {
-            // Increase homing strength with tier
-            player.stats.homing = Math.max(player.stats.homing, missilePrimerTier);
+            // Update effective value (for backward compatibility with auto-fire check)
+            player.stats.homing = Math.max(player.stats.homingFromUpgrade, player.stats.homingFromMeta);
             player.missileTimer = 0;
         }
 
@@ -24065,7 +24134,53 @@ requestAnimationFrame(() => {
 // Initialize profile system BEFORE loading meta profile
 currentProfileName = localStorage.getItem(SAVE_LAST_KEY) || null;
 
-loadMetaProfile();
+let autoCreated = false;
+if (!currentProfileName) {
+    const existing = listSaveSlots();
+    if (existing.length === 0) {
+        console.log('[PROFILE] Auto-creating default profile');
+        const newName = 'profile1';
+        const template = {
+            version: 1,
+            timestamp: Date.now(),
+            lastSavedAt: Date.now(),
+            score: 0,
+            sectorIndex: 1,
+            totalKills: 0,
+            highScore: 0,
+            totalPlayTimeMs: 0,
+            player: null
+        };
+        try {
+            localStorage.setItem(SAVE_PREFIX + newName, JSON.stringify(template));
+            
+            const newMetaProfile = {
+                bank: 0,
+                purchases: {
+                    startDamage: 0, passiveHp: 0, rerollTokens: 0, hullPlating: 0, shieldCore: 0,
+                    staticBlueprint: 0, missilePrimer: 0, magnetBooster: 0, nukeCapacitor: 0,
+                    speedTuning: 0, bankMultiplier: 0, shopDiscount: 0, extraLife: 0, droneFabricator: 0,
+                    piercingRounds: 0, explosiveRounds: 0, criticalStrike: 0, splitShot: 0,
+                    thornArmor: 0, lifesteal: 0, evasionBoost: 0, shieldRecharge: 0,
+                    dashCooldown: 0, dashDuration: 0, xpMagnetPlus: 0, autoReroll: 0,
+                    nuggetMagnet: 0, contractSpeed: 0, startingRerolls: 0, luckyDrop: 0,
+                    bountyHunter: 0, comboMeter: 0, startingWeapon: 0, secondWind: 0, batteryCapacitor: 0
+                }
+            };
+            localStorage.setItem(`meta_profile_v1_${newName}`, JSON.stringify(newMetaProfile));
+            
+            // Use selectProfile to activate it properly (loads meta, updates UI)
+            selectProfile(newName);
+            autoCreated = true;
+        } catch (e) {
+            console.warn('[PROFILE] Auto-create failed', e);
+        }
+    }
+}
+
+if (!autoCreated) {
+    loadMetaProfile();
+}
 updateMetaUI();
 updateStartScreenDisplay();
 

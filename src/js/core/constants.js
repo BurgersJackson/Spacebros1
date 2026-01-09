@@ -81,7 +81,7 @@ export const UPGRADE_DATA = {
                 { id: "multi_shot", name: "Multi-Shot", tier1: "Fires 2 proj.", tier2: "Fires 3 proj.", tier3: "Fires 4 proj.", tier4: "Fires 5 proj.", tier5: "Fires 6 proj.", notes: "Parallel fire." },
                 { id: "shotgun", name: "Flak Shotgun", tier1: "Unlock: 5 Pellets", tier2: "8 Pellets, +Range", tier3: "12 Pellets", tier4: "16 Pellets, +Range", tier5: "20 Pellets, max range", notes: "Close-range burst." },
                 { id: "static_weapons", name: "Static Weapons", tier1: "Unlock Forward Laser", tier2: "Add Side Lasers", tier3: "Add Rear Laser", tier4: "Dual Rear Stream", tier5: "Dual Front Stream", notes: "Always-on turrets." },
-                { id: "homing_missiles", name: "Homing Missiles", tier1: "2x Missiles / 2s", tier2: "4x Missiles / 2s", tier3: "6x Missiles / 2s", tier4: "8x Missiles / 2s", tier5: "10x Missiles / 2s", notes: "Shield-piercing swarm." },
+                { id: "homing_missiles", name: "Homing Missiles", tier1: "2 missiles, 1 damage (auto-fire)", tier2: "2 missiles, 2 damage", tier3: "2 missiles, 3 damage", tier4: "2 missiles, 4 damage", tier5: "2 missiles, 5 damage", notes: "Auto-fires tracking missiles. Stacks with meta upgrade to 4 missiles." },
                 { id: "volley_shot", name: "Volley Shot", tier1: "Auto-fires 3-shot burst every 3s", tier2: "5-shot burst every 3s", tier3: "7-shot burst every 3s", tier4: "9-shot burst every 3s", tier5: "11-shot burst every 3s", notes: "Automatic burst damage. No input required." },
                 { id: "ciws", name: "CIWS", tier1: "Auto-targets 400u, 1 dmg", tier2: "2 dmg", tier3: "3 dmg", tier4: "4 dmg", tier5: "5 dmg", notes: "Rapid-fire defense. Targets all enemies." },
                 { id: "chain_lightning", name: "Chain Lightning", tier1: "Projectiles chain to 1 enemy (200u)", tier2: "Chain to 2 enemies (250u)", tier3: "Chain to 3 enemies (300u)", tier4: "Chain to 4 enemies (350u)", tier5: "Chain to 5 enemies (400u)", notes: "Arc damage hits grouped enemies. Great vs swarms." },
@@ -171,11 +171,11 @@ export const META_SHOP_UPGRADE_DATA = {
     },
     missilePrimer: {
         name: "Missile Primer",
-        description: "Unlock homing missiles that auto-fire",
-        tier1: "2x Missiles / 2s",
-        tier2: "4x Missiles / 2s",
-        tier3: "6x Missiles / 2s",
-        notes: "Homing projectiles track enemies automatically."
+        description: "Unlock homing missiles that auto-fire (stacks with in-game upgrade)",
+        tier1: "2 missiles, 1 damage",
+        tier2: "2 missiles, 2 damage",
+        tier3: "2 missiles, 3 damage",
+        notes: "Auto-fires tracking missiles. Combine with in-game upgrade for 4 missiles total."
     },
     magnetBooster: {
         name: "Magnet Booster",
