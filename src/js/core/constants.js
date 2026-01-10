@@ -157,11 +157,11 @@ export const META_SHOP_UPGRADE_DATA = {
     },
     shieldCore: {
         name: "Shield Core",
-        description: "Add permanent shield segments",
-        tier1: "+2 shield segments",
-        tier2: "+4 shield segments",
-        tier3: "+6 shield segments",
-        notes: "More shield segments = more damage absorption."
+        description: "Enhances shield capacity and strength.",
+        tier1: "+1 Shield Segment",
+        tier2: "+1 HP per Segment",
+        tier3: "+1 Shield Segment",
+        notes: "Alternates between adding segments and increasing segment HP."
     },
     staticBlueprint: {
         name: "Static Blueprint",
@@ -190,9 +190,9 @@ export const META_SHOP_UPGRADE_DATA = {
     nukeCapacitor: {
         name: "Global Defense Ring",
         description: "Orbiting fireballs that damage enemies upon contact",
-        tier1: "1 Fireball, 20 dmg",
-        tier2: "2 Fireballs, 20 dmg",
-        tier3: "3 Fireballs, 20 dmg",
+        tier1: "1 Fireball, 5 dmg",
+        tier2: "2 Fireballs, 6 dmg",
+        tier3: "3 Fireballs, 7 dmg",
         notes: "Fireballs orbit at 500u range. 1 rotation every 6 seconds."
     },
     speedTuning: {
@@ -398,9 +398,9 @@ export const META_SHOP_UPGRADE_DATA = {
     batteryCapacitor: {
         name: "Battery Capacitor",
         description: "Stores energy over time. Discharge manually for massive AOE damage.",
-        tier1: "500 dmg, 800u blast (30s charge)",
-        tier2: "800 dmg, 900u blast (30s charge)",
-        tier3: "1200 dmg, 1000u blast (30s charge)",
+        tier1: "100 dmg, 800u blast (30s charge)",
+        tier2: "200 dmg, 900u blast (30s charge)",
+        tier3: "300 dmg, 1000u blast (30s charge)",
         notes: "Press F / Gamepad Y to discharge. Manual control only, never auto-fires."
     }
 };

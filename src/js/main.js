@@ -88,7 +88,7 @@ const UPGRADE_DATA = {
 };
 
 // --- Globals ---
-let mouseState = { down: false, leftDown: false, rightDown: false };
+let mouseState = { down: false, leftDown: false, rightDown: false, middleDown: false };
 let overlayTimeout = null;
 let warpParticles = [];
 let starfield = [];
@@ -3213,7 +3213,7 @@ class Spaceship extends Entity {
         this.defenseOrbs = [];
         this.defenseOrbAngle = 0;
         this.defenseOrbRadius = 500;
-        this.defenseOrbDamage = 20;
+        this.defenseOrbDamage = 5;
         this.defenseOrbSpeed = (Math.PI * 2) / 360; // 1 rotation per 6 seconds (360 frames @ 60fps)
 
         this.slowField = 0; // 0 or radius
@@ -3651,15 +3651,15 @@ class Spaceship extends Entity {
                 const ox = this.pos.x + Math.cos(angle) * this.defenseOrbRadius;
                 const oy = this.pos.y + Math.sin(angle) * this.defenseOrbRadius;
                 
-                // Collision targets: Enemies, Missiles, Boss Bombs, Asteroids
-                const targets = [];
-                // Add nearby enemies from grid or just all active enemies (simpler for now)
-                targets.push(...enemies); 
-                targets.push(...guidedMissiles);
-                targets.push(...bossBombs);
-                targets.push(...environmentAsteroids);
-                if (boss && !boss.dead) targets.push(boss);
-                if (destroyer && !destroyer.dead) targets.push(destroyer);
+                // Collision targets via Spatial Hash for performance
+                // targetGrid includes: enemies, pinwheels, bosses, turrets
+                const queryRadius = 150;
+                const targets = [
+                    ...targetGrid.query(ox, oy, queryRadius),
+                    ...asteroidGrid.query(ox, oy, queryRadius),
+                    ...guidedMissiles,
+                    ...bossBombs
+                ];
 
                 for (const target of targets) {
                     if (target.dead) continue;
@@ -3771,7 +3771,7 @@ class Spaceship extends Entity {
         }
 
         // F key / Battery button handling (Battery discharge)
-        const fPressed = keys.f || gpState.battery;
+        const fPressed = keys.f || gpState.battery || mouseState.middleDown;
         const batteryReady = this.batteryUnlocked && this.batteryCharge >= this.batteryMaxCharge;
 
         // Track F key state transitions
@@ -17121,14 +17121,26 @@ function showMetaShopUpgradeModal(upgradeId, clickedButton) {
     } else {
         html += `<div style="color: #0f0; margin-top: 10px;"><strong>Current Tier:</strong> ${currentTier}</div>`;
 
-        // Check if there are more tiers available
+        // Check if there are more tiers available or if we are in infinite mode
+        // Note: nextBenefitText is calculated below this block in the original code, 
+        // but we need to move that logic UP or duplicate the check here.
+        // Let's use the same logic pattern.
         const nextTierKey = `tier${currentTier + 1}`;
-        if (data[nextTierKey]) {
-            html += `<div style="color: #ff0; margin-top: 8px;"><strong>Next Tier Benefits:</strong></div>`;
-            html += `<div style="margin-left: 15px;">- ${data[nextTierKey]}</div>`;
-        } else {
-            html += `<div style="color: #888; margin-top: 8px;"><em>(Max tier reached)</em></div>`;
+        let nextText = data[nextTierKey];
+        
+        if (!nextText) {
+             nextText = "Increases effectiveness further (Infinite Scaling)";
+             if (upgradeId.includes('Damage') || upgradeId === 'batteryCapacitor' || upgradeId === 'nukeCapacitor') {
+                nextText = "Increases damage output";
+            } else if (upgradeId === 'passiveHp' || upgradeId === 'hullPlating') {
+                nextText = "Increases maximum hull HP";
+            } else if (upgradeId === 'shieldCore') {
+                nextText = "Adds segments or increases shield HP";
+            }
         }
+
+        html += `<div style="color: #ff0; margin-top: 8px;"><strong>Next Tier Benefits:</strong></div>`;
+        html += `<div style="margin-left: 15px;">- ${nextText}</div>`;
     }
 
     html += `<div style="color: #888; font-size: 13px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #333;">${data.notes}</div>`;
@@ -17139,6 +17151,23 @@ function showMetaShopUpgradeModal(upgradeId, clickedButton) {
     tierEl.textContent = `OWNED: TIER ${currentTier}`;
 
     // Enable/disable Buy button based on affordability
+    // Infinite Upgrade Logic: If defined tier text runs out, generate generic text
+    const nextTierKey = `tier${currentTier + 1}`;
+    
+    // Default to defined text, or generic if infinite
+    let nextBenefitText = data[nextTierKey];
+    if (!nextBenefitText) {
+        // Generate generic text based on upgrade type
+        nextBenefitText = "Increases effectiveness further (Infinite Scaling)";
+        if (upgradeId.includes('Damage') || upgradeId === 'batteryCapacitor' || upgradeId === 'nukeCapacitor') {
+            nextBenefitText = "Increases damage output";
+        } else if (upgradeId === 'passiveHp' || upgradeId === 'hullPlating') {
+            nextBenefitText = "Increases maximum hull HP";
+        } else if (upgradeId === 'shieldCore') {
+            nextBenefitText = "Adds more shield segments";
+        }
+    }
+
     buyBtn.disabled = !canAfford;
     buyBtn.textContent = canAfford ? `BUY (${cost} NUGS)` : `NEED ${cost} NUGS`;
 
@@ -20372,8 +20401,8 @@ function updateGamepad() {
     }
 
     gpState.warp = gp.buttons[0].pressed;
-    gpState.turbo = gp.buttons[2].pressed; // Button 2 (X/Square)
-    gpState.battery = gp.buttons[3].pressed; // Button 3 (Y) - Battery discharge
+    gpState.turbo = gp.buttons[2].pressed || gp.buttons[6].pressed; // Button 2 (X) or LT
+    gpState.battery = gp.buttons[3].pressed || gp.buttons[7].pressed; // Button 3 (Y) or RT
 
     // Menu Navigation Support
     if ((!gameActive || gamePaused) && now - menuDebounce > 150) {
@@ -23557,14 +23586,8 @@ function startGame() {
         // Apply meta bonuses (tier-based with diminishing returns)
         const startDamageTier = metaProfile.purchases.startDamage || 0;
         if (startDamageTier > 0) {
-            // Base 20% per tier for first 3 tiers, then diminishing
-            let bonus = 0.2 * Math.min(startDamageTier, 3);
-            if (startDamageTier > 3) {
-                const table = { 0: 1.0, 1: 1.2, 2: 1.4, 3: 1.6 };
-                const extraValue = getDiminishingValue(startDamageTier, table, 0.99);
-                bonus = extraValue - 1.0;
-            }
-            player.stats.damageMult *= (1 + bonus);
+            // Infinite Scaling: +10% base damage per tier (linear)
+            player.stats.damageMult *= (1 + (0.1 * startDamageTier));
         }
 
         const passiveHpTier = metaProfile.purchases.passiveHp || 0;
@@ -23582,10 +23605,14 @@ function startGame() {
 
         const shieldCoreTier = metaProfile.purchases.shieldCore || 0;
         if (shieldCoreTier > 0) {
-            for (let i = 0; i < shieldCoreTier; i++) {
-                player.shieldSegments.push(2, 2);
-            }
-            player.maxShieldSegments = player.shieldSegments.length;
+            const bonusSegments = Math.ceil(shieldCoreTier / 2);
+            const bonusHp = Math.floor(shieldCoreTier / 2);
+            const totalSegments = 8 + bonusSegments;
+            const totalHp = 2 + bonusHp;
+            
+            // Re-initialize shield array with updated counts and HP
+            player.shieldSegments = new Array(totalSegments).fill(totalHp);
+            player.maxShieldSegments = totalSegments;
         }
 
         const staticBlueprintTier = metaProfile.purchases.staticBlueprint || 0;
@@ -23620,6 +23647,7 @@ function startGame() {
         const nukeCapacitorTier = metaProfile.purchases.nukeCapacitor || 0;
         if (nukeCapacitorTier > 0) {
             player.defenseRingTier = nukeCapacitorTier;
+            player.defenseOrbDamage = 5 + (nukeCapacitorTier - 1);
             player.defenseOrbs = [];
             const count = nukeCapacitorTier; // 1 per tier
             for (let i = 0; i < count; i++) {
@@ -23632,14 +23660,8 @@ function startGame() {
 
         const speedTuningTier = metaProfile.purchases.speedTuning || 0;
         if (speedTuningTier > 0) {
-            // Base 10% per tier for first 3 tiers, then diminishing
-            let bonus = 0.1 * Math.min(speedTuningTier, 3);
-            if (speedTuningTier > 3) {
-                const table = { 0: 1.0, 1: 1.1, 2: 1.2, 3: 1.3 };
-                const extraValue = getDiminishingValue(speedTuningTier, table, 0.99);
-                bonus = extraValue - 1.0;
-            }
-            player.stats.speedMult *= (1 + bonus);
+            // Infinite Scaling: +5% speed per tier
+            player.stats.speedMult *= (1 + (0.05 * speedTuningTier));
         }
 
         const droneFabricatorTier = metaProfile.purchases.droneFabricator || 0;
@@ -23885,9 +23907,10 @@ function startGame() {
         const batteryTier = metaProfile.purchases.batteryCapacitor || 0;
         if (batteryTier > 0) {
             player.batteryUnlocked = true;
-            if (batteryTier === 1) { player.batteryDamage = 500; player.batteryRange = 800; }
-            if (batteryTier === 2) { player.batteryDamage = 800; player.batteryRange = 900; }
-            if (batteryTier === 3) { player.batteryDamage = 1200; player.batteryRange = 1000; }
+            player.batteryDamage = batteryTier * 100;
+            if (batteryTier === 1) { player.batteryRange = 800; }
+            if (batteryTier === 2) { player.batteryRange = 900; }
+            if (batteryTier === 3) { player.batteryRange = 1000; }
         }
 
         if (pendingProfile) {
@@ -24234,12 +24257,14 @@ setInterval(checkPointerLockState, 1000); // Periodic check or add to pause logi
 window.addEventListener('mousedown', (e) => {
     mouseState.down = true;
     if (e.button === 0) mouseState.leftDown = true;
+    if (e.button === 1) mouseState.middleDown = true;
     if (e.button === 2) mouseState.rightDown = true;
 });
 
 window.addEventListener('mouseup', (e) => {
     mouseState.down = false;
     if (e.button === 0) mouseState.leftDown = false;
+    if (e.button === 1) mouseState.middleDown = false;
     if (e.button === 2) mouseState.rightDown = false;
 });
 
