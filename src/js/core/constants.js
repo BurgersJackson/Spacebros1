@@ -9,10 +9,12 @@ export const SPRITE_RENDER_SCALE = 2.5; // Compensate for low zoom level
 
 // --- Simulation Constants ---
 // Game now uses variable timestep instead of fixed 60fps
-// SIM_FPS is kept for backwards compatibility but not used for timing
+// SIM_FPS is kept as the Reference Framerate (60) for calibration
 export const SIM_FPS = 60;
-export const SIM_STEP_MS = 1000 / SIM_FPS;
-export const SIM_MAX_STEPS_PER_FRAME = 4; // Prevent spiral-of-death (fewer steps needed at 60Hz)
+// Run physics at 120Hz (8.33ms) to prevent VSync jitter on Linux from causing missed frames
+export const PHYSICS_FPS = 120;
+export const SIM_STEP_MS = 1000 / PHYSICS_FPS;
+export const SIM_MAX_STEPS_PER_FRAME = 12; // Allow catch-up for lower frame rates
 
 // --- Pixi Sprite Pool Limits ---
 export const PIXI_SPRITE_POOL_MAX = 30000;
@@ -186,12 +188,12 @@ export const META_SHOP_UPGRADE_DATA = {
         notes: "Less chasing coins. Quality of life upgrade."
     },
     nukeCapacitor: {
-        name: "Nuke Capacitor",
-        description: "Unlock auto-firing area nuke ability",
-        tier1: "500u blast, 5 damage",
-        tier2: "600u blast, 10 damage",
-        tier3: "800u blast, 15 damage",
-        notes: "Fires automatically when cooldown ready."
+        name: "Global Defense Ring",
+        description: "Orbiting fireballs that damage enemies upon contact",
+        tier1: "1 Fireball, 20 dmg",
+        tier2: "2 Fireballs, 20 dmg",
+        tier3: "3 Fireballs, 20 dmg",
+        notes: "Fireballs orbit at 500u range. 1 rotation every 6 seconds."
     },
     speedTuning: {
         name: "Speed Tuning",

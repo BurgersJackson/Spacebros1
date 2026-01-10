@@ -44,7 +44,8 @@ export class LightningArc extends Entity {
     update(deltaTime = SIM_STEP_MS) {
         super.update(deltaTime);
         // Use dtScale for variable timestep - decrements life proportional to frame time
-        const dtScale = deltaTime / SIM_STEP_MS;
+        // Normalized to 60Hz reference frame (16.67ms)
+        const dtScale = deltaTime / 16.67;
         this.life -= dtScale;
         if (this.life <= 0) {
             this.dead = true;

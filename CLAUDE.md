@@ -24,10 +24,7 @@ Available in browser console (F12) during gameplay:
 
 ## Architecture Overview
 
-### Monolithic Game Loop
-This is an Electron wrapper for "Neon Space Cave," a 2D space shooter. The core game logic (`src/js/main.js`) is a large monolithic file (~800KB) that contains:
-
-- **Game Loop**: Variable timestep simulation with `dtScale` (deltaTime / SIM_STEP_MS) for frame-rate independence
+- **Game Loop**: Variable timestep simulation running at **120Hz** physics tick rate with interpolation (`renderAlpha`) for frame-rate independent rendering.
 - **Entity System**: Class-based entities with manual lifecycle management (not ECS)
 - **Rendering**: Hybrid DOM (primary UI) + PixiJS (game world sprites) + Canvas 2D overlays (directional arrows, minimap)
 - **Collision Detection**: Spatial hash grids for efficient collision queries
@@ -35,14 +32,15 @@ This is an Electron wrapper for "Neon Space Cave," a 2D space shooter. The core 
 
 ### Key Systems
 
-**Variable Timestep Timing** (`src/js/core/constants.js`):
-- Game uses **variable timestep** - NOT locked to 60fps
-- `SIM_FPS = 60` - Reference framerate for calibration (kept for backwards compatibility)
-- `SIM_STEP_MS = 16.67` - Milliseconds per simulation step at reference framerate
-- `SIM_MAX_STEPS_PER_FRAME = 4` - Max catch-up steps to prevent spiral of death
-- **IMPORTANT**: All timing must use `dtScale = deltaTime / SIM_STEP_MS` or `dtFactor = deltaTime / 16.67`
-- Time-based counters use `this.t += dtFactor` instead of `this.t++`
-- Frame-based checks use `Math.floor(this.t) % N === 0` for compatibility with time-scaled counters
+**Fixed-Timestep Physics Loop** (`src/js/core/constants.js`):
+- **Physics Rate**: Locked to **120Hz** (`PHYSICS_FPS`) to ensure stability and fix Linux VSync stuttering.
+- `SIM_FPS = 60` - Reference framerate for calibration (kept for backwards compatibility).
+- `SIM_STEP_MS = 8.33` - Milliseconds per simulation step at 120Hz.
+- `SIM_MAX_STEPS_PER_FRAME = 12` - Max catch-up steps to prevent spiral of death.
+- **IMPORTANT**: All timing must normalize to 60Hz reference using `dtScale = deltaTime / 16.67`.
+- **Interpolation**: Rendering uses `renderAlpha` to smooth object positions between physics ticks.
+- Time-based counters use `this.t += dtFactor` instead of `this.t++`.
+- Frame-based checks use `Math.floor(this.t) % N === 0` for compatibility with time-scaled counters.
 
 **Sprite Pooling** (`src/js/rendering/pixi-setup.js`):
 - Pre-allocated sprite pools for performance: bullets, particles, enemies, pickups, asteroids, stars
@@ -233,7 +231,7 @@ Permanent progression upgrades purchased with Space Nuggets. Defined in `META_SH
 
 **Core Upgrades:**
 - Start Damage Boost, Passive +HP, Hull Plating, Shield Core
-- Static Blueprint, Missile Primer, Magnet Booster, Nuke Capacitor
+- Static Blueprint, Missile Primer, Magnet Booster, Global Defense Ring
 - Speed Tuning, Bank Multiplier, Shop Discount, Extra Life
 
 **Combat Upgrades:**

@@ -4,36 +4,36 @@
  */
 
 import { Vector } from '../core/math.js';
+import { SIM_STEP_MS } from '../core/constants.js';
 
 /**
- * Base entity class for all game objects.
+ * Base Entity class
+ * Represents a game object with position, velocity, and lifecycle state.
  */
 export class Entity {
-    constructor(x = 0, y = 0) {
+    constructor(x, y) {
         this.pos = new Vector(x, y);
-        this.prevPos = new Vector(x, y);
         this.vel = new Vector(0, 0);
+        this.dead = false;
         this.radius = 10;
         this.angle = 0;
-        this.dead = false;
-        this.visible = true;
-
-        // Pixi sprite reference
-        this.sprite = null;
-        this._pixiContainer = null;
-        this._pixiPool = null;
-        this._poolType = null;
+        
+        // Store previous position for interpolation
+        this.prevPos = new Vector(x, y);
     }
 
     /**
-     * Update entity position based on velocity.
+     * Update entity state
      * @param {number} deltaTime - Time elapsed since last update in milliseconds
      */
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
+        // Save current position as previous before modifying
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
+
         // Scale velocity by deltaTime to maintain consistent movement across different frame rates
         const scale = deltaTime / 16.67; // 16.67ms = 1/60th second
+        
         this.pos.x += this.vel.x * scale;
         this.pos.y += this.vel.y * scale;
     }

@@ -6,6 +6,7 @@
 import { Entity } from '../Entity.js';
 import { colorToPixi } from '../../rendering/colors.js';
 import { allocPixiSprite } from '../../rendering/sprite-pools.js';
+import { SIM_STEP_MS } from '../../core/constants.js';
 
 /**
  * Basic particle class with PixiJS and Canvas support.
@@ -38,7 +39,7 @@ export class Particle extends Entity {
         this.sprite = null;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         super.update(deltaTime);
         const scale = deltaTime / 16.67;
         this.life -= scale;
@@ -109,7 +110,7 @@ export class SmokeParticle extends Entity {
         this.dead = false;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         const scale = deltaTime / 16.67;
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
@@ -168,7 +169,7 @@ export class WarpParticle extends Entity {
         this.sprite = null;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         const scale = deltaTime / 16.67;
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;

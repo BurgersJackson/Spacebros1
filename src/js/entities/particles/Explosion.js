@@ -6,6 +6,7 @@
 import { Entity } from '../Entity.js';
 import { colorToPixi } from '../../rendering/colors.js';
 import { allocPixiSprite, releasePixiSprite } from '../../rendering/sprite-pools.js';
+import { SIM_STEP_MS } from '../../core/constants.js';
 
 /**
  * Explosion effect with multiple particles.
@@ -49,8 +50,9 @@ export class Explosion extends Entity {
         }
     }
 
-    update() {
-        this.life--;
+    update(deltaTime = SIM_STEP_MS) {
+        const scale = deltaTime / 16.67;
+        this.life -= scale;
         // If explosion itself is dead, particles should be cleaned up in draw.
         if (this.life <= 0) {
             this.dead = true;
@@ -62,13 +64,13 @@ export class Explosion extends Entity {
             const p = this.particles[i];
             p.prevX = p.x;
             p.prevY = p.y;
-            p.x += p.vx;
-            p.y += p.vy;
-            p.vx *= 0.96; // friction
-            p.vy *= 0.96;
-            p.life--;
+            p.x += p.vx * scale;
+            p.y += p.vy * scale;
+            p.vx *= Math.pow(0.96, scale); // friction scaled
+            p.vy *= Math.pow(0.96, scale);
+            p.life -= scale;
             // Add gravity effect (visual only)
-            p.vy += 0.05;
+            p.vy += 0.05 * scale;
         }
     }
 

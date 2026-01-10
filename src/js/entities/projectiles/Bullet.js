@@ -6,6 +6,7 @@
 import { Entity } from '../Entity.js';
 import { colorToPixi } from '../../rendering/colors.js';
 import { allocPixiSprite, releasePixiSprite } from '../../rendering/sprite-pools.js';
+import { SIM_STEP_MS } from '../../core/constants.js';
 
 /**
  * Bullet projectile with damage and owner tracking.
@@ -35,7 +36,7 @@ export class Bullet extends Entity {
         this.style = opts.style || 'glow'; // 'glow', 'laser', 'square'
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         const scale = deltaTime / 16.67;
         this.pos.x += this.vel.x * scale;
         this.pos.y += this.vel.y * scale;
@@ -142,7 +143,7 @@ export class Missile extends Entity {
         this.maxSpeed = opts.maxSpeed ? opts.maxSpeed : speed * 1.5; // maxSpeed is already correctly set or scaled elsewhere if needed
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         const scale = deltaTime / 16.67;
 
         // Home toward target

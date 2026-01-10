@@ -2784,7 +2784,7 @@ class EnvironmentAsteroid extends Entity {
         }
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         // Save previous angle for interpolation (Entity.update handles prevPos)
         this.prevAngle = this.angle;
 
@@ -3207,6 +3207,15 @@ class Spaceship extends Entity {
         this.nukeMaxCooldown = 600; // Default 10s
         this.nukeDamage = 5;
         this.nukeRange = 500;
+        
+        // Global Defense Ring
+        this.defenseRingTier = 0;
+        this.defenseOrbs = [];
+        this.defenseOrbAngle = 0;
+        this.defenseOrbRadius = 500;
+        this.defenseOrbDamage = 20;
+        this.defenseOrbSpeed = (Math.PI * 2) / 360; // 1 rotation per 6 seconds (360 frames @ 60fps)
+
         this.slowField = 0; // 0 or radius
 
         this.missileTimer = 0;
@@ -3237,9 +3246,9 @@ class Spaceship extends Entity {
         this.batteryCharge = 0; // 0-100
         this.batteryMaxCharge = 100;
         // Charge rate: 100 units over 30 seconds, independent of framerate
-        // deltaTime is in ms, dtScale = deltaTime / SIM_STEP_MS
-        // chargeRate is the amount to add per SIM_STEP_MS (16.67ms)
-        this.batteryChargeRate = (100 / 30000) * SIM_STEP_MS;
+        // deltaTime is in ms, dtScale = deltaTime / 16.67
+        // chargeRate is the amount to add per Reference Frame (16.67ms)
+        this.batteryChargeRate = (100 / 30000) * 16.67;
         this.batteryDamage = 500;
         this.batteryRange = 800;
         this.batteryDischarging = false;
@@ -3281,6 +3290,7 @@ class Spaceship extends Entity {
         this.outerShieldSegments = (this.maxOuterShieldSegments > 0) ? new Array(this.maxOuterShieldSegments).fill(1) : [];
         this.warpCooldown = 0;
         this.nukeCooldown = 0;
+        this.defenseOrbAngle = 0;
         this.invincibilityCycle.state = 'ready';
         this.invincibilityCycle.timer = 0;
         this.turboBoost.activeFrames = 0;
@@ -3364,7 +3374,7 @@ class Spaceship extends Entity {
         }
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
 
         const dtScale = deltaTime / 16.67;
@@ -3629,10 +3639,63 @@ class Spaceship extends Entity {
             }
         }
 
+        // Global Defense Ring
+        if (this.defenseRingTier > 0) {
+            this.defenseOrbAngle += this.defenseOrbSpeed * dtScale;
+            const orbs = this.defenseOrbs;
+            const now = Date.now();
+            
+            for (let i = 0; i < orbs.length; i++) {
+                const orb = orbs[i];
+                const angle = this.defenseOrbAngle + orb.angleOffset;
+                const ox = this.pos.x + Math.cos(angle) * this.defenseOrbRadius;
+                const oy = this.pos.y + Math.sin(angle) * this.defenseOrbRadius;
+                
+                // Collision targets: Enemies, Missiles, Boss Bombs, Asteroids
+                const targets = [];
+                // Add nearby enemies from grid or just all active enemies (simpler for now)
+                targets.push(...enemies); 
+                targets.push(...guidedMissiles);
+                targets.push(...bossBombs);
+                targets.push(...environmentAsteroids);
+                if (boss && !boss.dead) targets.push(boss);
+                if (destroyer && !destroyer.dead) targets.push(destroyer);
+
+                for (const target of targets) {
+                    if (target.dead) continue;
+                    if (target.unbreakable) continue; // Skip indestructible objects
+                    
+                    // Check cooldown
+                    const lastHit = orb.hitCooldowns.get(target);
+                    if (lastHit && now - lastHit < 500) continue; // 0.5s cooldown per orb per target
+
+                    const distSq = (ox - target.pos.x) ** 2 + (oy - target.pos.y) ** 2;
+                    const hitDist = (25 + target.radius); // Orb radius approx 25
+                    
+                    if (distSq < hitDist * hitDist) {
+                        // HIT!
+                        orb.hitCooldowns.set(target, now);
+                        spawnParticles(target.pos.x, target.pos.y, 5, '#f80'); // Fire particles
+                        
+                        if (typeof target.break === 'function') {
+                            target.break();
+                        } else if (typeof target.hp === 'number') {
+                            target.hp -= this.defenseOrbDamage;
+                            if (target.hp <= 0) {
+                                if (typeof target.kill === 'function') target.kill();
+                                else if (typeof target.explode === 'function') target.explode();
+                                else target.dead = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Auto Nuke Trigger
         if (this.nukeCooldown > 0) this.nukeCooldown -= dtScale;
         if (this.nukeUnlocked && this.nukeCooldown <= 0) {
-            this.fireNuke();
+           this.fireNuke();
         }
 
         // Volley Shot Auto-Fire (every 3 seconds = 180 frames at 60fps)
@@ -4380,6 +4443,48 @@ class Spaceship extends Entity {
                         gfx.drawCircle(0, 0, this.stats.slowField);
                     }
 
+                    // --- GLOBAL DEFENSE RING ---
+                    let defGfx = this._pixiDefenseGfx;
+                    if (this.defenseRingTier > 0) {
+                        if (!defGfx) {
+                            defGfx = new PIXI.Graphics();
+                            pixiVectorLayer.addChild(defGfx);
+                            this._pixiDefenseGfx = defGfx;
+                        } else if (!defGfx.parent) pixiVectorLayer.addChild(defGfx);
+
+                        defGfx.clear();
+                        defGfx.position.set(rPos.x, rPos.y);
+                        
+                        // Ring Visual (White, 50% opacity)
+                        defGfx.lineStyle(2, 0xffffff, 0.5);
+                        defGfx.drawCircle(0, 0, this.defenseOrbRadius);
+
+                        const orbs = this.defenseOrbs;
+                        for (let i = 0; i < orbs.length; i++) {
+                            const angle = this.defenseOrbAngle + orbs[i].angleOffset;
+                            const ox = Math.cos(angle) * this.defenseOrbRadius;
+                            const oy = Math.sin(angle) * this.defenseOrbRadius;
+                            
+                            // Orb Core (Hot White/Yellow)
+                            defGfx.beginFill(0xffffaa, 1);
+                            defGfx.drawCircle(ox, oy, 10);
+                            defGfx.endFill();
+                            
+                            // Inner Fire (Orange)
+                            defGfx.beginFill(0xffaa00, 0.8);
+                            defGfx.drawCircle(ox, oy, 16);
+                            defGfx.endFill();
+
+                            // Outer Glow (Red/Transparent)
+                            defGfx.beginFill(0xff4400, 0.3);
+                            defGfx.drawCircle(ox, oy, 24);
+                            defGfx.endFill();
+                        }
+                    } else if (defGfx) {
+                        try { defGfx.destroy(true); } catch(e) {}
+                        this._pixiDefenseGfx = null;
+                    }
+
                     // --- OUTER SHIELD ---
                     let outerGfx = this._pixiOuterShieldGfx;
                     if (hasOuter) {
@@ -4558,7 +4663,7 @@ class Shockwave extends Entity {
         this.color = opts.color || '#ff0';
         this.followPlayer = !!opts.followPlayer;
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         // Calculate time scale for variable framerate support
         const dtFactor = deltaTime / 16.67;
 
@@ -4748,7 +4853,7 @@ class CruiserMineBomb extends Entity {
 
         this._pixiGfx = null;
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
         this.pos.add(this.vel);
@@ -4904,7 +5009,7 @@ class FlagshipGuidedMissile extends Entity {
         if (this.hp <= 0) this.explode('#ff0');
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -5095,7 +5200,7 @@ class ShootingStar extends Entity {
         this._pixiGfx = null;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         // Use Entity.update for scaled movement
         super.update(deltaTime);
         const dtFactor = deltaTime / 16.67;
@@ -5202,7 +5307,7 @@ class Bullet extends Entity {
     reset(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0, shape = null) {
         return this.init(x, y, angle, isEnemy, damage, speed, radius, color, homing, shape);
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         // Homing Logic
         if (this.homing > 0 && !this.isEnemy) {
             let target = null;
@@ -5368,7 +5473,7 @@ class ClusterBomb extends Entity {
         this.startY = y;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
 
         super.update(deltaTime);
@@ -5449,7 +5554,7 @@ class NapalmZone extends Entity {
         this._poolType = 'napalm';
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
 
         this.lifeMs -= deltaTime;
@@ -5774,7 +5879,7 @@ class Enemy extends Entity {
         }
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (!this.despawnImmune) checkDespawn(this, 5000);
         if (this.dead) return;
 
@@ -6497,7 +6602,7 @@ class Pinwheel extends Entity {
         this._pixiInnerGfx = null;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
 
         // Save previous position for interpolation (required for fixed timestep rendering)
@@ -6847,7 +6952,7 @@ class WarpGate extends Entity {
         this.t = 0;
         this.mode = 'entry';
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (!player || player.dead) return;
         if (suppressWarpGateUntil && getGameNowMs() < suppressWarpGateUntil) return;
         const dtFactor = deltaTime / 16.67;
@@ -7064,7 +7169,7 @@ class CaveGuidedMissile extends Entity {
         player.invulnerable = 20;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -7296,7 +7401,7 @@ class CaveWallTurret extends Entity {
         playSound('explode');
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -7635,7 +7740,7 @@ class CaveWallSwitch extends Entity {
         }
         return true;
     }
-    update(deltaTime = 16.67) { this.t += deltaTime / 16.67; }
+    update(deltaTime = SIM_STEP_MS) { this.t += deltaTime / 16.67; }
     draw(ctx) {
         if (this.dead) {
             pixiCleanupObject(this);
@@ -7707,7 +7812,7 @@ class CavePowerRelay extends Entity {
         }
         return true;
     }
-    update(deltaTime = 16.67) { this.t += deltaTime / 16.67; }
+    update(deltaTime = SIM_STEP_MS) { this.t += deltaTime / 16.67; }
     draw(ctx) {
         if (this.dead) {
             pixiCleanupObject(this);
@@ -7757,7 +7862,7 @@ class CaveRewardPickup extends Entity {
         this.radius = 26;
         this.t = 0;
     }
-    update(deltaTime = 16.67) { this.t += deltaTime / 16.67; }
+    update(deltaTime = SIM_STEP_MS) { this.t += deltaTime / 16.67; }
     draw(ctx) {
         if (this.dead) {
             pixiCleanupObject(this);
@@ -7830,7 +7935,7 @@ class AsteroidTurret extends CaveWallTurret {
         this.radius = 49; // 25% smaller than 66
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead || !this.asteroid || this.asteroid.dead) {
             this.dead = true;
             return;
@@ -7855,7 +7960,7 @@ class CaveGasVent extends Entity {
         this.timer = 180 + Math.floor(Math.random() * 120);
         this.damageCd = 0;
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) {
             pixiCleanupObject(this);
             return;
@@ -7970,7 +8075,7 @@ class CaveRockfall extends Entity {
         spawnParticles(cx, this.pos.y, 50, '#888');
         playSound('explode');
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -8065,7 +8170,7 @@ class CaveDraftZone extends Entity {
         if (!entity || entity.dead) return false;
         return (entity.pos.x > this.pos.x - this.w / 2 && entity.pos.x < this.pos.x + this.w / 2 && entity.pos.y > this.pos.y - this.h / 2 && entity.pos.y < this.pos.y + this.h / 2);
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
         const apply = (e) => {
@@ -8142,7 +8247,7 @@ class CaveCritter extends Entity {
         this.vel.x += Math.cos(a) * 4.2;
         this.vel.y += Math.sin(a) * 4.2;
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -8922,7 +9027,7 @@ class CaveLevel {
         ctx.restore();
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (!this.active) return;
         if (!player || player.dead) return;
 
@@ -9482,7 +9587,7 @@ class WarpTurret extends Entity {
         this.reload = 35 + Math.floor(Math.random() * 25);
         this.t = 0;
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -9633,7 +9738,7 @@ class WarpMazeZone extends Entity {
         }
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (!this.active) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -9768,7 +9873,7 @@ class RadiationStorm extends Entity {
         super.kill();
         pixiCleanupObject(this);
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (!player || player.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -9940,7 +10045,7 @@ class MiniEventDefendCache extends Entity {
         }
         pixiCleanupObject(this);
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
 
         // Save previous position for interpolation (required for fixed timestep rendering)
@@ -10149,7 +10254,7 @@ class SectorPOI extends Entity {
         spawnParticles(this.pos.x, this.pos.y, 30, this.color);
         this.dead = true;
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
 
         // Save previous position for interpolation (required for fixed timestep rendering)
@@ -10259,7 +10364,7 @@ class DebrisFieldPOI extends SectorPOI {
         this.captureActive = false;
         this.lastUpdateAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead || this.claimed) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -10385,7 +10490,7 @@ class ExplorationCache extends Entity {
         super.kill();
         pixiCleanupObject(this);
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (!player || player.dead) return;
         const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
         if (dist < player.magnetRadius) this.magnetized = true;
@@ -10637,7 +10742,7 @@ class Cruiser extends Enemy {
         stopArenaCountdown();
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         const now = Date.now();
         const dtFactor = deltaTime / 16.67;
 
@@ -11093,7 +11198,7 @@ class Flagship extends Cruiser {
         this.guidedMissileCap = 4;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         super.update();
         if (this.dead) return;
         if (!bossActive || boss !== this) return;
@@ -11231,7 +11336,7 @@ class SuperFlagshipBoss extends Flagship {
         player.invulnerable = 22;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         super.update();
         if (this.dead) return;
         if (!bossActive || boss !== this) return;
@@ -11430,7 +11535,7 @@ class WarpBioPod extends Entity {
             bullets.push(b);
         }
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         
         const dtFactor = deltaTime / 16.67;
@@ -11697,7 +11802,7 @@ class WarpSentinelBoss extends Entity {
         }
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         if (!player || player.dead) return;
 
@@ -12272,8 +12377,10 @@ class WarpSentinelBoss extends Entity {
             mine.t = 0;
             mine.pulsePhase = Math.random() * Math.PI * 2;
 
-            mine.update = function() {
-                this.t += 1;
+            mine.update = function(deltaTime = 16.67) {
+                const dtScale = deltaTime / 16.67;
+                this.t += 1 * dtScale;
+
                 if (player && !player.dead) {
                     const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
                     if (dist < 100) {
@@ -12361,7 +12468,7 @@ class SpaceStation extends Entity {
         this.t = 0;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -13131,7 +13238,7 @@ class Destroyer extends Entity {
         return false;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -13862,7 +13969,7 @@ class Destroyer2 extends Entity {
         return false;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -14617,7 +14724,7 @@ class CaveMonsterBase extends Entity {
         return false;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -15212,7 +15319,7 @@ class CaveMonster1 extends CaveMonsterBase {
         playSound('powerup');
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
 
@@ -15399,7 +15506,7 @@ class CaveMonster2 extends CaveMonsterBase {
         playSound('rapid_shoot');
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.charging) {
             this.chargeTimer -= deltaTime / 16.67;
             if (this.chargeTimer <= 0) {
@@ -15541,7 +15648,8 @@ class CaveMonster3 extends CaveMonsterBase {
                     return;
                 }
                 // Orbit owner
-                this.angle += this.orbitSpeed;
+                const dtScale = (dt || 16.67) / 16.67;
+                this.angle += this.orbitSpeed * dtScale;
                 this.pos.x = this.owner.pos.x + Math.cos(this.angle) * this.orbitDist;
                 this.pos.y = this.owner.pos.y + Math.sin(this.angle) * this.orbitDist;
 
@@ -15658,7 +15766,7 @@ class CaveMonster3 extends CaveMonsterBase {
         playSound('powerup');
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
 
@@ -17156,7 +17264,7 @@ class Drone extends Entity {
         this.lastShieldTick = Date.now();
         this.lastHealTick = Date.now();
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (!player || player.dead) return;
 
         this.prevPos.x = this.pos.x;
@@ -17322,7 +17430,7 @@ class ContractBeacon extends Entity {
         this.dead = true;
         pixiCleanupObject(this);
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (!player || player.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -17504,7 +17612,7 @@ class GateRing extends Entity {
         this.dead = true;
         pixiCleanupObject(this);
     }
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (!player || player.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -17720,7 +17828,7 @@ class AnomalyZone extends Entity {
         return false;
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (!player || player.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -17923,7 +18031,7 @@ class WallTurret extends Entity {
         playSound('explode');
     }
 
-    update(deltaTime = 16.67) {
+    update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -23511,12 +23619,15 @@ function startGame() {
 
         const nukeCapacitorTier = metaProfile.purchases.nukeCapacitor || 0;
         if (nukeCapacitorTier > 0) {
-            player.nukeUnlocked = true;
-            player.nukeCooldown = 0;
-            // Base damage 5, +2 per tier with diminishing returns
-            player.nukeDamage = 5 + Math.floor(2 * nukeCapacitorTier * Math.pow(0.95, nukeCapacitorTier - 1));
-            // Base range 500, +50 per tier with diminishing returns
-            player.nukeRange = 500 + Math.floor(50 * nukeCapacitorTier * Math.pow(0.95, nukeCapacitorTier - 1));
+            player.defenseRingTier = nukeCapacitorTier;
+            player.defenseOrbs = [];
+            const count = nukeCapacitorTier; // 1 per tier
+            for (let i = 0; i < count; i++) {
+                player.defenseOrbs.push({ 
+                    angleOffset: (Math.PI * 2 * i) / count, 
+                    hitCooldowns: new WeakMap() 
+                });
+            }
         }
 
         const speedTuningTier = metaProfile.purchases.speedTuning || 0;
@@ -24042,14 +24153,33 @@ window.addEventListener('mousemove', e => {
     const scaleX = internalWidth / rect.width;
     const scaleY = internalHeight / rect.height;
 
-    const scaledX = (e.clientX - rect.left) * scaleX;
-    const scaledY = (e.clientY - rect.top) * scaleY;
+    let scaledX, scaledY;
 
-    const dx = Math.abs(scaledX - mouseScreen.x);
-    const dy = Math.abs(scaledY - mouseScreen.y);
+    if (document.pointerLockElement === canvas) {
+        // Pointer Lock Mode: Accumulate movement
+        mouseScreen.x += e.movementX * scaleX;
+        mouseScreen.y += e.movementY * scaleY;
+
+        // Clamp to internal resolution
+        mouseScreen.x = Math.max(0, Math.min(internalWidth, mouseScreen.x));
+        mouseScreen.y = Math.max(0, Math.min(internalHeight, mouseScreen.y));
+
+        scaledX = mouseScreen.x;
+        scaledY = mouseScreen.y;
+    } else {
+        // Standard Mode: Absolute position
+        scaledX = (e.clientX - rect.left) * scaleX;
+        scaledY = (e.clientY - rect.top) * scaleY;
+    }
+
+    const dx = Math.abs(scaledX - (mouseScreen.x || 0));
+    const dy = Math.abs(scaledY - (mouseScreen.y || 0));
+    
     // Ignore tiny pointer jitter so it doesn't steal aim from the gamepad.
-    if (dx + dy >= 10) lastMouseInputAt = now;
+    if (dx + dy >= 10 || document.pointerLockElement === canvas) lastMouseInputAt = now;
+    
     updateInputMode(now);
+    
     if (typeof mouseScreen !== 'undefined') {
         mouseScreen.x = scaledX;
         mouseScreen.y = scaledY;
@@ -24080,6 +24210,26 @@ window.addEventListener('mousemove', e => {
         smoothedDir.y = smoothedDir.y + (mouseMovementDir.y - smoothedDir.y) * lerpFactor;
     }
 });
+
+// Request Pointer Lock on click when game is active
+canvas.addEventListener('click', () => {
+    if (gameActive && !gamePaused && !document.pointerLockElement) {
+        try {
+            canvas.requestPointerLock();
+        } catch (e) {
+            console.warn("Pointer lock failed:", e);
+        }
+    }
+});
+
+// Release Pointer Lock when game ends or is paused
+// (This is handled by the browser on Escape, but we can force it on menu open)
+function checkPointerLockState() {
+    if ((!gameActive || gamePaused) && document.pointerLockElement === canvas) {
+        document.exitPointerLock();
+    }
+}
+setInterval(checkPointerLockState, 1000); // Periodic check or add to pause logic
 
 window.addEventListener('mousedown', (e) => {
     mouseState.down = true;

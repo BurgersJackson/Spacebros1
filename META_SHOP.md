@@ -11,7 +11,7 @@ The Meta Shop allows you to spend "Meta Nuggets" (Nugs) collected during runs to
 | **Start Damage Boost** | 10 | Boosts starting damage output. | Multiplies damage by 1.2 (+20%). |
 | **Static Blueprint** | 40 | Unlocks a permanent forward laser. | Adds a static forward-firing laser weapon. |
 | **Missile Primer** | 40 | Unlocks homing missiles. | Enables homing missile capability at start. |
-| **Nuke Capacitor** | 35 | Unlocks the Area Nuke ability. | Start with Nuke unlocked (500 range, 5 damage). |
+| **Global Defense Ring** | 35 | Orbiting fireballs that damage enemies. | 1 Fireball (20 dmg) per tier. |
 | **Drone Fabricator** | 40 | Spawns a companion drone. | Starts the run with a Shooter Drone. |
 
 ## Defense & Survival

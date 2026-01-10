@@ -67,4 +67,13 @@ The project uses `npm` for dependency management and script execution.
 *   **ES6 Modules:** The game logic is structured using standard ES6 modules (`import`/`export`).
 *   **Hybrid Rendering:** The game appears to use a mix of HTML5 Canvas (`#gameCanvas`) and DOM elements for UI (`#ui-layer`). PixiJS is explicitly imported for particle/sprite optimization.
 *   **Phaser Loading:** Phaser is loaded dynamically in `index.html` with a fallback to CDN if the local node module is missing.
+
+### Physics & Timing System
+
+*   **Decoupled Loop:** The game uses a fixed-timestep physics simulation running at **120Hz** (`PHYSICS_FPS`), decoupled from the variable rendering rate (RAF). This ensures consistent gameplay speed regardless of the monitor's refresh rate (60Hz, 144Hz, etc.).
+*   **VSync Optimization:** 120Hz was chosen specifically to resolve "VSync Aliasing" on Linux compositors. Smaller physics steps (8.33ms) prevent missed updates during tiny frame-time fluctuations that cause stuttering in strict 60Hz loops.
+*   **Time Scaling:** All entity `update(deltaTime)` methods must normalize logic to a **60Hz reference frame** using `const dtScale = deltaTime / 16.67`.
+*   **Interpolation:** The game calculates `renderAlpha` (the remainder of simulation time) to interpolate object positions between physics ticks, providing visually perfect smoothness on high-Hz displays.
+*   **Safe Defaults:** Always use `SIM_STEP_MS` as the default parameter for `update(deltaTime)` to ensure correct behavior when methods are called without explicit timing (e.g., in cleanup or effect loops).
+
 Make sure to read the CLAUDE.md file to see how the game is made
