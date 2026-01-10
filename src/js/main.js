@@ -401,6 +401,7 @@ const pixiTextures = {
 
     // Player
     player_hull: null,
+    slacker_hull: null,
     player_turret_base: null,
     player_barrel: null,
     player_thruster: null,
@@ -1048,6 +1049,39 @@ playerHullImage.addEventListener('load', applyPlayerHullTexture);
 playerHullImage.addEventListener('error', () => {
     playerHullExternalReady = false;
     playerHullPixiApplied = false;
+});
+
+// Slacker ship external sprite
+const SLACKER_URL = 'assets/slacker.png';
+const slackerHullImage = new Image();
+slackerHullImage.decoding = 'async';
+slackerHullImage.src = SLACKER_URL;
+let slackerHullExternalReady = false;
+let slackerHullPixiApplied = false;
+
+const applySlackerHullTexture = () => {
+    if (!slackerHullImage || slackerHullImage.naturalWidth <= 0) return;
+
+    slackerHullExternalReady = true;
+
+    if (slackerHullPixiApplied || !window.PIXI) return;
+    if (!pixiTextures || !pixiTextureAnchors) return;
+    try {
+        const tex = PIXI.Texture.from(slackerHullImage);
+        try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+        try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+
+        pixiTextures.slacker_hull = tex;
+        pixiTextureAnchors.slacker_hull = 0.5;
+        slackerHullPixiApplied = true;
+    } catch (e) {
+        // Keep procedural hull.
+    }
+};
+slackerHullImage.addEventListener('load', applySlackerHullTexture);
+slackerHullImage.addEventListener('error', () => {
+    slackerHullExternalReady = false;
+    slackerHullPixiApplied = false;
 });
 
 // Explosion sprite sheet (4 columns x 5 rows, 1024x1024).
@@ -3092,7 +3126,7 @@ class Spaceship extends Entity {
         this.angle = -Math.PI / 2;
         this.turretAngle = -Math.PI / 2;
         this.baseThrust = 0.60; // quadrupled (0.15 * 4) for 60Hz
-        this.baseMaxSpeed = 12.0; // doubled (6.0 * 2) for 60Hz
+        this.baseMaxSpeed = 13.8; // 15% increase (12.0 * 1.15 = 13.8)
 
         // Progression
         this.xp = 0;
@@ -3479,8 +3513,8 @@ class Spaceship extends Entity {
             thrusting = true;
         }
 
-        // NEW: Slacker rotation mode - rotate toward mouse even without movement
-        if (this.shipType === 'slacker' && !usingGamepad && mouseState.leftDown) {
+        // Slacker ship always rotates toward mouse (when not using gamepad)
+        if (this.shipType === 'slacker' && !usingGamepad) {
             const targetAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
             let angleDiff = targetAngle - this.angle;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
@@ -4211,8 +4245,10 @@ class Spaceship extends Entity {
                 container.addChild(turbo);
                 this._pixiTurboFlameSpr = turbo;
 
-                const hull = new PIXI.Sprite(pixiTextures.player_hull);
-                const hA = pixiTextureAnchors.player_hull || { x: 0.5, y: 0.5 };
+                const hullTexture = (this.shipType === 'slacker') ? (pixiTextures.slacker_hull || pixiTextures.player_hull) : pixiTextures.player_hull;
+                const hullAnchorKey = (this.shipType === 'slacker' && pixiTextures.slacker_hull) ? 'slacker_hull' : 'player_hull';
+                const hull = new PIXI.Sprite(hullTexture);
+                const hA = pixiTextureAnchors[hullAnchorKey] || { x: 0.5, y: 0.5 };
                 hull.anchor.set((hA && hA.x != null) ? hA.x : 0.5, (hA && hA.y != null) ? hA.y : 0.5);
                 hull.position.set(0, 0);
                 container.addChild(hull);
@@ -4247,12 +4283,15 @@ class Spaceship extends Entity {
             // Hull
             if (this._pixiHullSpr) {
                 // Keep hull texture synced (important for late-loaded external image).
-                this._pixiHullSpr.texture = pixiTextures.player_hull;
-                const hA = pixiTextureAnchors.player_hull || { x: 0.5, y: 0.5 };
+                const useSlackerHull = (this.shipType === 'slacker') && pixiTextures.slacker_hull;
+                this._pixiHullSpr.texture = useSlackerHull ? pixiTextures.slacker_hull : pixiTextures.player_hull;
+                const hullAnchorKey = useSlackerHull ? 'slacker_hull' : 'player_hull';
+                const hA = pixiTextureAnchors[hullAnchorKey] || { x: 0.5, y: 0.5 };
                 this._pixiHullSpr.anchor.set((hA && hA.x != null) ? hA.x : 0.5, (hA && hA.y != null) ? hA.y : 0.5);
                 this._pixiHullSpr.rotation = (this.angle || 0) + (playerHullExternalReady ? PLAYER_HULL_ROT_OFFSET : 0);
-                if (playerHullExternalReady) {
-                    const tex = pixiTextures.player_hull;
+                const externalReady = useSlackerHull ? slackerHullExternalReady : playerHullExternalReady;
+                if (externalReady) {
+                    const tex = useSlackerHull ? pixiTextures.slacker_hull : pixiTextures.player_hull;
                     const denom = Math.max(1, Math.max(tex.width || 1, tex.height || 1));
                     const s = (this.radius * 2 * PLAYER_HULL_RENDER_SCALE) / denom;
                     this._pixiHullSpr.scale.set(s);
@@ -11515,7 +11554,7 @@ class WarpSentinelBoss extends Entity {
         this.flameFire = 0;
         this.flameFireTotal = 120;
         this.flameAngle = 0;
-        this.flameRange = 1400;
+        this.flameRange = 1190; // 15% reduction (1400 * 0.85 = 1190)
         this.flameCone = Math.PI / 3; // 60 degrees
         this.flameTickCooldown = 0;
         this.flameHitCount = 0;
@@ -12175,11 +12214,26 @@ class WarpSentinelBoss extends Entity {
 
     // Spawn cave reinforcements (roamers, gunboats, pinwheels)
     spawnCaveReinforcements() {
+        // Count existing gunboats before spawning
+        const existingGunboats = enemies.filter(e => e && e.isGunboat).length;
+        const maxGunboats = 3;
+        const gunboatSlots = Math.max(0, maxGunboats - existingGunboats);
+
         const count = 2 + Math.floor(Math.random() * 2); // 2-3 enemies
         const enemyTypes = ['roamer', 'gunboat', 'pinwheel'];
+        let gunboatsSpawned = 0;
 
         for (let i = 0; i < count; i++) {
             const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+
+            // Skip gunboats if we've reached the cap
+            if (type === 'gunboat') {
+                if (gunboatsSpawned >= gunboatSlots) {
+                    continue; // Skip this spawn iteration
+                }
+                gunboatsSpawned++;
+            }
+
             const angle = Math.random() * Math.PI * 2;
             const dist = 400 + Math.random() * 200;
             const ex = this.pos.x + Math.cos(angle) * dist;
@@ -12271,8 +12325,8 @@ class SpaceStation extends Entity {
         this.innerShieldRadius = Math.floor(560 * 0.65); // inner: ~364 (gap ~50px from hull)
 
         // High segment count for "boss" feel
-        this.shieldSegments = new Array(36).fill(5);
-        this.innerShieldSegments = new Array(32).fill(5);
+        this.shieldSegments = new Array(36).fill(10);
+        this.innerShieldSegments = new Array(32).fill(10);
 
         this.shieldRotation = 0;
         this.innerShieldRotation = 0;
@@ -15768,6 +15822,7 @@ let initialSpawnDone = false;
 let metaProfile = { bank: 0, purchases: { startDamage: 0, passiveHp: 0, rerollTokens: 0, hullPlating: 0, shieldCore: 0, staticBlueprint: 0, missilePrimer: 0, magnetBooster: 0, nukeCapacitor: 0, speedTuning: 0, bankMultiplier: 0, shopDiscount: 0, extraLife: 0, droneFabricator: 0, piercingRounds: 0, explosiveRounds: 0, criticalStrike: 0, splitShot: 0, thornArmor: 0, lifesteal: 0, evasionBoost: 0, shieldRecharge: 0, dashCooldown: 0, dashDuration: 0, xpMagnetPlus: 0, autoReroll: 0, nuggetMagnet: 0, contractSpeed: 0, startingRerolls: 0, luckyDrop: 0, bountyHunter: 0, comboMeter: 0, startingWeapon: 0, secondWind: 0, batteryCapacitor: 0 } };
 let rerollTokens = 0;
 let metaExtraLifeCount = 0;
+let shownUpgradesThisRun = new Set(); // Track upgrades shown this run for weighted rerolls
 
 // --- Exploration Contracts ---
 let activeContract = null;
@@ -18025,9 +18080,10 @@ function findSpawnPointRelative(random = false, min = 1500, max = 2500) {
 
 function resolveEntityCollision() {
     const allEntities = [player, ...enemies, ...pinwheels, ...(contractEntities.fortresses || [])].filter(e => e && !e.dead);
-    // Don't include warp boss in collision physics - it should push others but not be pushed itself
+    // Don't include warp boss or space station in collision physics - they should push others but not be pushed
     // if (boss && !boss.dead) allEntities.push(boss);
-    if (spaceStation) allEntities.push(spaceStation);
+    // Space station is completely immovable and should not be in collision physics
+    // if (spaceStation) allEntities.push(spaceStation);
     if (destroyer && !destroyer.dead) allEntities.push(destroyer);
 
     const activeAnomalyZone = (activeContract && activeContract.type === 'anomaly' && contractEntities && contractEntities.anomalies)
@@ -19561,11 +19617,34 @@ function showLevelUpMenu() {
     const existingReroll = document.getElementById('reroll-btn');
     if (existingReroll) existingReroll.remove();
 
-    // 1. Filter Valid Upgrades (infinite tiers - all upgrades are always valid)
+    // 1. Filter Valid Upgrades with tier requirements
     const validUpgrades = [];
+
+    // Count upgrades at each tier
+    let tier2Count = 0;
+    let tier4Count = 0;
+    Object.values(player.inventory).forEach(tier => {
+        if (tier === 2) tier2Count++;
+        if (tier === 3) tier2Count++; // tier 3+ counts toward tier 2 requirement
+        if (tier === 4) tier4Count++;
+        if (tier === 5) tier4Count++; // tier 5 counts toward tier 4 requirement
+    });
+
     UPGRADE_DATA.categories.forEach(cat => {
         cat.upgrades.forEach(up => {
-            // All upgrades are now valid since they have infinite tiers
+            const currentTier = player.inventory[up.id] || 0;
+            const nextTier = currentTier + 1;
+
+            // Tier requirements:
+            // - Can't get tier 3 unless player has at least 5 tier 2 upgrades
+            // - Can't get tier 5 unless player has at least 5 tier 4 upgrades
+            if (nextTier >= 3 && tier2Count < 5) {
+                return; // Skip tier 3+ until player has 5 tier 2 upgrades
+            }
+            if (nextTier >= 5 && tier4Count < 5) {
+                return; // Skip tier 5 until player has 5 tier 4 upgrades
+            }
+
             validUpgrades.push({ ...up, category: cat.name });
         });
     });
@@ -19616,13 +19695,45 @@ function showLevelUpMenu() {
         return;
     }
 
-    // 2. Pick 3 Random
+    // 2. Pick 3 Random with weighted selection (prioritize unseen upgrades)
     const choices = [];
     const count = Math.min(3, validUpgrades.length);
+
+    // Weight upgrades: unseen get 3x weight, already seen get 1x weight
+    const weightedUpgrades = [];
+    for (const upgrade of validUpgrades) {
+        const hasBeenShown = shownUpgradesThisRun.has(upgrade.id);
+        const weight = hasBeenShown ? 1 : 3; // Unseen upgrades are 3x more likely
+
+        // Add the upgrade multiple times based on weight to create weighted pool
+        for (let w = 0; w < weight; w++) {
+            weightedUpgrades.push(upgrade);
+        }
+    }
+
+    // Pick from weighted pool without duplicates
+    const pickedIds = new Set();
     for (let i = 0; i < count; i++) {
-        const idx = Math.floor(Math.random() * validUpgrades.length);
-        choices.push(validUpgrades[idx]);
-        validUpgrades.splice(idx, 1);
+        if (weightedUpgrades.length === 0) break;
+
+        const idx = Math.floor(Math.random() * weightedUpgrades.length);
+        const choice = weightedUpgrades[idx];
+
+        // Skip if we already picked this upgrade
+        if (!pickedIds.has(choice.id)) {
+            choices.push(choice);
+            pickedIds.add(choice.id);
+
+            // Mark as shown for this run
+            shownUpgradesThisRun.add(choice.id);
+        }
+
+        // Remove all instances of this upgrade from the pool to avoid duplicates
+        for (let j = weightedUpgrades.length - 1; j >= 0; j--) {
+            if (weightedUpgrades[j].id === choice.id) {
+                weightedUpgrades.splice(j, 1);
+            }
+        }
     }
 
     // Reroll button - uses tokens if available, otherwise costs 5 nuggets
@@ -21432,13 +21543,12 @@ function gameLoopLogic(opts = null) {
             sFill.style.width = `${pct}%`;
         }
     } else {
-        if (stationHealthBarVisible) {
-            const sContainer = document.getElementById('station-health-container');
-            if (sContainer) {
-                sContainer.style.display = 'none';
-                stationHealthBarVisible = false;
-            }
+        // Always hide the HP bar when spaceStation is null, regardless of flag state
+        const sContainer = document.getElementById('station-health-container');
+        if (sContainer) {
+            sContainer.style.display = 'none';
         }
+        stationHealthBarVisible = false;
     }
 
     // Destroyer update and draw
@@ -22395,6 +22505,7 @@ function gameLoopLogic(opts = null) {
         if (pixiArrowsGraphics) pixiArrowsGraphics.clear();
         clearPixiUiText();
 
+        drawSlackerMouseLine();
         drawStationIndicator();
         drawDestroyerIndicator();
         drawWarpGateIndicator();
@@ -22807,6 +22918,51 @@ function drawMiniEventIndicator() {
     text.alpha = blink;
     pixiUiOverlayLayer.addChild(text);
     pixiUiTextObjects.push(text);
+}
+
+// Draw line from Slacker ship to mouse cursor
+function drawSlackerMouseLine() {
+    if (!player || player.shipType !== 'slacker' || usingGamepad || !pixiArrowsGraphics) return;
+    if (gamePaused || !gameActive) return;
+
+    // Get ship position (world space)
+    const shipX = player.pos.x;
+    const shipY = player.pos.y;
+
+    // Get mouse position (world space)
+    const mouseX = mouseWorld.x;
+    const mouseY = mouseWorld.y;
+
+    // Calculate angle from ship to mouse
+    const angle = Math.atan2(mouseY - shipY, mouseX - shipX);
+
+    // Start point: 10 pixels beyond outer shield
+    const startDist = player.outerShieldRadius + 10;
+    const startX = shipX + Math.cos(angle) * startDist;
+    const startY = shipY + Math.sin(angle) * startDist;
+
+    // Calculate screen positions
+    const z = currentZoom || ZOOM_LEVEL;
+    const camX = player.pos.x - width / (2 * z);
+    const camY = player.pos.y - height / (2 * z);
+
+    const screenStartX = (startX - camX) * z;
+    const screenStartY = (startY - camY) * z;
+    const screenMouseX = (mouseX - camX) * z;
+    const screenMouseY = (mouseY - camY) * z;
+
+    // Skip if both points are off-screen
+    if ((screenStartX < -50 && screenMouseX < -50) ||
+        (screenStartX > width + 50 && screenMouseX > width + 50) ||
+        (screenStartY < -50 && screenMouseY < -50) ||
+        (screenStartY > height + 50 && screenMouseY > height + 50)) {
+        return;
+    }
+
+    // Draw white 50% transparent line
+    pixiArrowsGraphics.lineStyle(2, 0xffffff, 0.5);
+    pixiArrowsGraphics.moveTo(screenStartX, screenStartY);
+    pixiArrowsGraphics.lineTo(screenMouseX, screenMouseY);
 }
 
 // Minimap position constants (bottom-right corner of screen)
@@ -23231,6 +23387,7 @@ function startGame() {
         player.hp = player.maxHp;
         player.inventory = {};
         player.reactiveShieldCoins = 0;
+        shownUpgradesThisRun = new Set(); // Reset upgrade tracking for new game
         player.xp = 0;
         player.level = 1;
         player.nextLevelXp = 100;
@@ -23955,7 +24112,7 @@ function updateShipSelectionUI() {
     if (selectedShipType === 'slacker') {
         standardBtn.classList.remove('selected');
         slackerBtn.classList.add('selected');
-        descEl.textContent = 'Auto-firing turret • Targets nearest enemy (prioritizes bosses)\nLeading aim on moving targets • No aiming required';
+        descEl.textContent = 'Mouse-driven • Click & hold LEFT BUTTON to brake • RIGHT BUTTON activates turbo boost\nShip follows your cursor • Keyboard works too • Perfect for tactical positioning';
     } else {
         standardBtn.classList.add('selected');
         slackerBtn.classList.remove('selected');
