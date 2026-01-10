@@ -16,6 +16,9 @@ export const PHYSICS_FPS = 120;
 export const SIM_STEP_MS = 1000 / PHYSICS_FPS;
 export const SIM_MAX_STEPS_PER_FRAME = 12; // Allow catch-up for lower frame rates
 
+// Total game duration before final boss teleport (30 minutes)
+export const GAME_DURATION_MS = 30 * 60 * 1000;
+
 // --- Pixi Sprite Pool Limits ---
 export const PIXI_SPRITE_POOL_MAX = 30000;
 

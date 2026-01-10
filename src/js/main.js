@@ -9871,7 +9871,16 @@ class WarpMazeZone extends Entity {
         if (this.state === 'maze' && player && !player.dead) {
             const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
             if (dist < this.arenaRadius - 300) {
-                this.state = 'boss_intro';
+                // Determine if this is the final battle based on game time
+                const gameDuration = (Date.now() - gameStartTime - (pausedAccumMs || 0));
+                const isFinalRun = gameDuration > 30 * 60 * 1000; // 30 minutes
+                
+                if (isFinalRun) {
+                     this.state = 'final_boss_intro';
+                     showOverlayMessage("FINAL BATTLE INITIATED", '#f00', 3000);
+                } else {
+                     this.state = 'boss_intro';
+                }
                 this.bossIntroAt = Date.now() + 10000;
                 this.bossIntroLastSec = null;
             }
@@ -9919,7 +9928,52 @@ class WarpMazeZone extends Entity {
             }
         }
 
-        if (this.state === 'boss' && (!bossActive || !boss || boss.dead)) {
+        if (this.state === 'final_boss_intro') {
+            const now = Date.now();
+            const remainingMs = (this.bossIntroAt || now) - now;
+            const remainingSecs = Math.max(0, Math.ceil(remainingMs / 1000));
+            if (this.bossIntroLastSec !== remainingSecs) {
+                const el = document.getElementById('arena-countdown');
+                if (el) {
+                    el.innerText = `FINAL BATTLE\n${remainingSecs}s`;
+                    el.style.display = 'block';
+                    el.style.color = '#f00';
+                    el.style.textShadow = '0 0 24px #f00, 0 0 48px #f00';
+                    el.style.fontSize = remainingSecs <= 3 ? '50px' : '40px';
+                }
+                this.bossIntroLastSec = remainingSecs;
+            }
+            if (remainingMs <= 0) {
+                const el = document.getElementById('arena-countdown');
+                if (el) el.style.display = 'none';
+                this.state = 'final_boss';
+                
+                // Keep the boss arena readable by clearing asteroids near the core.
+                filterArrayWithPixiCleanup(environmentAsteroids, a => !a.dead && (Math.hypot(a.pos.x - this.pos.x, a.pos.y - this.pos.y) > this.arenaRadius + 260));
+                
+                showOverlayMessage("FINAL BOSS ENGAGED", '#f00', 3000, 3);
+                playSound('boss_spawn');
+                clearArrayWithPixiCleanup(enemies); // keep the fight clean
+                clearArrayWithPixiCleanup(pinwheels);
+                filterArrayWithPixiCleanup(bullets, b => !b.isEnemy);
+                clearArrayWithPixiCleanup(bossBombs);
+                
+                boss = new FinalBoss(this.pos.x, this.pos.y, this);
+                bossActive = true;
+
+                // Spawn cover asteroids in the arena
+                for (let i = 0; i < 15; i++) {
+                    const a = Math.random() * Math.PI * 2;
+                    const rr = 800 + Math.random() * (this.arenaRadius - 1200);
+                    const x = this.pos.x + Math.cos(a) * rr;
+                    const y = this.pos.y + Math.sin(a) * rr;
+                    if (player && Math.hypot(x - player.pos.x, y - player.pos.y) < 500) continue;
+                    environmentAsteroids.push(new EnvironmentAsteroid(x, y, 40 + Math.random() * 50, 3, false));
+                }
+            }
+        }
+
+        if ((this.state === 'boss' || this.state === 'final_boss') && (!bossActive || !boss || boss.dead)) {
             this.state = 'escape';
         }
     }
@@ -12512,7 +12566,7 @@ class FinalBoss extends Entity {
         this.isFinalBoss = true;
         this.sizeScale = 3;
         this.radius = 110 * this.sizeScale;
-        this.hp = 500;
+        this.hp = 1000; // Double HP
         this.maxHp = this.hp;
 
         // Crystalline shield system - indestructible shards (cave monster pattern)
@@ -12545,55 +12599,55 @@ class FinalBoss extends Entity {
 
         // Smoother movement (no hard velocity snaps).
         this.orbitOffset = Math.random() * Math.PI * 2;
-        this.maxSpeed = 5.5;
-        this.dashCooldown = 240;
+        this.maxSpeed = 6.0; // Slightly faster
+        this.dashCooldown = 220; // Faster dash
         this.dashWarmup = 0;
         this.dashFrames = 0;
         this.dashDir = { x: 0, y: 0 };
-        this.dashSpeed = 11.25;
+        this.dashSpeed = 13.0; // Faster dash speed
 
         // Flame breath (long cone).
-        this.flameCooldown = 140;
+        this.flameCooldown = 120; // Faster cooldown
         this.flameCharge = 0;
-        this.flameChargeTotal = 50;
+        this.flameChargeTotal = 40; // Faster charge
         this.flameFire = 0;
-        this.flameFireTotal = 120;
+        this.flameFireTotal = 140; // Longer duration
         this.flameAngle = 0;
-        this.flameRange = 1190; // 15% reduction (1400 * 0.85 = 1190)
-        this.flameCone = Math.PI / 3; // 60 degrees
+        this.flameRange = 1300; // Longer range
+        this.flameCone = Math.PI / 2.5; // Wider cone (72 degrees)
         this.flameTickCooldown = 0;
         this.flameHitCount = 0;
 
         // Chitin barrage (projectile arc).
-        this.chitinCooldown = 120;
+        this.chitinCooldown = 100; // Faster
 
         // Warp scream (shockwave knockback).
-        this.screamCooldown = 260;
+        this.screamCooldown = 220; // Faster
 
         // Bio-pods (slow drifting mines that burst into pellets).
-        this.podCooldown = 240;
+        this.podCooldown = 200; // Faster
 
         // Cave reinforcements - spawn roamers, gunboats, pinwheels
-        this.reinforcementCooldown = 300; // 5 seconds between summons
-        this.reinforcementTimer = 300; // Start with cooldown ready
+        this.reinforcementCooldown = 240; // More frequent (4s)
+        this.reinforcementTimer = 240; 
 
         // Exploding mines (50% more damage than Monster 1 mines)
-        this.mineCooldown = 200; // Between mine drops
-        this.mineTimer = 60; // Start ready to use soon
+        this.mineCooldown = 160; // Faster
+        this.mineTimer = 60; 
 
         // Reinforcements (like cruiser helpers).
-        this.helperMax = 6;
-        this.helperCall70 = 2;
-        this.helperCall40 = 3;
-        this.helperBurst = 2;
-        this.helperCooldownBase = 210;
+        this.helperMax = 10; // More max helpers
+        this.helperCall70 = 4; // Spawn more
+        this.helperCall40 = 5; // Spawn more
+        this.helperBurst = 3; // Spawn more at once
+        this.helperCooldownBase = 180; // Faster respawn
         this.helperCooldown = 90;
         this.called70 = false;
         this.called50 = false;
         this.called40 = false;
         this.phase2Started = false;
         this.phase3Started = false;
-        this.helperStrengthTier = 1;
+        this.helperStrengthTier = 2; // Stronger helpers by default
 
         this.shieldsDirty = true;
         this._pixiInnerGfx = null;
@@ -12675,10 +12729,18 @@ class FinalBoss extends Entity {
         // instead of exploding all bombs at once which causes sprite pool exhaustion
         scheduleStaggeredBombExplosions(this.pos.x, this.pos.y);
 
-        // Start 15-second countdown to level 2
-        sectorTransitionActive = true;
-        warpCountdownAt = Date.now() + 15000; // 15 seconds
-        showOverlayMessage("FINAL BOSS DOWN - VICTORY IN 15s", '#ff0', 2600, 3);
+        // END GAME: Show Victory Screen
+        setTimeout(() => {
+            gameActive = false;
+            stopMusic();
+            document.getElementById('start-screen').style.display = 'block';
+            document.querySelector('#start-screen h1').innerText = "YOU WON THIS RUN";
+            document.querySelector('#start-screen h1').style.color = "#0f0";
+            document.getElementById('start-btn').innerText = "PLAY AGAIN";
+            setTimeout(() => { document.getElementById('start-btn').focus(); }, 100);
+        }, 5000);
+        
+        showOverlayMessage("FINAL BOSS DESTROYED - VICTORY!", '#0f0', 5000, 5);
         bossActive = false;
         bossArena.active = false;
         bossArena.growing = false;
@@ -21723,7 +21785,8 @@ function killPlayer() {
             saveMetaProfile();          // Saves meta shop upgrades
         }
         document.getElementById('start-screen').style.display = 'block';
-        document.querySelector('#start-screen h1').innerText = "SYSTEM FAILURE";
+        document.querySelector('#start-screen h1').innerText = "BETTER LUCK NEXT TIME";
+        document.querySelector('#start-screen h1').style.color = "#f00";
         document.getElementById('start-btn').innerText = "REBOOT SYSTEM";
         setTimeout(() => {
             document.getElementById('start-btn').focus();
@@ -21814,6 +21877,18 @@ function mainLoop() {
     }
 }
 
+function triggerFinalBattle() {
+    console.log('[FINAL BATTLE] 30 minutes reached. Teleporting to warp level.');
+    showOverlayMessage("TIME LIMIT REACHED - PREPARE FOR FINAL BATTLE", '#f00', 5000, 5);
+    playSound('warp_scream');
+    
+    // Teleport to warp level after a short delay
+    setTimeout(() => {
+        if (!gameActive || !player || player.dead) return;
+        enterWarpMaze();
+    }, 3000);
+}
+
 function gameLoopLogic(opts = null) {
     globalProfiler.start('GameLoopLogic');
 
@@ -21876,8 +21951,10 @@ function gameLoopLogic(opts = null) {
                 if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
                 if (elapsed < 0) elapsed = 0;
                 tEl.innerText = formatTime(elapsed);
-                if (!gameEnded && elapsed >= GAME_DURATION_MS) {
-                    endGame(elapsed);
+                
+                // Final battle teleport at 30 minutes (GAME_DURATION_MS)
+                if (!gameEnded && elapsed >= GAME_DURATION_MS && !warpActive && !bossActive && !sectorTransitionActive) {
+                    triggerFinalBattle();
                     return;
                 }
             }
