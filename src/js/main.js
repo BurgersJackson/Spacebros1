@@ -4,7 +4,7 @@ import { globalProfiler } from './core/profiler.js';
 import { globalJitterMonitor } from './core/jitter-monitor.js';
 import { globalStaggeredCleanup, immediateCompactArray } from './core/staggered-cleanup.js';
 import {
-    updateViewBounds, viewBounds, isInView, isInViewRadius, entityInView,
+    updateViewBounds, viewBounds, isInView, isInViewRadius, entityInView, isInAnyViewRadius,
     bulletGrid, rebuildBulletGrid, distSq, distLessThan
 } from './core/performance.js';
 import { colorToPixi } from './rendering/colors.js';
@@ -25,6 +25,11 @@ import {
     pixiBulletSpritePool, pixiParticleSpritePool, pixiEnemySpritePools,
     pixiPickupSpritePool, pixiAsteroidSpritePool, pixiStarSpritePool
 } from './rendering/pixi-setup.js';
+import {
+    setMultiplayerMode, multiplayerMode, players, activePlayerCount, initMultiplayerInput, getPlayerInput, playerInputs, applyDeadzone,
+    splitScreenViewports, initSplitScreenViewports, updateMultiplayerCameras, viewBoundsP1, viewBoundsP2,
+    isInAnyView, cameras
+} from './core/multiplayer.js';
 
 // --- Performance Debug (load after other modules) ---
 import './core/perf-debug.js';
@@ -211,7 +216,7 @@ window.spawnFinalBoss = function () {
             showOverlayMessage("BOSS ALREADY ACTIVE", '#f00', 1000);
             return;
         }
-        
+
         console.log('[DEBUG] Clearing existing entities...');
         clearArrayWithPixiCleanup(enemies);
         clearArrayWithPixiCleanup(pinwheels);
@@ -220,27 +225,27 @@ window.spawnFinalBoss = function () {
         clearArrayWithPixiCleanup(bullets);
         clearArrayWithPixiCleanup(bossBombs);
         clearArrayWithPixiCleanup(guidedMissiles);
-        
+
         // Position boss away from player
         const dist = 1000;
         const angle = Math.random() * Math.PI * 2;
         const x = player.pos.x + Math.cos(angle) * dist;
         const y = player.pos.y + Math.sin(angle) * dist;
-        
+
         console.log('[DEBUG] Creating FinalBoss instance at', x, y);
         if (typeof FinalBoss === 'undefined') {
             throw new Error('FinalBoss class is not defined!');
         }
         boss = new FinalBoss(x, y, null);
         bossActive = true;
-        
+
         console.log('[DEBUG] Setting up boss arena...');
         bossArena.x = (player.pos.x + boss.pos.x) / 2;
         bossArena.y = (player.pos.y + boss.pos.y) / 2;
         bossArena.radius = 2500;
         bossArena.active = true;
         bossArena.growing = false;
-        
+
         showOverlayMessage("DEBUG: FINAL BOSS SPAWNED", '#ff0', 2000);
         playSound('boss_spawn');
         if (musicEnabled) setMusicMode('warp_boss');
@@ -316,6 +321,9 @@ function setupCanvasResolution(internalW, internalH) {
     internalWidth = internalW;
     internalHeight = internalH;
     aspectRatio = internalW / internalH;
+
+    // Initialize split-screen viewports
+    initSplitScreenViewports(internalW, internalH);
 
     // Disable image smoothing for pixel-perfect rendering
     if (ctx) ctx.imageSmoothingEnabled = false;
@@ -2222,6 +2230,13 @@ const turboStatus = document.getElementById('turbo-status');
 const turboFill = document.getElementById('turbo-fill');
 const xpFill = document.getElementById('xp-fill');
 const fpsCounterEl = document.getElementById('fps-counter');
+
+// P2 HUD elements
+const p2HealthFill = document.getElementById('p2-health-fill');
+const p2WarpStatus = document.getElementById('p2-warp-status');
+const p2WarpFill = document.getElementById('p2-warp-fill');
+const p2TurboStatus = document.getElementById('p2-turbo-status');
+const p2TurboFill = document.getElementById('p2-turbo-fill');
 let fpsLastFrameAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 let fpsSmoothMs = 16.7;
 let fpsNextUiAt = 0;
@@ -2263,8 +2278,21 @@ let baseRespawnTimers = [];
 let shakeTimer = 0;
 let shakeMagnitude = 0;
 
+// Current player being updated (for multiplayer input handling)
+let currentPlayerIndex = 0;
+
 // Inputs
-const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, e: false, f: false };
+// Backward compatibility: keys object references currentPlayerIndex's input
+const keys = {
+    get w() { return playerInputs[currentPlayerIndex]?.keys.up || false; },
+    get a() { return playerInputs[currentPlayerIndex]?.keys.left || false; },
+    get s() { return playerInputs[currentPlayerIndex]?.keys.down || false; },
+    get d() { return playerInputs[currentPlayerIndex]?.keys.right || false; },
+    get space() { return playerInputs[currentPlayerIndex]?.keys.fire || false; },
+    get shift() { return playerInputs[currentPlayerIndex]?.keys.turbo || false; },
+    get e() { return playerInputs[currentPlayerIndex]?.keys.turbo || false; },
+    get f() { return playerInputs[currentPlayerIndex]?.keys.special || false; }
+};
 
 // Debug menu state
 let debugMenuVisible = false;
@@ -2281,16 +2309,44 @@ let smoothedDir = { x: 0, y: 0 };       // Smoothed direction vector
 
 // Gamepad State
 let gamepadIndex = null;
-let gpState = {
-    move: { x: 0, y: 0 },
-    aim: { x: 0, y: 0 },
-    fire: false,
-    warp: false,
-    turbo: false,
-    battery: false,
-    pausePressed: false,
-    lastMenuElements: null
+
+// Gamepad state for both players
+let gpStates = [
+    {
+        move: { x: 0, y: 0 },
+        aim: { x: 0, y: 0 },
+        fire: false,
+        warp: false,
+        turbo: false,
+        battery: false,
+        pausePressed: false,
+        lastMenuElements: null
+    },
+    {
+        move: { x: 0, y: 0 },
+        aim: { x: 0, y: 0 },
+        fire: false,
+        warp: false,
+        turbo: false,
+        battery: false,
+        pausePressed: false,
+        lastMenuElements: null
+    }
+];
+
+// Backward compatibility: gpState returns current player's gamepad state
+const gpState = {
+    get move() { return gpStates[currentPlayerIndex]?.move || { x: 0, y: 0 }; },
+    get aim() { return gpStates[currentPlayerIndex]?.aim || { x: 0, y: 0 }; },
+    get fire() { return gpStates[currentPlayerIndex]?.fire || false; },
+    get warp() { return gpStates[currentPlayerIndex]?.warp || false; },
+    get turbo() { return gpStates[currentPlayerIndex]?.turbo || false; },
+    get battery() { return gpStates[currentPlayerIndex]?.battery || false; },
+    get pausePressed() { return gpStates[currentPlayerIndex]?.pausePressed || false; },
+    get lastMenuElements() { return gpStates[currentPlayerIndex]?.lastMenuElements || null; },
+    set lastMenuElements(v) { if (gpStates[currentPlayerIndex]) gpStates[currentPlayerIndex].lastMenuElements = v; }
 };
+
 let usingGamepad = false;
 let menuDebounce = 0;
 
@@ -3205,8 +3261,9 @@ function rayCast(x1, y1, angle, maxDist) {
 const PLAYER_SHIELD_RADIUS_SCALE = 1.5;
 
 class Spaceship extends Entity {
-    constructor(shipType = 'standard') {
+    constructor(shipType = 'standard', playerIndex = 0) {
         super(0, 0);
+        this.playerIndex = playerIndex;
         this.shipType = shipType; // 'standard' or 'slacker'
         this.radius = 30;
         this.angle = -Math.PI / 2;
@@ -9874,12 +9931,12 @@ class WarpMazeZone extends Entity {
                 // Determine if this is the final battle based on game time
                 const gameDuration = (Date.now() - gameStartTime - (pausedAccumMs || 0));
                 const isFinalRun = gameDuration > 30 * 60 * 1000; // 30 minutes
-                
+
                 if (isFinalRun) {
-                     this.state = 'final_boss_intro';
-                     showOverlayMessage("FINAL BATTLE INITIATED", '#f00', 3000);
+                    this.state = 'final_boss_intro';
+                    showOverlayMessage("FINAL BATTLE INITIATED", '#f00', 3000);
                 } else {
-                     this.state = 'boss_intro';
+                    this.state = 'boss_intro';
                 }
                 this.bossIntroAt = Date.now() + 10000;
                 this.bossIntroLastSec = null;
@@ -9947,17 +10004,17 @@ class WarpMazeZone extends Entity {
                 const el = document.getElementById('arena-countdown');
                 if (el) el.style.display = 'none';
                 this.state = 'final_boss';
-                
+
                 // Keep the boss arena readable by clearing asteroids near the core.
                 filterArrayWithPixiCleanup(environmentAsteroids, a => !a.dead && (Math.hypot(a.pos.x - this.pos.x, a.pos.y - this.pos.y) > this.arenaRadius + 260));
-                
+
                 showOverlayMessage("FINAL BOSS ENGAGED", '#f00', 3000, 3);
                 playSound('boss_spawn');
                 clearArrayWithPixiCleanup(enemies); // keep the fight clean
                 clearArrayWithPixiCleanup(pinwheels);
                 filterArrayWithPixiCleanup(bullets, b => !b.isEnemy);
                 clearArrayWithPixiCleanup(bossBombs);
-                
+
                 boss = new FinalBoss(this.pos.x, this.pos.y, this);
                 bossActive = true;
 
@@ -12629,11 +12686,11 @@ class FinalBoss extends Entity {
 
         // Cave reinforcements - spawn roamers, gunboats, pinwheels
         this.reinforcementCooldown = 240; // More frequent (4s)
-        this.reinforcementTimer = 240; 
+        this.reinforcementTimer = 240;
 
         // Exploding mines (50% more damage than Monster 1 mines)
         this.mineCooldown = 160; // Faster
-        this.mineTimer = 60; 
+        this.mineTimer = 60;
 
         // Reinforcements (like cruiser helpers).
         this.helperMax = 10; // More max helpers
@@ -12739,7 +12796,7 @@ class FinalBoss extends Entity {
             document.getElementById('start-btn').innerText = "PLAY AGAIN";
             setTimeout(() => { document.getElementById('start-btn').focus(); }, 100);
         }, 5000);
-        
+
         showOverlayMessage("FINAL BOSS DESTROYED - VICTORY!", '#0f0', 5000, 5);
         bossActive = false;
         bossArena.active = false;
@@ -16826,8 +16883,39 @@ class CaveMonster3 extends CaveMonsterBase {
 
 
 // --- Game State ---
-let player;
+let player; // Backward compatibility: reference to players[0] or null
+// Note: players array is imported from multiplayer module
 let bullets = [];
+
+// Difficulty scaling for multiplayer
+let enemySpawnMultiplier = 1;
+let coinDropMultiplier = 1;
+
+// Helper functions for multi-player support
+function getAlivePlayers() {
+    return players.filter(p => p && !p.dead);
+}
+
+function getClosestPlayer(pos) {
+    const alive = getAlivePlayers();
+    if (alive.length === 0) return null;
+    if (alive.length === 1) return alive[0];
+
+    let closest = alive[0];
+    let minDistSq = pos.distSqTo ? pos.distSqTo(closest) :
+        (closest.pos.x - pos.x) ** 2 + (closest.pos.y - pos.y) ** 2;
+
+    for (let i = 1; i < alive.length; i++) {
+        const p = alive[i];
+        const distSq = pos.distSqTo ? pos.distSqTo(p) :
+            (p.pos.x - pos.x) ** 2 + (p.pos.y - pos.y) ** 2;
+        if (distSq < minDistSq) {
+            minDistSq = distSq;
+            closest = p;
+        }
+    }
+    return closest;
+}
 let bossBombs = [];
 let warpBioPods = [];
 let staggeredBombExplosions = []; // Queue for staggered bomb explosions
@@ -18154,7 +18242,7 @@ function setupMetaShopModalHandlers(upgradeId, cost, currentTier) {
 
     // Reset gamepad navigation for this modal
     menuSelectionIndex = 0;
-    gpState.lastMenuElements = null;
+    gpStates[0].lastMenuElements = null;
 
     // Wait one frame to ensure DOM has updated, then setup navigation
     requestAnimationFrame(() => {
@@ -19776,6 +19864,8 @@ function checkBulletWallCollision(bullet) {
 
 function updateHealthUI() {
     if (!player) return;
+
+    // Player 1 HUD
     const pct = (player.hp / player.maxHp) * 100;
     healthFill.style.width = `${Math.max(0, pct)}%`;
     if (pct < 30) healthFill.style.backgroundColor = '#f00';
@@ -19783,6 +19873,21 @@ function updateHealthUI() {
     else healthFill.style.backgroundColor = '#0f0';
     const ht = document.getElementById('health-text');
     if (ht) ht.innerText = `${Math.max(0, Math.floor(player.hp))} / ${player.maxHp}`;
+
+    // Player 2 HUD
+    if (multiplayerMode === 'split' && players[1]) {
+        const p2 = players[1];
+        const p2Pct = (p2.hp / p2.maxHp) * 100;
+        const p2HealthFill = document.getElementById('p2-health-fill');
+        if (p2HealthFill) {
+            p2HealthFill.style.width = `${Math.max(0, p2Pct)}%`;
+            if (p2Pct < 30) p2HealthFill.style.backgroundColor = '#f00';
+            else if (p2Pct < 60) p2HealthFill.style.backgroundColor = '#ff0';
+            else p2HealthFill.style.backgroundColor = '#f0f';
+        }
+        const p2Ht = document.getElementById('p2-health-text');
+        if (p2Ht) p2Ht.innerText = `${Math.max(0, Math.floor(p2.hp))} / ${p2.maxHp}`;
+    }
 }
 
 function updateXpUI() {
@@ -19796,6 +19901,32 @@ function updateXpUI() {
 function updateNuggetUI() {
     const el = document.getElementById('nugget-count');
     if (el) el.innerText = (metaProfile.bank || 0) + spaceNuggets;
+
+    // Update P2 nugget count in split-screen
+    if (multiplayerMode === 'split') {
+        const p2El = document.getElementById('p2-nugget-count');
+        if (p2El) p2El.innerText = (metaProfile.bank || 0) + spaceNuggets;
+    }
+}
+
+function showSplitScreenUI() {
+    const splitDivider = document.getElementById('split-divider');
+    const p2Hud = document.getElementById('p2-hud');
+    const p2Label = document.getElementById('p2-label');
+
+    if (splitDivider) splitDivider.style.display = 'block';
+    if (p2Hud) p2Hud.style.display = 'flex';
+    if (p2Label) p2Label.style.display = 'block';
+}
+
+function hideSplitScreenUI() {
+    const splitDivider = document.getElementById('split-divider');
+    const p2Hud = document.getElementById('p2-hud');
+    const p2Label = document.getElementById('p2-label');
+
+    if (splitDivider) splitDivider.style.display = 'none';
+    if (p2Hud) p2Hud.style.display = 'none';
+    if (p2Label) p2Label.style.display = 'none';
 }
 
 // --- Profile Save / Load (player stats only) ---
@@ -21309,264 +21440,287 @@ function applyUpgrade(id, tier) {
 
 function updateGamepad() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    const gp = pads[gamepadIndex];
-    if (!gp) {
+
+    // Find first connected gamepad for Player 1 if not set
+    if (gamepadIndex === null || !pads[gamepadIndex]) {
+        gamepadIndex = null;
         for (let i = 0; i < pads.length; i++) {
             if (pads[i]) { gamepadIndex = i; break; }
         }
-        // If no pads are present, fall back to mouse/keyboard mode.
-        if (!pads.some(p => p)) {
-            gamepadIndex = null;
-            lastGamepadInputAt = 0;
-            updateInputMode(Date.now());
-        }
+    }
+
+    const gp = pads[gamepadIndex];
+
+    // If no gamepads at all, fall back to mouse/keyboard
+    if (!pads.some(p => p)) {
+        gamepadIndex = null;
+        lastGamepadInputAt = 0;
+        updateInputMode(Date.now());
         return;
     }
 
+    // Deadzone helper (used by both P1 and P2)
     const deadzone = 0.12;
     const applyDeadzone = (v) => {
         const a = Math.abs(v);
         if (a <= deadzone) return 0;
-        // Rescale so values just outside the deadzone don't feel sluggish.
         const scaled = (a - deadzone) / (1 - deadzone);
         return Math.sign(v) * scaled;
     };
 
-    let gamepadInput = false;
-    if (gp.axes.some(axis => Math.abs(axis) > deadzone) || gp.buttons.some(button => button.pressed)) {
-        gamepadInput = true;
-    }
+    // Process Player 1 gamepad if available
+    if (gp) {
 
-    if (gamepadInput) {
-        lastGamepadInputAt = Date.now();
-    }
+        let gamepadInput = false;
+        if (gp.axes.some(axis => Math.abs(axis) > deadzone) || gp.buttons.some(button => button.pressed)) {
+            gamepadInput = true;
+        }
 
-    gpState.move.x = applyDeadzone(gp.axes[0]);
-    gpState.move.y = applyDeadzone(gp.axes[1]);
-    gpState.aim.x = applyDeadzone(gp.axes[2]);
-    gpState.aim.y = applyDeadzone(gp.axes[3]);
+        if (gamepadInput) {
+            lastGamepadInputAt = Date.now();
+        }
 
-    const now = Date.now();
-    updateInputMode(now);
-    if (gp.buttons[9].pressed && !gpState.pausePressed) { // Start
-        togglePause();
-        gpState.pausePressed = true;
-    } else if (!gp.buttons[9].pressed) {
-        gpState.pausePressed = false;
-    }
+        gpStates[0].move.x = applyDeadzone(gp.axes[0]);
+        gpStates[0].move.y = applyDeadzone(gp.axes[1]);
+        gpStates[0].aim.x = applyDeadzone(gp.axes[2]);
+        gpStates[0].aim.y = applyDeadzone(gp.axes[3]);
 
-    gpState.warp = gp.buttons[0].pressed;
-    gpState.turbo = gp.buttons[2].pressed || gp.buttons[6].pressed; // Button 2 (X) or LT
-    gpState.battery = gp.buttons[3].pressed || gp.buttons[7].pressed; // Button 3 (Y) or RT
+        const now = Date.now();
+        updateInputMode(now);
+        if (gp.buttons[9].pressed && !gpState.pausePressed) { // Start
+            togglePause();
+            gpStates[0].pausePressed = true;
+        } else if (!gp.buttons[9].pressed) {
+            gpStates[0].pausePressed = false;
+        }
 
-    // Menu Navigation Support
-    if ((!gameActive || gamePaused) && now - menuDebounce > 150) {
-        const activeElements = getActiveMenuElements();
-        if (activeElements.length > 0) {
-            // Check if menu has changed by comparing first element or length
-            const menuChanged = !gpState.lastMenuElements ||
-                gpState.lastMenuElements.length !== activeElements.length ||
-                gpState.lastMenuElements[0] !== activeElements[0];
+        gpStates[0].warp = gp.buttons[0].pressed;
+        gpStates[0].turbo = gp.buttons[2].pressed || gp.buttons[6].pressed; // Button 2 (X) or LT
+        gpStates[0].battery = gp.buttons[3].pressed || gp.buttons[7].pressed; // Button 3 (Y) or RT
+        gpStates[0].fire = gp.buttons[5].pressed; // RT / Button 5
 
-            if (menuChanged) {
-                // Preserve index when returning from modal to shop
-                if (!returningFromModal) {
-                    menuSelectionIndex = 0;
-                }
-                gpState.lastMenuElements = activeElements;
-                updateMenuVisuals(activeElements);
-            }
+        // Menu Navigation Support
+        if ((!gameActive || gamePaused) && now - menuDebounce > 150) {
+            const activeElements = getActiveMenuElements();
+            if (activeElements.length > 0) {
+                // Check if menu has changed by comparing first element or length
+                const menuChanged = !gpState.lastMenuElements ||
+                    gpState.lastMenuElements.length !== activeElements.length ||
+                    gpState.lastMenuElements[0] !== activeElements[0];
 
-            // Reset the flag after processing menu change
-            if (returningFromModal && menuChanged) {
-                returningFromModal = false;
-            }
-
-            const selectedEl = activeElements[menuSelectionIndex];
-            const isSlider = selectedEl && selectedEl.tagName === 'INPUT' && selectedEl.type === 'range';
-            const isCheckbox = selectedEl && selectedEl.tagName === 'INPUT' && selectedEl.type === 'checkbox';
-            const isSelect = selectedEl && selectedEl.tagName === 'SELECT';
-
-            // Check for horizontal input
-            const leftPressed = gp.axes[0] < -0.5 || (gp.buttons[14] && gp.buttons[14].pressed);
-            const rightPressed = gp.axes[0] > 0.5 || (gp.buttons[15] && gp.buttons[15].pressed);
-
-            // Handle sliders - left/right adjusts value, up/down navigates
-            if (isSlider) {
-                if (leftPressed || rightPressed) {
-                    const changeAmount = 5;
-                    if (rightPressed) {
-                        selectedEl.value = Math.min(parseInt(selectedEl.max), parseInt(selectedEl.value) + changeAmount);
-                    } else {
-                        selectedEl.value = Math.max(parseInt(selectedEl.min), parseInt(selectedEl.value) - changeAmount);
+                if (menuChanged) {
+                    // Preserve index when returning from modal to shop
+                    if (!returningFromModal) {
+                        menuSelectionIndex = 0;
                     }
-                    selectedEl.dispatchEvent(new Event('input', { bubbles: true }));
-                    menuDebounce = now + 100;
-                } else {
-                    // Vertical navigation for sliders
-                    let change = 0;
-                    if (gp.axes[1] < -0.5 || (gp.buttons[12] && gp.buttons[12].pressed)) change = -1;
-                    if (gp.axes[1] > 0.5 || (gp.buttons[13] && gp.buttons[13].pressed)) change = 1;
+                    gpStates[0].lastMenuElements = activeElements;
+                    updateMenuVisuals(activeElements);
+                }
 
-                    if (change !== 0) {
-                        menuSelectionIndex += change;
+                // Reset the flag after processing menu change
+                if (returningFromModal && menuChanged) {
+                    returningFromModal = false;
+                }
+
+                const selectedEl = activeElements[menuSelectionIndex];
+                const isSlider = selectedEl && selectedEl.tagName === 'INPUT' && selectedEl.type === 'range';
+                const isCheckbox = selectedEl && selectedEl.tagName === 'INPUT' && selectedEl.type === 'checkbox';
+                const isSelect = selectedEl && selectedEl.tagName === 'SELECT';
+
+                // Check for horizontal input
+                const leftPressed = gp.axes[0] < -0.5 || (gp.buttons[14] && gp.buttons[14].pressed);
+                const rightPressed = gp.axes[0] > 0.5 || (gp.buttons[15] && gp.buttons[15].pressed);
+
+                // Handle sliders - left/right adjusts value, up/down navigates
+                if (isSlider) {
+                    if (leftPressed || rightPressed) {
+                        const changeAmount = 5;
+                        if (rightPressed) {
+                            selectedEl.value = Math.min(parseInt(selectedEl.max), parseInt(selectedEl.value) + changeAmount);
+                        } else {
+                            selectedEl.value = Math.max(parseInt(selectedEl.min), parseInt(selectedEl.value) - changeAmount);
+                        }
+                        selectedEl.dispatchEvent(new Event('input', { bubbles: true }));
+                        menuDebounce = now + 100;
+                    } else {
+                        // Vertical navigation for sliders
+                        let change = 0;
+                        if (gp.axes[1] < -0.5 || (gp.buttons[12] && gp.buttons[12].pressed)) change = -1;
+                        if (gp.axes[1] > 0.5 || (gp.buttons[13] && gp.buttons[13].pressed)) change = 1;
+
+                        if (change !== 0) {
+                            menuSelectionIndex += change;
+                            if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
+                            if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
+                            updateMenuVisuals(activeElements);
+                            menuDebounce = now;
+                        }
+                    }
+                } else {
+                    // Non-slider navigation
+                    // Check for vertical input (navigation)
+                    let vertChange = 0;
+                    if (gp.axes[1] < -0.5 || (gp.buttons[12] && gp.buttons[12].pressed)) vertChange = -1;
+                    if (gp.axes[1] > 0.5 || (gp.buttons[13] && gp.buttons[13].pressed)) vertChange = 1;
+
+                    // Check for horizontal input
+                    let horizChange = 0;
+                    if (leftPressed) horizChange = -1;
+                    if (rightPressed) horizChange = 1;
+
+                    // Vertical input - always navigate
+                    if (vertChange !== 0) {
+                        menuSelectionIndex += vertChange;
                         if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
                         if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
                         updateMenuVisuals(activeElements);
                         menuDebounce = now;
                     }
-                }
-            } else {
-                // Non-slider navigation
-                // Check for vertical input (navigation)
-                let vertChange = 0;
-                if (gp.axes[1] < -0.5 || (gp.buttons[12] && gp.buttons[12].pressed)) vertChange = -1;
-                if (gp.axes[1] > 0.5 || (gp.buttons[13] && gp.buttons[13].pressed)) vertChange = 1;
-
-                // Check for horizontal input
-                let horizChange = 0;
-                if (leftPressed) horizChange = -1;
-                if (rightPressed) horizChange = 1;
-
-                // Vertical input - always navigate
-                if (vertChange !== 0) {
-                    menuSelectionIndex += vertChange;
-                    if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
-                    if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
-                    updateMenuVisuals(activeElements);
-                    menuDebounce = now;
-                }
-                // Horizontal input - cycle options for selects
-                else if (horizChange !== 0 && isSelect) {
-                    const options = selectedEl.options;
-                    const currentIndex = selectedEl.selectedIndex;
-                    const nextIndex = (currentIndex + horizChange + options.length) % options.length;
-                    selectedEl.selectedIndex = nextIndex;
-                    selectedEl.dispatchEvent(new Event('change', { bubbles: true }));
-                    menuDebounce = now;
-                }
-                // Horizontal input on non-select - navigate
-                else if (horizChange !== 0) {
-                    menuSelectionIndex += horizChange;
-                    if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
-                    if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
-                    updateMenuVisuals(activeElements);
-                    menuDebounce = now;
-                }
-
-                // A Button / Cross - toggle checkbox or click button
-                if (gp.buttons[0].pressed) {
-                    if (isCheckbox) {
-                        selectedEl.checked = !selectedEl.checked;
+                    // Horizontal input - cycle options for selects
+                    else if (horizChange !== 0 && isSelect) {
+                        const options = selectedEl.options;
+                        const currentIndex = selectedEl.selectedIndex;
+                        const nextIndex = (currentIndex + horizChange + options.length) % options.length;
+                        selectedEl.selectedIndex = nextIndex;
                         selectedEl.dispatchEvent(new Event('change', { bubbles: true }));
-                    } else {
-                        selectedEl.click();
-                        gpState.lastMenuElements = null;
+                        menuDebounce = now;
                     }
-                    menuDebounce = now + 200;
-                }
+                    // Horizontal input on non-select - navigate
+                    else if (horizChange !== 0) {
+                        menuSelectionIndex += horizChange;
+                        if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
+                        if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
+                        updateMenuVisuals(activeElements);
+                        menuDebounce = now;
+                    }
 
-                // B Button / Circle - universal back button for all menus
-                if (gp.buttons[1].pressed) {
-                    let handled = false;
-
-                    // 1. Check if meta shop modal is open
-                    const modal = document.getElementById('meta-shop-modal');
-                    if (modal && modal.style.display === 'block') {
-                        // Close the modal and restore saved index
-                        modal.style.display = 'none';
-                        currentModalUpgradeId = null;
-
-                        // Set flag to preserve index when transitioning back to shop
-                        const savedIndex = modalSourceButtonIndex;
-                        modalSourceButtonIndex = null;
-
-                        if (savedIndex !== null && savedIndex >= 0) {
-                            menuSelectionIndex = savedIndex;
-                            returningFromModal = true;
+                    // A Button / Cross - toggle checkbox or click button
+                    if (gp.buttons[0].pressed) {
+                        if (isCheckbox) {
+                            selectedEl.checked = !selectedEl.checked;
+                            selectedEl.dispatchEvent(new Event('change', { bubbles: true }));
+                        } else {
+                            selectedEl.click();
+                            gpState.lastMenuElements = null;
                         }
-
-                        gpState.lastMenuElements = null;
-                        handled = true;
-                    }
-
-                    // 2. Check if settings menu is open
-                    if (!handled) {
-                        const settingsMenu = document.getElementById('settings-menu');
-                        if (settingsMenu && settingsMenu.style.display === 'block') {
-                            const settingsCloseBtn = document.getElementById('settings-close-btn');
-                            if (settingsCloseBtn) {
-                                settingsCloseBtn.click();
-                                handled = true;
-                            }
-                        }
-                    }
-
-                    // 3. Check if meta shop upgrades menu is open
-                    if (!handled) {
-                        const upgradesMenu = document.getElementById('upgrades-menu');
-                        if (upgradesMenu && upgradesMenu.style.display !== 'none') {
-                            const upgradesBackBtn = document.getElementById('upgrades-back-btn');
-                            if (upgradesBackBtn) {
-                                upgradesBackBtn.click();
-                                handled = true;
-                            }
-                        }
-                    }
-
-                    // 4. Check if profile select is open
-                    if (!handled) {
-                        const profileSelect = document.getElementById('profile-select');
-                        if (profileSelect && profileSelect.style.display === 'block') {
-                            const profileBackBtn = document.getElementById('profile-back-btn');
-                            if (profileBackBtn) {
-                                profileBackBtn.click();
-                                handled = true;
-                            }
-                        }
-                    }
-
-                    // 5. Check if run upgrades screen is open
-                    if (!handled) {
-                        const runUpgradesScreen = document.getElementById('run-upgrades-screen');
-                        if (runUpgradesScreen && runUpgradesScreen.style.display === 'block') {
-                            const runUpgradesBackBtn = document.getElementById('run-upgrades-back-btn');
-                            if (runUpgradesBackBtn) {
-                                runUpgradesBackBtn.click();
-                                handled = true;
-                            }
-                        }
-                    }
-
-                    // 6. Check if debug menu is open
-                    if (!handled) {
-                        const debugMenu = document.getElementById('debug-menu');
-                        if (debugMenu && debugMenu.style.display === 'block') {
-                            const debugBackBtn = document.getElementById('debug-back-btn');
-                            if (debugBackBtn) {
-                                debugBackBtn.click();
-                                handled = true;
-                            }
-                        }
-                    }
-
-                    // 7. Check if pause menu is open - B button resumes game
-                    if (!handled) {
-                        const pauseMenu = document.getElementById('pause-menu');
-                        if (pauseMenu && pauseMenu.style.display === 'block') {
-                            togglePause();
-                            handled = true;
-                        }
-                    }
-
-                    if (handled) {
                         menuDebounce = now + 200;
                     }
+
+                    // B Button / Circle - universal back button for all menus
+                    if (gp.buttons[1].pressed) {
+                        let handled = false;
+
+                        // 1. Check if meta shop modal is open
+                        const modal = document.getElementById('meta-shop-modal');
+                        if (modal && modal.style.display === 'block') {
+                            // Close the modal and restore saved index
+                            modal.style.display = 'none';
+                            currentModalUpgradeId = null;
+
+                            // Set flag to preserve index when transitioning back to shop
+                            const savedIndex = modalSourceButtonIndex;
+                            modalSourceButtonIndex = null;
+
+                            if (savedIndex !== null && savedIndex >= 0) {
+                                menuSelectionIndex = savedIndex;
+                                returningFromModal = true;
+                            }
+
+                            gpState.lastMenuElements = null;
+                            handled = true;
+                        }
+
+                        // 2. Check if settings menu is open
+                        if (!handled) {
+                            const settingsMenu = document.getElementById('settings-menu');
+                            if (settingsMenu && settingsMenu.style.display === 'block') {
+                                const settingsCloseBtn = document.getElementById('settings-close-btn');
+                                if (settingsCloseBtn) {
+                                    settingsCloseBtn.click();
+                                    handled = true;
+                                }
+                            }
+                        }
+
+                        // 3. Check if meta shop upgrades menu is open
+                        if (!handled) {
+                            const upgradesMenu = document.getElementById('upgrades-menu');
+                            if (upgradesMenu && upgradesMenu.style.display !== 'none') {
+                                const upgradesBackBtn = document.getElementById('upgrades-back-btn');
+                                if (upgradesBackBtn) {
+                                    upgradesBackBtn.click();
+                                    handled = true;
+                                }
+                            }
+                        }
+
+                        // 4. Check if profile select is open
+                        if (!handled) {
+                            const profileSelect = document.getElementById('profile-select');
+                            if (profileSelect && profileSelect.style.display === 'block') {
+                                const profileBackBtn = document.getElementById('profile-back-btn');
+                                if (profileBackBtn) {
+                                    profileBackBtn.click();
+                                    handled = true;
+                                }
+                            }
+                        }
+
+                        // 5. Check if run upgrades screen is open
+                        if (!handled) {
+                            const runUpgradesScreen = document.getElementById('run-upgrades-screen');
+                            if (runUpgradesScreen && runUpgradesScreen.style.display === 'block') {
+                                const runUpgradesBackBtn = document.getElementById('run-upgrades-back-btn');
+                                if (runUpgradesBackBtn) {
+                                    runUpgradesBackBtn.click();
+                                    handled = true;
+                                }
+                            }
+                        }
+
+                        // 6. Check if debug menu is open
+                        if (!handled) {
+                            const debugMenu = document.getElementById('debug-menu');
+                            if (debugMenu && debugMenu.style.display === 'block') {
+                                const debugBackBtn = document.getElementById('debug-back-btn');
+                                if (debugBackBtn) {
+                                    debugBackBtn.click();
+                                    handled = true;
+                                }
+                            }
+                        }
+
+                        // 7. Check if pause menu is open - B button resumes game
+                        if (!handled) {
+                            const pauseMenu = document.getElementById('pause-menu');
+                            if (pauseMenu && pauseMenu.style.display === 'block') {
+                                togglePause();
+                                handled = true;
+                            }
+                        }
+
+                        if (handled) {
+                            menuDebounce = now + 200;
+                        }
+                    }
                 }
+            } else {
+                gpStates[0].lastMenuElements = null;
             }
-        } else {
-            gpState.lastMenuElements = null;
         }
+    } // End of if (gp) block for Player 1
+
+    // Detect second gamepad for Player 2 (basic detection)
+    // Re-use pads variable declared at start of function
+    if (pads.length >= 2 && pads[1]) {
+        gpStates[1].move.x = applyDeadzone(pads[1].axes[0]);
+        gpStates[1].move.y = applyDeadzone(pads[1].axes[1]);
+        gpStates[1].aim.x = applyDeadzone(pads[1].axes[2]);
+        gpStates[1].aim.y = applyDeadzone(pads[1].axes[3]);
+        gpStates[1].warp = pads[1].buttons[0].pressed;
+        gpStates[1].turbo = pads[1].buttons[2].pressed || pads[1].buttons[6].pressed;
+        gpStates[1].battery = pads[1].buttons[3].pressed || pads[1].buttons[7].pressed;
+        gpStates[1].fire = pads[1].buttons[5].pressed;
     }
 }
 
@@ -21775,24 +21929,32 @@ function killPlayer() {
     }
     playSound('explode');
     spawnParticles(player.pos.x, player.pos.y, 30, '#0ff');
-    setTimeout(() => {
-        gameActive = false;
-        resetWarpState();
-        stopMusic();
-        try { depositMetaNuggets(); } catch (e) { console.warn('meta deposit failed', e); }
-        if (currentProfileName) {
-            autoSaveToCurrentProfile(); // Saves game state
-            saveMetaProfile();          // Saves meta shop upgrades
-        }
-        document.getElementById('start-screen').style.display = 'block';
-        document.querySelector('#start-screen h1').innerText = "BETTER LUCK NEXT TIME";
-        document.querySelector('#start-screen h1').style.color = "#f00";
-        document.getElementById('start-btn').innerText = "REBOOT SYSTEM";
+
+    // Check if all players are dead (for multiplayer)
+    const allDead = multiplayerMode === 'split' ?
+        players.every(p => p && p.dead) :
+        true;
+
+    if (allDead) {
         setTimeout(() => {
-            document.getElementById('start-btn').focus();
-            menuSelectionIndex = 0; // Reset for start menu
-        }, 100);
-    }, 2000);
+            gameActive = false;
+            resetWarpState();
+            stopMusic();
+            try { depositMetaNuggets(); } catch (e) { console.warn('meta deposit failed', e); }
+            if (currentProfileName) {
+                autoSaveToCurrentProfile(); // Saves game state
+                saveMetaProfile();          // Saves meta shop upgrades
+            }
+            document.getElementById('start-screen').style.display = 'block';
+            document.querySelector('#start-screen h1').innerText = "BETTER LUCK NEXT TIME";
+            document.querySelector('#start-screen h1').style.color = "#f00";
+            document.getElementById('start-btn').innerText = "REBOOT SYSTEM";
+            setTimeout(() => {
+                document.getElementById('start-btn').focus();
+                menuSelectionIndex = 0; // Reset for start menu
+            }, 100);
+        }, 2000);
+    }
 }
 
 function mainLoop() {
@@ -21881,7 +22043,7 @@ function triggerFinalBattle() {
     console.log('[FINAL BATTLE] 30 minutes reached. Teleporting to warp level.');
     showOverlayMessage("TIME LIMIT REACHED - PREPARE FOR FINAL BATTLE", '#f00', 5000, 5);
     playSound('warp_scream');
-    
+
     // Teleport to warp level after a short delay
     setTimeout(() => {
         if (!gameActive || !player || player.dead) return;
@@ -21951,7 +22113,7 @@ function gameLoopLogic(opts = null) {
                 if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
                 if (elapsed < 0) elapsed = 0;
                 tEl.innerText = formatTime(elapsed);
-                
+
                 // Final battle teleport at 30 minutes (GAME_DURATION_MS)
                 if (!gameEnded && elapsed >= GAME_DURATION_MS && !warpActive && !bossActive && !sectorTransitionActive) {
                     triggerFinalBattle();
@@ -22395,16 +22557,26 @@ function gameLoopLogic(opts = null) {
 
     const alpha = (opts && opts.alpha !== undefined) ? opts.alpha : 1.0;
     renderAlpha = alpha; // Set global for entity draw methods
-    const renderPos = player.getRenderPos(alpha);
+
+    // Update multiplayer cameras
+    updateMultiplayerCameras(players, width, height, zoom);
+
+    // Backward compatibility: use player 0's camera for rendering
     let camX, camY;
     const arenaLockActive = !!(bossArena && bossArena.active && !(boss && (boss.isCruiser || boss.isFlagship || boss.isWarpBoss || boss.type === 'flagship' || boss.isCaveBoss)));
+
     if (arenaLockActive) {
         camX = bossArena.x - width / (2 * zoom);
         camY = bossArena.y - height / (2 * zoom);
-    } else {
+    } else if (players[0]) {
+        const renderPos = players[0].getRenderPos(alpha);
         camX = renderPos.x - width / (2 * zoom);
         camY = renderPos.y - height / (2 * zoom);
+    } else {
+        camX = 0;
+        camY = 0;
     }
+
     if (shakeTimer > 0) {
         if (doUpdate) {
             shakeTimer -= deltaTime / 16.67;
@@ -22423,8 +22595,29 @@ function gameLoopLogic(opts = null) {
     if (isNaN(camY)) camY = 0;
 
     // Update view bounds for frustum culling (used throughout this frame)
+    // In split-screen, each viewport is half the screen width
+    const viewportW = (multiplayerMode === 'split' && players[1]) ? (width / 2) / zoom : width / zoom;
     const viewW = width / zoom;
     const viewH = height / zoom;
+
+    // Update per-player view bounds
+    const margin = 200;
+    const halfViewW = viewW / 2;
+    const halfViewH = viewH / 2;
+
+    // Player 1 view bounds (left viewport)
+    viewBoundsP1.left = cameras.p1.x - margin;
+    viewBoundsP1.right = cameras.p1.x + viewportW + margin;
+    viewBoundsP1.top = cameras.p1.y - margin;
+    viewBoundsP1.bottom = cameras.p1.y + viewH + margin;
+
+    // Player 2 view bounds (right viewport)
+    viewBoundsP2.left = cameras.p2.x - margin;
+    viewBoundsP2.right = cameras.p2.x + viewportW + margin;
+    viewBoundsP2.top = cameras.p2.y - margin;
+    viewBoundsP2.bottom = cameras.p2.y + viewH + margin;
+
+    // Global view bounds (for backward compatibility)
     updateViewBounds(camX + viewW / 2, camY + viewH / 2, viewW, viewH);
 
     if (doDraw) {
@@ -22483,12 +22676,6 @@ function gameLoopLogic(opts = null) {
         // }
     }
 
-    if (doDraw) {
-        ctx.save();
-        ctx.scale(zoom, zoom);
-        ctx.translate(-camX, -camY);
-    }
-
     // Hoisted resource objects to prevent GC
     if (!window.cachedPickupRes) window.cachedPickupRes = { layer: null, textures: null, pool: null };
     window.cachedPickupRes.layer = pixiPickupLayer; window.cachedPickupRes.textures = pixiTextures; window.cachedPickupRes.pool = pixiPickupSpritePool;
@@ -22505,1116 +22692,1159 @@ function gameLoopLogic(opts = null) {
     const particleRes = window.cachedParticleRes;
 
     const caveActive = (caveMode && caveLevel && caveLevel.active);
-    // Use local refs in case update() clears the global (prevents null deref on draw()).
-    const wz = warpZone;
-    if (wz && wz.active) { if (doUpdate) wz.update(deltaTime); if (doDraw) wz.draw(ctx); }
-    const wg = warpGate;
-    if (wg && !wg.dead) { if (doUpdate) wg.update(deltaTime); if (doDraw) wg.draw(ctx); }
-    if (caveActive) { if (doUpdate) caveLevel.update(deltaTime); }
 
-    // Cave: full-screen grid background (no stars). 
-    if (doDraw && caveActive) {
-        // Pixi: cached tiling grid; Canvas fallback only if Pixi is unavailable.
-        // Disabled grid background for cave mode to match Level 1 style
-        /*
-        if (!(pixiCaveGridSprite && pixiApp && pixiApp.renderer)) {
-            caveLevel.drawGridBackground(ctx, camX, camY, width, height, zoom);
-        }
-        */
-        caveLevel.drawFireWall(ctx, camX, camY, width, height, zoom);
-    }
+    // Split-screen rendering: run entity rendering loop twice (once per viewport)
+    const renderPasses = (doDraw && multiplayerMode === 'split' && players[1]) ? 2 : 1;
 
-    if (doUpdate) globalProfiler.end('LevelLogic');
-    // Asteroids should render behind everything else (drops, ships, UI).
-    globalProfiler.start('Entities');
-    environmentAsteroids.forEach(a => { if (doUpdate) a.update(deltaTime); if (doDraw) a.draw(ctx); });
-
-    coins.forEach(c => {
-        if (doUpdate) c.update(player, deltaTime);
+    for (let pass = 0; pass < renderPasses; pass++) {
+        // Update camera for current pass
         if (doDraw) {
-            if (isInView(c.pos.x, c.pos.y, 50)) c.draw(ctx, pickupRes);
-            else if (typeof c.cull === 'function') c.cull();
-        }
-    });
-    nuggets.forEach(n => {
-        if (doUpdate) n.update(player, deltaTime);
-        if (doDraw) {
-            if (isInView(n.pos.x, n.pos.y, 50)) n.draw(ctx, pickupRes);
-            else if (typeof n.cull === 'function') n.cull();
-        }
-    });
-    powerups.forEach(p => {
-        if (doUpdate) p.update(player, deltaTime);
-        if (doDraw) {
-            if (isInView(p.pos.x, p.pos.y, 60)) p.draw(ctx, pickupRes);
-            else if (typeof p.cull === 'function') p.cull();
-        }
-    });
-    shootingStars.forEach(s => { if (doUpdate) s.update(deltaTime); if (doDraw) s.draw(ctx); });
-    caches.forEach(c => { if (doUpdate) c.update(deltaTime); if (doDraw) c.draw(ctx, pickupRes); });
-    pois.forEach(p => { if (doUpdate) p.update(deltaTime); if (doDraw) p.draw(ctx); });
-    if (radiationStorm && !radiationStorm.dead) { if (doUpdate) radiationStorm.update(deltaTime); if (doDraw) radiationStorm.draw(ctx); }
-    if (miniEvent && !miniEvent.dead) { if (doUpdate) miniEvent.update(deltaTime); if (doDraw) miniEvent.draw(ctx); }
-    contractEntities.beacons.forEach(b => { if (doUpdate) b.update(deltaTime); if (doDraw) b.draw(ctx); });
-    contractEntities.gates.forEach(g => { if (doUpdate) g.update(deltaTime); if (doDraw) g.draw(ctx); });
-    contractEntities.anomalies.forEach(a => { if (doUpdate) a.update(deltaTime); if (doDraw) a.draw(ctx); });
-    contractEntities.fortresses.forEach(f => { if (doUpdate) f.update(deltaTime); if (doDraw) f.draw(ctx); });
-    contractEntities.wallTurrets.forEach(t => { if (doUpdate) t.update(deltaTime); if (doDraw) t.draw(ctx); });
+            if (multiplayerMode === 'split' && players[1]) {
+                updateMultiplayerCameras(players, width, height, zoom);
 
-    // Monster shield drones (from CaveMonster3)
-    if (window.monsterDrones && window.monsterDrones.length > 0) {
-        for (let i = window.monsterDrones.length - 1; i >= 0; i--) {
-            const drone = window.monsterDrones[i];
-            if (!drone || drone.dead) {
-                window.monsterDrones.splice(i, 1);
-                continue;
-            }
-            if (doUpdate) drone.update(deltaTime);
-            if (doDraw) drone.draw(ctx);
-        }
-    }
+                // Set camera based on pass
+                const currentCam = (pass === 0) ? cameras.p1 : cameras.p2;
+                const currentView = (pass === 0) ? splitScreenViewports.left : splitScreenViewports.right;
 
-    // NOTE: we intentionally do not clip in cave mode; walls indicate the bounds. 
+                // Update global camX/camY for this pass
+                camX = currentCam.x;
+                camY = currentCam.y;
 
-    if (doDraw && bossArena.active) {
-        ctx.save();
-        ctx.translate(bossArena.x, bossArena.y);
-        const pulse = 0.5 + Math.sin(now * 0.005) * 0.2;
-        if (bossArena.growing) ctx.strokeStyle = `rgba(0, 255, 255, ${pulse})`;
-        else ctx.strokeStyle = `rgba(255, 0, 0, ${pulse})`;
-
-        ctx.lineWidth = 10;
-        ctx.shadowBlur = 20;
-        // ctx.shadowColor = bossArena.growing ? '#0ff' : '#f00';
-        ctx.beginPath();
-        ctx.arc(0, 0, bossArena.radius, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.globalAlpha = 0.1;
-        // ctx.fillStyle = bossArena.growing ? '#055' : '#500';
-        // ctx.fill();
-        ctx.restore();
-    }
-
-    if (doUpdate) player.update(deltaTime);
-    if (doDraw) {
-        player.drawLaser(ctx);
-        const alpha = (opts && opts.alpha !== undefined) ? opts.alpha : 1.0;
-        player.draw(ctx, alpha);
-    }
-
-    // FloatingTexts - always update, cull drawing by view
-    for (let i = 0, len = floatingTexts.length; i < len; i++) {
-        const t = floatingTexts[i];
-        if (doUpdate) t.update(deltaTime);
-        if (doDraw && isInView(t.pos.x, t.pos.y)) t.draw(ctx, alpha);
-    }
-
-    // Drones - always close to player, no culling needed
-    for (let i = 0, len = drones.length; i < len; i++) {
-        const d = drones[i];
-        if (doUpdate) d.update(deltaTime);
-        if (doDraw) d.draw(ctx);
-    }
-
-    // Pinwheels - always update (can fire), cull drawing
-    for (let i = 0, len = pinwheels.length; i < len; i++) {
-        const b = pinwheels[i];
-        if (doUpdate) b.update(deltaTime);
-        if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
-    }
-
-    // Enemies - always update (AI), cull drawing
-    for (let i = 0, len = enemies.length; i < len; i++) {
-        const e = enemies[i];
-        if (doUpdate) e.update(deltaTime);
-        if (doDraw && isInView(e.pos.x, e.pos.y)) e.draw(ctx);
-    }
-
-    if (bossActive && boss) {
-        if (doUpdate) boss.update(deltaTime);
-        if (boss.isWarpBoss) {
-            bossArena.x = boss.pos.x;
-            bossArena.y = boss.pos.y;
-            bossArena.radius = 4000;
-            bossArena.active = true;
-            bossArena.growing = false;
-        }
-        if (doDraw) boss.draw(ctx);
-    }
-
-    if (spaceStation) {
-        if (doUpdate) spaceStation.update(deltaTime);
-        if (doDraw) spaceStation.draw(ctx);
-
-        // Update Station Health Bar (only update display when state changes)
-        if (!stationHealthBarVisible) {
-            const sContainer = document.getElementById('station-health-container');
-            if (sContainer) {
-                sContainer.style.display = 'flex';
-                stationHealthBarVisible = true;
-            }
-        }
-        const sFill = document.getElementById('station-health-fill');
-        if (doDraw && sFill) {
-            const pct = Math.max(0, (spaceStation.hp / spaceStation.maxHp) * 100);
-            sFill.style.width = `${pct}%`;
-        }
-    } else {
-        // Always hide the HP bar when spaceStation is null, regardless of flag state
-        const sContainer = document.getElementById('station-health-container');
-        if (sContainer) {
-            sContainer.style.display = 'none';
-        }
-        stationHealthBarVisible = false;
-    }
-
-    // Destroyer update and draw
-    if (destroyer) {
-        if (doUpdate) destroyer.update(deltaTime);
-        if (doDraw && isInViewRadius(destroyer.pos.x, destroyer.pos.y, destroyer.visualRadius)) destroyer.draw(ctx);
-    }
-
-    // Bullets - always update (movement), cull drawing
-    for (let i = 0, len = bullets.length; i < len; i++) {
-        const b = bullets[i];
-        if (doUpdate) b.update(deltaTime);
-        if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
-    }
-
-    // Boss bombs - always update, cull drawing
-    for (let i = 0, len = bossBombs.length; i < len; i++) {
-        const b = bossBombs[i];
-        if (doUpdate) b.update(deltaTime);
-        if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
-    }
-
-    // Warp bio-pods - always update, cull drawing
-    for (let i = 0, len = warpBioPods.length; i < len; i++) {
-        const p = warpBioPods[i];
-        if (doUpdate) p.update(deltaTime);
-        if (doDraw && isInView(p.pos.x, p.pos.y)) p.draw(ctx);
-    }
-
-    // Guided missiles - always update (tracking), cull drawing
-    for (let i = 0, len = guidedMissiles.length; i < len; i++) {
-        const m = guidedMissiles[i];
-        if (doUpdate) m.update(deltaTime);
-        if (doDraw && isInView(m.pos.x, m.pos.y)) m.draw(ctx);
-    }
-
-    // Napalm zones - persistent damage zones (always update, cull drawing)
-    for (let i = napalmZones.length - 1; i >= 0; i--) {
-        const z = napalmZones[i];
-        if (doUpdate) z.update(deltaTime);
-        if (doDraw && isInView(z.pos.x, z.pos.y, z.radius + 50)) z.draw(ctx);
-        if (z.dead) {
-            napalmZones.splice(i, 1);
-        }
-    }
-
-    // Particles - always update, cull drawing (high volume)
-    // Particles - always update, cull drawing (high volume)
-    for (let i = 0, len = particles.length; i < len; i++) {
-        const p = particles[i];
-        try {
-            if (doUpdate) p.update(deltaTime);
-            if (doDraw) {
-                if (isInView(p.pos.x, p.pos.y, 20)) p.draw(ctx, particleRes, alpha);
-                else if (typeof p.cull === 'function') p.cull();
-            }
-        } catch (e) {
-            // Particles are cheap, just kill on error
-            p.life = 0;
-        }
-    }
-
-    // Lightning Arcs - always update, cull drawing
-    for (let i = 0, len = lightningArcs.length; i < len; i++) {
-        const arc = lightningArcs[i];
-        try {
-            if (doUpdate) arc.update(deltaTime);
-            if (doDraw) {
-                // Lightning arcs are always visible even if slightly off-screen
-                // Use pixiVectorLayer for drawing
-                arc.draw(ctx, { vectorLayer: pixiVectorLayer }, alpha);
-            }
-            // Kill dead arcs and cleanup their graphics
-            if (arc.dead) {
-                if (typeof arc.kill === 'function') arc.kill();
-            }
-        } catch (e) {
-            console.error('[LIGHTNING ARC ERROR]', e);
-            arc.dead = true;
-            if (typeof arc.kill === 'function') arc.kill();
-        }
-    }
-
-    // Staggered bomb explosions - process queued explosions over multiple frames
-    // This prevents sprite pool exhaustion and frame spikes when boss dies
-    if (doUpdate) {
-        processStaggeredBombExplosions();
-        processStaggeredParticleBursts();
-        processLightningEffects();
-    }
-
-    // Explosions - always update, cull drawing
-    // Explosions are always updated and cleaned up even if off-screen
-    for (let i = 0, len = explosions.length; i < len; i++) {
-        const ex = explosions[i];
-        try {
-            if (doUpdate) ex.update();
-            if (doDraw && isInView(ex.pos.x, ex.pos.y)) {
-                ex.draw(ctx, particleRes, alpha);
-            }
-            // Always cleanup dead explosions to release sprites back to pool
-            // This fixes a bug where sprites accumulated when explosions died while in view
-            if (ex.dead && !ex.cleaned && particleRes && particleRes.pool) {
-                ex.cleanup(particleRes);
-            }
-        } catch (e) {
-            console.error('[EXPLOSION ERROR]', e);
-            ex.dead = true;
-            if (typeof ex.cleanup === 'function') ex.cleanup(particleRes);
-            else if (typeof pixiCleanupObject === 'function') pixiCleanupObject(ex);
-        }
-    }
-
-    for (let i = 0; i < warpParticles.length; i++) {
-        const p = warpParticles[i];
-        if (doUpdate) p.update();
-        if (doDraw) p.draw(ctx, null, alpha);
-    }
-    if (doUpdate) compactArray(warpParticles);
-
-    for (let i = 0; i < shockwaves.length; i++) {
-        const s = shockwaves[i];
-        try {
-            if (doUpdate) s.update();
-            if (doDraw) s.draw(ctx);
-        } catch (e) {
-            console.error('[SHOCKWAVE ERROR]', e);
-            s.dead = true; // Kill corrupted shockwave
-        }
-    }
-    if (doUpdate) compactArray(shockwaves);
-
-    globalProfiler.end('Entities');
-
-    // [MOVED] Pixi overlay render moved to end of Draw block
-
-
-    if (doUpdate) {
-        globalProfiler.start('Cleanup');
-
-        // Process staggered cleanup queue (spreads cleanup across frames)
-        globalStaggeredCleanup.process();
-
-        // Use immediate cleanup for critical arrays that need per-frame compacting
-        // Use staggered cleanup for large arrays that can wait
-        immediateCompactArray(bullets, (b) => {
-            if (b._poolType === 'bullet' && b.sprite && pixiBulletSpritePool) destroyBulletSprite(b);
-            else pixiCleanupObject(b);
-        });
-        immediateCompactArray(bossBombs);
-        immediateCompactArray(warpBioPods, pixiCleanupObject);
-        immediateCompactArray(guidedMissiles, (m) => {
-            if (m && m.dead && typeof m.explode === 'function' && !m._exploded) {
-                m.explode('#ff0');
-            }
-            pixiCleanupObject(m);
-        });
-        immediateCompactArray(enemies, pixiCleanupObject);
-        immediateCompactArray(pinwheels, pixiCleanupObject);
-        immediateCompactArray(environmentAsteroids, pixiCleanupObject);
-
-        // Explosion cleanup with safety check for uncleaned sprites
-        for (let i = explosions.length - 1; i >= 0; i--) {
-            const ex = explosions[i];
-            if (ex && ex.dead && !ex.cleaned && particleRes && particleRes.pool) {
-                // Force cleanup of dead explosions that weren't cleaned during draw
-                ex.cleanup(particleRes);
-            }
-        }
-        immediateCompactArray(explosions);
-
-        immediateCompactArray(floatingTexts);
-        immediateCompactArray(coins);
-
-        // Safety: Force cleanup of dead pickups that didn't clean themselves
-        for (let i = coins.length - 1; i >= 0; i--) {
-            const coin = coins[i];
-            if (coin && coin.dead && coin.sprite) {
-                coin.kill();
-            }
-        }
-
-        immediateCompactArray(nuggets);
-
-        // Safety: Force cleanup of dead nuggets that didn't clean themselves
-        for (let i = nuggets.length - 1; i >= 0; i--) {
-            const nugget = nuggets[i];
-            if (nugget && nugget.dead && nugget.sprite) {
-                nugget.kill();
-            }
-        }
-
-        immediateCompactArray(powerups);
-
-        // Safety: Force cleanup of dead pickups that didn't clean themselves
-        for (let i = powerups.length - 1; i >= 0; i--) {
-            const powerup = powerups[i];
-            if (powerup && powerup.dead && powerup.sprite) {
-                powerup.kill();
-            }
-        }
-
-        compactParticles(particles);
-        immediateCompactArray(lightningArcs, pixiCleanupObject);
-        immediateCompactArray(shootingStars, pixiCleanupObject);
-        immediateCompactArray(drones);
-
-        // Safety: Force cleanup of dead caches that didn't clean themselves
-        for (let i = caches.length - 1; i >= 0; i--) {
-            const cache = caches[i];
-            if (cache && cache.dead && cache.sprite) {
-                if (typeof cache.kill === 'function') cache.kill();
-            }
-        }
-        immediateCompactArray(caches);
-        immediateCompactArray(pois, (poi) => { if (typeof poi.kill === 'function') poi.kill(); });
-        immediateCompactArray(contractEntities.beacons);
-        immediateCompactArray(contractEntities.gates);
-        immediateCompactArray(contractEntities.anomalies);
-        immediateCompactArray(contractEntities.fortresses);
-        immediateCompactArray(contractEntities.wallTurrets);
-
-        globalProfiler.end('Cleanup');
-
-        globalProfiler.start('EntityCollision');
-        resolveEntityCollision();
-        globalProfiler.end('EntityCollision');
-
-        // Bullet Logic Loop
-        globalProfiler.start('BulletLogic');
-        setProjectileImpactSoundContext(true);
-        try {
-            for (let i = bullets.length - 1; i >= 0; i--) {
-                const b = bullets[i];
-                let hit = false;
-                const astCol = checkBulletWallCollision(b);
-                if (astCol) {
-                    hit = true;
-                    b.dead = true;
-                    if (astCol.obj) {
-                        astCol.obj.break();
-                        spawnParticles(b.pos.x, b.pos.y, 8, '#aa8');
-                        playSound('hit');
-                    } else {
-                        // Warp/anomaly line walls: bullets just fizzle.
-                        const wallColor = (astCol.kind === 'anomaly_wall') ? '#0f0' : (astCol.kind === 'cave_wall' ? '#88f' : '#0ff');
-                        spawnParticles(b.pos.x, b.pos.y, 6, wallColor);
-                        playSound('hit');
-                    }
+                // Update Pixi world position
+                if (pixiWorldRoot) {
+                    const px = -camX * zoom;
+                    const py = -camY * zoom;
+                    pixiWorldRoot.position.set(Math.round(px), Math.round(py));
                 }
 
-                if (!hit) {
-                    if (b.isEnemy) {
-                        if (!player.dead && player.invulnerable <= 0) {
-                            const dx = b.pos.x - player.pos.x;
-                            const dy = b.pos.y - player.pos.y;
-                            const distSq = dx * dx + dy * dy;
-                            const dist = Math.sqrt(distSq); // Only calc sqrt if needed for specific range checks, but kept here for logic flow
+                // Update Pixi background
+                if (pixiScreenRoot && pixiStarLayer) {
+                    updatePixiBackground(camX, camY);
+                }
 
-                            if (!hit && player.outerShieldSegments && player.outerShieldSegments.some(s => s > 0) &&
-                                dist < player.outerShieldRadius + b.radius * 1.5 && dist > player.outerShieldRadius - b.radius * 2) {
-                                let angle = Math.atan2(b.pos.y - player.pos.y, b.pos.x - player.pos.x) - player.outerShieldRotation;
-                                while (angle < 0) angle += Math.PI * 2;
-                                const count = player.outerShieldSegments.length;
-                                const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                                if (player.outerShieldSegments[segIndex] > 0) {
-                                    const segmentHp = player.outerShieldSegments[segIndex];
-                                    if (b.damage > segmentHp) {
-                                        // Penetrate: bullet breaks through with reduced damage
-                                        player.outerShieldSegments[segIndex] = 0;
-                                        player.shieldsDirty = true;
-                                        b.damage -= segmentHp;
-                                    } else {
-                                        // Full absorb: shield stops bullet
-                                        player.outerShieldSegments[segIndex] -= b.damage;
-                                        player.shieldsDirty = true;
+                // Setup viewport clipping for this pass
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(currentView.x, currentView.y, currentView.width, currentView.height);
+                ctx.clip();
+                ctx.fillStyle = '#000';
+                ctx.fillRect(currentView.x, currentView.y, currentView.width, currentView.height);
+                ctx.scale(zoom, zoom);
+                ctx.translate(-camX, -camY);
+            } else {
+                // Single-player camera setup
+                ctx.save();
+                ctx.scale(zoom, zoom);
+                ctx.translate(-camX, -camY);
+            }
+        }
+
+        // ============== ENTITY RENDERING (runs once per render pass) ==============
+        // Use local refs in case update() clears the global (prevents null deref on draw()).
+        const wz = warpZone;
+        if (wz && wz.active) { if (doUpdate) wz.update(deltaTime); if (doDraw) wz.draw(ctx); }
+        const wg = warpGate;
+        if (wg && !wg.dead) { if (doUpdate) wg.update(deltaTime); if (doDraw) wg.draw(ctx); }
+        if (caveActive) { if (doUpdate) caveLevel.update(deltaTime); }
+
+        // Cave: full-screen grid background (no stars). 
+        if (doDraw && caveActive) {
+            // Pixi: cached tiling grid; Canvas fallback only if Pixi is unavailable.
+            // Disabled grid background for cave mode to match Level 1 style
+            /*
+            if (!(pixiCaveGridSprite && pixiApp && pixiApp.renderer)) {
+                caveLevel.drawGridBackground(ctx, camX, camY, width, height, zoom);
+            }
+            */
+            caveLevel.drawFireWall(ctx, camX, camY, width, height, zoom);
+        }
+
+        if (doUpdate) globalProfiler.end('LevelLogic');
+        // Asteroids should render behind everything else (drops, ships, UI).
+        globalProfiler.start('Entities');
+        environmentAsteroids.forEach(a => { if (doUpdate) a.update(deltaTime); if (doDraw) a.draw(ctx); });
+
+        currentPlayerIndex = 0;
+        if (doUpdate) player.update(deltaTime);
+        if (doDraw) {
+            player.drawLaser(ctx);
+            const alpha = (opts && opts.alpha !== undefined) ? opts.alpha : 1.0;
+            player.draw(ctx, alpha);
+        }
+
+        // Update and draw Player 2 in split-screen mode
+        if (multiplayerMode === 'split' && players[1]) {
+            const p2 = players[1];
+            currentPlayerIndex = 1;
+            if (doUpdate) p2.update(deltaTime);
+            if (doDraw) {
+                p2.drawLaser(ctx);
+                const alpha = (opts && opts.alpha !== undefined) ? opts.alpha : 1.0;
+                p2.draw(ctx, alpha);
+            }
+            currentPlayerIndex = 0; // Reset to P1
+        }
+
+        // FloatingTexts - always update, cull drawing by view
+        for (let i = 0, len = floatingTexts.length; i < len; i++) {
+            const t = floatingTexts[i];
+            if (doUpdate) t.update(deltaTime);
+            if (doDraw && isInView(t.pos.x, t.pos.y)) t.draw(ctx, alpha);
+        }
+
+        // Drones - always close to player, no culling needed
+        for (let i = 0, len = drones.length; i < len; i++) {
+            const d = drones[i];
+            if (doUpdate) d.update(deltaTime);
+            if (doDraw) d.draw(ctx);
+        }
+
+        // Pinwheels - always update (can fire), cull drawing
+        for (let i = 0, len = pinwheels.length; i < len; i++) {
+            const b = pinwheels[i];
+            if (doUpdate) b.update(deltaTime);
+            if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
+        }
+
+        // Enemies - always update (AI), cull drawing
+        for (let i = 0, len = enemies.length; i < len; i++) {
+            const e = enemies[i];
+            if (doUpdate) e.update(deltaTime);
+            if (doDraw) {
+                if (multiplayerMode === 'split') {
+                    if (isInAnyViewRadius(e.pos.x, e.pos.y, e.radius, viewBoundsP1, viewBoundsP2)) e.draw(ctx);
+                } else {
+                    if (isInView(e.pos.x, e.pos.y)) e.draw(ctx);
+                }
+            }
+        }
+
+        if (bossActive && boss) {
+            if (doUpdate) boss.update(deltaTime);
+            if (boss.isWarpBoss) {
+                bossArena.x = boss.pos.x;
+                bossArena.y = boss.pos.y;
+                bossArena.radius = 4000;
+                bossArena.active = true;
+                bossArena.growing = false;
+            }
+            if (doDraw) boss.draw(ctx);
+        }
+
+        if (spaceStation) {
+            if (doUpdate) spaceStation.update(deltaTime);
+            if (doDraw) spaceStation.draw(ctx);
+
+            // Update Station Health Bar (only update display when state changes)
+            if (!stationHealthBarVisible) {
+                const sContainer = document.getElementById('station-health-container');
+                if (sContainer) {
+                    sContainer.style.display = 'flex';
+                    stationHealthBarVisible = true;
+                }
+            }
+            const sFill = document.getElementById('station-health-fill');
+            if (doDraw && sFill) {
+                const pct = Math.max(0, (spaceStation.hp / spaceStation.maxHp) * 100);
+                sFill.style.width = `${pct}%`;
+            }
+        } else {
+            // Always hide the HP bar when spaceStation is null, regardless of flag state
+            const sContainer = document.getElementById('station-health-container');
+            if (sContainer) {
+                sContainer.style.display = 'none';
+            }
+            stationHealthBarVisible = false;
+        }
+
+        // Destroyer update and draw
+        if (destroyer) {
+            if (doUpdate) destroyer.update(deltaTime);
+            if (doDraw && isInViewRadius(destroyer.pos.x, destroyer.pos.y, destroyer.visualRadius)) destroyer.draw(ctx);
+        }
+
+        // Bullets - always update (movement), cull drawing
+        for (let i = 0, len = bullets.length; i < len; i++) {
+            const b = bullets[i];
+            if (doUpdate) b.update(deltaTime);
+            if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
+        }
+
+        // Boss bombs - always update, cull drawing
+        for (let i = 0, len = bossBombs.length; i < len; i++) {
+            const b = bossBombs[i];
+            if (doUpdate) b.update(deltaTime);
+            if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
+        }
+
+        // Warp bio-pods - always update, cull drawing
+        for (let i = 0, len = warpBioPods.length; i < len; i++) {
+            const p = warpBioPods[i];
+            if (doUpdate) p.update(deltaTime);
+            if (doDraw && isInView(p.pos.x, p.pos.y)) p.draw(ctx);
+        }
+
+        // Guided missiles - always update (tracking), cull drawing
+        for (let i = 0, len = guidedMissiles.length; i < len; i++) {
+            const m = guidedMissiles[i];
+            if (doUpdate) m.update(deltaTime);
+            if (doDraw && isInView(m.pos.x, m.pos.y)) m.draw(ctx);
+        }
+
+        // Napalm zones - persistent damage zones (always update, cull drawing)
+        for (let i = napalmZones.length - 1; i >= 0; i--) {
+            const z = napalmZones[i];
+            if (doUpdate) z.update(deltaTime);
+            if (doDraw && isInView(z.pos.x, z.pos.y, z.radius + 50)) z.draw(ctx);
+            if (z.dead) {
+                napalmZones.splice(i, 1);
+            }
+        }
+
+        // Particles - always update, cull drawing (high volume)
+        // Particles - always update, cull drawing (high volume)
+        for (let i = 0, len = particles.length; i < len; i++) {
+            const p = particles[i];
+            try {
+                if (doUpdate) p.update(deltaTime);
+                if (doDraw) {
+                    if (isInView(p.pos.x, p.pos.y, 20)) p.draw(ctx, particleRes, alpha);
+                    else if (typeof p.cull === 'function') p.cull();
+                }
+            } catch (e) {
+                // Particles are cheap, just kill on error
+                p.life = 0;
+            }
+        }
+
+        // Lightning Arcs - always update, cull drawing
+        for (let i = 0, len = lightningArcs.length; i < len; i++) {
+            const arc = lightningArcs[i];
+            try {
+                if (doUpdate) arc.update(deltaTime);
+                if (doDraw) {
+                    // Lightning arcs are always visible even if slightly off-screen
+                    // Use pixiVectorLayer for drawing
+                    arc.draw(ctx, { vectorLayer: pixiVectorLayer }, alpha);
+                }
+                // Kill dead arcs and cleanup their graphics
+                if (arc.dead) {
+                    if (typeof arc.kill === 'function') arc.kill();
+                }
+            } catch (e) {
+                console.error('[LIGHTNING ARC ERROR]', e);
+                arc.dead = true;
+                if (typeof arc.kill === 'function') arc.kill();
+            }
+        }
+
+        // Staggered bomb explosions - process queued explosions over multiple frames
+        // This prevents sprite pool exhaustion and frame spikes when boss dies
+        if (doUpdate) {
+            processStaggeredBombExplosions();
+            processStaggeredParticleBursts();
+            processLightningEffects();
+        }
+
+        // Explosions - always update, cull drawing
+        // Explosions are always updated and cleaned up even if off-screen
+        for (let i = 0, len = explosions.length; i < len; i++) {
+            const ex = explosions[i];
+            try {
+                if (doUpdate) ex.update();
+                if (doDraw && isInView(ex.pos.x, ex.pos.y)) {
+                    ex.draw(ctx, particleRes, alpha);
+                }
+                // Always cleanup dead explosions to release sprites back to pool
+                // This fixes a bug where sprites accumulated when explosions died while in view
+                if (ex.dead && !ex.cleaned && particleRes && particleRes.pool) {
+                    ex.cleanup(particleRes);
+                }
+            } catch (e) {
+                console.error('[EXPLOSION ERROR]', e);
+                ex.dead = true;
+                if (typeof ex.cleanup === 'function') ex.cleanup(particleRes);
+                else if (typeof pixiCleanupObject === 'function') pixiCleanupObject(ex);
+            }
+        }
+
+        for (let i = 0; i < warpParticles.length; i++) {
+            const p = warpParticles[i];
+            if (doUpdate) p.update();
+            if (doDraw) p.draw(ctx, null, alpha);
+        }
+        if (doUpdate) compactArray(warpParticles);
+
+        for (let i = 0; i < shockwaves.length; i++) {
+            const s = shockwaves[i];
+            try {
+                if (doUpdate) s.update();
+                if (doDraw) s.draw(ctx);
+            } catch (e) {
+                console.error('[SHOCKWAVE ERROR]', e);
+                s.dead = true; // Kill corrupted shockwave
+            }
+        }
+        if (doUpdate) compactArray(shockwaves);
+
+        globalProfiler.end('Entities');
+
+        // [MOVED] Pixi overlay render moved to end of Draw block
+
+
+        if (doUpdate) {
+            globalProfiler.start('Cleanup');
+
+            // Process staggered cleanup queue (spreads cleanup across frames)
+            globalStaggeredCleanup.process();
+
+            // Use immediate cleanup for critical arrays that need per-frame compacting
+            // Use staggered cleanup for large arrays that can wait
+            immediateCompactArray(bullets, (b) => {
+                if (b._poolType === 'bullet' && b.sprite && pixiBulletSpritePool) destroyBulletSprite(b);
+                else pixiCleanupObject(b);
+            });
+            immediateCompactArray(bossBombs);
+            immediateCompactArray(warpBioPods, pixiCleanupObject);
+            immediateCompactArray(guidedMissiles, (m) => {
+                if (m && m.dead && typeof m.explode === 'function' && !m._exploded) {
+                    m.explode('#ff0');
+                }
+                pixiCleanupObject(m);
+            });
+            immediateCompactArray(enemies, pixiCleanupObject);
+            immediateCompactArray(pinwheels, pixiCleanupObject);
+            immediateCompactArray(environmentAsteroids, pixiCleanupObject);
+
+            // Explosion cleanup with safety check for uncleaned sprites
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                const ex = explosions[i];
+                if (ex && ex.dead && !ex.cleaned && particleRes && particleRes.pool) {
+                    // Force cleanup of dead explosions that weren't cleaned during draw
+                    ex.cleanup(particleRes);
+                }
+            }
+            immediateCompactArray(explosions);
+
+            immediateCompactArray(floatingTexts);
+            immediateCompactArray(coins);
+
+            // Safety: Force cleanup of dead pickups that didn't clean themselves
+            for (let i = coins.length - 1; i >= 0; i--) {
+                const coin = coins[i];
+                if (coin && coin.dead && coin.sprite) {
+                    coin.kill();
+                }
+            }
+
+            immediateCompactArray(nuggets);
+
+            // Safety: Force cleanup of dead nuggets that didn't clean themselves
+            for (let i = nuggets.length - 1; i >= 0; i--) {
+                const nugget = nuggets[i];
+                if (nugget && nugget.dead && nugget.sprite) {
+                    nugget.kill();
+                }
+            }
+
+            immediateCompactArray(powerups);
+
+            // Safety: Force cleanup of dead pickups that didn't clean themselves
+            for (let i = powerups.length - 1; i >= 0; i--) {
+                const powerup = powerups[i];
+                if (powerup && powerup.dead && powerup.sprite) {
+                    powerup.kill();
+                }
+            }
+
+            compactParticles(particles);
+            immediateCompactArray(lightningArcs, pixiCleanupObject);
+            immediateCompactArray(shootingStars, pixiCleanupObject);
+            immediateCompactArray(drones);
+
+            // Safety: Force cleanup of dead caches that didn't clean themselves
+            for (let i = caches.length - 1; i >= 0; i--) {
+                const cache = caches[i];
+                if (cache && cache.dead && cache.sprite) {
+                    if (typeof cache.kill === 'function') cache.kill();
+                }
+            }
+            immediateCompactArray(caches);
+            immediateCompactArray(pois, (poi) => { if (typeof poi.kill === 'function') poi.kill(); });
+            immediateCompactArray(contractEntities.beacons);
+            immediateCompactArray(contractEntities.gates);
+            immediateCompactArray(contractEntities.anomalies);
+            immediateCompactArray(contractEntities.fortresses);
+            immediateCompactArray(contractEntities.wallTurrets);
+
+            globalProfiler.end('Cleanup');
+
+            globalProfiler.start('EntityCollision');
+            resolveEntityCollision();
+            globalProfiler.end('EntityCollision');
+
+            // Bullet Logic Loop
+            globalProfiler.start('BulletLogic');
+            setProjectileImpactSoundContext(true);
+            try {
+                for (let i = bullets.length - 1; i >= 0; i--) {
+                    const b = bullets[i];
+                    let hit = false;
+                    const astCol = checkBulletWallCollision(b);
+                    if (astCol) {
+                        hit = true;
+                        b.dead = true;
+                        if (astCol.obj) {
+                            astCol.obj.break();
+                            spawnParticles(b.pos.x, b.pos.y, 8, '#aa8');
+                            playSound('hit');
+                        } else {
+                            // Warp/anomaly line walls: bullets just fizzle.
+                            const wallColor = (astCol.kind === 'anomaly_wall') ? '#0f0' : (astCol.kind === 'cave_wall' ? '#88f' : '#0ff');
+                            spawnParticles(b.pos.x, b.pos.y, 6, wallColor);
+                            playSound('hit');
+                        }
+                    }
+
+                    if (!hit) {
+                        if (b.isEnemy) {
+                            if (!player.dead && player.invulnerable <= 0) {
+                                const dx = b.pos.x - player.pos.x;
+                                const dy = b.pos.y - player.pos.y;
+                                const distSq = dx * dx + dy * dy;
+                                const dist = Math.sqrt(distSq); // Only calc sqrt if needed for specific range checks, but kept here for logic flow
+
+                                if (!hit && player.outerShieldSegments && player.outerShieldSegments.some(s => s > 0) &&
+                                    dist < player.outerShieldRadius + b.radius * 1.5 && dist > player.outerShieldRadius - b.radius * 2) {
+                                    let angle = Math.atan2(b.pos.y - player.pos.y, b.pos.x - player.pos.x) - player.outerShieldRotation;
+                                    while (angle < 0) angle += Math.PI * 2;
+                                    const count = player.outerShieldSegments.length;
+                                    const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                                    if (player.outerShieldSegments[segIndex] > 0) {
+                                        const segmentHp = player.outerShieldSegments[segIndex];
+                                        if (b.damage > segmentHp) {
+                                            // Penetrate: bullet breaks through with reduced damage
+                                            player.outerShieldSegments[segIndex] = 0;
+                                            player.shieldsDirty = true;
+                                            b.damage -= segmentHp;
+                                        } else {
+                                            // Full absorb: shield stops bullet
+                                            player.outerShieldSegments[segIndex] -= b.damage;
+                                            player.shieldsDirty = true;
+                                            hit = true;
+                                            playSound('shield_hit');
+                                            spawnParticles(b.pos.x, b.pos.y, 7, '#b0f');
+                                        }
+                                    }
+                                }
+                                if (!hit && dist < player.shieldRadius + b.radius * 1.5 && dist > player.shieldRadius - b.radius * 2) {
+                                    let angle = Math.atan2(b.pos.y - player.pos.y, b.pos.x - player.pos.x) - player.shieldRotation;
+                                    while (angle < 0) angle += Math.PI * 2;
+                                    const count = player.shieldSegments.length;
+                                    const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                                    if (player.shieldSegments[segIndex] > 0) {
+                                        const segmentHp = player.shieldSegments[segIndex];
+                                        if (b.damage > segmentHp) {
+                                            // Penetrate: bullet breaks through with reduced damage
+                                            player.shieldSegments[segIndex] = 0;
+                                            player.shieldsDirty = true;
+                                            b.damage -= segmentHp;
+                                        } else {
+                                            // Full absorb: shield stops bullet
+                                            player.shieldSegments[segIndex] -= b.damage;
+                                            player.shieldsDirty = true;
+                                            hit = true;
+                                            playSound('shield_hit');
+                                            spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
+                                        }
+                                    }
+                                }
+                                const hitDist = player.radius * 1.5 + b.radius * 1.5;
+                                if (!hit && distSq < hitDist * hitDist) {
+                                    // Use directHitDamage if specified (for plasma mortar), otherwise use b.damage
+                                    const damage = b.directHitDamage !== undefined ? b.directHitDamage : b.damage;
+                                    player.takeHit(damage, true); // Use ignoreShields=true as they were checked above
+                                    hit = true;
+                                }
+                            }
+                        }
+                        else {
+                            for (let mi = 0, mlen = guidedMissiles.length; mi < mlen; mi++) {
+                                const m = guidedMissiles[mi];
+                                if (!m || m.dead) continue;
+                                const dx = b.pos.x - m.pos.x;
+                                const dy = b.pos.y - m.pos.y;
+                                const hitRad = (m.radius || 0) + (b.radius || 0);
+                                if (dx * dx + dy * dy < hitRad * hitRad) {
+                                    if (typeof m.takeHit === 'function') m.takeHit(b.damage);
+                                    else if (typeof m.explode === 'function') m.explode('#ff0');
+                                    else m.dead = true;
+                                    hit = true;
+                                    b.dead = true;
+                                    break;
+                                }
+                            }
+
+                            if (hit) continue;
+                            const nearby = targetGrid.query(b.pos.x, b.pos.y, 250);
+                            for (let e of nearby) {
+                                if (e.dead) continue;
+                                if (hit) break;
+
+                                // Shooting Star (Comet) Logic
+                                if (e instanceof ShootingStar) {
+                                    if (b.isEnemy) continue;
+                                    const dx = b.pos.x - e.pos.x;
+                                    const dy = b.pos.y - e.pos.y;
+                                    const distSq = dx * dx + dy * dy;
+                                    const hitRadius = e.radius + b.radius;
+                                    if (distSq < hitRadius * hitRadius) {
+                                        e.takeHit(b.damage);
                                         hit = true;
-                                        playSound('shield_hit');
-                                        spawnParticles(b.pos.x, b.pos.y, 7, '#b0f');
+                                        b.dead = true;
+                                        spawnParticles(b.pos.x, b.pos.y, 4, '#fff');
+                                        break;
+                                    }
+                                }
+                                // Enemy Logic
+                                if (e instanceof Enemy) {
+                                    // Skip boss entities - they have dedicated collision logic later
+                                    if (bossActive && boss && e === boss) continue;
+
+                                    const dx = b.pos.x - e.pos.x;
+                                    const dy = b.pos.y - e.pos.y;
+                                    const distSq = dx * dx + dy * dy;
+                                    const dist = Math.sqrt(distSq);
+
+                                    if (!b.ignoreShields && e.shieldSegments && e.shieldSegments.length > 0 && dist < e.shieldRadius + b.radius && dist > e.shieldRadius - 10) {
+                                        const activeIdx = e.shieldSegments.findIndex(s => s > 0);
+                                        if (activeIdx !== -1) {
+                                            const segmentHp = e.shieldSegments[activeIdx];
+                                            if (b.damage > segmentHp) {
+                                                // Penetrate: bullet breaks through with reduced damage
+                                                e.shieldSegments[activeIdx] = 0;
+                                                e.shieldsDirty = true;
+                                                b.damage -= segmentHp;
+                                            } else {
+                                                // Full absorb: shield stops bullet
+                                                e.shieldSegments[activeIdx] = 0;
+                                                e.shieldsDirty = true;
+                                                hit = true;
+                                                playSound('enemy_shield_hit');
+                                                spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
+                                            }
+                                        }
+                                    }
+                                    if (!hit && !b.ignoreShields && e.innerShieldSegments && e.innerShieldSegments.length > 0 && dist < e.innerShieldRadius + b.radius && dist > e.innerShieldRadius - 10) {
+                                        const activeIdx = e.innerShieldSegments.findIndex(s => s > 0);
+                                        if (activeIdx !== -1) {
+                                            const segmentHp = e.innerShieldSegments[activeIdx];
+                                            if (b.damage > segmentHp) {
+                                                // Penetrate: bullet breaks through with reduced damage
+                                                e.innerShieldSegments[activeIdx] = 0;
+                                                e.shieldsDirty = true;
+                                                b.damage -= segmentHp;
+                                            } else {
+                                                // Full absorb: shield stops bullet
+                                                e.innerShieldSegments[activeIdx] -= b.damage;
+                                                e.shieldsDirty = true;
+                                                hit = true;
+                                                playSound('enemy_shield_hit');
+                                                spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
+                                            }
+                                        }
+                                    }
+
+                                    const hitRadius = e.radius + b.radius;
+                                    if (!hit && distSq < hitRadius * hitRadius) {
+                                        e.hp -= b.damage;
+                                        hit = true;
+                                        playSound('hit');
+                                        spawnParticles(e.pos.x, e.pos.y, 3, '#fff');
+
+                                        // Chain Lightning: arc to nearby enemies
+                                        if (player.chainLightningCount && player.chainLightningCount > 0 && player.chainLightningRange && !b.isEnemy) {
+                                            let chainCount = player.chainLightningCount;
+                                            let chainSource = e;
+                                            let chainTargets = new Set();
+                                            chainTargets.add(e);
+
+                                            for (let chain = 0; chain < chainCount; chain++) {
+                                                let nearestTarget = null;
+                                                let nearestDist = player.chainLightningRange;
+
+                                                for (let other of nearby) {
+                                                    if (other.dead) continue;
+                                                    if (!(other instanceof Enemy) && !(other instanceof Pinwheel)) continue;
+                                                    if (other === boss) continue; // Skip boss
+                                                    if (chainTargets.has(other)) continue;
+
+                                                    const d = Math.hypot(other.pos.x - chainSource.pos.x, other.pos.y - chainSource.pos.y);
+                                                    if (d < nearestDist) {
+                                                        nearestDist = d;
+                                                        nearestTarget = other;
+                                                    }
+                                                }
+
+                                                if (nearestTarget) {
+                                                    // Deal chain damage (reduced with each hop)
+                                                    const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                                                    if (nearestTarget === destroyer) {
+                                                        const hpBefore = nearestTarget.hp;
+                                                        nearestTarget.hp -= chainDamage;
+                                                        console.log(`[DESTROYER DEBUG] CHAIN LIGHTNING: ${chainDamage.toFixed(1)} damage | HP: ${hpBefore} -> ${nearestTarget.hp} | Chain: ${chain + 1}`);
+                                                    } else {
+                                                        nearestTarget.hp -= chainDamage;
+                                                    }
+                                                    chainTargets.add(nearestTarget);
+
+                                                    // Visual lightning effect
+                                                    spawnLightningArc(chainSource.pos.x, chainSource.pos.y, nearestTarget.pos.x, nearestTarget.pos.y, '#0ff');
+                                                    spawnParticles(nearestTarget.pos.x, nearestTarget.pos.y, 3, '#0ff');
+                                                    playSound('hit');
+
+                                                    if (nearestTarget.hp <= 0) {
+                                                        nearestTarget.kill();
+                                                        score += 100;
+                                                    }
+
+                                                    chainSource = nearestTarget;
+                                                } else {
+                                                    break; // No more targets in range
+                                                }
+                                            }
+                                        }
+
+                                        if (e.hp <= 0) {
+                                            e.kill();
+                                            score += 100;
+                                        }
+                                        break;
+                                    }
+                                }
+                                // Wall Turret Logic (Contracts)
+                                else if (e instanceof WallTurret) {
+                                    const wtDx = b.pos.x - e.pos.x;
+                                    const wtDy = b.pos.y - e.pos.y;
+                                    const wtHitRad = e.radius + b.radius;
+                                    if (wtDx * wtDx + wtDy * wtDy < wtHitRad * wtHitRad) {
+                                        e.hp -= b.damage;
+                                        hit = true;
+                                        playSound('hit');
+                                        spawnParticles(b.pos.x, b.pos.y, 6, '#ff8');
+                                        if (e.hp <= 0) {
+                                            if (typeof e.kill === 'function') e.kill();
+                                            else e.dead = true;
+                                        }
+                                        break;
+                                    }
+                                }
+                                // Warp Turret Logic
+                                else if (e instanceof WarpTurret) {
+                                    const wpDx = b.pos.x - e.pos.x;
+                                    const wpDy = b.pos.y - e.pos.y;
+                                    const wpHitRad = e.radius + b.radius;
+                                    if (wpDx * wpDx + wpDy * wpDy < wpHitRad * wpHitRad) {
+                                        e.hp -= b.damage;
+                                        hit = true;
+                                        playSound('hit');
+                                        spawnParticles(b.pos.x, b.pos.y, 6, '#0ff');
+                                        if (e.hp <= 0) e.kill();
+                                        break;
+                                    }
+                                }
+                                // Pinwheel Logic
+                                else if (e instanceof Pinwheel) {
+                                    const dist = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
+                                    if (!b.ignoreShields && dist < e.shieldRadius + 5 && dist > e.shieldRadius - 15) {
+                                        let angle = Math.atan2(b.pos.y - e.pos.y, b.pos.x - e.pos.x) - e.shieldRotation;
+                                        while (angle < 0) angle += Math.PI * 2;
+                                        const segCount = e.shieldSegments.length;
+                                        const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
+                                        if (e.shieldSegments[segIndex] > 0) {
+                                            const segmentHp = e.shieldSegments[segIndex];
+                                            if (b.damage > segmentHp) {
+                                                // Penetrate: bullet breaks through with reduced damage
+                                                e.shieldSegments[segIndex] = 0;
+                                                e.shieldsDirty = true;
+                                                b.damage -= segmentHp;
+                                                e.aggro = true;
+                                            } else {
+                                                // Full absorb: shield stops bullet
+                                                e.shieldSegments[segIndex] -= b.damage;
+                                                e.shieldsDirty = true;
+                                                hit = true;
+                                                playSound('enemy_shield_hit');
+                                                if (e.shieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#0ff');
+                                                else spawnParticles(b.pos.x, b.pos.y, 3, '#088');
+                                                e.aggro = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (!b.ignoreShields && e.innerShieldSegments.length > 0 && dist < e.innerShieldRadius + 5 && dist > e.innerShieldRadius - 15) {
+                                        let angle = Math.atan2(b.pos.y - e.pos.y, b.pos.x - e.pos.x) - e.innerShieldRotation;
+                                        while (angle < 0) angle += Math.PI * 2;
+                                        const count = e.innerShieldSegments.length;
+                                        const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                                        if (e.innerShieldSegments[segIndex] > 0) {
+                                            const segmentHp = e.innerShieldSegments[segIndex];
+                                            if (b.damage > segmentHp) {
+                                                // Penetrate: bullet breaks through with reduced damage
+                                                e.innerShieldSegments[segIndex] = 0;
+                                                e.shieldsDirty = true;
+                                                b.damage -= segmentHp;
+                                                e.aggro = true;
+                                            } else {
+                                                // Full absorb: shield stops bullet
+                                                e.innerShieldSegments[segIndex] -= b.damage;
+                                                e.shieldsDirty = true;
+                                                hit = true;
+                                                playSound('shield_hit');
+                                                if (e.innerShieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#f0f');
+                                                else spawnParticles(b.pos.x, b.pos.y, 3, '#808');
+                                                e.aggro = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    if (dist < e.radius + b.radius) {
+                                        e.hp -= b.damage;
+                                        hit = true;
+                                        e.aggro = true;
+                                        playSound('hit');
+                                        spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
+
+                                        // Chain Lightning: arc to nearby enemies (same logic as for regular enemies)
+                                        if (player.chainLightningCount && player.chainLightningCount > 0 && player.chainLightningRange && !b.isEnemy) {
+                                            let chainCount = player.chainLightningCount;
+                                            let chainSource = e;
+                                            let chainTargets = new Set();
+                                            chainTargets.add(e);
+
+                                            for (let chain = 0; chain < chainCount; chain++) {
+                                                let nearestTarget = null;
+                                                let nearestDist = player.chainLightningRange;
+
+                                                for (let other of nearby) {
+                                                    if (other.dead) continue;
+                                                    if (!(other instanceof Enemy) && !(other instanceof Pinwheel)) continue;
+                                                    if (other === boss) continue; // Skip boss
+                                                    if (chainTargets.has(other)) continue;
+
+                                                    const d = Math.hypot(other.pos.x - chainSource.pos.x, other.pos.y - chainSource.pos.y);
+                                                    if (d < nearestDist) {
+                                                        nearestDist = d;
+                                                        nearestTarget = other;
+                                                    }
+                                                }
+
+                                                if (nearestTarget) {
+                                                    // Deal chain damage (reduced with each hop)
+                                                    const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                                                    nearestTarget.hp -= chainDamage;
+                                                    chainTargets.add(nearestTarget);
+
+                                                    // Visual lightning effect
+                                                    spawnLightningArc(chainSource.pos.x, chainSource.pos.y, nearestTarget.pos.x, nearestTarget.pos.y, '#0ff');
+                                                    spawnParticles(nearestTarget.pos.x, nearestTarget.pos.y, 3, '#0ff');
+                                                    playSound('hit');
+
+                                                    if (nearestTarget.hp <= 0) {
+                                                        nearestTarget.kill();
+                                                        score += 100;
+                                                    }
+
+                                                    chainSource = nearestTarget;
+                                                } else {
+                                                    break; // No more targets in range
+                                                }
+                                            }
+                                        }
+                                        if (e.hp <= 0) {
+                                            e.dead = true;
+                                            playSound('base_explode');
+                                            spawnLargeExplosion(e.pos.x, e.pos.y, 2.0);
+
+                                            // DROP COINS
+                                            const caveActive = (caveMode && caveLevel && caveLevel.active);
+                                            if (caveActive) {
+                                                const gold = Math.floor((6 * 5) * 0.5);
+                                                awardCoinsInstant(gold, { noSound: false, sound: 'coin', color: '#ff0' });
+                                                const baseNugCount = 4 + Math.floor(Math.random() * 3);
+                                                const nugCount = Math.max(1, Math.floor(baseNugCount * 0.5));
+                                                if (typeof awardNugzInstant === 'function') awardNugzInstant(nugCount, { noSound: false, sound: 'coin', color: '#fa0' });
+                                            } else {
+                                                for (let i = 0; i < 6; i++) {
+                                                    coins.push(new Coin(e.pos.x + (Math.random() - 0.5) * 50, e.pos.y + (Math.random() - 0.5) * 50, 5));
+                                                }
+                                                nuggets.push(new SpaceNugget(e.pos.x, e.pos.y, 1));
+                                            }
+
+                                            pinwheelsDestroyed++;
+                                            pinwheelsDestroyedTotal++;
+                                            difficultyTier = 1 + Math.floor(pinwheelsDestroyedTotal / 6);
+                                            score += 1000;
+                                            const bdDisplay = document.getElementById('bases-display');
+                                            if (bdDisplay) bdDisplay.innerText = `${pinwheelsDestroyedTotal}`;
+
+                                            enemies.forEach(en => { if (en.assignedBase === e) en.type = 'roamer'; });
+
+                                            const delay = 5000 + Math.random() * 5000;
+                                            baseRespawnTimers.push(Date.now() + delay);
+                                        }
+                                        break;
                                     }
                                 }
                             }
-                            if (!hit && dist < player.shieldRadius + b.radius * 1.5 && dist > player.shieldRadius - b.radius * 2) {
-                                let angle = Math.atan2(b.pos.y - player.pos.y, b.pos.x - player.pos.x) - player.shieldRotation;
+                        }
+
+
+
+
+
+                        // Only player bullets can hit cave wall turrets
+                        if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.wallTurrets && caveLevel.wallTurrets.length > 0) {
+                            for (let t of caveLevel.wallTurrets) {
+                                if (!t || t.dead) continue;
+                                if (typeof t.hitByPlayerBullet === 'function') {
+                                    if (t.hitByPlayerBullet(b)) { hit = true; break; }
+                                } else {
+                                    const dist = Math.hypot(b.pos.x - t.pos.x, b.pos.y - t.pos.y);
+                                    if (dist < t.radius + b.radius) {
+                                        t.hp -= b.damage;
+                                        hit = true;
+                                        playSound('hit');
+                                        spawnParticles(b.pos.x, b.pos.y, 6, '#88f');
+                                        if (t.hp <= 0) {
+                                            if (typeof t.kill === 'function') t.kill();
+                                            else t.dead = true;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Only player bullets can hit cave switches
+                        if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.switches && caveLevel.switches.length > 0) {
+                            for (let s of caveLevel.switches) {
+                                if (!s || s.dead) continue;
+                                if (typeof s.hitByPlayerBullet === 'function' && s.hitByPlayerBullet(b)) { hit = true; break; }
+                            }
+                        }
+
+                        // Only player bullets can hit cave relays
+                        if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.relays && caveLevel.relays.length > 0) {
+                            for (let r of caveLevel.relays) {
+                                if (!r || r.dead) continue;
+                                if (typeof r.hitByPlayerBullet === 'function' && r.hitByPlayerBullet(b)) { hit = true; break; }
+                            }
+                        }
+
+                        // Only player bullets can hit cave critters
+                        if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.critters && caveLevel.critters.length > 0) {
+                            for (let c of caveLevel.critters) {
+                                if (!c || c.dead) continue;
+                                const dist = Math.hypot(b.pos.x - c.pos.x, b.pos.y - c.pos.y);
+                                if (dist < c.radius + b.radius) {
+                                    c.dead = true;
+                                    hit = true;
+                                    spawnParticles(c.pos.x, c.pos.y, 18, '#6f6');
+                                    playSound('explode');
+                                    // Disturbance: nearby turrets react. 
+                                    if (caveLevel.wallTurrets && caveLevel.wallTurrets.length > 0) {
+                                        for (let t of caveLevel.wallTurrets) {
+                                            if (!t || t.dead) continue;
+                                            const dt = Math.hypot(t.pos.x - c.pos.x, t.pos.y - c.pos.y);
+                                            if (dt < 900) {
+                                                t.reload = Math.min(t.reload || 0, 10);
+                                                t.beamCooldown = Math.min(t.beamCooldown || 0, 30);
+                                                t.trackerCharge = Math.min(t.trackerCharge || 0, 30);
+                                            }
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Only player bullets can hit warp bio-pods
+                        if (!hit && !b.isEnemy && warpBioPods && warpBioPods.length > 0) {
+                            for (let p of warpBioPods) {
+                                if (!p || p.dead) continue;
+                                const dist = Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y);
+                                if (dist < p.radius + b.radius) {
+                                    p.takeHit(b.damage);
+                                    hit = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Only player bullets can hit the space station
+                        if (!hit && !b.isEnemy && spaceStation && !spaceStation.dead) {
+                            const dist = Math.hypot(b.pos.x - spaceStation.pos.x, b.pos.y - spaceStation.pos.y);
+
+                            // Check if outer shields have any segments up
+                            const outerShieldsUp = spaceStation.shieldSegments && spaceStation.shieldSegments.some(s => s > 0);
+                            const innerShieldsUp = spaceStation.innerShieldSegments && spaceStation.innerShieldSegments.some(s => s > 0);
+
+                            // Outer shield collision - bullet is within or touching the outer shield radius
+                            if (!hit && !b.ignoreShields && outerShieldsUp && dist < spaceStation.shieldRadius + b.radius) {
+                                let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.shieldRotation;
                                 while (angle < 0) angle += Math.PI * 2;
-                                const count = player.shieldSegments.length;
-                                const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                                if (player.shieldSegments[segIndex] > 0) {
-                                    const segmentHp = player.shieldSegments[segIndex];
+                                const count = spaceStation.shieldSegments.length;
+                                const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                                if (spaceStation.shieldSegments[idx] > 0) {
+                                    spaceStation.shieldSegments[idx]--;
+                                    spaceStation.shieldsDirty = true;
+                                    hit = true;
+                                    playSound('shield_hit');
+                                    spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
+                                }
+                            }
+                            // Inner shield collision - bullet is within or touching the inner shield radius
+                            if (!hit && !b.ignoreShields && innerShieldsUp && dist < spaceStation.innerShieldRadius + b.radius) {
+                                let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.innerShieldRotation;
+                                while (angle < 0) angle += Math.PI * 2;
+                                const count = spaceStation.innerShieldSegments.length;
+                                const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                                if (spaceStation.innerShieldSegments[idx] > 0) {
+                                    spaceStation.innerShieldSegments[idx]--;
+                                    spaceStation.shieldsDirty = true;
+                                    hit = true;
+                                    playSound('shield_hit');
+                                    spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
+                                }
+                            }
+                            // Hull damage: allowed if shields are bypassed or down
+                            if (!hit && dist < spaceStation.radius + b.radius) {
+                                spaceStation.hp -= b.damage;
+                                hit = true;
+                                playSound('hit');
+                                spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
+                                if (spaceStation.hp <= 0) {
+                                    handleSpaceStationDestroyed();
+                                }
+                            }
+                        }
+
+                        // Only player bullets (!b.isEnemy) can hit destroyer
+                        if (!hit && !b.isEnemy && destroyer && !destroyer.dead) {
+                            const dist = Math.hypot(b.pos.x - destroyer.pos.x, b.pos.y - destroyer.pos.y);
+                            // Destroy bullet if it hits invulnerable destroyer's shield radius
+                            if (destroyer.invulnerable > 0 && dist < destroyer.shieldRadius + b.radius) {
+                                hit = true;
+                                playSound('shield_hit');
+                                spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
+                            }
+                            const outerUp = destroyer.shieldSegments && destroyer.shieldSegments.some(s => s > 0);
+                            const innerUp = destroyer.innerShieldSegments && destroyer.innerShieldSegments.some(s => s > 0);
+                            if (!hit && !b.ignoreShields && outerUp && dist < destroyer.shieldRadius + b.radius) {
+                                let angle = Math.atan2(b.pos.y - destroyer.pos.y, b.pos.x - destroyer.pos.x) - destroyer.shieldRotation;
+                                while (angle < 0) angle += Math.PI * 2;
+                                const count = destroyer.shieldSegments.length;
+                                const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                                if (destroyer.shieldSegments[idx] > 0) {
+                                    const segmentHp = destroyer.shieldSegments[idx];
                                     if (b.damage > segmentHp) {
                                         // Penetrate: bullet breaks through with reduced damage
-                                        player.shieldSegments[segIndex] = 0;
-                                        player.shieldsDirty = true;
+                                        destroyer.shieldSegments[idx] = 0;
+                                        destroyer.shieldsDirty = true;
                                         b.damage -= segmentHp;
                                     } else {
                                         // Full absorb: shield stops bullet
-                                        player.shieldSegments[segIndex] -= b.damage;
-                                        player.shieldsDirty = true;
+                                        destroyer.shieldSegments[idx] -= b.damage;
+                                        destroyer.shieldsDirty = true;
                                         hit = true;
                                         playSound('shield_hit');
                                         spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
                                     }
                                 }
                             }
-                            const hitDist = player.radius * 1.5 + b.radius * 1.5;
-                            if (!hit && distSq < hitDist * hitDist) {
-                                // Use directHitDamage if specified (for plasma mortar), otherwise use b.damage
-                                const damage = b.directHitDamage !== undefined ? b.directHitDamage : b.damage;
-                                player.takeHit(damage, true); // Use ignoreShields=true as they were checked above
+                            if (!hit && !b.ignoreShields && innerUp && dist < destroyer.innerShieldRadius + b.radius) {
+                                let angle = Math.atan2(b.pos.y - destroyer.pos.y, b.pos.x - destroyer.pos.x) - destroyer.innerShieldRotation;
+                                while (angle < 0) angle += Math.PI * 2;
+                                const count = destroyer.innerShieldSegments.length;
+                                const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
+                                if (destroyer.innerShieldSegments[idx] > 0) {
+                                    const segmentHp = destroyer.innerShieldSegments[idx];
+                                    if (b.damage > segmentHp) {
+                                        // Penetrate: bullet breaks through with reduced damage
+                                        destroyer.innerShieldSegments[idx] = 0;
+                                        destroyer.shieldsDirty = true;
+                                        b.damage -= segmentHp;
+                                    } else {
+                                        // Full absorb: shield stops bullet
+                                        destroyer.innerShieldSegments[idx] -= b.damage;
+                                        destroyer.shieldsDirty = true;
+                                        hit = true;
+                                        playSound('shield_hit');
+                                        spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
+                                    }
+                                }
+                            }
+                            if (!hit && (typeof destroyer.hitTestCircle === 'function' ? destroyer.hitTestCircle(b.pos.x, b.pos.y, b.radius) : (dist < destroyer.radius + b.radius))) {
+                                const hpBefore = destroyer.hp;
+                                destroyer.hp -= b.damage;
+                                console.log(`[DESTROYER DEBUG] BULLET HIT: ${b.damage} dmg | HP: ${hpBefore} -> ${destroyer.hp} | isEnemy=${b.isEnemy} | color=${b.color} | owner=${b.owner?.displayName || b.owner?.constructor?.name || 'none'} | homing=${b.homing}`);
                                 hit = true;
+                                playSound('hit');
+                                spawnParticles(b.pos.x, b.pos.y, 5, '#ff0');
+                                if (destroyer.hp <= 0) {
+                                    destroyer.kill();
+                                }
                             }
                         }
-                    }
-                    else {
-                        for (let mi = 0, mlen = guidedMissiles.length; mi < mlen; mi++) {
-                            const m = guidedMissiles[mi];
-                            if (!m || m.dead) continue;
-                            const dx = b.pos.x - m.pos.x;
-                            const dy = b.pos.y - m.pos.y;
-                            const hitRad = (m.radius || 0) + (b.radius || 0);
-                            if (dx * dx + dy * dy < hitRad * hitRad) {
-                                if (typeof m.takeHit === 'function') m.takeHit(b.damage);
-                                else if (typeof m.explode === 'function') m.explode('#ff0');
-                                else m.dead = true;
-                                hit = true;
-                                b.dead = true;
-                                break;
-                            }
-                        }
 
-                        if (hit) continue;
-                        const nearby = targetGrid.query(b.pos.x, b.pos.y, 250);
-                        for (let e of nearby) {
-                            if (e.dead) continue;
-                            if (hit) break;
+                        // Only player bullets (!b.isEnemy) can hit the boss
+                        if (!hit && !b.isEnemy && bossActive && boss && !boss.dead) {
+                            if (b.owner !== boss) {
+                                const dist = Math.hypot(b.pos.x - boss.pos.x, b.pos.y - boss.pos.y);
 
-                            // Shooting Star (Comet) Logic
-                            if (e instanceof ShootingStar) {
-                                if (b.isEnemy) continue;
-                                const dx = b.pos.x - e.pos.x;
-                                const dy = b.pos.y - e.pos.y;
-                                const distSq = dx * dx + dy * dy;
-                                const hitRadius = e.radius + b.radius;
-                                if (distSq < hitRadius * hitRadius) {
-                                    e.takeHit(b.damage);
+                                if (boss.isWarpBoss && boss.ramInvulnerable > 0 && dist < boss.radius + b.radius + 6) {
                                     hit = true;
-                                    b.dead = true;
-                                    spawnParticles(b.pos.x, b.pos.y, 4, '#fff');
-                                    break;
-                                }
-                            }
-                            // Enemy Logic
-                            if (e instanceof Enemy) {
-                                // Skip boss entities - they have dedicated collision logic later
-                                if (bossActive && boss && e === boss) continue;
-
-                                const dx = b.pos.x - e.pos.x;
-                                const dy = b.pos.y - e.pos.y;
-                                const distSq = dx * dx + dy * dy;
-                                const dist = Math.sqrt(distSq);
-
-                                if (!b.ignoreShields && e.shieldSegments && e.shieldSegments.length > 0 && dist < e.shieldRadius + b.radius && dist > e.shieldRadius - 10) {
-                                    const activeIdx = e.shieldSegments.findIndex(s => s > 0);
-                                    if (activeIdx !== -1) {
-                                        const segmentHp = e.shieldSegments[activeIdx];
-                                        if (b.damage > segmentHp) {
-                                            // Penetrate: bullet breaks through with reduced damage
-                                            e.shieldSegments[activeIdx] = 0;
-                                            e.shieldsDirty = true;
-                                            b.damage -= segmentHp;
-                                        } else {
-                                            // Full absorb: shield stops bullet
-                                            e.shieldSegments[activeIdx] = 0;
-                                            e.shieldsDirty = true;
-                                            hit = true;
-                                            playSound('enemy_shield_hit');
-                                            spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
-                                        }
-                                    }
-                                }
-                                if (!hit && !b.ignoreShields && e.innerShieldSegments && e.innerShieldSegments.length > 0 && dist < e.innerShieldRadius + b.radius && dist > e.innerShieldRadius - 10) {
-                                    const activeIdx = e.innerShieldSegments.findIndex(s => s > 0);
-                                    if (activeIdx !== -1) {
-                                        const segmentHp = e.innerShieldSegments[activeIdx];
-                                        if (b.damage > segmentHp) {
-                                            // Penetrate: bullet breaks through with reduced damage
-                                            e.innerShieldSegments[activeIdx] = 0;
-                                            e.shieldsDirty = true;
-                                            b.damage -= segmentHp;
-                                        } else {
-                                            // Full absorb: shield stops bullet
-                                            e.innerShieldSegments[activeIdx] -= b.damage;
-                                            e.shieldsDirty = true;
-                                            hit = true;
-                                            playSound('enemy_shield_hit');
-                                            spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
-                                        }
-                                    }
+                                    playSound('shield_hit');
+                                    spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
                                 }
 
-                                const hitRadius = e.radius + b.radius;
-                                if (!hit && distSq < hitRadius * hitRadius) {
-                                    e.hp -= b.damage;
-                                    hit = true;
-                                    playSound('hit');
-                                    spawnParticles(e.pos.x, e.pos.y, 3, '#fff');
+                                // Check if shields have any segments up
+                                const outerShieldsUp = boss.shieldSegments && boss.shieldSegments.some(s => s > 0);
+                                const innerShieldsUp = boss.innerShieldSegments && boss.innerShieldSegments.length > 0 && boss.innerShieldSegments.some(s => s > 0);
 
-                                    // Chain Lightning: arc to nearby enemies
-                                    if (player.chainLightningCount && player.chainLightningCount > 0 && player.chainLightningRange && !b.isEnemy) {
-                                        let chainCount = player.chainLightningCount;
-                                        let chainSource = e;
-                                        let chainTargets = new Set();
-                                        chainTargets.add(e);
-
-                                        for (let chain = 0; chain < chainCount; chain++) {
-                                            let nearestTarget = null;
-                                            let nearestDist = player.chainLightningRange;
-
-                                            for (let other of nearby) {
-                                                if (other.dead) continue;
-                                                if (!(other instanceof Enemy) && !(other instanceof Pinwheel)) continue;
-                                                if (other === boss) continue; // Skip boss
-                                                if (chainTargets.has(other)) continue;
-
-                                                const d = Math.hypot(other.pos.x - chainSource.pos.x, other.pos.y - chainSource.pos.y);
-                                                if (d < nearestDist) {
-                                                    nearestDist = d;
-                                                    nearestTarget = other;
-                                                }
-                                            }
-
-                                            if (nearestTarget) {
-                                                // Deal chain damage (reduced with each hop)
-                                                const chainDamage = b.damage * Math.pow(0.7, chain + 1);
-                                                if (nearestTarget === destroyer) {
-                                                    const hpBefore = nearestTarget.hp;
-                                                    nearestTarget.hp -= chainDamage;
-                                                    console.log(`[DESTROYER DEBUG] CHAIN LIGHTNING: ${chainDamage.toFixed(1)} damage | HP: ${hpBefore} -> ${nearestTarget.hp} | Chain: ${chain + 1}`);
-                                                } else {
-                                                    nearestTarget.hp -= chainDamage;
-                                                }
-                                                chainTargets.add(nearestTarget);
-
-                                                // Visual lightning effect
-                                                spawnLightningArc(chainSource.pos.x, chainSource.pos.y, nearestTarget.pos.x, nearestTarget.pos.y, '#0ff');
-                                                spawnParticles(nearestTarget.pos.x, nearestTarget.pos.y, 3, '#0ff');
-                                                playSound('hit');
-
-                                                if (nearestTarget.hp <= 0) {
-                                                    nearestTarget.kill();
-                                                    score += 100;
-                                                }
-
-                                                chainSource = nearestTarget;
-                                            } else {
-                                                break; // No more targets in range
-                                            }
-                                        }
-                                    }
-
-                                    if (e.hp <= 0) {
-                                        e.kill();
-                                        score += 100;
-                                    }
-                                    break;
-                                }
-                            }
-                            // Wall Turret Logic (Contracts)
-                            else if (e instanceof WallTurret) {
-                                const wtDx = b.pos.x - e.pos.x;
-                                const wtDy = b.pos.y - e.pos.y;
-                                const wtHitRad = e.radius + b.radius;
-                                if (wtDx * wtDx + wtDy * wtDy < wtHitRad * wtHitRad) {
-                                    e.hp -= b.damage;
-                                    hit = true;
-                                    playSound('hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 6, '#ff8');
-                                    if (e.hp <= 0) {
-                                        if (typeof e.kill === 'function') e.kill();
-                                        else e.dead = true;
-                                    }
-                                    break;
-                                }
-                            }
-                            // Warp Turret Logic
-                            else if (e instanceof WarpTurret) {
-                                const wpDx = b.pos.x - e.pos.x;
-                                const wpDy = b.pos.y - e.pos.y;
-                                const wpHitRad = e.radius + b.radius;
-                                if (wpDx * wpDx + wpDy * wpDy < wpHitRad * wpHitRad) {
-                                    e.hp -= b.damage;
-                                    hit = true;
-                                    playSound('hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 6, '#0ff');
-                                    if (e.hp <= 0) e.kill();
-                                    break;
-                                }
-                            }
-                            // Pinwheel Logic
-                            else if (e instanceof Pinwheel) {
-                                const dist = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y);
-                                if (!b.ignoreShields && dist < e.shieldRadius + 5 && dist > e.shieldRadius - 15) {
-                                    let angle = Math.atan2(b.pos.y - e.pos.y, b.pos.x - e.pos.x) - e.shieldRotation;
+                                // Outer shield collision - bullet is within the shield radius
+                                if (!hit && !b.ignoreShields && outerShieldsUp && dist < boss.shieldRadius + b.radius) {
+                                    let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.shieldRotation;
                                     while (angle < 0) angle += Math.PI * 2;
-                                    const segCount = e.shieldSegments.length;
+                                    const segCount = boss.shieldSegments.length;
                                     const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
-                                    if (e.shieldSegments[segIndex] > 0) {
-                                        const segmentHp = e.shieldSegments[segIndex];
-                                        if (b.damage > segmentHp) {
-                                            // Penetrate: bullet breaks through with reduced damage
-                                            e.shieldSegments[segIndex] = 0;
-                                            e.shieldsDirty = true;
-                                            b.damage -= segmentHp;
-                                            e.aggro = true;
-                                        } else {
-                                            // Full absorb: shield stops bullet
-                                            e.shieldSegments[segIndex] -= b.damage;
-                                            e.shieldsDirty = true;
-                                            hit = true;
-                                            playSound('enemy_shield_hit');
-                                            if (e.shieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#0ff');
-                                            else spawnParticles(b.pos.x, b.pos.y, 3, '#088');
-                                            e.aggro = true;
-                                            break;
-                                        }
+                                    if (boss.shieldSegments[segIndex] > 0) {
+                                        boss.shieldSegments[segIndex]--;
+                                        boss.shieldsDirty = true;
+                                        hit = true;
+                                        playSound('shield_hit');
+                                        spawnParticles(b.pos.x, b.pos.y, 3, '#0ff');
                                     }
                                 }
-                                if (!b.ignoreShields && e.innerShieldSegments.length > 0 && dist < e.innerShieldRadius + 5 && dist > e.innerShieldRadius - 15) {
-                                    let angle = Math.atan2(b.pos.y - e.pos.y, b.pos.x - e.pos.x) - e.innerShieldRotation;
+                                // Inner shield collision - bullet is within the inner shield radius
+                                if (!hit && !b.ignoreShields && innerShieldsUp && dist < boss.innerShieldRadius + b.radius) {
+                                    let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.innerShieldRotation;
                                     while (angle < 0) angle += Math.PI * 2;
-                                    const count = e.innerShieldSegments.length;
+                                    const count = boss.innerShieldSegments.length;
                                     const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                                    if (e.innerShieldSegments[segIndex] > 0) {
-                                        const segmentHp = e.innerShieldSegments[segIndex];
-                                        if (b.damage > segmentHp) {
-                                            // Penetrate: bullet breaks through with reduced damage
-                                            e.innerShieldSegments[segIndex] = 0;
-                                            e.shieldsDirty = true;
-                                            b.damage -= segmentHp;
-                                            e.aggro = true;
-                                        } else {
-                                            // Full absorb: shield stops bullet
-                                            e.innerShieldSegments[segIndex] -= b.damage;
-                                            e.shieldsDirty = true;
-                                            hit = true;
-                                            playSound('shield_hit');
-                                            if (e.innerShieldSegments[segIndex] === 0) spawnParticles(b.pos.x, b.pos.y, 8, '#f0f');
-                                            else spawnParticles(b.pos.x, b.pos.y, 3, '#808');
-                                            e.aggro = true;
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                if (dist < e.radius + b.radius) {
-                                    e.hp -= b.damage;
-                                    hit = true;
-                                    e.aggro = true;
-                                    playSound('hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
-
-                                    // Chain Lightning: arc to nearby enemies (same logic as for regular enemies)
-                                    if (player.chainLightningCount && player.chainLightningCount > 0 && player.chainLightningRange && !b.isEnemy) {
-                                        let chainCount = player.chainLightningCount;
-                                        let chainSource = e;
-                                        let chainTargets = new Set();
-                                        chainTargets.add(e);
-
-                                        for (let chain = 0; chain < chainCount; chain++) {
-                                            let nearestTarget = null;
-                                            let nearestDist = player.chainLightningRange;
-
-                                            for (let other of nearby) {
-                                                if (other.dead) continue;
-                                                if (!(other instanceof Enemy) && !(other instanceof Pinwheel)) continue;
-                                                if (other === boss) continue; // Skip boss
-                                                if (chainTargets.has(other)) continue;
-
-                                                const d = Math.hypot(other.pos.x - chainSource.pos.x, other.pos.y - chainSource.pos.y);
-                                                if (d < nearestDist) {
-                                                    nearestDist = d;
-                                                    nearestTarget = other;
-                                                }
-                                            }
-
-                                            if (nearestTarget) {
-                                                // Deal chain damage (reduced with each hop)
-                                                const chainDamage = b.damage * Math.pow(0.7, chain + 1);
-                                                nearestTarget.hp -= chainDamage;
-                                                chainTargets.add(nearestTarget);
-
-                                                // Visual lightning effect
-                                                spawnLightningArc(chainSource.pos.x, chainSource.pos.y, nearestTarget.pos.x, nearestTarget.pos.y, '#0ff');
-                                                spawnParticles(nearestTarget.pos.x, nearestTarget.pos.y, 3, '#0ff');
-                                                playSound('hit');
-
-                                                if (nearestTarget.hp <= 0) {
-                                                    nearestTarget.kill();
-                                                    score += 100;
-                                                }
-
-                                                chainSource = nearestTarget;
-                                            } else {
-                                                break; // No more targets in range
-                                            }
-                                        }
-                                    }
-                                    if (e.hp <= 0) {
-                                        e.dead = true;
-                                        playSound('base_explode');
-                                        spawnLargeExplosion(e.pos.x, e.pos.y, 2.0);
-
-                                        // DROP COINS
-                                        const caveActive = (caveMode && caveLevel && caveLevel.active);
-                                        if (caveActive) {
-                                            const gold = Math.floor((6 * 5) * 0.5);
-                                            awardCoinsInstant(gold, { noSound: false, sound: 'coin', color: '#ff0' });
-                                            const baseNugCount = 4 + Math.floor(Math.random() * 3);
-                                            const nugCount = Math.max(1, Math.floor(baseNugCount * 0.5));
-                                            if (typeof awardNugzInstant === 'function') awardNugzInstant(nugCount, { noSound: false, sound: 'coin', color: '#fa0' });
-                                        } else {
-                                            for (let i = 0; i < 6; i++) {
-                                                coins.push(new Coin(e.pos.x + (Math.random() - 0.5) * 50, e.pos.y + (Math.random() - 0.5) * 50, 5));
-                                            }
-                                            nuggets.push(new SpaceNugget(e.pos.x, e.pos.y, 1));
-                                        }
-
-                                        pinwheelsDestroyed++;
-                                        pinwheelsDestroyedTotal++;
-                                        difficultyTier = 1 + Math.floor(pinwheelsDestroyedTotal / 6);
-                                        score += 1000;
-                                        const bdDisplay = document.getElementById('bases-display');
-                                        if (bdDisplay) bdDisplay.innerText = `${pinwheelsDestroyedTotal}`;
-
-                                        enemies.forEach(en => { if (en.assignedBase === e) en.type = 'roamer'; });
-
-                                        const delay = 5000 + Math.random() * 5000;
-                                        baseRespawnTimers.push(Date.now() + delay);
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-
-
-
-
-                    // Only player bullets can hit cave wall turrets
-                    if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.wallTurrets && caveLevel.wallTurrets.length > 0) {
-                        for (let t of caveLevel.wallTurrets) {
-                            if (!t || t.dead) continue;
-                            if (typeof t.hitByPlayerBullet === 'function') {
-                                if (t.hitByPlayerBullet(b)) { hit = true; break; }
-                            } else {
-                                const dist = Math.hypot(b.pos.x - t.pos.x, b.pos.y - t.pos.y);
-                                if (dist < t.radius + b.radius) {
-                                    t.hp -= b.damage;
-                                    hit = true;
-                                    playSound('hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 6, '#88f');
-                                    if (t.hp <= 0) {
-                                        if (typeof t.kill === 'function') t.kill();
-                                        else t.dead = true;
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    // Only player bullets can hit cave switches
-                    if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.switches && caveLevel.switches.length > 0) {
-                        for (let s of caveLevel.switches) {
-                            if (!s || s.dead) continue;
-                            if (typeof s.hitByPlayerBullet === 'function' && s.hitByPlayerBullet(b)) { hit = true; break; }
-                        }
-                    }
-
-                    // Only player bullets can hit cave relays
-                    if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.relays && caveLevel.relays.length > 0) {
-                        for (let r of caveLevel.relays) {
-                            if (!r || r.dead) continue;
-                            if (typeof r.hitByPlayerBullet === 'function' && r.hitByPlayerBullet(b)) { hit = true; break; }
-                        }
-                    }
-
-                    // Only player bullets can hit cave critters
-                    if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.critters && caveLevel.critters.length > 0) {
-                        for (let c of caveLevel.critters) {
-                            if (!c || c.dead) continue;
-                            const dist = Math.hypot(b.pos.x - c.pos.x, b.pos.y - c.pos.y);
-                            if (dist < c.radius + b.radius) {
-                                c.dead = true;
-                                hit = true;
-                                spawnParticles(c.pos.x, c.pos.y, 18, '#6f6');
-                                playSound('explode');
-                                // Disturbance: nearby turrets react. 
-                                if (caveLevel.wallTurrets && caveLevel.wallTurrets.length > 0) {
-                                    for (let t of caveLevel.wallTurrets) {
-                                        if (!t || t.dead) continue;
-                                        const dt = Math.hypot(t.pos.x - c.pos.x, t.pos.y - c.pos.y);
-                                        if (dt < 900) {
-                                            t.reload = Math.min(t.reload || 0, 10);
-                                            t.beamCooldown = Math.min(t.beamCooldown || 0, 30);
-                                            t.trackerCharge = Math.min(t.trackerCharge || 0, 30);
-                                        }
-                                    }
-                                }
-                                break;
-                            }
-                        }
-                    }
-
-                    // Only player bullets can hit warp bio-pods
-                    if (!hit && !b.isEnemy && warpBioPods && warpBioPods.length > 0) {
-                        for (let p of warpBioPods) {
-                            if (!p || p.dead) continue;
-                            const dist = Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y);
-                            if (dist < p.radius + b.radius) {
-                                p.takeHit(b.damage);
-                                hit = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    // Only player bullets can hit the space station
-                    if (!hit && !b.isEnemy && spaceStation && !spaceStation.dead) {
-                        const dist = Math.hypot(b.pos.x - spaceStation.pos.x, b.pos.y - spaceStation.pos.y);
-
-                        // Check if outer shields have any segments up
-                        const outerShieldsUp = spaceStation.shieldSegments && spaceStation.shieldSegments.some(s => s > 0);
-                        const innerShieldsUp = spaceStation.innerShieldSegments && spaceStation.innerShieldSegments.some(s => s > 0);
-
-                        // Outer shield collision - bullet is within or touching the outer shield radius
-                        if (!hit && !b.ignoreShields && outerShieldsUp && dist < spaceStation.shieldRadius + b.radius) {
-                            let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.shieldRotation;
-                            while (angle < 0) angle += Math.PI * 2;
-                            const count = spaceStation.shieldSegments.length;
-                            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                            if (spaceStation.shieldSegments[idx] > 0) {
-                                spaceStation.shieldSegments[idx]--;
-                                spaceStation.shieldsDirty = true;
-                                hit = true;
-                                playSound('shield_hit');
-                                spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
-                            }
-                        }
-                        // Inner shield collision - bullet is within or touching the inner shield radius
-                        if (!hit && !b.ignoreShields && innerShieldsUp && dist < spaceStation.innerShieldRadius + b.radius) {
-                            let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.innerShieldRotation;
-                            while (angle < 0) angle += Math.PI * 2;
-                            const count = spaceStation.innerShieldSegments.length;
-                            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                            if (spaceStation.innerShieldSegments[idx] > 0) {
-                                spaceStation.innerShieldSegments[idx]--;
-                                spaceStation.shieldsDirty = true;
-                                hit = true;
-                                playSound('shield_hit');
-                                spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
-                            }
-                        }
-                        // Hull damage: allowed if shields are bypassed or down
-                        if (!hit && dist < spaceStation.radius + b.radius) {
-                            spaceStation.hp -= b.damage;
-                            hit = true;
-                            playSound('hit');
-                            spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
-                            if (spaceStation.hp <= 0) {
-                                handleSpaceStationDestroyed();
-                            }
-                        }
-                    }
-
-                    // Only player bullets (!b.isEnemy) can hit destroyer
-                    if (!hit && !b.isEnemy && destroyer && !destroyer.dead) {
-                        const dist = Math.hypot(b.pos.x - destroyer.pos.x, b.pos.y - destroyer.pos.y);
-                        // Destroy bullet if it hits invulnerable destroyer's shield radius
-                        if (destroyer.invulnerable > 0 && dist < destroyer.shieldRadius + b.radius) {
-                            hit = true;
-                            playSound('shield_hit');
-                            spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
-                        }
-                        const outerUp = destroyer.shieldSegments && destroyer.shieldSegments.some(s => s > 0);
-                        const innerUp = destroyer.innerShieldSegments && destroyer.innerShieldSegments.some(s => s > 0);
-                        if (!hit && !b.ignoreShields && outerUp && dist < destroyer.shieldRadius + b.radius) {
-                            let angle = Math.atan2(b.pos.y - destroyer.pos.y, b.pos.x - destroyer.pos.x) - destroyer.shieldRotation;
-                            while (angle < 0) angle += Math.PI * 2;
-                            const count = destroyer.shieldSegments.length;
-                            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                            if (destroyer.shieldSegments[idx] > 0) {
-                                const segmentHp = destroyer.shieldSegments[idx];
-                                if (b.damage > segmentHp) {
-                                    // Penetrate: bullet breaks through with reduced damage
-                                    destroyer.shieldSegments[idx] = 0;
-                                    destroyer.shieldsDirty = true;
-                                    b.damage -= segmentHp;
-                                } else {
-                                    // Full absorb: shield stops bullet
-                                    destroyer.shieldSegments[idx] -= b.damage;
-                                    destroyer.shieldsDirty = true;
-                                    hit = true;
-                                    playSound('shield_hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
-                                }
-                            }
-                        }
-                        if (!hit && !b.ignoreShields && innerUp && dist < destroyer.innerShieldRadius + b.radius) {
-                            let angle = Math.atan2(b.pos.y - destroyer.pos.y, b.pos.x - destroyer.pos.x) - destroyer.innerShieldRotation;
-                            while (angle < 0) angle += Math.PI * 2;
-                            const count = destroyer.innerShieldSegments.length;
-                            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                            if (destroyer.innerShieldSegments[idx] > 0) {
-                                const segmentHp = destroyer.innerShieldSegments[idx];
-                                if (b.damage > segmentHp) {
-                                    // Penetrate: bullet breaks through with reduced damage
-                                    destroyer.innerShieldSegments[idx] = 0;
-                                    destroyer.shieldsDirty = true;
-                                    b.damage -= segmentHp;
-                                } else {
-                                    // Full absorb: shield stops bullet
-                                    destroyer.innerShieldSegments[idx] -= b.damage;
-                                    destroyer.shieldsDirty = true;
-                                    hit = true;
-                                    playSound('shield_hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
-                                }
-                            }
-                        }
-                        if (!hit && (typeof destroyer.hitTestCircle === 'function' ? destroyer.hitTestCircle(b.pos.x, b.pos.y, b.radius) : (dist < destroyer.radius + b.radius))) {
-                            const hpBefore = destroyer.hp;
-                            destroyer.hp -= b.damage;
-                            console.log(`[DESTROYER DEBUG] BULLET HIT: ${b.damage} dmg | HP: ${hpBefore} -> ${destroyer.hp} | isEnemy=${b.isEnemy} | color=${b.color} | owner=${b.owner?.displayName || b.owner?.constructor?.name || 'none'} | homing=${b.homing}`);
-                            hit = true;
-                            playSound('hit');
-                            spawnParticles(b.pos.x, b.pos.y, 5, '#ff0');
-                            if (destroyer.hp <= 0) {
-                                destroyer.kill();
-                            }
-                        }
-                    }
-
-                    // Only player bullets (!b.isEnemy) can hit the boss
-                    if (!hit && !b.isEnemy && bossActive && boss && !boss.dead) {
-                        if (b.owner !== boss) {
-                            const dist = Math.hypot(b.pos.x - boss.pos.x, b.pos.y - boss.pos.y);
-
-                            if (boss.isWarpBoss && boss.ramInvulnerable > 0 && dist < boss.radius + b.radius + 6) {
-                                hit = true;
-                                playSound('shield_hit');
-                                spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
-                            }
-
-                            // Check if shields have any segments up
-                            const outerShieldsUp = boss.shieldSegments && boss.shieldSegments.some(s => s > 0);
-                            const innerShieldsUp = boss.innerShieldSegments && boss.innerShieldSegments.length > 0 && boss.innerShieldSegments.some(s => s > 0);
-
-                            // Outer shield collision - bullet is within the shield radius
-                            if (!hit && !b.ignoreShields && outerShieldsUp && dist < boss.shieldRadius + b.radius) {
-                                let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.shieldRotation;
-                                while (angle < 0) angle += Math.PI * 2;
-                                const segCount = boss.shieldSegments.length;
-                                const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
-                                if (boss.shieldSegments[segIndex] > 0) {
-                                    boss.shieldSegments[segIndex]--;
-                                    boss.shieldsDirty = true;
-                                    hit = true;
-                                    playSound('shield_hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 3, '#0ff');
-                                }
-                            }
-                            // Inner shield collision - bullet is within the inner shield radius
-                            if (!hit && !b.ignoreShields && innerShieldsUp && dist < boss.innerShieldRadius + b.radius) {
-                                let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.innerShieldRotation;
-                                while (angle < 0) angle += Math.PI * 2;
-                                const count = boss.innerShieldSegments.length;
-                                const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                                if (boss.innerShieldSegments[segIndex] > 0) {
-                                    boss.innerShieldSegments[segIndex]--;
-                                    boss.shieldsDirty = true;
-                                    hit = true;
-                                    playSound('shield_hit');
-                                    spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
-                                }
-                            }
-
-                            // If shields are bypassed or down, allow hardpoints and hull damage
-                            if (!hit) {
-                                // Hardpoints take damage when shields are down (or bypassed)
-                                if (typeof boss.applyPlayerBulletHit === 'function') {
-                                    if (boss.applyPlayerBulletHit(b)) {
+                                    if (boss.innerShieldSegments[segIndex] > 0) {
+                                        boss.innerShieldSegments[segIndex]--;
+                                        boss.shieldsDirty = true;
                                         hit = true;
+                                        playSound('shield_hit');
+                                        spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
                                     }
                                 }
 
-                                // Hull damage - use simplified 600px collision for cave monsters
+                                // If shields are bypassed or down, allow hardpoints and hull damage
                                 if (!hit) {
-                                    const hullRadius = (boss.hullCollisionRadius) ? boss.hullCollisionRadius :
-                                        (typeof boss.hitTestCircle === 'function' ? 0 : boss.radius);
-                                    const hitTest = (typeof boss.hitTestCircle === 'function' && !boss.hullCollisionRadius) ?
-                                        boss.hitTestCircle(b.pos.x, b.pos.y, b.radius) :
-                                        (dist < hullRadius + b.radius);
-                                    if (hitTest) {
-                                        boss.hp -= b.damage;
-                                        hit = true;
-                                        playSound('hit');
-                                        spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
-                                        if (boss.hp <= 0) {
-                                            boss.kill();
-                                            score += 5000;
+                                    // Hardpoints take damage when shields are down (or bypassed)
+                                    if (typeof boss.applyPlayerBulletHit === 'function') {
+                                        if (boss.applyPlayerBulletHit(b)) {
+                                            hit = true;
+                                        }
+                                    }
+
+                                    // Hull damage - use simplified 600px collision for cave monsters
+                                    if (!hit) {
+                                        const hullRadius = (boss.hullCollisionRadius) ? boss.hullCollisionRadius :
+                                            (typeof boss.hitTestCircle === 'function' ? 0 : boss.radius);
+                                        const hitTest = (typeof boss.hitTestCircle === 'function' && !boss.hullCollisionRadius) ?
+                                            boss.hitTestCircle(b.pos.x, b.pos.y, b.radius) :
+                                            (dist < hullRadius + b.radius);
+                                        if (hitTest) {
+                                            boss.hp -= b.damage;
+                                            hit = true;
+                                            playSound('hit');
+                                            spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
+                                            if (boss.hp <= 0) {
+                                                boss.kill();
+                                                score += 5000;
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
+
+
+
+
+
                     }
 
+                    if (hit) {
+                        destroyBulletSprite(b);
+                        bullets.splice(i, 1);
+                    }
+                }
+            } catch (e) {
+                console.error('[BULLET LOGIC ERROR]', e);
+            } finally {
+                setProjectileImpactSoundContext(false);
+                globalProfiler.end('BulletLogic');
+            }
+        }
+        if (doDraw) {
+            // Draw cave boundaries on top.
+            if (caveActive && caveLevel) {
+                caveLevel.updatePixi();
+                caveLevel.drawEntities(ctx, camX, camY, height, zoom);
+            }
 
+            // Split-screen Pixi rendering: render once per viewport with scissor clipping
+            if (multiplayerMode === 'split' && players[1] && pixiApp && pixiApp.renderer && pixiApp.stage) {
+                const gl = pixiApp.renderer.gl;
+                const currentCam = (pass === 0) ? cameras.p1 : cameras.p2;
+                const currentView = (pass === 0) ? splitScreenViewports.left : splitScreenViewports.right;
 
-
-
+                // Update Pixi world root for this viewport's camera
+                if (pixiWorldRoot) {
+                    pixiWorldRoot.scale.set(zoom);
+                    const px = -currentCam.x * zoom;
+                    const py = -currentCam.y * zoom;
+                    // Offset by viewport.x so render appears in correct half of screen
+                    pixiWorldRoot.position.set(Math.round(px) + currentView.x, Math.round(py));
                 }
 
-                if (hit) {
-                    destroyBulletSprite(b);
-                    bullets.splice(i, 1);
+                // Enable scissor test for this viewport
+                if (gl) {
+                    const ratio = pixiApp.renderer.resolution || 1;
+                    // Use internal resolution dimensions for scissor
+                    const fbWidth = width * ratio;
+                    const fbHeight = height * ratio;
+                    // Scissor uses the viewport's logical coordinates scaled by resolution
+                    const scissorX = Math.round(currentView.x * ratio);
+                    const scissorY = 0; // Full height from bottom
+                    const scissorW = Math.round(currentView.width * ratio);
+                    const scissorH = Math.round(fbHeight);
+
+                    gl.enable(gl.SCISSOR_TEST);
+                    gl.scissor(scissorX, scissorY, scissorW, scissorH);
+                }
+
+                try { pixiApp.renderer.render(pixiApp.stage); } catch (e) { }
+
+                if (gl) {
+                    gl.disable(gl.SCISSOR_TEST);
                 }
             }
-        } catch (e) {
-            console.error('[BULLET LOGIC ERROR]', e);
-        } finally {
-            setProjectileImpactSoundContext(false);
-            globalProfiler.end('BulletLogic');
+
+            ctx.restore();
         }
-    }
+    } // End of renderPasses loop
+
     if (doUpdate) globalProfiler.end('Update');
 
     if (doDraw) {
         globalProfiler.start('Draw');
-        // Draw cave boundaries on top.
-        if (caveActive && caveLevel) {
-            caveLevel.updatePixi();
-            caveLevel.drawEntities(ctx, camX, camY, height, zoom);
-        }
-
-        ctx.restore();
-
         // Clear UI Canvas for this frame (still used for boss HUD and other elements)
         uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
 
@@ -23632,8 +23862,8 @@ function gameLoopLogic(opts = null) {
         updateMiniEventUI();
         if (bossActive && boss && typeof boss.drawBossHud === 'function') boss.drawBossHud(uiCtx);
 
-        // Render Pixi overlay (MOVED from Update loop)
-        if (pixiApp && pixiApp.renderer && pixiApp.stage) {
+        // Render Pixi overlay (single-player only - split-screen renders inside the pass loop)
+        if (!(multiplayerMode === 'split' && players[1]) && pixiApp && pixiApp.renderer && pixiApp.stage) {
             globalProfiler.start('PixiRender');
             try { pixiApp.renderer.render(pixiApp.stage); } catch (e) { }
             globalProfiler.end('PixiRender');
@@ -24116,12 +24346,22 @@ function drawMinimap() {
     // Helper to check if point is in circular bounds
     const inBounds = (x, y) => (x * x + y * y) <= (MINIMAP_RADIUS * MINIMAP_RADIUS);
 
-    // Draw player
+    // Draw player(s)
     if (player && !player.dead) {
         const px = warpActive ? ((player.pos.x - refX) * scale) : 0;
         const py = warpActive ? ((player.pos.y - refY) * scale) : 0;
         pixiMinimapGraphics.beginFill(0x00ff00);
         pixiMinimapGraphics.drawCircle(centerX + px, centerY + py, 3);
+        pixiMinimapGraphics.endFill();
+    }
+
+    // Draw player 2 in split-screen mode
+    if (multiplayerMode === 'split' && players[1] && !players[1].dead) {
+        const p2 = players[1];
+        const p2x = warpActive ? ((p2.pos.x - refX) * scale) : 0;
+        const p2y = warpActive ? ((p2.pos.y - refY) * scale) : 0;
+        pixiMinimapGraphics.beginFill(0xff0000); // Red for P2
+        pixiMinimapGraphics.drawCircle(centerX + p2x, centerY + p2y, 3);
         pixiMinimapGraphics.endFill();
     }
 
@@ -24445,8 +24685,21 @@ function startGame() {
         arcadeWaveNextAt = 0;
         currentZoom = ZOOM_LEVEL;
         stopMusic();
-        if (player) pixiCleanupObject(player);
-        player = new Spaceship(selectedShipType || 'standard');
+        players.length = 0;
+
+        const player1 = new Spaceship(selectedShipType || 'standard', 0);
+        players.push(player1);
+
+        if (multiplayerMode === 'split') {
+            const player2 = new Spaceship(selectedShipType || 'standard', 1);
+            // Offset P2 spawn position slightly to avoid collision
+            player2.pos.x = player1.pos.x + 200;
+            player2.pos.y = player1.pos.y + 200;
+            players.push(player2);
+        }
+
+        player = players[0]; // Backward compatibility
+        initMultiplayerInput();
 
         // Load current profile data if available
         if (currentProfileName) {
@@ -24489,9 +24742,8 @@ function startGame() {
         rerollTokens = metaProfile.purchases.rerollTokens || 0;
         metaExtraLifeCount = metaProfile.purchases.extraLife || 0;
 
-        // Reset player stats/inventory
+        // Reset player stats/inventory (P1)
         player.fireDelay = 24;
-
         player.turretLevel = 1;
         player.canWarp = false;
         player.shieldSegments = new Array(8).fill(2);
@@ -24548,6 +24800,66 @@ function startGame() {
         player.volleyShotCount = 0;
         player.volleyCooldown = 0;
         player.lastF = false;
+
+        // Reset player 2 stats/inventory if in multiplayer mode
+        if (multiplayerMode === 'split' && players[1]) {
+            const p2 = players[1];
+            p2.fireDelay = 24;
+            p2.turretLevel = 1;
+            p2.canWarp = false;
+            p2.shieldSegments = new Array(8).fill(2);
+            p2.outerShieldSegments = new Array(12).fill(2);
+            p2.hp = p2.maxHp;
+            p2.inventory = {};
+            p2.reactiveShieldCoins = 0;
+            p2.xp = 0;
+            p2.level = 1;
+            p2.nextLevelXp = 100;
+            p2.stats = {
+                damageMult: 1.0,
+                fireRateMult: 1.0,
+                shotgunFireRateMult: 1.0,
+                rangeMult: 1.0,
+                multiShot: 1,
+                homing: 0,
+                shieldRegenRate: 8,
+                hpRegenAmount: 1,
+                hpRegenRate: 10,
+                speedMult: 1.0,
+                slowField: 0,
+                slowFieldDuration: 0,
+                critChance: 0,
+                critDamage: 2.0,
+                lifestealAmount: 0,
+                lifestealThreshold: 100,
+                thornArmor: 0,
+                evasion: 0,
+                piercing: 0,
+                explosiveRounds: 0,
+                explosiveDamage: 30,
+                explosiveRadius: 200,
+                splitShot: 0,
+                comboMeter: 0,
+                comboMaxBonus: 0,
+                secondWindFrames: 0,
+                secondWindCooldown: 0,
+                secondWindActive: 0
+            };
+            p2.comboStacks = 0;
+            p2.comboMaxStacks = 100;
+            p2.lastHitTime = Date.now();
+            p2.lastDamageTakenTime = 0;
+            p2.lastHpRegenTime = Date.now();
+            p2.staticWeapons = [];
+            p2.nukeMaxCooldown = 600;
+            p2.magnetRadius = 150;
+            p2.nukeUnlocked = false;
+            p2.volleyShotUnlocked = false;
+            p2.volleyShotCount = 0;
+            p2.volleyCooldown = 0;
+            p2.lastF = false;
+        }
+
         gameEnded = false;
 
         // Setup game world (clear all entities)
@@ -25072,14 +25384,10 @@ function quitGame() {
 }
 
 window.addEventListener('keydown', e => {
-    if (e.key === 'w' || e.key === 'W') keys.w = true;
-    if (e.key === 'a' || e.key === 'A') keys.a = true;
-    if (e.key === 's' || e.key === 'S') keys.s = true;
-    if (e.key === 'd' || e.key === 'D') keys.d = true;
-    if (e.key === ' ') keys.space = true;
-    if (e.key === 'e' || e.key === 'E') keys.e = true;
-    if (e.key === 'f' || e.key === 'F') keys.f = true;
-    if (e.key === 'Shift') keys.shift = true;
+    for (let i = 0; i < playerInputs.length; i++) {
+        playerInputs[i].updateKeyboard(true, e.code);
+    }
+
     if (e.key === 'Escape') togglePause();
     // Debug menu toggle (F1)
     if (e.key === 'F1') {
@@ -25095,7 +25403,6 @@ window.addEventListener('keydown', e => {
         e.preventDefault();
         const doJump = () => {
             if (!gameActive || !player || player.dead) return;
-            // Force a sector warp completion into sector 2. 
             sectorTransitionActive = false;
             warpCountdownAt = null;
             sectorIndex = 1;
@@ -25128,14 +25435,9 @@ window.addEventListener('keydown', e => {
 });
 
 window.addEventListener('keyup', e => {
-    if (e.key === 'w' || e.key === 'W') keys.w = false;
-    if (e.key === 'a' || e.key === 'A') keys.a = false;
-    if (e.key === 's' || e.key === 'S') keys.s = false;
-    if (e.key === 'd' || e.key === 'D') keys.d = false;
-    if (e.key === ' ') keys.space = false;
-    if (e.key === 'e' || e.key === 'E') keys.e = false;
-    if (e.key === 'f' || e.key === 'F') keys.f = false;
-    if (e.key === 'Shift') keys.shift = false;
+    for (let i = 0; i < playerInputs.length; i++) {
+        playerInputs[i].updateKeyboard(false, e.code);
+    }
 });
 
 window.addEventListener('mousemove', e => {
@@ -25253,6 +25555,52 @@ window.addEventListener("gamepaddisconnected", (e) => {
 // Ship Selection System
 const SHIP_SELECTION_KEY = 'neon_space_ship_selection';
 let selectedShipType = localStorage.getItem(SHIP_SELECTION_KEY) || 'standard';
+
+// Player Count Selection System
+const PLAYER_COUNT_KEY = 'neon_space_player_count';
+let selectedPlayerCount = localStorage.getItem(PLAYER_COUNT_KEY) || '1';
+
+function updatePlayerCountUI() {
+    const p1Btn = document.getElementById('player-count-1');
+    const p2Btn = document.getElementById('player-count-2');
+
+    if (selectedPlayerCount === '2') {
+        p1Btn.classList.remove('selected');
+        p2Btn.classList.add('selected');
+        setMultiplayerMode('split');
+        showSplitScreenUI();
+        // Increase difficulty for 2 players
+        enemySpawnMultiplier = 1.5;
+        coinDropMultiplier = 1.3;
+    } else {
+        p1Btn.classList.add('selected');
+        p2Btn.classList.remove('selected');
+        setMultiplayerMode('single');
+        hideSplitScreenUI();
+        // Reset to single-player difficulty
+        enemySpawnMultiplier = 1;
+        coinDropMultiplier = 1;
+    }
+    localStorage.setItem(PLAYER_COUNT_KEY, selectedPlayerCount);
+}
+
+// Initialize player count UI on page load
+// Default to single player on first load
+if (!localStorage.getItem(PLAYER_COUNT_KEY)) {
+    selectedPlayerCount = '1';
+    localStorage.setItem(PLAYER_COUNT_KEY, '1');
+}
+updatePlayerCountUI();
+
+document.getElementById('player-count-1').addEventListener('click', () => {
+    selectedPlayerCount = '1';
+    updatePlayerCountUI();
+});
+
+document.getElementById('player-count-2').addEventListener('click', () => {
+    selectedPlayerCount = '2';
+    updatePlayerCountUI();
+});
 
 function updateShipSelectionUI() {
     const standardBtn = document.getElementById('ship-standard-btn');

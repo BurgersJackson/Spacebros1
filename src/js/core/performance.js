@@ -103,6 +103,24 @@ export function entityInExtendedView(entity) {
     return isInExtendedView(entity.pos.x, entity.pos.y);
 }
 
+/**
+ * Check if position is in either player's view (for split-screen).
+ * @param {number} x - X position
+ * @param {number} y - Y position
+ * @param {number} radius - Extra radius margin
+ * @returns {boolean}
+ */
+export function isInAnyViewRadius(x, y, radius = 0, viewBoundsP1, viewBoundsP2) {
+    const r = Math.max(0, radius || 0);
+    // Check Player 1 view bounds
+    const inP1 = x > (viewBoundsP1.left - r) && x < (viewBoundsP1.right + r) &&
+        y > (viewBoundsP1.top - r) && y < (viewBoundsP1.bottom + r);
+    // Check Player 2 view bounds
+    const inP2 = x > (viewBoundsP2.left - r) && x < (viewBoundsP2.right + r) &&
+        y > (viewBoundsP2.top - r) && y < (viewBoundsP2.bottom + r);
+    return inP1 || inP2;
+}
+
 // --- Bullet Spatial Hash ---
 
 /**

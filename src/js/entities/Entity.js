@@ -20,6 +20,10 @@ export class Entity {
         
         // Store previous position for interpolation
         this.prevPos = new Vector(x, y);
+        
+        // Player index for multiplayer (0 = player 1, 1 = player 2, etc.)
+        // null for non-player entities
+        this.playerIndex = null;
     }
 
     /**

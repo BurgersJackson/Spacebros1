@@ -66,6 +66,65 @@
             align-items: center;
         }
 
+        .hud-right {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        .hud-right .bar-container {
+            width: 150px;
+            height: 15px;
+            border: 2px solid #f0f;
+            background: #222;
+            position: relative;
+        }
+
+        .hud-right .hp-value {
+            color: #f0f;
+            text-shadow: 0 0 5px #f0f;
+        }
+
+        .hud-right span {
+            color: #f0f;
+            text-shadow: 0 0 5px #f0f;
+        }
+
+        /* Split-screen divider line */
+        #split-divider {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 2px;
+            height: 100%;
+            background: #0f0;
+            box-shadow: 0 0 10px #0f0;
+            z-index: 15;
+            display: none;
+        }
+
+        .player-label {
+            position: absolute;
+            top: 20px;
+            font-size: 16px;
+            font-weight: bold;
+            text-shadow: 0 0 5px #fff;
+            z-index: 15;
+            pointer-events: none;
+        }
+
+        #p1-label {
+            left: 20px;
+            color: #0ff;
+        }
+
+        #p2-label {
+            right: 20px;
+            color: #f0f;
+            display: none;
+        }
+
         /* Status Bars */
         .status-group {
             display: flex;
@@ -655,6 +714,9 @@
 
     <div id="ui-layer">
         <div id="fps-counter">FPS --</div>
+        <div id="split-divider"></div>
+        <div id="p1-label">P1</div>
+        <div id="p2-label">P2</div>
         <div id="hud">
             <div class="hud-left">
                 <div>SCORE: <span id="score">0</span></div>
@@ -717,6 +779,37 @@
                 <div class="objective-text" id="event-display"
                     style="color:#ff0; text-shadow:0 0 6px #ff0; display:none;">EVENT: NONE</div>
             </div>
+
+            <!-- P2 HUD (Right Side) -->
+            <div class="hud-right" id="p2-hud" style="display: none;">
+                <div class="status-group">
+                    <span>HP:</span>
+                    <div class="bar-container">
+                        <div id="p2-health-fill"></div>
+                    </div>
+                    <div class="hp-value" id="p2-health-text">0 / 0</div>
+                </div>
+
+                <div class="status-group" id="p2-warp-status">
+                    <span>WARP:</span>
+                    <div class="bar-container">
+                        <div id="p2-warp-fill"></div>
+                    </div>
+                </div>
+
+                <div class="status-group" id="p2-turbo-status">
+                    <span>TURBO:</span>
+                    <div class="bar-container">
+                        <div id="p2-turbo-fill"></div>
+                    </div>
+                </div>
+
+                <div class="status-group nugget-display">
+                    <span>NUGS:</span>
+                    <div class="nugget-icon"></div>
+                    <div class="hp-value" id="p2-nugget-count">0</div>
+                </div>
+            </div>
         </div>
 
         <div id="station-health-container">
@@ -736,6 +829,13 @@
         <h1>NEON SPACE</h1>
         <p>MOUSE: Aim • WASD/L-STICK: Move<br>Collect Coins to Upgrade Ship!</p>
         <div id="current-profile-display" style="color: #ff0; margin-bottom: 10px; font-size: 14px;">Current: None</div>
+
+        <!-- NEW: Player Count Selection -->
+        <div style="margin-bottom: 15px; border: 1px solid #0f0; padding: 10px;">
+            <div style="color: #0f0; font-size: 14px; margin-bottom: 8px;">PLAYERS</div>
+            <button id="player-count-1" class="ship-select-btn" style="border-color: #0f0; color: #0f0;">1 PLAYER</button>
+            <button id="player-count-2" class="ship-select-btn">2 PLAYERS (SPLIT)</button>
+        </div>
 
         <!-- NEW: Ship Selection -->
         <div style="margin-bottom: 15px; border: 1px solid #0ff; padding: 10px;">
