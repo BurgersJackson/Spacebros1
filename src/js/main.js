@@ -43,6 +43,7 @@ const UPGRADE_DATA = {
                 { "id": "static_weapons", "name": "Static Weapons", "tier1": "Unlock Forward Laser", "tier2": "Add Side Lasers", "tier3": "Add Rear Laser", "tier4": "Dual Rear Stream", "tier5": "Dual Front Stream", "notes": "Always-on turrets." },
                 { "id": "homing_missiles", "name": "Homing Missiles", "tier1": "2 Missiles, 1 DMG", "tier2": "2 Missiles, 2 DMG", "tier3": "2 Missiles, 3 DMG", "tier4": "2 Missiles, 4 DMG", "tier5": "2 Missiles, 5 DMG", "notes": "Precision swarm." },
                 { "id": "volley_shot", "name": "Volley Shot", "tier1": "Auto-fires 3-shot burst every 3s", "tier2": "5-shot burst every 3s", "tier3": "7-shot burst every 3s", "tier4": "9-shot burst every 3s", "tier5": "11-shot burst every 3s", "notes": "Automatic burst damage. No input required." },
+                { "id": "ciws", "name": "CIWS", "tier1": "Auto-targets 400u, 1 dmg", "tier2": "2 dmg", "tier3": "3 dmg", "tier4": "4 dmg", "tier5": "5 dmg", "notes": "Rapid-fire defense. Targets all enemies." },
                 { "id": "chain_lightning", "name": "Chain Lightning", "tier1": "Projectiles chain to 1 enemy (200u)", "tier2": "Chain to 2 enemies (250u)", "tier3": "Chain to 3 enemies (300u)", "notes": "Arc damage hits grouped enemies. Great vs swarms." },
                 { "id": "backstabber", "name": "Backstabber", "tier1": "+50% damage from behind", "tier2": "+100% damage from behind", "tier3": "+150% damage, slow enemies 2s", "notes": "Positioning matters. Flanking = huge damage." }
             ]

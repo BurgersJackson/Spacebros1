@@ -67,3 +67,4 @@ The project uses `npm` for dependency management and script execution.
 *   **ES6 Modules:** The game logic is structured using standard ES6 modules (`import`/`export`).
 *   **Hybrid Rendering:** The game appears to use a mix of HTML5 Canvas (`#gameCanvas`) and DOM elements for UI (`#ui-layer`). PixiJS is explicitly imported for particle/sprite optimization.
 *   **Phaser Loading:** Phaser is loaded dynamically in `index.html` with a fallback to CDN if the local node module is missing.
+Make sure to read the CLAUDE.md file to see how the game is made
