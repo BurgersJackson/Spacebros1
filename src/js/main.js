@@ -5713,6 +5713,7 @@ class Enemy extends Entity {
         }
 
         // DROP COINS (increased by 25%)
+        if (!this.noDrops) {
         let val = 2;
         let count = 4;  // was 3
         if (this.type === 'elite_roamer') { val = 3; count = 5; }  // was 4
@@ -5756,6 +5757,7 @@ class Enemy extends Entity {
                     nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 80, this.pos.y + (Math.random() - 0.5) * 80, 1));
                 }
             }
+        }
         }
 
         if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter') roamerRespawnQueue.push(2000 + Math.floor(Math.random() * 2000));
@@ -12266,6 +12268,7 @@ class WarpSentinelBoss extends Entity {
             mine.radius = 30;
             mine.despawnImmune = true;
             mine.owner = this;
+            mine.noDrops = true;
             mine.t = 0;
             mine.pulsePhase = Math.random() * Math.PI * 2;
 
@@ -15154,6 +15157,7 @@ class CaveMonster1 extends CaveMonsterBase {
             mine.radius = 30;
             mine.despawnImmune = true;
             mine.owner = this;
+            mine.noDrops = true;
             mine.t = 0;
             mine.pulsePhase = Math.random() * Math.PI * 2;
 
@@ -15599,6 +15603,7 @@ class CaveMonster3 extends CaveMonsterBase {
             mine.radius = 30;
             mine.despawnImmune = true;
             mine.owner = this;
+            mine.noDrops = true;
             mine.t = 0;
             mine.pulsePhase = Math.random() * Math.PI * 2;
 
