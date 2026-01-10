@@ -3421,21 +3421,25 @@ class Spaceship extends Entity {
 
         // NEW: Slacker ship mouse movement
         if (this.shipType === 'slacker' && !usingGamepad) {
-            // Calculate direction from ship to mouse cursor
-            const dx = mouseWorld.x - this.pos.x;
-            const dy = mouseWorld.y - this.pos.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
+            // Calculate direction from screen center to mouse cursor (Virtual Joystick)
+            const screenCenterX = width / 2;
+            const screenCenterY = height / 2;
+            
+            // Vector from center of screen to mouse pointer
+            const rawDx = mouseScreen.x - screenCenterX;
+            const rawDy = mouseScreen.y - screenCenterY;
+            const distSq = rawDx * rawDx + rawDy * rawDy;
 
             // Rotation mode: if left mouse button is held, stop movement
             // and only rotate to face mouse cursor
             const isRotationMode = mouseState.leftDown;
 
             if (!isRotationMode) {
-                // Normal movement mode: add mouse input to movement
-                if (dist > 50) {
-                    // Normalize to -1 to 1 range
-                    const mouseMoveX = dx / dist;
-                    const mouseMoveY = dy / dist;
+                // Deadzone of 50 pixels from center
+                if (distSq > 50 * 50) {
+                    const dist = Math.sqrt(distSq);
+                    const mouseMoveX = rawDx / dist;
+                    const mouseMoveY = rawDy / dist;
 
                     // Add to existing keyboard input (allows combining mouse + keyboard)
                     moveX += mouseMoveX;
@@ -22926,39 +22930,34 @@ function drawSlackerMouseLine() {
     if (!player || player.shipType !== 'slacker' || usingGamepad || !pixiArrowsGraphics) return;
     if (gamePaused || !gameActive) return;
 
-    // Get ship position (world space)
-    const shipX = player.pos.x;
-    const shipY = player.pos.y;
-
-    // Get mouse position (world space)
-    const mouseX = mouseWorld.x;
-    const mouseY = mouseWorld.y;
-
-    // Calculate angle from ship to mouse
-    const angle = Math.atan2(mouseY - shipY, mouseX - shipX);
-
-    // Start point: 10 pixels beyond outer shield
-    const startDist = player.outerShieldRadius + 10;
-    const startX = shipX + Math.cos(angle) * startDist;
-    const startY = shipY + Math.sin(angle) * startDist;
-
     // Calculate screen positions
     const z = currentZoom || ZOOM_LEVEL;
     const camX = player.pos.x - width / (2 * z);
     const camY = player.pos.y - height / (2 * z);
 
-    const screenStartX = (startX - camX) * z;
-    const screenStartY = (startY - camY) * z;
-    const screenMouseX = (mouseX - camX) * z;
-    const screenMouseY = (mouseY - camY) * z;
+    // Ship screen position (center of view, usually)
+    const screenShipX = (player.pos.x - camX) * z;
+    const screenShipY = (player.pos.y - camY) * z;
 
-    // Skip if both points are off-screen
-    if ((screenStartX < -50 && screenMouseX < -50) ||
-        (screenStartX > width + 50 && screenMouseX > width + 50) ||
-        (screenStartY < -50 && screenMouseY < -50) ||
-        (screenStartY > height + 50 && screenMouseY > height + 50)) {
-        return;
-    }
+    // Mouse screen position (raw input)
+    const screenMouseX = mouseScreen.x;
+    const screenMouseY = mouseScreen.y;
+
+    // Calculate angle from ship to mouse on screen
+    const angle = Math.atan2(screenMouseY - screenShipY, screenMouseX - screenShipX);
+
+    // Start point: 10 pixels beyond outer shield (scaled to screen)
+    // outerShieldRadius is in world units, so scale by z
+    const startDistScreen = (player.outerShieldRadius + 10) * z;
+    const screenStartX = screenShipX + Math.cos(angle) * startDistScreen;
+    const screenStartY = screenShipY + Math.sin(angle) * startDistScreen;
+
+    // Skip if line is too short or off-screen
+    // (Additional check to prevent drawing inside the ship)
+    const dx = screenMouseX - screenShipX;
+    const dy = screenMouseY - screenShipY;
+    const distSq = dx*dx + dy*dy;
+    if (distSq < startDistScreen * startDistScreen) return;
 
     // Draw white 50% transparent line
     pixiArrowsGraphics.lineStyle(2, 0xffffff, 0.5);
