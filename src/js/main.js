@@ -3207,7 +3207,7 @@ class Spaceship extends Entity {
         this.nukeMaxCooldown = 600; // Default 10s
         this.nukeDamage = 5;
         this.nukeRange = 500;
-        
+
         // Global Defense Ring
         this.defenseRingTier = 0;
         this.defenseOrbs = [];
@@ -3245,10 +3245,10 @@ class Spaceship extends Entity {
         this.batteryUnlocked = false;
         this.batteryCharge = 0; // 0-100
         this.batteryMaxCharge = 100;
-        // Charge rate: 100 units over 30 seconds, independent of framerate
+        // Charge rate: 100 units over 60 seconds, independent of framerate
         // deltaTime is in ms, dtScale = deltaTime / 16.67
         // chargeRate is the amount to add per Reference Frame (16.67ms)
-        this.batteryChargeRate = (100 / 30000) * 16.67;
+        this.batteryChargeRate = (100 / 60000) * 16.67;
         this.batteryDamage = 500;
         this.batteryRange = 800;
         this.batteryDischarging = false;
@@ -3434,7 +3434,7 @@ class Spaceship extends Entity {
             // Calculate direction from screen center to mouse cursor (Virtual Joystick)
             const screenCenterX = width / 2;
             const screenCenterY = height / 2;
-            
+
             // Vector from center of screen to mouse pointer
             const rawDx = mouseScreen.x - screenCenterX;
             const rawDy = mouseScreen.y - screenCenterY;
@@ -3644,13 +3644,13 @@ class Spaceship extends Entity {
             this.defenseOrbAngle += this.defenseOrbSpeed * dtScale;
             const orbs = this.defenseOrbs;
             const now = Date.now();
-            
+
             for (let i = 0; i < orbs.length; i++) {
                 const orb = orbs[i];
                 const angle = this.defenseOrbAngle + orb.angleOffset;
                 const ox = this.pos.x + Math.cos(angle) * this.defenseOrbRadius;
                 const oy = this.pos.y + Math.sin(angle) * this.defenseOrbRadius;
-                
+
                 // Collision targets via Spatial Hash for performance
                 // targetGrid includes: enemies, pinwheels, bosses, turrets
                 const queryRadius = 150;
@@ -3664,19 +3664,19 @@ class Spaceship extends Entity {
                 for (const target of targets) {
                     if (target.dead) continue;
                     if (target.unbreakable) continue; // Skip indestructible objects
-                    
+
                     // Check cooldown
                     const lastHit = orb.hitCooldowns.get(target);
                     if (lastHit && now - lastHit < 500) continue; // 0.5s cooldown per orb per target
 
                     const distSq = (ox - target.pos.x) ** 2 + (oy - target.pos.y) ** 2;
                     const hitDist = (25 + target.radius); // Orb radius approx 25
-                    
+
                     if (distSq < hitDist * hitDist) {
                         // HIT!
                         orb.hitCooldowns.set(target, now);
                         spawnParticles(target.pos.x, target.pos.y, 5, '#f80'); // Fire particles
-                        
+
                         if (typeof target.break === 'function') {
                             target.break();
                         } else if (typeof target.hp === 'number') {
@@ -3695,7 +3695,7 @@ class Spaceship extends Entity {
         // Auto Nuke Trigger
         if (this.nukeCooldown > 0) this.nukeCooldown -= dtScale;
         if (this.nukeUnlocked && this.nukeCooldown <= 0) {
-           this.fireNuke();
+            this.fireNuke();
         }
 
         // Volley Shot Auto-Fire (every 3 seconds = 180 frames at 60fps)
@@ -4454,7 +4454,7 @@ class Spaceship extends Entity {
 
                         defGfx.clear();
                         defGfx.position.set(rPos.x, rPos.y);
-                        
+
                         // Ring Visual (White, 50% opacity)
                         defGfx.lineStyle(2, 0xffffff, 0.5);
                         defGfx.drawCircle(0, 0, this.defenseOrbRadius);
@@ -4464,12 +4464,12 @@ class Spaceship extends Entity {
                             const angle = this.defenseOrbAngle + orbs[i].angleOffset;
                             const ox = Math.cos(angle) * this.defenseOrbRadius;
                             const oy = Math.sin(angle) * this.defenseOrbRadius;
-                            
+
                             // Orb Core (Hot White/Yellow)
                             defGfx.beginFill(0xffffaa, 1);
                             defGfx.drawCircle(ox, oy, 10);
                             defGfx.endFill();
-                            
+
                             // Inner Fire (Orange)
                             defGfx.beginFill(0xffaa00, 0.8);
                             defGfx.drawCircle(ox, oy, 16);
@@ -4481,7 +4481,7 @@ class Spaceship extends Entity {
                             defGfx.endFill();
                         }
                     } else if (defGfx) {
-                        try { defGfx.destroy(true); } catch(e) {}
+                        try { defGfx.destroy(true); } catch (e) { }
                         this._pixiDefenseGfx = null;
                     }
 
@@ -4681,7 +4681,7 @@ class Shockwave extends Entity {
         if (this.currentRadius >= this.maxRadius) this.dead = true;
 
         const targets = [...enemies];
-        if (this.damageBases)         targets.push(...pinwheels);
+        if (this.damageBases) targets.push(...pinwheels);
         if (boss && bossActive && !boss.dead) targets.push(boss);
         if (this.damagePlayer && player && !player.dead) targets.push(player);
 
@@ -5819,50 +5819,50 @@ class Enemy extends Entity {
 
         // DROP COINS (increased by 25%)
         if (!this.noDrops) {
-        let val = 2;
-        let count = 4;  // was 3
-        if (this.type === 'elite_roamer') { val = 3; count = 5; }  // was 4
-        if (this.type === 'hunter') { val = 4; count = 7; }  // was 5
-        if (this.type === 'defender') { val = 3; count = 4; }  // was 3
-        if (this.nameTag) { val += 1; count += 2; }
-        const caveActive = (caveMode && caveLevel && caveLevel.active);
-        if (caveActive) {
-            let total = count * val;
-            if (this.isGunboat) total += 10 + (5 * 2);
-            // Reduce roamer-style coin income in Level 2.
-            if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter') {
-                total = Math.floor(total * 0.75);
-            }
-            awardCoinsInstant(total, { noSound: false, sound: 'coin' });
-        } else {
-            if (this.isGunboat) {
-                // Gunboat drops: 1 gold coin (value 10) + 5 regular (value 2)
-                coins.push(new Coin(this.pos.x, this.pos.y, 10));
-                for (let i = 0; i < 5; i++) coins.push(new Coin(this.pos.x, this.pos.y, 2));
-            }
-            for (let i = 0; i < count; i++) {
-                coins.push(new Coin(this.pos.x, this.pos.y, val));
-            }
-        }
-        if (this.nameTag) {
-            nuggets.push(new SpaceNugget(this.pos.x, this.pos.y, 1));
-        }
-
-        // Sector 2 needs more nugz to match the pace of Sector 1 (no contracts/stations here).
-        if (caveActive) {
-            let p = 0.08;
-            if (this.type === 'defender') p = 0.14;
-            else if (this.type === 'elite_roamer') p = 0.12;
-            else if (this.type === 'hunter') p = 0.16;
-            if (this.isGunboat) p = 0.25;
-
-            if (Math.random() < p) {
-                const count = this.isGunboat ? 2 : 1;
-                for (let k = 0; k < count; k++) {
-                    nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 80, this.pos.y + (Math.random() - 0.5) * 80, 1));
+            let val = 2;
+            let count = 4;  // was 3
+            if (this.type === 'elite_roamer') { val = 3; count = 5; }  // was 4
+            if (this.type === 'hunter') { val = 4; count = 7; }  // was 5
+            if (this.type === 'defender') { val = 3; count = 4; }  // was 3
+            if (this.nameTag) { val += 1; count += 2; }
+            const caveActive = (caveMode && caveLevel && caveLevel.active);
+            if (caveActive) {
+                let total = count * val;
+                if (this.isGunboat) total += 10 + (5 * 2);
+                // Reduce roamer-style coin income in Level 2.
+                if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter') {
+                    total = Math.floor(total * 0.75);
+                }
+                awardCoinsInstant(total, { noSound: false, sound: 'coin' });
+            } else {
+                if (this.isGunboat) {
+                    // Gunboat drops: 1 gold coin (value 10) + 5 regular (value 2)
+                    coins.push(new Coin(this.pos.x, this.pos.y, 10));
+                    for (let i = 0; i < 5; i++) coins.push(new Coin(this.pos.x, this.pos.y, 2));
+                }
+                for (let i = 0; i < count; i++) {
+                    coins.push(new Coin(this.pos.x, this.pos.y, val));
                 }
             }
-        }
+            if (this.nameTag) {
+                nuggets.push(new SpaceNugget(this.pos.x, this.pos.y, 1));
+            }
+
+            // Sector 2 needs more nugz to match the pace of Sector 1 (no contracts/stations here).
+            if (caveActive) {
+                let p = 0.08;
+                if (this.type === 'defender') p = 0.14;
+                else if (this.type === 'elite_roamer') p = 0.12;
+                else if (this.type === 'hunter') p = 0.16;
+                if (this.isGunboat) p = 0.25;
+
+                if (Math.random() < p) {
+                    const count = this.isGunboat ? 2 : 1;
+                    for (let k = 0; k < count; k++) {
+                        nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 80, this.pos.y + (Math.random() - 0.5) * 80, 1));
+                    }
+                }
+            }
         }
 
         if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter') roamerRespawnQueue.push(2000 + Math.floor(Math.random() * 2000));
@@ -6428,10 +6428,7 @@ class Enemy extends Entity {
                     // OUTER SHIELD REBUILD
                     gfx.clear();
 
-                    if (this.freezeTimer > 0 && hasOuter) {
-                        gfx.lineStyle(2, 0x00ffff, 1);
-                        gfx.drawRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
-                    }
+
 
                     if (hasOuter) {
                         const segCount = this.shieldSegments.length;
@@ -6818,7 +6815,10 @@ class Pinwheel extends Entity {
             const jy = jitter ? (Math.random() - 0.5) * jitter * 2 : 0;
             container.position.set(rPos.x + jx, rPos.y + jy);
 
-            if (this._pixiHullSpr) this._pixiHullSpr.rotation = this.angle || 0;
+            if (this._pixiHullSpr) {
+                this._pixiHullSpr.rotation = this.angle || 0;
+                this._pixiHullSpr.tint = (this.freezeTimer > 0) ? 0x00ffff : 0xffffff;
+            }
 
             // Shields (Graphics)
             if (pixiVectorLayer) {
@@ -8362,7 +8362,7 @@ class CaveLevel {
             if (this.buckets[i]) this.buckets[i].push(sL, sR);
         }
 
-         // Branching pillars: DISABLED - REMOVED
+        // Branching pillars: DISABLED - REMOVED
         /*
         this.innerSegments = [];
         const pillarCount = 6;
@@ -9748,7 +9748,7 @@ class WarpMazeZone extends Entity {
         if (this.mobSpawnCooldown > 0) this.mobSpawnCooldown -= dtFactor;
         if (this.state === 'maze' && player && !player.dead) {
             const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        const band =
+            const band =
                 dist > (this.arenaRadius + 2600) ? 0 :
                     dist > (this.arenaRadius + 1400) ? 1 :
                         dist > (this.arenaRadius + 400) ? 2 :
@@ -11537,16 +11537,16 @@ class WarpBioPod extends Entity {
     }
     update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
-        
+
         const dtFactor = deltaTime / 16.67;
-        
+
         // Homing Logic (Orbital Hazard)
         if (player && !player.dead) {
             const dx = player.pos.x - this.pos.x;
             const dy = player.pos.y - this.pos.y;
             const distSq = dx * dx + dy * dy;
             const homingRange = 750;
-            
+
             // Home in if within range and not about to explode immediately
             if (distSq < homingRange * homingRange && this.life > 20) {
                 const dist = Math.sqrt(distSq);
@@ -11554,22 +11554,22 @@ class WarpBioPod extends Entity {
                 const ay = (dy / dist) * 0.18 * dtFactor;
                 this.vel.x += ax;
                 this.vel.y += ay;
-                
+
                 // Spin faster when tracking
-                this.angle += 0.1 * dtFactor; 
+                this.angle += 0.1 * dtFactor;
             } else {
                 // Regular drift friction
                 this.vel.x *= Math.pow(0.98, dtFactor);
                 this.vel.y *= Math.pow(0.98, dtFactor);
             }
         } else {
-             this.vel.x *= Math.pow(0.98, dtFactor);
-             this.vel.y *= Math.pow(0.98, dtFactor);
+            this.vel.x *= Math.pow(0.98, dtFactor);
+            this.vel.y *= Math.pow(0.98, dtFactor);
         }
 
         super.update(deltaTime);
         this.life -= dtFactor;
-        
+
         // Soft cap on speed to prevent crazy flinging
         const speed = Math.hypot(this.vel.x, this.vel.y);
         const maxSpeed = 6.0;
@@ -12229,13 +12229,13 @@ class WarpSentinelBoss extends Entity {
                 } else if (!debugGfx.parent) {
                     pixiVectorLayer.addChild(debugGfx);
                 }
-                
+
                 if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
                     debugGfx.visible = true;
                     debugGfx.clear();
                     debugGfx.position.set(rPos.x, rPos.y);
                     debugGfx.rotation = aim; // Boss rotates to face player (aim)
-                    
+
                     // Draw Broad Phase Radius (Yellow)
                     debugGfx.lineStyle(2, 0xFFFF00, 0.5);
                     debugGfx.drawCircle(0, 0, this.collisionRadius);
@@ -12377,7 +12377,7 @@ class WarpSentinelBoss extends Entity {
             mine.t = 0;
             mine.pulsePhase = Math.random() * Math.PI * 2;
 
-            mine.update = function(deltaTime = 16.67) {
+            mine.update = function (deltaTime = 16.67) {
                 const dtScale = deltaTime / 16.67;
                 this.t += 1 * dtScale;
 
@@ -12393,7 +12393,7 @@ class WarpSentinelBoss extends Entity {
                 }
             };
 
-            mine.draw = function(ctx) {
+            mine.draw = function (ctx) {
                 ctx.save();
                 ctx.translate(this.pos.x, this.pos.y);
                 const pulseScale = 1.0 + Math.sin(this.t * 0.1 + this.pulsePhase) * 0.15;
@@ -13715,13 +13715,13 @@ class Destroyer extends Entity {
                 } else if (!debugGfx.parent) {
                     pixiVectorLayer.addChild(debugGfx);
                 }
-                
+
                 if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
                     debugGfx.visible = true;
                     debugGfx.clear();
                     debugGfx.position.set(rPos.x, rPos.y);
                     debugGfx.rotation = this.angle || 0; // Rotate debug gfx with ship
-                    
+
                     // Draw Hull Hitbox (Green) - Multi-Circle
                     debugGfx.lineStyle(3, 0x00FF00, 0.8);
                     if (this.hullDefinition) {
@@ -14378,13 +14378,13 @@ class Destroyer2 extends Entity {
                 } else if (!debugGfx.parent) {
                     pixiVectorLayer.addChild(debugGfx);
                 }
-                
+
                 if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
                     debugGfx.visible = true;
                     debugGfx.clear();
                     debugGfx.position.set(rPos.x, rPos.y);
                     debugGfx.rotation = this.angle || 0;
-                    
+
                     // Draw Hull Hitbox (Green) - Multi-Circle
                     debugGfx.lineStyle(3, 0x00FF00, 0.8);
                     if (this.hullDefinition) {
@@ -14819,12 +14819,12 @@ class CaveMonsterBase extends Entity {
         const dist = Math.hypot(dx, dy);
         // Invisible collision sphere matching the outer shield radius
         // Prevents ships from entering but allows bullets to pass
-        const minDist = this.shieldRadius + entity.radius; 
+        const minDist = this.shieldRadius + entity.radius;
 
         if (dist < minDist) {
             const angle = Math.atan2(dy, dx);
             const overlap = minDist - dist;
-            
+
             // Hard push to edge of sphere
             entity.pos.x += Math.cos(angle) * overlap;
             entity.pos.y += Math.sin(angle) * overlap;
@@ -15268,7 +15268,7 @@ class CaveMonster1 extends CaveMonsterBase {
             mine.t = 0;
             mine.pulsePhase = Math.random() * Math.PI * 2;
 
-            mine.update = function() {
+            mine.update = function () {
                 this.t += 1;
 
                 if (player && !player.dead) {
@@ -15289,7 +15289,7 @@ class CaveMonster1 extends CaveMonsterBase {
                 }
             };
 
-            mine.draw = function(ctx) {
+            mine.draw = function (ctx) {
                 ctx.save();
                 ctx.translate(this.pos.x, this.pos.y);
 
@@ -15642,7 +15642,7 @@ class CaveMonster3 extends CaveMonsterBase {
             radius: 40, // Increased from 30 for better visibility
             dead: false,
             owner: this,
-            update: function(dt) {
+            update: function (dt) {
                 if (this.dead || this.owner.dead) {
                     this.dead = true;
                     return;
@@ -15670,7 +15670,7 @@ class CaveMonster3 extends CaveMonsterBase {
                     }
                 }
             },
-            draw: function(ctx) {
+            draw: function (ctx) {
                 if (this.dead) return;
                 ctx.save();
                 ctx.translate(this.pos.x, this.pos.y);
@@ -15715,7 +15715,7 @@ class CaveMonster3 extends CaveMonsterBase {
             mine.t = 0;
             mine.pulsePhase = Math.random() * Math.PI * 2;
 
-            mine.update = function() {
+            mine.update = function () {
                 this.t += 1;
 
                 if (player && !player.dead) {
@@ -15736,7 +15736,7 @@ class CaveMonster3 extends CaveMonsterBase {
                 }
             };
 
-            mine.draw = function(ctx) {
+            mine.draw = function (ctx) {
                 ctx.save();
                 ctx.translate(this.pos.x, this.pos.y);
 
@@ -15823,33 +15823,33 @@ class CaveMonster3 extends CaveMonsterBase {
                     pixiVectorLayer.addChild(gfx);
                 }
 
-            gfx.clear();
-            gfx.position.set(rPos.x, rPos.y);
-            const z = currentZoom || ZOOM_LEVEL;
-            const charging = (this.beamCharge > 0);
-            const firing = (this.beamFire > 0);
+                gfx.clear();
+                gfx.position.set(rPos.x, rPos.y);
+                const z = currentZoom || ZOOM_LEVEL;
+                const charging = (this.beamCharge > 0);
+                const firing = (this.beamFire > 0);
 
-            // Loop through all 3 beam angles
-            if (this.beamAngles.length > 0) {
-                for (const beamAngle of this.beamAngles) {
-                    const ex = Math.cos(beamAngle) * this.beamLen;
-                    const ey = Math.sin(beamAngle) * this.beamLen;
+                // Loop through all 3 beam angles
+                if (this.beamAngles.length > 0) {
+                    for (const beamAngle of this.beamAngles) {
+                        const ex = Math.cos(beamAngle) * this.beamLen;
+                        const ey = Math.sin(beamAngle) * this.beamLen;
 
-                    if (charging) {
-                        const pct = 1 - (this.beamCharge / (this.beamChargeTotal || 1));
-                        gfx.lineStyle(3, 0xffff00, 0.15 + pct * 0.3);
-                        gfx.moveTo(0, 0);
-                        gfx.lineTo(ex, ey);
-                    } else if (firing) {
-                        gfx.lineStyle(this.beamWidth / z, 0xffff00, 0.95);
-                        gfx.moveTo(0, 0);
-                        gfx.lineTo(ex, ey);
-                        gfx.beginFill(0xffff00, 0.85);
-                        gfx.drawCircle(ex, ey, 10 / z);
-                        gfx.endFill();
+                        if (charging) {
+                            const pct = 1 - (this.beamCharge / (this.beamChargeTotal || 1));
+                            gfx.lineStyle(3, 0xffff00, 0.15 + pct * 0.3);
+                            gfx.moveTo(0, 0);
+                            gfx.lineTo(ex, ey);
+                        } else if (firing) {
+                            gfx.lineStyle(this.beamWidth / z, 0xffff00, 0.95);
+                            gfx.moveTo(0, 0);
+                            gfx.lineTo(ex, ey);
+                            gfx.beginFill(0xffff00, 0.85);
+                            gfx.drawCircle(ex, ey, 10 / z);
+                            gfx.endFill();
+                        }
                     }
                 }
-            }
             }
         } else if (this._pixiBeamGfx) {
             try { this._pixiBeamGfx.clear(); } catch (e) { }
@@ -16684,9 +16684,9 @@ function loadMetaProfile() {
 
         // Migrate old boolean saves to counts
         for (const key of ['startDamage', 'passiveHp', 'hullPlating', 'shieldCore',
-                           'staticBlueprint', 'missilePrimer', 'magnetBooster',
-                           'nukeCapacitor', 'speedTuning', 'bankMultiplier',
-                           'shopDiscount', 'extraLife', 'droneFabricator']) {
+            'staticBlueprint', 'missilePrimer', 'magnetBooster',
+            'nukeCapacitor', 'speedTuning', 'bankMultiplier',
+            'shopDiscount', 'extraLife', 'droneFabricator']) {
             if (metaProfile.purchases[key] === true) {
                 metaProfile.purchases[key] = 1;
             } else if (metaProfile.purchases[key] === false) {
@@ -17127,10 +17127,10 @@ function showMetaShopUpgradeModal(upgradeId, clickedButton) {
         // Let's use the same logic pattern.
         const nextTierKey = `tier${currentTier + 1}`;
         let nextText = data[nextTierKey];
-        
+
         if (!nextText) {
-             nextText = "Increases effectiveness further (Infinite Scaling)";
-             if (upgradeId.includes('Damage') || upgradeId === 'batteryCapacitor' || upgradeId === 'nukeCapacitor') {
+            nextText = "Increases effectiveness further (Infinite Scaling)";
+            if (upgradeId.includes('Damage') || upgradeId === 'batteryCapacitor' || upgradeId === 'nukeCapacitor') {
                 nextText = "Increases damage output";
             } else if (upgradeId === 'passiveHp' || upgradeId === 'hullPlating') {
                 nextText = "Increases maximum hull HP";
@@ -17153,7 +17153,7 @@ function showMetaShopUpgradeModal(upgradeId, clickedButton) {
     // Enable/disable Buy button based on affordability
     // Infinite Upgrade Logic: If defined tier text runs out, generate generic text
     const nextTierKey = `tier${currentTier + 1}`;
-    
+
     // Default to defined text, or generic if infinite
     let nextBenefitText = data[nextTierKey];
     if (!nextBenefitText) {
@@ -18417,20 +18417,20 @@ function resolveEntityCollision() {
                                 ast.break();
                                 spawnParticles(ast.pos.x, ast.pos.y, 8, '#aa8');
                                 playSound('hit');
-                } else {
-                    // Wall sparks (no breaking).
-                    spawnParticles(player.pos.x - nx * player.radius, player.pos.y - ny * player.radius, 6, '#08f');
-                    playSound('hit');
+                            } else {
+                                // Wall sparks (no breaking).
+                                spawnParticles(player.pos.x - nx * player.radius, player.pos.y - ny * player.radius, 6, '#08f');
+                                playSound('hit');
+                            }
+                        }
                     }
                 }
             }
         }
     }
-    }
-    }
 
     // (Wall collisions for caves, warp zones, and anomalies are now handled centrally
-        //  via checkWallCollision(entity) within each entity's update method).
+    //  via checkWallCollision(entity) within each entity's update method).
 
     // Coin Collection
     if (player && !player.dead) {
@@ -18458,7 +18458,7 @@ function resolveEntityCollision() {
                         e.vel.x -= nx * pushForce;
                         e.vel.y -= ny * pushForce;
 
-                    // Visuals
+                        // Visuals
                         spawnParticles((player.pos.x + e.pos.x) / 2, (player.pos.y + e.pos.y) / 2, 5, '#fff');
                         // No damage, no death.
                         continue;
@@ -19068,7 +19068,7 @@ function showRenamePromptDialog(defaultName) {
 
             // Override updateMenuVisuals for this modal to not blur the input
             const originalUpdateMenuVisuals = window.updateMenuVisuals;
-            window.updateMenuVisuals = function(elements) {
+            window.updateMenuVisuals = function (elements) {
                 elements.forEach((el, idx) => {
                     if (idx === menuSelectionIndex) {
                         el.classList.add('selected');
@@ -19487,7 +19487,7 @@ function showCustomPrompt(message, defaultValue) {
 
         // Ensure keys don't trigger game actions
         const stopProp = (e) => e.stopPropagation();
-        
+
         const cleanup = () => {
             confirmBtn.removeEventListener('click', onConfirm);
             cancelBtn.removeEventListener('click', onCancel);
@@ -20949,8 +20949,8 @@ function gameLoopLogic(opts = null) {
         // Safe clears after a station destruction to avoid mid-loop mutation
         if (pendingTransitionClear) {
             resetPixiOverlaySprites();
-    clearArrayWithPixiCleanup(enemies);
-    clearArrayWithPixiCleanup(pinwheels);
+            clearArrayWithPixiCleanup(enemies);
+            clearArrayWithPixiCleanup(pinwheels);
             clearArrayWithPixiCleanup(bullets);
             clearArrayWithPixiCleanup(bossBombs);
             clearArrayWithPixiCleanup(floatingTexts);
@@ -21396,13 +21396,13 @@ function gameLoopLogic(opts = null) {
                 else targetBases = 4;
             }
 
-                    if (pinwheels.length < targetBases) {
+            if (pinwheels.length < targetBases) {
                 if (baseRespawnTimers.length === 0) spawnNewPinwheelRelative();
             }
 
             for (let i = baseRespawnTimers.length - 1; i >= 0; i--) {
                 if (now > baseRespawnTimers[i]) {
-            if (pinwheels.length < targetBases) {
+                    if (pinwheels.length < targetBases) {
                         spawnNewPinwheelRelative();
                         baseRespawnTimers.splice(i, 1);
                     } else {
@@ -23098,7 +23098,7 @@ function drawSlackerMouseLine() {
     // (Additional check to prevent drawing inside the ship)
     const dx = screenMouseX - screenShipX;
     const dy = screenMouseY - screenShipY;
-    const distSq = dx*dx + dy*dy;
+    const distSq = dx * dx + dy * dy;
     if (distSq < startDistScreen * startDistScreen) return;
 
     // Draw white 50% transparent line
@@ -23417,7 +23417,7 @@ function colorToHex(colorStr) {
 
 function startGame() {
     console.log('[DEBUG] startGame() called');
-    
+
     // Auto-create profile if none exists (e.g. after deleting all profiles)
     if (!currentProfileName) {
         console.log('[START] No profile selected, checking for auto-create');
@@ -23488,7 +23488,7 @@ function startGame() {
                     if (typeof profile.totalKills === 'number') totalKills = profile.totalKills;
                     if (typeof profile.highScore === 'number') highScore = profile.highScore;
                     if (typeof profile.totalPlayTimeMs === 'number') totalPlayTimeMs = profile.totalPlayTimeMs;
-                    
+
                     // FIXED: Do NOT restore player state (applyProfile) when starting a new game.
                     // This ensures in-game upgrades are reset while store upgrades are re-applied below.
                     // applyProfile(profile); 
@@ -23609,7 +23609,7 @@ function startGame() {
             const bonusHp = Math.floor(shieldCoreTier / 2);
             const totalSegments = 8 + bonusSegments;
             const totalHp = 2 + bonusHp;
-            
+
             // Re-initialize shield array with updated counts and HP
             player.shieldSegments = new Array(totalSegments).fill(totalHp);
             player.maxShieldSegments = totalSegments;
@@ -23651,9 +23651,9 @@ function startGame() {
             player.defenseOrbs = [];
             const count = nukeCapacitorTier; // 1 per tier
             for (let i = 0; i < count; i++) {
-                player.defenseOrbs.push({ 
-                    angleOffset: (Math.PI * 2 * i) / count, 
-                    hitCooldowns: new WeakMap() 
+                player.defenseOrbs.push({
+                    angleOffset: (Math.PI * 2 * i) / count,
+                    hitCooldowns: new WeakMap()
                 });
             }
         }
@@ -24197,12 +24197,12 @@ window.addEventListener('mousemove', e => {
 
     const dx = Math.abs(scaledX - (mouseScreen.x || 0));
     const dy = Math.abs(scaledY - (mouseScreen.y || 0));
-    
+
     // Ignore tiny pointer jitter so it doesn't steal aim from the gamepad.
     if (dx + dy >= 10 || document.pointerLockElement === canvas) lastMouseInputAt = now;
-    
+
     updateInputMode(now);
-    
+
     if (typeof mouseScreen !== 'undefined') {
         mouseScreen.x = scaledX;
         mouseScreen.y = scaledY;
@@ -24634,8 +24634,8 @@ function grantDebugUpgrade(upgradeId, tier, upgradeName) {
     applyUpgrade(upgradeId, tier);
 
     const action = tier > prevTier ? `UPGRADED to Tier ${tier}` :
-                  tier < prevTier ? `DOWNGRADED to Tier ${tier}` :
-                  `RESET to Tier ${tier}`;
+        tier < prevTier ? `DOWNGRADED to Tier ${tier}` :
+            `RESET to Tier ${tier}`;
     showOverlayMessage(`[DEBUG] ${upgradeName}: ${action}`, '#ff0', 1500, 10);
 
     console.log(`[DEBUG] Granted upgrade: ${upgradeId} Tier ${tier} (was Tier ${prevTier})`);
@@ -25016,7 +25016,7 @@ if (!currentProfileName) {
         };
         try {
             localStorage.setItem(SAVE_PREFIX + newName, JSON.stringify(template));
-            
+
             const newMetaProfile = {
                 bank: 0,
                 purchases: {
@@ -25031,7 +25031,7 @@ if (!currentProfileName) {
                 }
             };
             localStorage.setItem(`meta_profile_v1_${newName}`, JSON.stringify(newMetaProfile));
-            
+
             // Use selectProfile to activate it properly (loads meta, updates UI)
             selectProfile(newName);
             autoCreated = true;

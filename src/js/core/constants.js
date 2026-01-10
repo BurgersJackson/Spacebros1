@@ -398,9 +398,9 @@ export const META_SHOP_UPGRADE_DATA = {
     batteryCapacitor: {
         name: "Battery Capacitor",
         description: "Stores energy over time. Discharge manually for massive AOE damage.",
-        tier1: "100 dmg, 800u blast (30s charge)",
-        tier2: "200 dmg, 900u blast (30s charge)",
-        tier3: "300 dmg, 1000u blast (30s charge)",
+        tier1: "100 dmg, 800u blast (60s charge)",
+        tier2: "200 dmg, 900u blast (60s charge)",
+        tier3: "300 dmg, 1000u blast (60s charge)",
         notes: "Press F / Gamepad Y to discharge. Manual control only, never auto-fires."
     }
 };
