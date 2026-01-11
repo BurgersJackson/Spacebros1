@@ -5876,6 +5876,7 @@ class ClusterBomb extends Entity {
         for (let i = 0; i < this.splitCount; i++) {
             const a = this.splitCount > 1 ? startAngle + (i * angleStep) : this.angle + (Math.random() - 0.5) * spreadAngle;
             const b = new Bullet(this.pos.x, this.pos.y, a, true, this.damage, 10, 5, this.color);
+            b.owner = this.owner;
             b.life = 60;
             bullets.push(b);
         }
@@ -14580,7 +14581,9 @@ class NecroticHive extends Enemy {
                 // Chitin barrage arc
                 for (let i = 0; i < 16; i++) {
                     const a = aim - 0.8 + (i / 15) * 1.6;
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 7, 4, '#f6f'));
+                    const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 7, 4, '#f6f');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('shotgun');
             }
@@ -14594,7 +14597,9 @@ class NecroticHive extends Enemy {
                 // Ring attack from drones
                 for (let i = 0; i < 12; i++) {
                     const a = (Math.PI * 2 / 12) * i;
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 9, 4, '#f80'));
+                    const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 9, 4, '#f80');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('shotgun');
             }
@@ -14617,7 +14622,9 @@ class NecroticHive extends Enemy {
             if (this.phaseTick % 8 === 0) {
                 // Rapid triple spread
                 for (let i = -1; i <= 1; i++) {
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, true, 1, 12, 3, '#f44'));
+                    const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, true, 1, 12, 3, '#f44');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('rapid_shoot');
             }
@@ -14625,7 +14632,9 @@ class NecroticHive extends Enemy {
                 // Ring attack
                 for (let i = 0; i < 16; i++) {
                     const a = (Math.PI * 2 / 16) * i;
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 8, 4, '#f80'));
+                    const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 8, 4, '#f80');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('shotgun');
             }
@@ -14637,7 +14646,9 @@ class NecroticHive extends Enemy {
             if (this.phaseTick % 5 === 0) {
                 // Mega barrage
                 const a = aim + Math.sin(this.phaseTick * 0.1) * 0.5;
-                bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 14, 3, '#f6f'));
+                const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 14, 3, '#f6f');
+                b.owner = this;
+                bullets.push(b);
             }
             if (this.phaseTick === 60) {
                 // All drones return to heal
@@ -14905,7 +14916,9 @@ class CerebralPsion extends Enemy {
                 // Chitin spread
                 for (let i = 0; i < 12; i++) {
                     const a = aim - 0.6 + (i / 11) * 1.2;
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 8, 4, '#f6f'));
+                    const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 8, 4, '#f6f');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('shotgun');
             }
@@ -14926,7 +14939,9 @@ class CerebralPsion extends Enemy {
             // All echoes fire curtain pattern
             if (this.phaseTick % 15 === 0) {
                 for (let i = -2; i <= 2; i++) {
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, true, 1, 10, 3, '#f0f'));
+                    const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, true, 1, 10, 3, '#f0f');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('rapid_shoot');
             }
@@ -14968,7 +14983,9 @@ class CerebralPsion extends Enemy {
             }
             if (this.phaseTick % 12 === 0) {
                 // All attacks rapid fire
-                bullets.push(new Bullet(this.pos.x, this.pos.y, aim, true, 1, 12, 3, '#f0f'));
+                const b = new Bullet(this.pos.x, this.pos.y, aim, true, 1, 12, 3, '#f0f');
+                b.owner = this;
+                bullets.push(b);
                 playSound('rapid_shoot');
             }
         }
@@ -15227,7 +15244,9 @@ class Fleshforge extends Enemy {
                     if (chamber.active) {
                         const wx = this.pos.x + Math.cos(this.angle + chamber.angle) * chamber.dist * 7;
                         const wy = this.pos.y + Math.sin(this.angle + chamber.angle) * chamber.dist * 7;
-                        bullets.push(new Bullet(wx, wy, aim, true, 2, 11, 4, '#0f0'));
+                        const b = new Bullet(wx, wy, aim, true, 2, 11, 4, '#0f0');
+                        b.owner = this;
+                        bullets.push(b);
                     }
                 }
                 playSound('shoot');
@@ -15241,14 +15260,16 @@ class Fleshforge extends Enemy {
             }
             if (this.phaseTick % 40 === 0) {
                 // Cannon fire
-                bullets.push(new Bullet(this.pos.x, this.pos.y, aim, true, 2, 12, 4, '#0f0'));
+                const b = new Bullet(this.pos.x, this.pos.y, aim, true, 2, 12, 4, '#0f0');
+                b.owner = this;
+                bullets.push(b);
                 playSound('heavy_shoot');
             }
         } else if (this.phaseName === 'ASSEMBLY_LINE') {
             if (this.phaseTick % 60 === 0) {
                 // Cluster bombs
                 if (typeof ClusterBomb !== 'undefined') {
-                    const bomb = new ClusterBomb(this.pos.x, this.pos.y, aim, true);
+                    const bomb = new ClusterBomb(this.pos.x, this.pos.y, aim, this);
                     bomb.damage = 3;
                     bullets.push(bomb);
                 }
@@ -15257,21 +15278,27 @@ class Fleshforge extends Enemy {
             if (this.phaseTick % 25 === 0) {
                 // Curtain fire
                 for (let i = -3; i <= 3; i++) {
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, true, 1, 9, 3, '#0f0'));
+                    const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, true, 1, 9, 3, '#0f0');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('rapid_shoot');
             }
         } else if (this.phaseName === 'MELTDOWN') {
             if (this.phaseTick % 6 === 0) {
                 // Rapid fire all weapons
-                bullets.push(new Bullet(this.pos.x, this.pos.y, aim + (Math.random() - 0.5) * 0.3, true, 2, 14, 3, '#0f0'));
+                const b = new Bullet(this.pos.x, this.pos.y, aim + (Math.random() - 0.5) * 0.3, true, 2, 14, 3, '#0f0');
+                b.owner = this;
+                bullets.push(b);
                 playSound('rapid_shoot');
             }
             if (this.phaseTick % 40 === 0) {
                 // Ring attack
                 for (let i = 0; i < 16; i++) {
                     const a = (Math.PI * 2 / 16) * i;
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 9, 4, '#0f0'));
+                    const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 9, 4, '#0f0');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('shotgun');
             }
@@ -15484,7 +15511,9 @@ class VortexMatriarch extends Enemy {
                 // Ring attack
                 for (let i = 0; i < 14; i++) {
                     const a = (Math.PI * 2 / 14) * i;
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 9, 4, '#0af'));
+                    const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 9, 4, '#0af');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('shotgun');
             }
@@ -15535,7 +15564,9 @@ class VortexMatriarch extends Enemy {
             if (this.phaseTick % 25 === 0) {
                 // Spread shots
                 for (let i = -2; i <= 2; i++) {
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, true, 1, 11, 4, '#0af'));
+                    const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, true, 1, 11, 4, '#0af');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('shoot');
             }
@@ -15557,7 +15588,9 @@ class VortexMatriarch extends Enemy {
                 // Ring attacks
                 for (let i = 0; i < 20; i++) {
                     const a = (Math.PI * 2 / 20) * i;
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 10, 4, '#0cf'));
+                    const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 10, 4, '#0cf');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('shotgun');
             }
@@ -15786,7 +15819,9 @@ class ChitinusPrime extends Enemy {
             if (this.phaseTick % 12 === 0) {
                 // Triple fire
                 for (let i = -1; i <= 1; i++) {
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, aim + i * 0.12, true, 2, 13, 4, '#ff0'));
+                    const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.12, true, 2, 13, 4, '#ff0');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('shoot');
             }
@@ -15794,7 +15829,9 @@ class ChitinusPrime extends Enemy {
                 // Sweep laser
                 for (let i = 0; i < 8; i++) {
                     const a = aim - 0.5 + (i / 7) * 1.0;
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 15, 3, '#fc0'));
+                    const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 15, 3, '#fc0');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('rapid_shoot');
             }
@@ -15804,7 +15841,7 @@ class ChitinusPrime extends Enemy {
                 if (typeof ClusterBomb !== 'undefined') {
                     for (let i = 0; i < 5; i++) {
                         const a = aim - 0.6 + (i / 4) * 1.2;
-                        const bomb = new ClusterBomb(this.pos.x, this.pos.y, a, true);
+                        const bomb = new ClusterBomb(this.pos.x, this.pos.y, a, this);
                         bomb.damage = 2;
                         bullets.push(bomb);
                     }
@@ -15826,14 +15863,18 @@ class ChitinusPrime extends Enemy {
                 // Wide chitin arc
                 for (let i = 0; i < 20; i++) {
                     const a = aim - 1.0 + (i / 19) * 2.0;
-                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 6, 4, '#ff0'));
+                    const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 6, 4, '#ff0');
+                    b.owner = this;
+                    bullets.push(b);
                 }
                 playSound('shotgun');
             }
         } else if (this.phaseName === 'RAMPAGE') {
             if (this.phaseTick % 8 === 0) {
                 // Rapid fire all weapons
-                bullets.push(new Bullet(this.pos.x, this.pos.y, aim + (Math.random() - 0.5) * 0.2, true, 2, 14, 3, '#f80'));
+                const b = new Bullet(this.pos.x, this.pos.y, aim + (Math.random() - 0.5) * 0.2, true, 2, 14, 3, '#f80');
+                b.owner = this;
+                bullets.push(b);
                 playSound('rapid_shoot');
             }
             if (this.phaseTick % 60 === 0) {
@@ -15881,6 +15922,7 @@ class ChitinusPrime extends Enemy {
         for (let i = 0; i < 24; i++) {
             const a = (Math.PI * 2 / 24) * i;
             const b = new Bullet(this.pos.x, this.pos.y, a, true, damagePerProjectile, 10, 4, '#f00');
+            b.owner = this;
             b.life = 120;
             bullets.push(b);
         }
@@ -16149,7 +16191,9 @@ class PsyLich extends Enemy {
             }
             if (this.phaseTick % 10 === 0) {
                 // Rapid fire
-                bullets.push(new Bullet(this.pos.x, this.pos.y, aim, true, 1, 12, 3, '#f0a'));
+                const b = new Bullet(this.pos.x, this.pos.y, aim, true, 1, 12, 3, '#f0a');
+                b.owner = this;
+                bullets.push(b);
                 playSound('rapid_shoot');
             }
         } else if (this.phaseName === 'DEATH_THROES') {
@@ -16520,6 +16564,7 @@ class SpaceStation extends Entity {
 
             // Single bullet per turret (radius 6 like gunboat bullets)
             const b = new Bullet(tx, ty, angle, true, 2, 14.96, 6, '#f80');
+            b.owner = this;
             bullets.push(b);
             spawnBarrelSmoke(tx, ty, angle);
         }
