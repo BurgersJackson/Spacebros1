@@ -177,6 +177,9 @@ document.addEventListener('keydown', function (e) {
     } else if (e.ctrlKey && e.shiftKey && (e.code === 'Digit5' || e.code === 'Numpad5')) {
         e.preventDefault();
         window.spawnFinalBoss();
+    } else if (e.ctrlKey && e.shiftKey && (e.code === 'Digit6' || e.code === 'Numpad6')) {
+        e.preventDefault();
+        window.enterDungeon1Debug();
     } else if (e.ctrlKey && (e.key === 'h' || e.key === 'H')) {
         e.preventDefault();
         DEBUG_COLLISION = !DEBUG_COLLISION;
@@ -248,6 +251,23 @@ window.spawnFinalBoss = function () {
     } catch (err) {
         console.error('[DEBUG] Failed to spawn Final Boss:', err);
         showOverlayMessage("ERROR SPAWNING BOSS: " + err.message, '#f00', 3000);
+    }
+};
+
+// DEBUG: Enter Dungeon1 instantly (Ctrl+Shift+6)
+window.enterDungeon1Debug = function () {
+    console.log('[DEBUG] Attempting to enter Dungeon1...');
+    try {
+        if (typeof _enterDungeon1Internal === 'function') {
+            _enterDungeon1Internal();
+            console.log('[DEBUG] Dungeon1 entered successfully');
+        } else {
+            console.error('[DEBUG] _enterDungeon1Internal function not found');
+            showOverlayMessage("ERROR: _enterDungeon1Internal not defined", '#f00', 2000);
+        }
+    } catch (err) {
+        console.error('[DEBUG] Failed to enter Dungeon1:', err);
+        showOverlayMessage("ERROR: " + err.message, '#f00', 3000);
     }
 };
 
@@ -7112,6 +7132,87 @@ class WarpGate extends Entity {
     }
 }
 
+class Dungeon1Gate extends Entity {
+    constructor(x, y) {
+        super(x, y);
+        this.radius = 140;
+        this.t = 0;
+        this.mode = 'entry';
+    }
+    update(deltaTime = SIM_STEP_MS) {
+        if (!player || player.dead) return;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+        const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        if (dist > this.radius + player.radius) return;
+
+        if (dungeon1CompletedOnce) {
+            showOverlayMessage("DUNGEON ALREADY CLEARED", '#f80', 1200, 2);
+            return;
+        }
+        if (dungeon1Zone && dungeon1Zone.active) return;
+        showOverlayMessage("ENTERING DUNGEON 1...", '#f80', 1400, 3);
+        playSound('contract');
+        _enterDungeon1Internal();
+    }
+    draw(ctx) {
+        if (this.dead) {
+            pixiCleanupObject(this);
+            return;
+        }
+
+        if (pixiWorldRoot) {
+            let container = this._pixiContainer;
+            if (!container) {
+                container = new PIXI.Container();
+                this._pixiContainer = container;
+                pixiWorldRoot.addChildAt(container, 1);
+
+                const g = new PIXI.Graphics();
+                container.addChild(g);
+                this._pixiGfx = g;
+
+                const text = new PIXI.Text('', {
+                    fontFamily: 'Courier New',
+                    fontSize: 16,
+                    fontWeight: 'bold',
+                    fill: '#ffffff',
+                    align: 'center',
+                    dropShadow: true,
+                    dropShadowColor: '#000000',
+                    dropShadowBlur: 4,
+                    dropShadowDistance: 0
+                });
+                text.anchor.set(0.5);
+                container.addChild(text);
+                this._pixiText = text;
+            }
+            container.visible = true;
+            container.position.set(this.pos.x, this.pos.y);
+
+            const g = this._pixiGfx;
+            g.clear();
+            const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.45;
+            const gateColor = 0xff8800; // Orange/gold for dungeon
+
+            // Glow Ring
+            g.lineStyle(6, gateColor, 0.35 + pulse);
+            g.drawCircle(0, 0, this.radius);
+
+            // Inner Fill
+            g.beginFill(gateColor, 0.08);
+            g.drawCircle(0, 0, this.radius);
+            g.endFill();
+
+            // Text
+            const t = this._pixiText;
+            t.text = 'DUNGEON';
+
+            return;
+        }
+    }
+}
+
 function beginFlagshipFight(cx, cy, radius = 1875) {
     if (bossActive || sectorTransitionActive) return;
 
@@ -9976,6 +10077,148 @@ class WarpMazeZone extends Entity {
         if ((this.state === 'boss' || this.state === 'final_boss') && (!bossActive || !boss || boss.dead)) {
             this.state = 'escape';
         }
+    }
+
+    allSegments() {
+        return [];
+    }
+
+    applyWallCollisions(entity) {
+        if (!this.active || !entity || entity.dead) return;
+        return;
+    }
+
+    bulletHitsWall(bullet) {
+        return false;
+    }
+
+    draw(ctx) {
+        return;
+    }
+}
+
+class Dungeon1Zone extends Entity {
+    constructor(x, y) {
+        super(x, y);
+        this.active = true;
+        this.state = 'wave1'; // 'wave1' | 'cruiser' | 'complete'
+        this.t = 0;
+        this.waveDelay = 5000; // 5 seconds
+        this.waveSpawned = false;
+        this.waveSpawnAt = null;
+        this.waveIntroLastSec = null;
+        this.boundaryRadius = 2500;
+        this.dungeonEnemies = []; // Track enemies spawned by this dungeon
+    }
+
+    update(deltaTime = SIM_STEP_MS) {
+        if (!this.active) return;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+
+        // Wave 1 countdown and spawn
+        if (this.state === 'wave1' && !this.waveSpawned) {
+            if (!this.waveSpawnAt) {
+                this.waveSpawnAt = Date.now() + this.waveDelay;
+            }
+
+            const now = Date.now();
+            const remainingMs = this.waveSpawnAt - now;
+            const remainingSecs = Math.max(0, Math.ceil(remainingMs / 1000));
+
+            if (this.waveIntroLastSec !== remainingSecs) {
+                const el = document.getElementById('arena-countdown');
+                if (el) {
+                    el.innerText = `WAVE INCOMING\n${remainingSecs}s`;
+                    el.style.display = 'block';
+                    el.style.color = '#f80';
+                    el.style.textShadow = '0 0 24px #f80, 0 0 48px #f80';
+                    el.style.fontSize = remainingSecs <= 3 ? '44px' : '36px';
+                }
+                this.waveIntroLastSec = remainingSecs;
+            }
+
+            if (remainingMs <= 0) {
+                const el = document.getElementById('arena-countdown');
+                if (el) el.style.display = 'none';
+                this.spawnWave1();
+                this.waveSpawned = true;
+            }
+        }
+
+        // Check if wave 1 is complete
+        if (this.state === 'wave1' && this.waveSpawned) {
+            const livingDungeonEnemies = this.dungeonEnemies.filter(e => e && !e.dead).length;
+            if (livingDungeonEnemies === 0) {
+                this.startCruiserFight();
+            }
+        }
+
+        // Check if cruiser is defeated
+        if (this.state === 'cruiser' && (!bossActive || !boss || boss.dead)) {
+            this.state = 'complete';
+            dungeon1Arena.active = false;
+            dungeon1Arena.growing = false;
+            showOverlayMessage("DUNGEON 1 CLEARED - BOUNDARY REMOVED", '#0f0', 3000, 2);
+            dungeon1CompletedOnce = true;
+        }
+    }
+
+    spawnWave1() {
+        // Spawn 3 level 2 gunboats
+        for (let i = 0; i < 3; i++) {
+            const angle = (Math.PI * 2 / 3) * i;
+            const dist = 1800;
+            const x = this.pos.x + Math.cos(angle) * dist;
+            const y = this.pos.y + Math.sin(angle) * dist;
+            const gunboat = new Enemy('gunboat', { x, y }, null, { gunboatLevel: 2 });
+            gunboat.isDungeonEnemy = true;
+            gunboat.despawnImmune = true;
+            enemies.push(gunboat);
+            this.dungeonEnemies.push(gunboat);
+        }
+
+        // Spawn 5 defenders
+        for (let i = 0; i < 5; i++) {
+            const angle = (Math.PI * 2 / 5) * i + Math.PI / 5;
+            const dist = 1500;
+            const x = this.pos.x + Math.cos(angle) * dist;
+            const y = this.pos.y + Math.sin(angle) * dist;
+            const defender = new Enemy('defender', { x, y }, null);
+            defender.isDungeonEnemy = true;
+            defender.despawnImmune = true;
+            enemies.push(defender);
+            this.dungeonEnemies.push(defender);
+        }
+
+        showOverlayMessage("DESTROY ALL ENEMIES", '#f80', 2000, 2);
+        playSound('contract');
+    }
+
+    startCruiserFight() {
+        this.state = 'cruiser';
+
+        // Clear remaining enemies and projectiles
+        clearArrayWithPixiCleanup(enemies);
+        clearArrayWithPixiCleanup(pinwheels);
+        filterArrayWithPixiCleanup(bullets, b => !b.isEnemy);
+        clearArrayWithPixiCleanup(bossBombs);
+
+        this.dungeonEnemies = [];
+
+        // Spawn tier 1 cruiser
+        boss = new Cruiser(1);
+        bossActive = true;
+
+        // Activate boss arena for cruiser fight
+        bossArena.x = this.pos.x;
+        bossArena.y = this.pos.y;
+        bossArena.radius = 2500;
+        bossArena.active = true;
+        bossArena.growing = false;
+
+        showOverlayMessage("CRUISER ENGAGED", '#f00', 2200, 3);
+        playSound('boss_spawn');
     }
 
     allSegments() {
@@ -16883,6 +17126,16 @@ let sectorTransitionActive = false;
 let warpCountdownAt = null;
 let gameEnded = false;
 let bossArena = { x: 0, y: 0, radius: 2500, active: false, growing: false };
+
+// --- Dungeon1 System ---
+let dungeon1Zone = null;
+let dungeon1Active = false;
+let dungeon1CompletedOnce = false;
+let dungeon1Gate = null;
+let dungeon1GateUnlocked = false;
+let dungeon1Arena = { x: 0, y: 0, radius: 2500, active: false, growing: false };
+let dungeon1OriginalPos = null; // Store player's position before entering
+
 const GAME_DURATION_MS = 30 * 60 * 1000; // 30 minutes
 let minimapFrame = 0;
 let frameNow = 0;
@@ -17210,6 +17463,139 @@ function exitWarpMaze() {
     warpZone = null;
     warpGate = null;
 }
+
+function _enterDungeon1Internal() {
+    if (dungeon1Zone && dungeon1Zone.active) return;
+    if (dungeon1CompletedOnce) {
+        showOverlayMessage("DUNGEON ALREADY CLEARED", '#f80', 1200, 2);
+        return;
+    }
+
+    // Store player's original position
+    dungeon1OriginalPos = { x: player.pos.x, y: player.pos.y };
+
+    // Clear world to make a controlled encounter space
+    resetPixiOverlaySprites();
+    const detach = (arr) => {
+        if (!arr || arr.length === 0) return;
+        for (let i = 0; i < arr.length; i++) pixiCleanupObject(arr[i]);
+    };
+    detach(bullets);
+    detach(bossBombs);
+    detach(warpBioPods);
+    detach(guidedMissiles);
+    detach(enemies);
+    detach(pinwheels);
+    detach(particles);
+    detach(explosions);
+    detach(floatingTexts);
+    detach(coins);
+    detach(nuggets);
+    detach(powerups);
+    detach(shootingStars);
+    detach(drones);
+    detach(caches);
+    detach(pois);
+    detach(environmentAsteroids);
+
+    bullets = [];
+    bossBombs = [];
+    warpBioPods = [];
+    staggeredBombExplosions = [];
+    staggeredParticleBursts = [];
+    guidedMissiles = [];
+    enemies = [];
+    pinwheels = [];
+    particles = [];
+    explosions = [];
+    floatingTexts = [];
+    coins = [];
+    nuggets = [];
+    powerups = [];
+    shootingStars = [];
+    drones = [];
+    caches = [];
+    pois = [];
+    environmentAsteroids = [];
+    asteroidRespawnTimers = [];
+    baseRespawnTimers = [];
+
+    radiationStorm = null;
+    clearMiniEvent();
+
+    // Reset cave state
+    resetCaveState();
+
+    activeContract = null;
+    contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+    nextContractAt = Date.now() + 999999999;
+
+    if (destroyer) {
+        if (destroyer.pixiCleanupObject && typeof destroyer.pixiCleanupObject === 'function') {
+            destroyer.pixiCleanupObject();
+        }
+        destroyer = null;
+    }
+
+    if (boss) pixiCleanupObject(boss);
+    boss = null;
+    bossActive = false;
+    bossArena.active = false;
+    bossArena.growing = false;
+
+    if (spaceStation) pixiCleanupObject(spaceStation);
+    spaceStation = null;
+    stationHealthBarVisible = false;
+    pendingStations = 0;
+    nextSpaceStationTime = null;
+    roamerRespawnQueue = [];
+    maxRoamers = 0;
+    gunboatRespawnAt = null;
+
+    // Create dungeon zone at origin
+    const originX = 0;
+    const originY = 0;
+    dungeon1Zone = new Dungeon1Zone(originX, originY);
+    dungeon1Active = true;
+
+    // Place the player at the center
+    player.pos.x = originX;
+    player.pos.y = originY;
+    player.vel.x = 0;
+    player.vel.y = 0;
+
+    // Activate dungeon arena
+    dungeon1Arena.x = originX;
+    dungeon1Arena.y = originY;
+    dungeon1Arena.radius = 2500;
+    dungeon1Arena.active = true;
+    dungeon1Arena.growing = false;
+
+    showOverlayMessage("ENTERED DUNGEON 1", '#f80', 2000, 2);
+}
+
+function exitDungeon1() {
+    if (!dungeon1Zone || !dungeon1Zone.active) return;
+    dungeon1Zone.active = false;
+    dungeon1Active = false;
+
+    // Clean up dungeon gate
+    if (dungeon1Gate) {
+        pixiCleanupObject(dungeon1Gate);
+        dungeon1Gate = null;
+    }
+
+    // Clean up dungeon zone
+    if (dungeon1Zone) {
+        if (dungeon1Zone._pixiGfx) {
+            try { dungeon1Zone._pixiGfx.destroy(true); } catch (e) { }
+            dungeon1Zone._pixiGfx = null;
+        }
+    }
+
+    dungeon1Zone = null;
+}
+
 // Instead, we transition directly to level 2 via sectorTransitionActive
 
 // --- Performance: particle pooling (render-only, no gameplay impact) ---
@@ -19748,6 +20134,42 @@ function checkWallCollision(entity, elasticity = 0) {
             }
         }
     }
+
+    // Dungeon1 arena barrier
+    if (dungeon1Arena.active && entity instanceof Enemy) return;
+    if (dungeon1Arena.active) {
+        const dx = entity.pos.x - dungeon1Arena.x;
+        const dy = entity.pos.y - dungeon1Arena.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > dungeon1Arena.radius) {
+            if (entity === player) {
+                if (Date.now() - player.lastArenaDamageTime > 1000) {
+                    if (player.invulnerable <= 0) {
+                        player.hp -= 1;
+                        playSound('hit');
+                        updateHealthUI();
+                        spawnParticles(player.pos.x, player.pos.y, 5, '#f80');
+                        showOverlayMessage("DUNGEON BOUNDARY", '#f80', 1000);
+                        if (player.hp <= 0) killPlayer();
+                    }
+                    player.lastArenaDamageTime = Date.now();
+                }
+            }
+
+            const angle = Math.atan2(dy, dx);
+            entity.pos.x = dungeon1Arena.x + Math.cos(angle) * dungeon1Arena.radius;
+            entity.pos.y = dungeon1Arena.y + Math.sin(angle) * dungeon1Arena.radius;
+
+            const nx = Math.cos(angle);
+            const ny = Math.sin(angle);
+            const dot = entity.vel.x * nx + entity.vel.y * ny;
+
+            if (dot > 0) {
+                entity.vel.x -= nx * dot * (1 + elasticity);
+                entity.vel.y -= ny * dot * (1 + elasticity);
+            }
+        }
+    }
 }
 
 function checkBulletWallCollision(bullet) {
@@ -21987,7 +22409,7 @@ function gameLoopLogic(opts = null) {
         }
 
         // World warp gate (appears after space station is destroyed, once per sector).
-        if (!warpActive && !bossActive && !sectorTransitionActive && !warpCompletedOnce && !caveMode && !spaceStation && warpGateUnlocked) {
+        if (!warpActive && !dungeon1Active && !bossActive && !sectorTransitionActive && !warpCompletedOnce && !caveMode && !spaceStation && warpGateUnlocked) {
             if (!warpGate || warpGate.mode !== 'entry') {
                 const gx = player.pos.x + 900;
                 const gy = player.pos.y;
@@ -22002,7 +22424,7 @@ function gameLoopLogic(opts = null) {
         }
 
         // Contracts: spawn and update (normal mode only, not during arena boss)
-        if (gameMode === 'normal' && gameActive && !gamePaused && !bossActive && !warpActive && !caveMode) {
+        if (gameMode === 'normal' && gameActive && !gamePaused && !bossActive && !warpActive && !dungeon1Active && !caveMode) {
             if (!activeContract && now >= nextContractAt) {
                 contractSequence++;
                 const pick = Math.random();
@@ -22167,7 +22589,7 @@ function gameLoopLogic(opts = null) {
         }
 
         // Gunboat respawn (one at a time)
-        if (!warpActive && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
+        if (!warpActive && !dungeon1Active && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
             const gunboatAlive = enemies.some(e => e.isGunboat);
             const level2Alive = enemies.some(e => e.isGunboat && e.gunboatLevel === 2);
             const level1Alive = enemies.some(e => e.isGunboat && e.gunboatLevel === 1);
@@ -22196,8 +22618,8 @@ function gameLoopLogic(opts = null) {
         }
 
         // Single destroyer system: only 1 destroyer at a time, alternates between type 1 and 2
-        // Destroyers never spawn in sector 2 (cave mode)
-        if (!warpActive && !caveMode && sectorIndex !== 2 && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone && !warpCompletedOnce) {
+        // Destroyers never spawn in sector 2 (cave mode) or in dungeon1
+        if (!warpActive && !caveMode && !dungeon1Active && sectorIndex !== 2 && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone && !warpCompletedOnce) {
             const destroyerAlive = destroyer && !destroyer.dead;
 
             if (!destroyerAlive) {
@@ -22219,7 +22641,7 @@ function gameLoopLogic(opts = null) {
             }
         }
 
-        if (!warpActive && !caveMode && !bossActive && Date.now() > nextShootingStarTime) {
+        if (!warpActive && !caveMode && !dungeon1Active && !bossActive && Date.now() > nextShootingStarTime) {
             // Fire a meteor shower: 10 comets from different directions, 1s apart
             for (let i = 0; i < 10; i++) {
                 const delay = i * 1000;
@@ -22232,7 +22654,7 @@ function gameLoopLogic(opts = null) {
         }
 
         // Risk zones: Radiation Storms
-        if (!warpActive && !caveMode && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
+        if (!warpActive && !caveMode && !dungeon1Active && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
             if (radiationStorm && radiationStorm.dead) radiationStorm = null;
             if ((!radiationStorm || radiationStorm.dead) && nextRadiationStormAt && now >= nextRadiationStormAt) {
                 spawnRadiationStormRelative();
@@ -22241,7 +22663,7 @@ function gameLoopLogic(opts = null) {
         }
 
         // Mini-events
-        if (!warpActive && !caveMode && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
+        if (!warpActive && !caveMode && !dungeon1Active && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
             if (miniEvent && miniEvent.dead) clearMiniEvent();
             if (!miniEvent && nextMiniEventAt && now >= nextMiniEventAt) {
                 spawnMiniEventRelative();
@@ -22263,7 +22685,7 @@ function gameLoopLogic(opts = null) {
             }
         }
 
-        if (!warpActive && !caveMode && !bossActive && !sectorTransitionActive && initialSpawnDone) {
+        if (!warpActive && !caveMode && !dungeon1Active && !bossActive && !sectorTransitionActive && initialSpawnDone) {
             // Time-based pacing for roamer count and strength 
             let elapsed = now - gameStartTime - pausedAccumMs;
             if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
@@ -22312,7 +22734,7 @@ function gameLoopLogic(opts = null) {
             roamerRespawnQueue = [];
         }
 
-        if (!warpActive && !caveMode) {
+        if (!warpActive && !caveMode && !dungeon1Active) {
             while (environmentAsteroids.length < 100) spawnOneAsteroidRelative();
         } else if (caveMode && caveLevel && caveLevel.active) {
             // Keep asteroids present but not overwhelming inside the cave.
@@ -22325,6 +22747,13 @@ function gameLoopLogic(opts = null) {
             let tries = 0;
             while (environmentAsteroids.length < 50 && tries < 300) {
                 if (!spawnOneWarpAsteroidRelative(false)) break;
+                tries++;
+            }
+        } else if (dungeon1Active && dungeon1Zone && dungeon1Zone.active) {
+            // Spawn asteroids in dungeon1 for cover
+            let tries = 0;
+            while (environmentAsteroids.length < 40 && tries < 300) {
+                spawnOneAsteroidRelative(false);
                 tries++;
             }
         }
@@ -22358,7 +22787,7 @@ function gameLoopLogic(opts = null) {
         globalProfiler.end('SpatialHash');
         globalProfiler.start('LevelLogic');
 
-        if (!warpActive && !bossActive && !sectorTransitionActive && initialSpawnDone) {
+        if (!warpActive && !dungeon1Active && !bossActive && !sectorTransitionActive && initialSpawnDone) {
             // Ramp base count up over the first few minutes (start easier).
             let elapsed = now - gameStartTime - pausedAccumMs;
             if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
@@ -22519,6 +22948,12 @@ function gameLoopLogic(opts = null) {
     if (wg && !wg.dead) { if (doUpdate) wg.update(deltaTime); if (doDraw) wg.draw(ctx); }
     if (caveActive) { if (doUpdate) caveLevel.update(deltaTime); }
 
+    // Dungeon1 zone and gate
+    const dz = dungeon1Zone;
+    if (dz && dz.active) { if (doUpdate) dz.update(deltaTime); if (doDraw) dz.draw(ctx); }
+    const dg = dungeon1Gate;
+    if (dg && !dg.dead) { if (doUpdate) dg.update(deltaTime); if (doDraw) dg.draw(ctx); }
+
     // Cave: full-screen grid background (no stars). 
     if (doDraw && caveActive) {
         // Pixi: cached tiling grid; Canvas fallback only if Pixi is unavailable.
@@ -22599,6 +23034,21 @@ function gameLoopLogic(opts = null) {
         ctx.globalAlpha = 0.1;
         // ctx.fillStyle = bossArena.growing ? '#055' : '#500';
         // ctx.fill();
+        ctx.restore();
+    }
+
+    if (doDraw && dungeon1Arena.active) {
+        ctx.save();
+        ctx.translate(dungeon1Arena.x, dungeon1Arena.y);
+        const pulse = 0.5 + Math.sin(now * 0.005) * 0.2;
+        ctx.strokeStyle = `rgba(255, 136, 0, ${pulse})`; // Orange/gold
+
+        ctx.lineWidth = 10;
+        ctx.shadowBlur = 20;
+        ctx.beginPath();
+        ctx.arc(0, 0, dungeon1Arena.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 0.1;
         ctx.restore();
     }
 
