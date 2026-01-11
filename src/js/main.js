@@ -10103,10 +10103,7 @@ class Dungeon1Zone extends Entity {
         this.active = true;
         this.state = 'wave1'; // 'wave1' | 'cruiser' | 'complete'
         this.t = 0;
-        this.waveDelay = 5000; // 5 seconds
         this.waveSpawned = false;
-        this.waveSpawnAt = null;
-        this.waveIntroLastSec = null;
         this.boundaryRadius = 2500;
         this.dungeonEnemies = []; // Track enemies spawned by this dungeon
     }
@@ -10116,38 +10113,15 @@ class Dungeon1Zone extends Entity {
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
 
-        // Wave 1 countdown and spawn
+        // Spawn wave immediately on first update
         if (this.state === 'wave1' && !this.waveSpawned) {
-            if (!this.waveSpawnAt) {
-                this.waveSpawnAt = Date.now() + this.waveDelay;
-            }
-
-            const now = Date.now();
-            const remainingMs = this.waveSpawnAt - now;
-            const remainingSecs = Math.max(0, Math.ceil(remainingMs / 1000));
-
-            if (this.waveIntroLastSec !== remainingSecs) {
-                const el = document.getElementById('arena-countdown');
-                if (el) {
-                    el.innerText = `WAVE INCOMING\n${remainingSecs}s`;
-                    el.style.display = 'block';
-                    el.style.color = '#f80';
-                    el.style.textShadow = '0 0 24px #f80, 0 0 48px #f80';
-                    el.style.fontSize = remainingSecs <= 3 ? '44px' : '36px';
-                }
-                this.waveIntroLastSec = remainingSecs;
-            }
-
-            if (remainingMs <= 0) {
-                const el = document.getElementById('arena-countdown');
-                if (el) el.style.display = 'none';
-                this.spawnWave1();
-                this.waveSpawned = true;
-            }
+            this.spawnWave1();
+            this.spawnIndestructibleAsteroids();
+            this.waveSpawned = true;
         }
 
         // Check if wave 1 is complete
-        if (this.state === 'wave1' && this.waveSpawned) {
+        if (this.state === 'wave1') {
             const livingDungeonEnemies = this.dungeonEnemies.filter(e => e && !e.dead).length;
             if (livingDungeonEnemies === 0) {
                 this.startCruiserFight();
@@ -10165,28 +10139,47 @@ class Dungeon1Zone extends Entity {
     }
 
     spawnWave1() {
-        // Spawn 3 level 2 gunboats
+        // Spawn indestructible stationary asteroids for cover (4-12 random)
+        this.spawnIndestructibleAsteroids();
+
+        // Spawn 3 level 2 gunboats at top edge, flying in
         for (let i = 0; i < 3; i++) {
-            const angle = (Math.PI * 2 / 3) * i;
-            const dist = 1800;
-            const x = this.pos.x + Math.cos(angle) * dist;
-            const y = this.pos.y + Math.sin(angle) * dist;
-            const gunboat = new Enemy('gunboat', { x, y }, null, { gunboatLevel: 2 });
+            // Spread horizontally across the top edge
+            const spreadX = (i - 1) * 600; // -600, 0, +600
+            const spawnX = this.pos.x + spreadX;
+            const spawnY = this.pos.y - this.boundaryRadius + 200; // Top edge, slightly inside
+
+            const gunboat = new Enemy('gunboat', { x: spawnX, y: spawnY }, null, { gunboatLevel: 2 });
             gunboat.isDungeonEnemy = true;
             gunboat.despawnImmune = true;
+
+            // Set velocity flying inward toward center
+            const angle = Math.atan2(this.pos.y - spawnY, this.pos.x - spawnX);
+            const speed = 4; // Flying in speed
+            gunboat.vel.x = Math.cos(angle) * speed;
+            gunboat.vel.y = Math.sin(angle) * speed;
+
             enemies.push(gunboat);
             this.dungeonEnemies.push(gunboat);
         }
 
-        // Spawn 5 defenders
+        // Spawn 5 defenders at top edge, flying in
         for (let i = 0; i < 5; i++) {
-            const angle = (Math.PI * 2 / 5) * i + Math.PI / 5;
-            const dist = 1500;
-            const x = this.pos.x + Math.cos(angle) * dist;
-            const y = this.pos.y + Math.sin(angle) * dist;
-            const defender = new Enemy('defender', { x, y }, null);
+            // Spread horizontally across the top edge
+            const spreadX = (i - 2) * 500; // -1000, -500, 0, +500, +1000
+            const spawnX = this.pos.x + spreadX;
+            const spawnY = this.pos.y - this.boundaryRadius + 100; // Top edge, slightly inside
+
+            const defender = new Enemy('defender', { x: spawnX, y: spawnY }, null);
             defender.isDungeonEnemy = true;
             defender.despawnImmune = true;
+
+            // Set velocity flying inward toward center
+            const angle = Math.atan2(this.pos.y - spawnY, this.pos.x - spawnX);
+            const speed = 5; // Flying in speed
+            defender.vel.x = Math.cos(angle) * speed;
+            defender.vel.y = Math.sin(angle) * speed;
+
             enemies.push(defender);
             this.dungeonEnemies.push(defender);
         }
@@ -10219,6 +10212,59 @@ class Dungeon1Zone extends Entity {
 
         showOverlayMessage("CRUISER ENGAGED", '#f00', 2200, 3);
         playSound('boss_spawn');
+    }
+
+    spawnIndestructibleAsteroids() {
+        // Spawn 4-12 random indestructible stationary asteroids
+        const count = 4 + Math.floor(Math.random() * 9); // 4-12
+        const spawnRadius = this.boundaryRadius - 300; // Keep away from boundary edge
+        const minDistanceFromCenter = 500; // Don't spawn too close to player spawn
+
+        for (let i = 0; i < count; i++) {
+            let attempts = 0;
+            let validPosition = false;
+            let x, y;
+
+            // Try to find a valid position (not too close to center or other asteroids)
+            while (!validPosition && attempts < 50) {
+                attempts++;
+                const angle = Math.random() * Math.PI * 2;
+                const dist = minDistanceFromCenter + Math.random() * (spawnRadius - minDistanceFromCenter);
+                x = this.pos.x + Math.cos(angle) * dist;
+                y = this.pos.y + Math.sin(angle) * dist;
+
+                // Check distance from player spawn (center)
+                const distFromCenter = Math.hypot(x - this.pos.x, y - this.pos.y);
+                if (distFromCenter < minDistanceFromCenter) continue;
+
+                // Check distance from other asteroids to avoid overlapping
+                let tooClose = false;
+                for (const ast of environmentAsteroids) {
+                    const d = Math.hypot(x - ast.pos.x, y - ast.pos.y);
+                    if (d < 200) { // Minimum 200 units apart
+                        tooClose = true;
+                        break;
+                    }
+                }
+
+                if (!tooClose) validPosition = true;
+            }
+
+            if (validPosition) {
+                const radius = 60 + Math.random() * 80; // 60-140 unit radius
+                const asteroid = new EnvironmentAsteroid(x, y, radius, 2, true); // sizeLevel 2, indestructible
+
+                // Make asteroid stationary (no velocity) but with rotation
+                asteroid.vel.x = 0;
+                asteroid.vel.y = 0;
+                asteroid.rotSpeed = (Math.random() - 0.5) * 0.02; // Slow rotation in place
+
+                // Mark as dungeon asteroid for cleanup tracking
+                asteroid.isDungeonAsteroid = true;
+
+                environmentAsteroids.push(asteroid);
+            }
+        }
     }
 
     allSegments() {
@@ -17558,9 +17604,9 @@ function _enterDungeon1Internal() {
     dungeon1Zone = new Dungeon1Zone(originX, originY);
     dungeon1Active = true;
 
-    // Place the player at the center
+    // Place the player at the bottom of the arena
     player.pos.x = originX;
-    player.pos.y = originY;
+    player.pos.y = originY + dungeon1Arena.radius - 300; // 300 units from bottom edge
     player.vel.x = 0;
     player.vel.y = 0;
 
