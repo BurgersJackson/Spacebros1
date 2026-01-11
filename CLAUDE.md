@@ -363,3 +363,221 @@ Key constants in `src/js/core/constants.js`:
 - `BACKGROUND_MUSIC_URL` - Music file location
 - `UPGRADE_DATA` - All popup/level-up upgrade definitions
 - `META_SHOP_UPGRADE_DATA` - All meta shop upgrade descriptions
+
+## Claude Skills
+
+Project-specific Claude Code skills are installed to help with common development tasks.
+
+### Installed Skills
+
+| Skill | Purpose |
+|-------|---------|
+| **entity-generator** | Generate new enemies, bosses, projectiles with proper PixiJS cleanup and variable timestep timing |
+| **performance-analyzer** | Use built-in debug commands (`perfStats()`, `entityCount()`) to profile and identify bottlenecks |
+| **code-pattern-validator** | Validate entity cleanup patterns, `endFill()` calls, `dtFactor` usage, dead entity checks |
+| **upgrade-system-assistant** | Create balanced popup and meta shop upgrades with proper tier scaling |
+| **collision-testing-tool** | Test spatial hash collision detection, visualize hitboxes (Ctrl+Shift+H), validate boundaries |
+| **build-release-manager** | Build Electron distributables, manage versioning, generate changelogs |
+
+### Creating New Skills
+
+To create additional project-specific skills:
+
+1. Use the global `skill-creator` skill for complete workflow documentation
+2. Create skill directory in `.claude/skills/<skill-name>/SKILL.md`
+3. Package: `python3 ~/.codex/skills/.system/skill-creator/scripts/package_skill.py .claude/skills/<skill-name> .claude/skills/`
+4. Copy `.skill` file to `~/.codex/skills/public/` and extract
+5. Reload VS Code window to discover the new skill
+
+## Critical File Locations
+
+The game uses a monolithic `src/js/main.js` (~26,000 lines). Key entity locations:
+
+| Entity Type | Line Range | Notes |
+|-------------|------------|-------|
+| `EnvironmentAsteroid` | 2847-3206 | Destructible asteroids |
+| `Spaceship` (Player) | 3207-4734 | Main player class |
+| `CruiserMineBomb` | 4911-5021 | Boss mines |
+| `FlagshipGuidedMissile` | 5022-5255 | Boss missiles |
+| `Bullet` | 5356-5538 | Main projectile class |
+| `ClusterBomb` | 5539-5627 | Splitting projectiles |
+| `NapalmZone` | 5628-5739 | Area damage zones |
+| `Enemy` (base) | 5740-6618 | Base enemy class |
+| `Pinwheel` | 6619-7032 | Pinwheel enemies |
+| `WarpGate` | 7033-7135 | Warp gate entities |
+| `CaveWallTurret` | 7389-7800 | Cave wall turrets |
+| `CaveLevel` | 8384-9665 | Cave level generation |
+| `WarpTurret` | 9666-9742 | Warp zone turrets |
+| `RadiationStorm` | 9999-10150 | Environmental hazard |
+| `Cruiser` (Boss) | 10699-11276 | Cruiser boss |
+| `Flagship` | 11277-11388 | Flagship boss |
+| `SuperFlagshipBoss` | 11389-11639 | Super flagship boss |
+| `WarpSentinelBoss` | 11754-12560 | Warp boss |
+| `FinalBoss` | 12561-13376 | Final boss encounter |
+| `SpaceStation` | 13377-14068 | Space station entity |
+| `Destroyer` | 14069-14810 | Destroyer boss |
+| `Destroyer2` | 14811-15489 | Destroyer variant |
+| `Drone` | 18247-18403 | Companion drones |
+| `WallTurret` | 19000+ | Station turrets |
+
+## Global Variables
+
+### Game State
+- `gameActive`, `gamePaused`, `gameMode` - Main game state flags
+- `sectorIndex`, `sectorTransitionActive` - Sector tracking
+- `caveMode`, `caveLevel` - Cave mode state
+- `score`, `difficultyTier`, `pinwheelsDestroyed` - Progress tracking
+
+### Entity Arrays
+- `player` - Single player instance
+- `enemies` - All active enemies
+- `bullets` - All projectiles
+- `bossBombs` - Boss explosive mines
+- `particles`, `explosions` - Visual effects
+- `coins`, `nuggets`, `spaceNuggets` - Collectibles
+- `drones` - Companion drones
+- `caches` - Exploration caches
+- `environmentAsteroids` - Destructible environment
+
+### Boss/Event Entities
+- `boss`, `bossActive` - Current boss entity
+- `spaceStation` - Space station entity
+- `destroyer` - Destroyer boss
+- `radiationStorm` - Radiation storm event
+- `miniEvent` - Active mini event
+- `warpGate` - Active warp gate
+- `arcadeBoss` - Arcade mode boss
+- `dreadManager` - Dreadnought manager
+
+### Meta Progression
+- `spaceNuggets` - Premium currency
+- `rerollTokens` - Reroll tokens available
+- `metaExtraLifeCount` - Extra lives from meta
+- `activeContract` - Current active contract
+- `shownUpgradesThisRun` - Track shown upgrades
+
+### Timing
+- `simAccMs` - Accumulated simulation time
+- `simNowMs` - Current simulation time
+- `simLastPerfAt` - Last performance check time
+- `renderAlpha` - Interpolation factor (0-1)
+
+## Asset Organization
+
+Assets in `/assets/` directory:
+
+**Player Ships:**
+- `player1.png` - Main hull
+- `slacker.png` - Slacker special variant
+
+**Enemies:**
+- `roamer1.png`, `roamer_elite.png` - Basic/elite roamers
+- `hunter.png`, `defender.png` - Specialized enemies
+- `gunboat1.png`, `gunboat2.png` - Gunboats
+- `cruiser.png` - Cruiser boss
+- `warp_boss.png`, `spaceboss2.png` - Final bosses
+
+**Bases:**
+- `base1.png`, `base2.png`, `base3.png` - Station tiers
+
+**Environment:**
+- `asteroid1.png`, `asteroid2.png`, `asteroid3.png` - Destructible
+- `asteroid2_U.png` - Indestructible
+
+**Effects:**
+- `explosion1.png` - Spritesheet (4 cols × 5 rows, 256×204 per frame)
+- `nugget.png` - Space nugget sprite
+
+## Common Patterns
+
+### Entity Creation
+```javascript
+const entity = new SomeEntityClass(startPos, opts);
+enemies.push(entity);
+if (entity._pixiGfx) pixiEnemyLayer.addChild(entity._pixiGfx);
+```
+
+### Entity Removal
+```javascript
+// Use staggered cleanup (automatic)
+// Never manually splice from arrays during iteration
+entity.kill(); // Marks as dead, cleanup happens automatically
+```
+
+### Damage Pattern
+```javascript
+takeDamage(amount, source) {
+    if (this.dead) return;
+    this.hp -= amount;
+    if (this.hp <= 0) {
+        this.kill();
+    }
+}
+```
+
+### Finding Spawn Point
+```javascript
+const spawnPos = findSpawnPointRelative(hostile);
+// Returns Vector with position away from player
+```
+
+### View Culling
+```javascript
+if (!entity.isInView(camX, camY, viewWidth, viewHeight)) {
+    return; // Skip rendering
+}
+```
+
+## Important Utility Functions
+
+| Function | Location | Purpose |
+|----------|----------|---------|
+| `clearArrayWithPixiCleanup(arr)` | main.js:2140 | Clear array with sprite cleanup |
+| `filterArrayWithPixiCleanup(arr, fn)` | main.js:2153 | Filter with cleanup |
+| `pixiCleanupObject(obj)` | main.js:2083 | Standard PixiJS cleanup |
+| `emitParticle(x, y, vx, vy, color, life)` | main.js:17221 | Spawn particle |
+| `emitBurstParticle(x, y, count, color)` | main.js:17271 | Particle burst |
+| `findSpawnPointRelative(hostile)` | main.js | Find spawn position |
+| `isInView()`, `isInExtendedView()` | Entity base | View culling checks |
+| `updateViewBounds()` | main loop | Update camera bounds |
+
+## Debug Tools
+
+### Keyboard Shortcuts
+- `Ctrl+Shift+3` - Spawn Cruiser boss instantly
+- `Ctrl+Shift+4` - Spawn Space Station instantly
+- `Ctrl+Shift+5` - Spawn Final Boss instantly
+- `Ctrl+Shift+H` - Toggle collision debug visualization (`DEBUG_COLLISION`)
+
+### Console Commands
+See "Debug Console Commands" section above for full list.
+
+### Debug Flags
+- `DEBUG_COLLISION` - Show hitboxes and collision boundaries
+
+## Important Constants
+
+### Timing
+- `PHYSICS_FPS = 120` - Physics simulation rate
+- `SIM_FPS = 60` - Reference framerate for calibration
+- `SIM_STEP_MS = 8.33` - Milliseconds per physics step at 120Hz
+- `SIM_MAX_STEPS_PER_FRAME = 12` - Max catch-up steps
+
+### Rendering
+- `ZOOM_LEVEL = 0.4` - Default camera zoom
+- `SPRITE_RENDER_SCALE = 2.5` - Scale to compensate for low zoom
+- `PLAYER_HULL_RENDER_SCALE = 2.5` - Player hull scale
+- `PLAYER_HULL_ROT_OFFSET = Math.PI / 2` - Art rotation offset
+- `PIXI_SPRITE_POOL_MAX = 30000` - Max sprites per pool
+
+### Gameplay
+- `GAME_DURATION_MS = 30 * 60 * 1000` - 30-minute game duration
+
+### Spatial Hash Cell Sizes
+- `asteroidGrid` - 300 units (asteroids, environment)
+- `targetGrid` - 350 units (enemies, bases, turrets, bosses)
+- `bulletGrid` - 150 units (projectiles)
+
+### Animation
+- `EXPLOSION1_COLS = 4`, `EXPLOSION1_ROWS = 5` - Explosion spritesheet
+- `EXPLOSION1_FRAME_W = 256`, `EXPLOSION1_FRAME_H = 204` - Frame dimensions
