@@ -211,7 +211,7 @@ window.spawnFinalBoss = function () {
             showOverlayMessage("BOSS ALREADY ACTIVE", '#f00', 1000);
             return;
         }
-        
+
         console.log('[DEBUG] Clearing existing entities...');
         clearArrayWithPixiCleanup(enemies);
         clearArrayWithPixiCleanup(pinwheels);
@@ -220,27 +220,27 @@ window.spawnFinalBoss = function () {
         clearArrayWithPixiCleanup(bullets);
         clearArrayWithPixiCleanup(bossBombs);
         clearArrayWithPixiCleanup(guidedMissiles);
-        
+
         // Position boss away from player
         const dist = 1000;
         const angle = Math.random() * Math.PI * 2;
         const x = player.pos.x + Math.cos(angle) * dist;
         const y = player.pos.y + Math.sin(angle) * dist;
-        
+
         console.log('[DEBUG] Creating FinalBoss instance at', x, y);
         if (typeof FinalBoss === 'undefined') {
             throw new Error('FinalBoss class is not defined!');
         }
         boss = new FinalBoss(x, y, null);
         bossActive = true;
-        
+
         console.log('[DEBUG] Setting up boss arena...');
         bossArena.x = (player.pos.x + boss.pos.x) / 2;
         bossArena.y = (player.pos.y + boss.pos.y) / 2;
         bossArena.radius = 2500;
         bossArena.active = true;
         bossArena.growing = false;
-        
+
         showOverlayMessage("DEBUG: FINAL BOSS SPAWNED", '#ff0', 2000);
         playSound('boss_spawn');
         if (musicEnabled) setMusicMode('warp_boss');
@@ -9874,12 +9874,12 @@ class WarpMazeZone extends Entity {
                 // Determine if this is the final battle based on game time
                 const gameDuration = (Date.now() - gameStartTime - (pausedAccumMs || 0));
                 const isFinalRun = gameDuration > 30 * 60 * 1000; // 30 minutes
-                
+
                 if (isFinalRun) {
-                     this.state = 'final_boss_intro';
-                     showOverlayMessage("FINAL BATTLE INITIATED", '#f00', 3000);
+                    this.state = 'final_boss_intro';
+                    showOverlayMessage("FINAL BATTLE INITIATED", '#f00', 3000);
                 } else {
-                     this.state = 'boss_intro';
+                    this.state = 'boss_intro';
                 }
                 this.bossIntroAt = Date.now() + 10000;
                 this.bossIntroLastSec = null;
@@ -9947,17 +9947,17 @@ class WarpMazeZone extends Entity {
                 const el = document.getElementById('arena-countdown');
                 if (el) el.style.display = 'none';
                 this.state = 'final_boss';
-                
+
                 // Keep the boss arena readable by clearing asteroids near the core.
                 filterArrayWithPixiCleanup(environmentAsteroids, a => !a.dead && (Math.hypot(a.pos.x - this.pos.x, a.pos.y - this.pos.y) > this.arenaRadius + 260));
-                
+
                 showOverlayMessage("FINAL BOSS ENGAGED", '#f00', 3000, 3);
                 playSound('boss_spawn');
                 clearArrayWithPixiCleanup(enemies); // keep the fight clean
                 clearArrayWithPixiCleanup(pinwheels);
                 filterArrayWithPixiCleanup(bullets, b => !b.isEnemy);
                 clearArrayWithPixiCleanup(bossBombs);
-                
+
                 boss = new FinalBoss(this.pos.x, this.pos.y, this);
                 bossActive = true;
 
@@ -12629,11 +12629,11 @@ class FinalBoss extends Entity {
 
         // Cave reinforcements - spawn roamers, gunboats, pinwheels
         this.reinforcementCooldown = 240; // More frequent (4s)
-        this.reinforcementTimer = 240; 
+        this.reinforcementTimer = 240;
 
         // Exploding mines (50% more damage than Monster 1 mines)
         this.mineCooldown = 160; // Faster
-        this.mineTimer = 60; 
+        this.mineTimer = 60;
 
         // Reinforcements (like cruiser helpers).
         this.helperMax = 10; // More max helpers
@@ -12739,7 +12739,7 @@ class FinalBoss extends Entity {
             document.getElementById('start-btn').innerText = "PLAY AGAIN";
             setTimeout(() => { document.getElementById('start-btn').focus(); }, 100);
         }, 5000);
-        
+
         showOverlayMessage("FINAL BOSS DESTROYED - VICTORY!", '#0f0', 5000, 5);
         bossActive = false;
         bossArena.active = false;
@@ -17006,6 +17006,13 @@ function enterWarpMaze() {
     activeContract = null;
     contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
     nextContractAt = Date.now() + 999999999;
+
+    if (destroyer) {
+        if (destroyer.pixiCleanupObject && typeof destroyer.pixiCleanupObject === 'function') {
+            destroyer.pixiCleanupObject();
+        }
+        destroyer = null;
+    }
 
     if (boss) pixiCleanupObject(boss);
     boss = null;
@@ -21881,7 +21888,7 @@ function triggerFinalBattle() {
     console.log('[FINAL BATTLE] 30 minutes reached. Teleporting to warp level.');
     showOverlayMessage("TIME LIMIT REACHED - PREPARE FOR FINAL BATTLE", '#f00', 5000, 5);
     playSound('warp_scream');
-    
+
     // Teleport to warp level after a short delay
     setTimeout(() => {
         if (!gameActive || !player || player.dead) return;
@@ -21951,7 +21958,7 @@ function gameLoopLogic(opts = null) {
                 if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
                 if (elapsed < 0) elapsed = 0;
                 tEl.innerText = formatTime(elapsed);
-                
+
                 // Final battle teleport at 30 minutes (GAME_DURATION_MS)
                 if (!gameEnded && elapsed >= GAME_DURATION_MS && !warpActive && !bossActive && !sectorTransitionActive) {
                     triggerFinalBattle();

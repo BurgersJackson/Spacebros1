@@ -16,7 +16,9 @@
       "Bash(taskkill:*)",
       "Bash(exit:*)",
       "Bash(npm run start:smoke:*)",
-      "mcp__zai-mcp-server__analyze_video"
+      "mcp__zai-mcp-server__analyze_video",
+      "Bash(python3:*)",
+      "Bash(ls:*)"
     ]
   },
   "outputStyle": "default"
