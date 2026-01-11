@@ -180,11 +180,34 @@ document.addEventListener('keydown', function (e) {
     } else if (e.ctrlKey && e.shiftKey && (e.code === 'Digit6' || e.code === 'Numpad6')) {
         e.preventDefault();
         window.enterDungeon1Debug();
+    } else if (e.ctrlKey && e.shiftKey && e.key === 'd') {
+        // Dungeon boss spawning with Ctrl+Shift+D + number
+        // The number key will be read separately
+    } else if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        // Same for uppercase D
+    } else if (e.ctrlKey && e.shiftKey && e.code === 'Digit7') {
+        // Spawn random dungeon boss
+        e.preventDefault();
+        const bosses = ['NecroticHive', 'CerebralPsion', 'Fleshforge', 'VortexMatriarch', 'ChitinusPrime', 'PsyLich'];
+        const randomBoss = bosses[Math.floor(Math.random() * bosses.length)];
+        window.spawnDungeonBoss(randomBoss);
     } else if (e.ctrlKey && (e.key === 'h' || e.key === 'H')) {
         e.preventDefault();
         DEBUG_COLLISION = !DEBUG_COLLISION;
         showOverlayMessage(`HITBOX DEBUG: ${DEBUG_COLLISION ? "ON" : "OFF"}`, DEBUG_COLLISION ? '#0f0' : '#f00', 1500);
     }
+});
+
+// Dungeon boss number shortcuts (Ctrl+Shift+D + 4-9)
+document.addEventListener('keydown', function (e) {
+    if (!e.ctrlKey || !e.shiftKey) return;
+    const key = e.key;
+    if (key === '4') { e.preventDefault(); window.spawnNecroticHive(); }
+    if (key === '5') { e.preventDefault(); window.spawnCerebralPsion(); }
+    if (key === '6') { e.preventDefault(); window.spawnFleshforge(); }
+    if (key === '7') { e.preventDefault(); window.spawnVortexMatriarch(); }
+    if (key === '8') { e.preventDefault(); window.spawnChitinusPrime(); }
+    if (key === '9') { e.preventDefault(); window.spawnPsyLich(); }
 });
 
 // DEBUG: Spawn station instantly (Ctrl+Shift+4)
@@ -271,6 +294,86 @@ window.enterDungeon1Debug = function () {
     }
 };
 
+// DEBUG: Spawn Dungeon Bosses (Ctrl+Shift+D4-9)
+window.spawnDungeonBoss = function (bossType) {
+    console.log(`[DEBUG] Attempting to spawn ${bossType}...`);
+    try {
+        if (typeof bossActive !== 'undefined' && bossActive) {
+            console.log('[DEBUG] Boss already active');
+            showOverlayMessage("BOSS ALREADY ACTIVE", '#f00', 1000);
+            return;
+        }
+
+        clearArrayWithPixiCleanup(enemies);
+        clearArrayWithPixiCleanup(pinwheels);
+        baseRespawnTimers = [];
+        roamerRespawnQueue = [];
+        clearArrayWithPixiCleanup(bullets);
+        clearArrayWithPixiCleanup(bossBombs);
+        clearArrayWithPixiCleanup(guidedMissiles);
+        clearArrayWithPixiCleanup(warpBioPods);
+
+        let newBoss;
+        const dist = 2000;
+        const angle = Math.random() * Math.PI * 2;
+        const x = player.pos.x + Math.cos(angle) * dist;
+        const y = player.pos.y + Math.sin(angle) * dist;
+
+        switch (bossType) {
+            case 'NecroticHive':
+                newBoss = new NecroticHive(1);
+                necroticHive = newBoss;
+                break;
+            case 'CerebralPsion':
+                newBoss = new CerebralPsion(1);
+                cerebralPsion = newBoss;
+                break;
+            case 'Fleshforge':
+                newBoss = new Fleshforge(1);
+                fleshforge = newBoss;
+                break;
+            case 'VortexMatriarch':
+                newBoss = new VortexMatriarch(1);
+                vortexMatriarch = newBoss;
+                break;
+            case 'ChitinusPrime':
+                newBoss = new ChitinusPrime(1);
+                chitinusPrime = newBoss;
+                break;
+            case 'PsyLich':
+                newBoss = new PsyLich(1);
+                psyLich = newBoss;
+                break;
+            default:
+                console.error('[DEBUG] Unknown boss type:', bossType);
+                return;
+        }
+
+        boss = newBoss;
+        bossActive = true;
+        bossArena.x = (player.pos.x + boss.pos.x) / 2;
+        bossArena.y = (player.pos.y + boss.pos.y) / 2;
+        bossArena.radius = 3000;
+        bossArena.active = true;
+        bossArena.growing = false;
+
+        showOverlayMessage(`DEBUG: ${bossType.toUpperCase()} SPAWNED`, '#ff0', 2000);
+        playSound('boss_spawn');
+        if (musicEnabled) setMusicMode('cruiser');
+        console.log(`[DEBUG] ${bossType} spawned successfully at`, boss.pos.x.toFixed(0), boss.pos.y.toFixed(0));
+    } catch (err) {
+        console.error(`[DEBUG] Failed to spawn ${bossType}:`, err);
+        showOverlayMessage("ERROR SPAWNING BOSS: " + err.message, '#f00', 3000);
+    }
+};
+
+// Individual spawn functions for convenience
+window.spawnNecroticHive = function () { window.spawnDungeonBoss('NecroticHive'); };
+window.spawnCerebralPsion = function () { window.spawnDungeonBoss('CerebralPsion'); };
+window.spawnFleshforge = function () { window.spawnDungeonBoss('Fleshforge'); };
+window.spawnVortexMatriarch = function () { window.spawnDungeonBoss('VortexMatriarch'); };
+window.spawnChitinusPrime = function () { window.spawnDungeonBoss('ChitinusPrime'); };
+window.spawnPsyLich = function () { window.spawnDungeonBoss('PsyLich'); };
 
 
 // toggleMusic wrapper that updates DOM button
@@ -543,6 +646,44 @@ destroyer2Image.src = DESTROYER2_URL;
 let destroyer2Texture = null;
 let destroyer2Loaded = false;
 
+// Dungeon boss sprites
+const DUNGEON4_URL = 'assets/dungeon4.png';
+const DUNGEON5_URL = 'assets/dungeon5.png';
+const DUNGEON6_URL = 'assets/dungeon6.png';
+const DUNGEON7_URL = 'assets/dungeon7.png';
+const DUNGEON8_URL = 'assets/dungeon8.png';
+const DUNGEON9_URL = 'assets/dungeon9.png';
+const dungeon4Image = new Image();
+const dungeon5Image = new Image();
+const dungeon6Image = new Image();
+const dungeon7Image = new Image();
+const dungeon8Image = new Image();
+const dungeon9Image = new Image();
+dungeon4Image.decoding = 'async';
+dungeon5Image.decoding = 'async';
+dungeon6Image.decoding = 'async';
+dungeon7Image.decoding = 'async';
+dungeon8Image.decoding = 'async';
+dungeon9Image.decoding = 'async';
+dungeon4Image.src = DUNGEON4_URL;
+dungeon5Image.src = DUNGEON5_URL;
+dungeon6Image.src = DUNGEON6_URL;
+dungeon7Image.src = DUNGEON7_URL;
+dungeon8Image.src = DUNGEON8_URL;
+dungeon9Image.src = DUNGEON9_URL;
+let dungeon4Texture = null;
+let dungeon5Texture = null;
+let dungeon6Texture = null;
+let dungeon7Texture = null;
+let dungeon8Texture = null;
+let dungeon9Texture = null;
+let dungeon4Loaded = false;
+let dungeon5Loaded = false;
+let dungeon6Loaded = false;
+let dungeon7Loaded = false;
+let dungeon8Loaded = false;
+let dungeon9Loaded = false;
+
 const applyGunboatTextures = () => {
     if (!window.PIXI) return;
     try {
@@ -642,6 +783,95 @@ const applyDestroyer2Texture = () => {
     }
 };
 
+const applyDungeonTextures = () => {
+    if (!window.PIXI) return;
+    try {
+        // Process dungeon boss textures
+        if (dungeon4Loaded && !dungeon4Texture) {
+            const tex = PIXI.Texture.from(dungeon4Image);
+            try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+            try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+            dungeon4Texture = tex;
+        }
+        if (dungeon5Loaded && !dungeon5Texture) {
+            const tex = PIXI.Texture.from(dungeon5Image);
+            try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+            try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+            dungeon5Texture = tex;
+        }
+        if (dungeon6Loaded && !dungeon6Texture) {
+            const tex = PIXI.Texture.from(dungeon6Image);
+            try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+            try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+            dungeon6Texture = tex;
+        }
+        if (dungeon7Loaded && !dungeon7Texture) {
+            const tex = PIXI.Texture.from(dungeon7Image);
+            try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+            try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+            dungeon7Texture = tex;
+        }
+        if (dungeon8Loaded && !dungeon8Texture) {
+            const tex = PIXI.Texture.from(dungeon8Image);
+            try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+            try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+            dungeon8Texture = tex;
+        }
+        if (dungeon9Loaded && !dungeon9Texture) {
+            const tex = PIXI.Texture.from(dungeon9Image);
+            try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+            try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+            dungeon9Texture = tex;
+        }
+
+        // Register dungeon boss textures
+        if (dungeon4Texture) {
+            pixiTextures.enemy_dungeon4 = dungeon4Texture;
+            pixiTextureAnchors.enemy_dungeon4 = 0.5;
+            pixiTextureRotOffsets.enemy_dungeon4 = Math.PI / 2;
+            pixiTextureScaleToRadius.enemy_dungeon4 = true;
+            pixiTextureBaseScales.enemy_dungeon4 = 1;
+        }
+        if (dungeon5Texture) {
+            pixiTextures.enemy_dungeon5 = dungeon5Texture;
+            pixiTextureAnchors.enemy_dungeon5 = 0.5;
+            pixiTextureRotOffsets.enemy_dungeon5 = Math.PI / 2;
+            pixiTextureScaleToRadius.enemy_dungeon5 = true;
+            pixiTextureBaseScales.enemy_dungeon5 = 1;
+        }
+        if (dungeon6Texture) {
+            pixiTextures.enemy_dungeon6 = dungeon6Texture;
+            pixiTextureAnchors.enemy_dungeon6 = 0.5;
+            pixiTextureRotOffsets.enemy_dungeon6 = Math.PI / 2;
+            pixiTextureScaleToRadius.enemy_dungeon6 = true;
+            pixiTextureBaseScales.enemy_dungeon6 = 1;
+        }
+        if (dungeon7Texture) {
+            pixiTextures.enemy_dungeon7 = dungeon7Texture;
+            pixiTextureAnchors.enemy_dungeon7 = 0.5;
+            pixiTextureRotOffsets.enemy_dungeon7 = Math.PI / 2;
+            pixiTextureScaleToRadius.enemy_dungeon7 = true;
+            pixiTextureBaseScales.enemy_dungeon7 = 1;
+        }
+        if (dungeon8Texture) {
+            pixiTextures.enemy_dungeon8 = dungeon8Texture;
+            pixiTextureAnchors.enemy_dungeon8 = 0.5;
+            pixiTextureRotOffsets.enemy_dungeon8 = Math.PI / 2;
+            pixiTextureScaleToRadius.enemy_dungeon8 = true;
+            pixiTextureBaseScales.enemy_dungeon8 = 1;
+        }
+        if (dungeon9Texture) {
+            pixiTextures.enemy_dungeon9 = dungeon9Texture;
+            pixiTextureAnchors.enemy_dungeon9 = 0.5;
+            pixiTextureRotOffsets.enemy_dungeon9 = Math.PI / 2;
+            pixiTextureScaleToRadius.enemy_dungeon9 = true;
+            pixiTextureBaseScales.enemy_dungeon9 = 1;
+        }
+    } catch (e) {
+        console.error('Error loading dungeon textures:', e);
+    }
+};
+
 gunboat1Image.addEventListener('load', () => {
     gunboat1Loaded = true;
     applyGunboatTextures();
@@ -676,6 +906,50 @@ destroyer2Image.addEventListener('load', () => {
 });
 destroyer2Image.addEventListener('error', () => {
     destroyer2Loaded = false;
+});
+
+// Dungeon boss sprite load events
+dungeon4Image.addEventListener('load', () => {
+    dungeon4Loaded = true;
+    applyDungeonTextures();
+});
+dungeon4Image.addEventListener('error', () => {
+    dungeon4Loaded = false;
+});
+dungeon5Image.addEventListener('load', () => {
+    dungeon5Loaded = true;
+    applyDungeonTextures();
+});
+dungeon5Image.addEventListener('error', () => {
+    dungeon5Loaded = false;
+});
+dungeon6Image.addEventListener('load', () => {
+    dungeon6Loaded = true;
+    applyDungeonTextures();
+});
+dungeon6Image.addEventListener('error', () => {
+    dungeon6Loaded = false;
+});
+dungeon7Image.addEventListener('load', () => {
+    dungeon7Loaded = true;
+    applyDungeonTextures();
+});
+dungeon7Image.addEventListener('error', () => {
+    dungeon7Loaded = false;
+});
+dungeon8Image.addEventListener('load', () => {
+    dungeon8Loaded = true;
+    applyDungeonTextures();
+});
+dungeon8Image.addEventListener('error', () => {
+    dungeon8Loaded = false;
+});
+dungeon9Image.addEventListener('load', () => {
+    dungeon9Loaded = true;
+    applyDungeonTextures();
+});
+dungeon9Image.addEventListener('error', () => {
+    dungeon9Loaded = false;
 });
 
 // Cave monster sprites
@@ -6407,6 +6681,12 @@ class Enemy extends Entity {
                     tex = pixiTextures.enemy_cruiser;
                     anchor = pixiTextureAnchors.enemy_cruiser || 0.5;
                     key = 'enemy_cruiser';
+                } else if (this.isDungeonBoss && this.dungeonAsset) {
+                    // Dungeon boss sprites
+                    const dungeonKey = 'enemy_' + this.dungeonAsset.replace('.png', '');
+                    tex = pixiTextures[dungeonKey];
+                    anchor = pixiTextureAnchors[dungeonKey] || 0.5;
+                    key = dungeonKey;
                 } else if (this.gunboatLevel === 2) {
                     tex = pixiTextures.enemy_gunboat_2;
                     anchor = pixiTextureAnchors.enemy_gunboat_2 || 0.5;
@@ -10196,21 +10476,62 @@ class Dungeon1Zone extends Entity {
         clearArrayWithPixiCleanup(pinwheels);
         filterArrayWithPixiCleanup(bullets, b => !b.isEnemy);
         clearArrayWithPixiCleanup(bossBombs);
+        clearArrayWithPixiCleanup(guidedMissiles);
+        clearArrayWithPixiCleanup(warpBioPods);
 
         this.dungeonEnemies = [];
 
-        // Spawn tier 1 cruiser
-        boss = new Cruiser(1);
+        // Spawn random dungeon boss from the pool
+        const bossType = dungeonBossPool[Math.floor(Math.random() * dungeonBossPool.length)];
+        let newBoss;
+
+        switch (bossType) {
+            case 'NecroticHive':
+                newBoss = new NecroticHive(1);
+                necroticHive = newBoss;
+                break;
+            case 'CerebralPsion':
+                newBoss = new CerebralPsion(1);
+                cerebralPsion = newBoss;
+                break;
+            case 'Fleshforge':
+                newBoss = new Fleshforge(1);
+                fleshforge = newBoss;
+                break;
+            case 'VortexMatriarch':
+                newBoss = new VortexMatriarch(1);
+                vortexMatriarch = newBoss;
+                break;
+            case 'ChitinusPrime':
+                newBoss = new ChitinusPrime(1);
+                chitinusPrime = newBoss;
+                break;
+            case 'PsyLich':
+                newBoss = new PsyLich(1);
+                psyLich = newBoss;
+                break;
+            default:
+                // Fallback to Cruiser if something goes wrong
+                newBoss = new Cruiser(1);
+        }
+
+        boss = newBoss;
         bossActive = true;
 
-        // Activate boss arena for cruiser fight
+        // Position boss at top of dungeon arena
+        boss.pos.x = this.pos.x;
+        boss.pos.y = this.pos.y - this.boundaryRadius + 500;
+        boss.prevPos.x = boss.pos.x;
+        boss.prevPos.y = boss.pos.y;
+
+        // Activate boss arena for dungeon boss fight
         bossArena.x = this.pos.x;
         bossArena.y = this.pos.y;
         bossArena.radius = 2500;
         bossArena.active = true;
         bossArena.growing = false;
 
-        showOverlayMessage("CRUISER ENGAGED", '#f00', 2200, 3);
+        showOverlayMessage(`DUNGEON BOSS: ${bossType.toUpperCase()}`, '#f00', 2200, 3);
         playSound('boss_spawn');
     }
 
@@ -12040,6 +12361,412 @@ class WarpBioPod extends Entity {
     }
 }
 
+// ============================================================================
+// DUNGEON BOSS HELPER CLASSES
+// ============================================================================
+
+// DungeonDrone - Small protective drone for NecroticHive
+// Orbits parent boss, fires at player, can be destroyed
+class DungeonDrone extends Entity {
+    constructor(parentBoss, orbitAngle = null) {
+        const orbitRadius = 180 + Math.random() * 60;
+        const angle = orbitAngle !== null ? orbitAngle : Math.random() * Math.PI * 2;
+        const x = parentBoss.pos.x + Math.cos(angle) * orbitRadius;
+        const y = parentBoss.pos.y + Math.sin(angle) * orbitRadius;
+        super(x, y);
+
+        this.parentBoss = parentBoss;
+        this.orbitRadius = orbitRadius;
+        this.orbitAngle = angle;
+        this.orbitSpeed = 0.02 + Math.random() * 0.01;
+        this.hp = 5;
+        this.maxHp = 5;
+        this.radius = 18;
+        this.fireCooldown = 40 + Math.floor(Math.random() * 20);
+        this.t = 0;
+        this._pixiGfx = null;
+    }
+
+    update(deltaTime = SIM_STEP_MS) {
+        if (this.dead) return;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+
+        // Check if parent still exists
+        if (!this.parentBoss || this.parentBoss.dead) {
+            this.kill();
+            return;
+        }
+
+        // Orbit around parent
+        this.orbitAngle += this.orbitSpeed * dtFactor;
+        this.pos.x = this.parentBoss.pos.x + Math.cos(this.orbitAngle) * this.orbitRadius;
+        this.pos.y = this.parentBoss.pos.y + Math.sin(this.orbitAngle) * this.orbitRadius;
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+
+        // Fire at player
+        this.fireCooldown -= dtFactor;
+        if (this.fireCooldown <= 0 && player && !player.dead) {
+            const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+            bullets.push(new Bullet(this.pos.x, this.pos.y, aim, true, 1, 10, 3, '#f80'));
+            playSound('shoot');
+            this.fireCooldown = 50 + Math.floor(Math.random() * 30);
+        }
+    }
+
+    draw(ctx) {
+        if (this.dead) return;
+        const rPos = this.getRenderPos(renderAlpha);
+
+        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
+            let g = this._pixiGfx;
+            if (!g) {
+                g = new PIXI.Graphics();
+                pixiVectorLayer.addChild(g);
+                this._pixiGfx = g;
+            }
+            g.clear();
+            g.position.set(rPos.x, rPos.y);
+            g.lineStyle(2 / (currentZoom || 1), 0xff8800, 0.9);
+            g.beginFill(0xff4400, 0.6);
+            g.drawCircle(0, 0, this.radius);
+            g.endFill();
+            return;
+        }
+
+        ctx.save();
+        ctx.translate(rPos.x, rPos.y);
+        ctx.fillStyle = '#f40';
+        ctx.strokeStyle = '#ff0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        if (this._pixiGfx) {
+            try { this._pixiGfx.destroy(true); } catch (e) { }
+            this._pixiGfx = null;
+        }
+        spawnParticles(this.pos.x, this.pos.y, 10, '#f80');
+        playSound('hit');
+    }
+}
+
+// PsychicEcho - Fake sprite decoy for CerebralPsion
+// Visual-only copy that cannot be damaged
+class PsychicEcho extends Entity {
+    constructor(parentBoss, offsetAngle) {
+        const dist = 200 + Math.random() * 100;
+        const x = parentBoss.pos.x + Math.cos(offsetAngle) * dist;
+        const y = parentBoss.pos.y + Math.sin(offsetAngle) * dist;
+        super(x, y);
+
+        this.parentBoss = parentBoss;
+        this.offsetAngle = offsetAngle;
+        this.orbitDist = dist;
+        this.orbitSpeed = 0.015 + Math.random() * 0.01;
+        this.t = 0;
+        this.life = 180; // 3 seconds
+        this.isFake = true; // Cannot take damage
+        this.radius = 50;
+        this._pixiGfx = null;
+    }
+
+    update(deltaTime = SIM_STEP_MS) {
+        if (this.dead) return;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+
+        if (!this.parentBoss || this.parentBoss.dead) {
+            this.dead = true;
+            return;
+        }
+
+        // Orbit around parent
+        this.offsetAngle += this.orbitSpeed * dtFactor;
+        this.pos.x = this.parentBoss.pos.x + Math.cos(this.offsetAngle) * this.orbitDist;
+        this.pos.y = this.parentBoss.pos.y + Math.sin(this.offsetAngle) * this.orbitDist;
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+
+        this.life -= dtFactor;
+        if (this.life <= 60) {
+            // Fade out effect
+            this.alpha = this.life / 60;
+        }
+        if (this.life <= 0) {
+            this.dead = true;
+        }
+    }
+
+    draw(ctx) {
+        if (this.dead) return;
+        const rPos = this.getRenderPos(renderAlpha);
+        const alpha = this.alpha !== undefined ? this.alpha : 1;
+
+        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
+            let g = this._pixiGfx;
+            if (!g) {
+                g = new PIXI.Graphics();
+                pixiVectorLayer.addChild(g);
+                this._pixiGfx = g;
+            }
+            g.clear();
+            g.position.set(rPos.x, rPos.y);
+            g.lineStyle(3 / (currentZoom || 1), 0xff00ff, 0.7 * alpha);
+            g.beginFill(0x8800ff, 0.3 * alpha);
+            g.drawCircle(0, 0, this.radius);
+            g.endFill();
+            return;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(rPos.x, rPos.y);
+        ctx.fillStyle = 'rgba(136, 0, 255, 0.3)';
+        ctx.strokeStyle = '#f0f';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        if (this._pixiGfx) {
+            try { this._pixiGfx.destroy(true); } catch (e) { }
+            this._pixiGfx = null;
+        }
+    }
+}
+
+// GravityWell - Pull zone for VortexMatriarch
+// Attracts player and projectiles toward center
+class GravityWell extends Entity {
+    constructor(x, y, owner = null) {
+        super(x, y);
+        this.owner = owner;
+        this.radius = 80;
+        this.pullRadius = 600;
+        this.strength = 0.35;
+        this.life = 180; // 3 seconds
+        this.t = 0;
+        this._pixiGfx = null;
+    }
+
+    update(deltaTime = SIM_STEP_MS) {
+        if (this.dead) return;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+
+        // Pull player toward gravity well
+        if (player && !player.dead) {
+            const dx = this.pos.x - player.pos.x;
+            const dy = this.pos.y - player.pos.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < this.pullRadius && dist > 10) {
+                const force = this.strength * (1 - dist / this.pullRadius) * dtFactor;
+                player.vel.x += (dx / dist) * force;
+                player.vel.y += (dy / dist) * force;
+            }
+        }
+
+        // Pull player bullets toward gravity well (curved trajectory)
+        for (let i = 0; i < bullets.length; i++) {
+            const b = bullets[i];
+            if (!b || b.dead || b.isEnemy) continue;
+            const dx = this.pos.x - b.pos.x;
+            const dy = this.pos.y - b.pos.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < this.pullRadius * 0.7 && dist > 10) {
+                const force = this.strength * 0.5 * (1 - dist / (this.pullRadius * 0.7)) * dtFactor;
+                b.vel.x += (dx / dist) * force;
+                b.vel.y += (dy / dist) * force;
+            }
+        }
+
+        this.life -= dtFactor;
+        if (this.life <= 0) {
+            this.dead = true;
+        }
+    }
+
+    draw(ctx) {
+        if (this.dead) return;
+        const rPos = this.getRenderPos(renderAlpha);
+        const pulse = 0.5 + Math.sin(this.t * 0.1) * 0.3;
+
+        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
+            let g = this._pixiGfx;
+            if (!g) {
+                g = new PIXI.Graphics();
+                pixiVectorLayer.addChild(g);
+                this._pixiGfx = g;
+            }
+            g.clear();
+            g.position.set(rPos.x, rPos.y);
+
+            // Outer ring (pull radius indicator)
+            g.lineStyle(2 / (currentZoom || 1), 0x00aaff, 0.3 * pulse);
+            g.drawCircle(0, 0, this.pullRadius);
+
+            // Inner core
+            g.lineStyle(3 / (currentZoom || 1), 0x00ffff, 0.8);
+            g.beginFill(0x0044aa, 0.5 * pulse);
+            g.drawCircle(0, 0, this.radius);
+            g.endFill();
+            return;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = pulse;
+        ctx.translate(rPos.x, rPos.y);
+        ctx.strokeStyle = 'rgba(0, 170, 255, 0.3)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.pullRadius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(0, 68, 170, 0.5)';
+        ctx.strokeStyle = '#0ff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        if (this._pixiGfx) {
+            try { this._pixiGfx.destroy(true); } catch (e) { }
+            this._pixiGfx = null;
+        }
+    }
+}
+
+// SoulDrainTether - HP drain tether for PsyLich
+// Creates beam between boss and player, drains HP to heal boss
+class SoulDrainTether extends Entity {
+    constructor(owner) {
+        super(owner.pos.x, owner.pos.y);
+        this.owner = owner;
+        this.radius = 10;
+        this.range = 900;
+        this.damagePerSecond = 5;
+        this.healPerSecond = 5;
+        this.life = 120; // 2 seconds
+        this.t = 0;
+        this._pixiGfx = null;
+    }
+
+    update(deltaTime = SIM_STEP_MS) {
+        if (this.dead) return;
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+
+        if (!this.owner || this.owner.dead) {
+            this.dead = true;
+            return;
+        }
+
+        // Update position to follow owner
+        this.pos.x = this.owner.pos.x;
+        this.pos.y = this.owner.pos.y;
+
+        // Check if player in range
+        if (player && !player.dead) {
+            const dx = player.pos.x - this.pos.x;
+            const dy = player.pos.y - this.pos.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (dist < this.range) {
+                // Drain player HP and heal owner
+                const damage = (this.damagePerSecond / 60) * dtFactor;
+                const heal = (this.healPerSecond / 60) * dtFactor;
+
+                // Apply damage to player (bypass shields partially)
+                if (player.hp > 0) {
+                    player.hp = Math.max(0, player.hp - damage);
+                    // Heal owner
+                    if (this.owner.hp < this.owner.maxHp) {
+                        this.owner.hp = Math.min(this.owner.maxHp, this.owner.hp + heal);
+                    }
+                }
+            }
+        }
+
+        this.life -= dtFactor;
+        if (this.life <= 0) {
+            this.dead = true;
+        }
+    }
+
+    draw(ctx) {
+        if (this.dead) return;
+        if (!player || player.dead) return;
+
+        const rPos = this.getRenderPos(renderAlpha);
+        const dx = player.pos.x - rPos.x;
+        const dy = player.pos.y - rPos.y;
+        const dist = Math.hypot(dx, dy);
+
+        // Only draw if in range
+        if (dist >= this.range) return;
+
+        const pulse = 0.3 + Math.sin(this.t * 0.15) * 0.2;
+
+        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
+            let g = this._pixiGfx;
+            if (!g) {
+                g = new PIXI.Graphics();
+                pixiVectorLayer.addChild(g);
+                this._pixiGfx = g;
+            }
+            g.clear();
+            g.moveTo(rPos.x, rPos.y);
+            g.lineTo(player.pos.x, player.pos.y);
+            g.lineStyle(4 / (currentZoom || 1), 0xff0088, pulse);
+            return;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = pulse;
+        ctx.strokeStyle = '#f08';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(rPos.x, rPos.y);
+        ctx.lineTo(player.pos.x, player.pos.y);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        if (this._pixiGfx) {
+            try { this._pixiGfx.destroy(true); } catch (e) { }
+            this._pixiGfx = null;
+        }
+    }
+}
+
+// ============================================================================
+// DUNGEON BOSS CLASSES
+// ============================================================================
+
 class WarpSentinelBoss extends Entity {
     constructor(x, y, zone) {
         super(x, y);
@@ -13662,6 +14389,1912 @@ class FinalBoss extends Entity {
         playSound('powerup');
     }
 }
+
+// ============================================================================
+// DUNGEON BOSSES - Hybrid Space Monster/Alien Ships
+// ============================================================================
+
+// NecroticHive - Bio-mechanical Swarm Controller (dungeon4.png)
+// Theme: Spawns protective drone swarms, releases parasite projectiles
+class NecroticHive extends Enemy {
+    constructor(encounterIndex = 1) {
+        super('gunboat', null, null, { gunboatLevel: 2 });
+        const boost = Math.max(0, encounterIndex - 1);
+        const hpScale = 1 + boost * 0.20;
+
+        this.type = 'necroticHive';
+        this.isDungeonBoss = true;
+        this.isGunboat = true;
+        this.gunboatLevel = 2;
+        this.dungeonAsset = 'dungeon4.png';
+
+        // Visual scale - organic, insect-like appearance
+        this.cruiserHullScale = 6.5;
+        this.gunboatScale = this.cruiserHullScale;
+        this.radius = Math.round(22 * this.cruiserHullScale);
+
+        const baseHp = 160;
+        this.hp = Math.round(baseHp * hpScale);
+        this.maxHp = this.hp;
+
+        this.shieldRadius = Math.round(34 * this.cruiserHullScale);
+        this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+        this.shieldSegments = new Array(14).fill(3);
+        this.innerShieldSegments = new Array(20).fill(3);
+        this.innerShieldRotation = 0;
+        this.gunboatShieldRecharge = 90;
+        this.gunboatMuzzleDist = Math.round(6 * this.cruiserHullScale);
+        this.baseGunboatRange = 950;
+        this.gunboatRange = this.baseGunboatRange;
+        this.cruiserBaseDamage = 2;
+        this.cruiserFireDelay = 14;
+        this.despawnImmune = true;
+        this.turretAngle = 0;
+        this.shootTimer = this.cruiserFireDelay;
+        this.encounterIndex = encounterIndex;
+        this.visualAngleOffset = Math.PI;
+
+        this.disableAutoFire = true;
+        this.vulnerableDurationFrames = 90;
+        this.vulnerableTimer = 0;
+        this.phaseName = 'INTRO';
+        this.phaseTimer = 60;
+        this.phaseIndex = 0;
+        this.phaseTick = 0;
+
+        // Drone swarm system
+        this.drones = [];
+        this.maxDrones = 8;
+        this.droneRespawnCooldown = 180;
+        this.hiveResurgenceTriggered = false;
+
+        // Phase sequence
+        this.phaseSeq = [
+            { name: 'SWARM_SUMMON', duration: 120 },
+            { name: 'PROTECTIVE_RING', duration: 180 },
+            { name: 'PARASITE_BURST', duration: 150 },
+            { name: 'FRENZY', duration: 100 },
+            { name: 'HIVE_MIND', duration: 200 }
+        ];
+
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 2800;
+        this.pos.x = player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+
+        this.turnSpeed = (Math.PI * 2) / (16 * SIM_FPS);
+        this.wallElasticity = 0.3;
+        this.t = 0;
+    }
+
+    updateAIState() {
+        this.aiTimer = 999999;
+    }
+
+    update(deltaTime = SIM_STEP_MS) {
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+        this.phaseTimer -= dtFactor;
+        this.vulnerableTimer -= dtFactor;
+        this.droneRespawnCooldown -= dtFactor;
+
+        // Hive Resurgence at 30% HP
+        if (!this.hiveResurgenceTriggered && this.hp / this.maxHp <= 0.3) {
+            this.hiveResurgenceTriggered = true;
+            for (let i = 0; i < this.maxDrones; i++) {
+                this.spawnDrone();
+            }
+            showOverlayMessage("HIVE RESURGENCE!", '#f80', 2000);
+        }
+
+        // Phase progression
+        if (this.phaseTimer <= 0) {
+            if (this.phaseName === 'HIVE_MIND') {
+                this.vulnerableTimer = this.vulnerableDurationFrames;
+            }
+            const next = this.phaseSeq[this.phaseIndex % this.phaseSeq.length];
+            this.phaseIndex++;
+            this.phaseName = next.name;
+            this.phaseTimer = next.duration;
+            this.phaseTick = 0;
+            showOverlayMessage(`NECROTIC HIVE: ${this.phaseName}`, '#f80', 900);
+        }
+
+        // Movement style per phase - Cruiser-based
+        const charging = (this.phaseName === 'FRENZY');
+        if (charging) {
+            this.circleStrafePreferred = false;
+            this.aiState = 'SEEK';
+            this.thrustPower = 0.64;
+            this.maxSpeed = 8.4;
+            this.gunboatRange = this.baseGunboatRange + 350;
+        } else {
+            // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
+            const dx = player.pos.x - this.pos.x;
+            const dy = player.pos.y - this.pos.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
+            if (!this.moveMode) this.moveMode = 'CIRCLE';
+            this.moveModeTimer -= deltaTime / 16.67;
+            if (this.moveModeTimer <= 0) {
+                const r = Math.random();
+                if (dist > 1700) this.moveMode = (r < 0.55) ? 'SEEK' : (r < 0.80 ? 'CIRCLE' : 'ORBIT');
+                else this.moveMode = (r < 0.38) ? 'CIRCLE' : (r < 0.60 ? 'ORBIT' : (r < 0.82 ? 'SEEK' : 'FLANK'));
+                this.flankSide = Math.random() < 0.5 ? 1 : -1;
+                this.moveModeTimer = 22 + Math.floor(Math.random() * 45);
+            }
+
+            if (this.moveMode === 'SEEK') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'SEEK';
+                this.thrustPower = 0.52;
+                this.maxSpeed = 7.8;
+            } else if (this.moveMode === 'ORBIT') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'ORBIT';
+                this.thrustPower = 0.48;
+                this.maxSpeed = 6.6;
+            } else if (this.moveMode === 'FLANK') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'FLANK';
+                this.thrustPower = 0.56;
+                this.maxSpeed = 8.2;
+            } else {
+                this.circleStrafePreferred = true;
+                this.aiState = 'CIRCLE';
+                this.thrustPower = 0.40;
+                this.maxSpeed = 5.8;
+            }
+            this.gunboatRange = this.baseGunboatRange;
+        }
+
+        this.innerShieldRotation -= 0.08 * dtFactor;
+        super.update(deltaTime);
+
+        // Phase attacks
+        if (typeof this.phaseTickAccum === 'undefined') this.phaseTickAccum = 0;
+        this.phaseTickAccum += dtFactor;
+        while (this.phaseTickAccum >= 1) {
+            this.phaseTickAccum -= 1;
+            this.phaseTick++;
+            this.runPhaseAttacks();
+        }
+
+        // Drone management
+        this.updateDrones(dtFactor);
+    }
+
+    runPhaseAttacks() {
+        if (!player || player.dead) return;
+
+        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+
+        if (this.phaseName === 'SWARM_SUMMON') {
+            if (this.phaseTick % 20 === 0) {
+                this.spawnDrone();
+            }
+            if (this.phaseTick % 60 === 0) {
+                // Chitin barrage arc
+                for (let i = 0; i < 16; i++) {
+                    const a = aim - 0.8 + (i / 15) * 1.6;
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 7, 4, '#f6f'));
+                }
+                playSound('shotgun');
+            }
+        } else if (this.phaseName === 'PROTECTIVE_RING') {
+            if (this.phaseTick % 30 === 0) {
+                // Guided missiles
+                guidedMissiles.push(new FlagshipGuidedMissile(this));
+                playSound('heavy_shoot');
+            }
+            if (this.phaseTick % 45 === 0) {
+                // Ring attack from drones
+                for (let i = 0; i < 12; i++) {
+                    const a = (Math.PI * 2 / 12) * i;
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 9, 4, '#f80'));
+                }
+                playSound('shotgun');
+            }
+        } else if (this.phaseName === 'PARASITE_BURST') {
+            if (this.phaseTick % 40 === 0) {
+                // Bio-pods
+                for (let i = 0; i < 12; i++) {
+                    const a = Math.random() * Math.PI * 2;
+                    warpBioPods.push(new WarpBioPod(this.pos.x, this.pos.y, a, this));
+                }
+                playSound('warp_pod_pop');
+            }
+            if (this.phaseTick % 60 === 0) {
+                // Napalm zone
+                if (typeof spawnNapalmZone === 'function') {
+                    spawnNapalmZone(this.pos.x + (Math.random() - 0.5) * 200, this.pos.y + (Math.random() - 0.5) * 200, 3, 80);
+                }
+            }
+        } else if (this.phaseName === 'FRENZY') {
+            if (this.phaseTick % 8 === 0) {
+                // Rapid triple spread
+                for (let i = -1; i <= 1; i++) {
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, true, 1, 12, 3, '#f44'));
+                }
+                playSound('rapid_shoot');
+            }
+            if (this.phaseTick % 50 === 0) {
+                // Ring attack
+                for (let i = 0; i < 16; i++) {
+                    const a = (Math.PI * 2 / 16) * i;
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 8, 4, '#f80'));
+                }
+                playSound('shotgun');
+            }
+            // Drones kamikaze
+            if (this.phaseTick % 100 === 0) {
+                this.drones.forEach(d => { if (d && !d.dead) d.maxSpeed = 12; });
+            }
+        } else if (this.phaseName === 'HIVE_MIND') {
+            if (this.phaseTick % 5 === 0) {
+                // Mega barrage
+                const a = aim + Math.sin(this.phaseTick * 0.1) * 0.5;
+                bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 14, 3, '#f6f'));
+            }
+            if (this.phaseTick === 60) {
+                // All drones return to heal
+                let healAmount = this.drones.filter(d => d && !d.dead).length;
+                this.hp = Math.min(this.maxHp, this.hp + healAmount);
+            }
+        }
+    }
+
+    spawnDrone() {
+        if (this.drones.length >= this.maxDrones) return;
+        const drone = new DungeonDrone(this);
+        this.drones.push(drone);
+        enemies.push(drone);
+    }
+
+    updateDrones(dtFactor) {
+        // Clean up dead drones
+        this.drones = this.drones.filter(d => d && !d.dead);
+
+        // Respawn dead drones
+        if (this.drones.length < this.maxDrones && this.droneRespawnCooldown <= 0) {
+            this.spawnDrone();
+            this.droneRespawnCooldown = 180;
+        }
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+
+        // Kill all drones
+        this.drones.forEach(d => { if (d && !d.dead) d.kill(); });
+        this.drones = [];
+
+        pixiCleanupObject(this);
+        spawnBossExplosion(this.pos.x, this.pos.y, 3.5, 26);
+        spawnLargeExplosion(this.pos.x, this.pos.y, 3.5);
+        spawnParticles(this.pos.x, this.pos.y, 120, '#f80');
+        playSound('base_explode');
+        shakeMagnitude = Math.max(shakeMagnitude, 22);
+        shakeTimer = Math.max(shakeTimer, 24);
+
+        // Rewards
+        for (let i = 0; i < 16; i++) {
+            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
+        }
+        for (let i = 0; i < 6; i++) {
+            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
+        }
+        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+
+        bossActive = false;
+        if (necroticHive === this) necroticHive = null;
+        if (boss === this) boss = null;
+
+        showOverlayMessage("NECROTIC HIVE DESTROYED", '#f80', 3000);
+        if (musicEnabled) setMusicMode('normal');
+    }
+
+    draw(ctx) {
+        super.draw(ctx);
+        if (this.dead) return;
+
+        // Draw vulnerability indicator
+        if (this.vulnerableTimer > 0) {
+            const rPos = this.getRenderPos(renderAlpha);
+            ctx.save();
+            ctx.globalAlpha = 0.3 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.3;
+            ctx.strokeStyle = '#ff0';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(rPos.x, rPos.y, this.radius + 20, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+}
+
+// CerebralPsion - Psionic Mind Controller (dungeon5.png)
+// Theme: Teleportation, mind-warp zones, psychic echoes
+class CerebralPsion extends Enemy {
+    constructor(encounterIndex = 1) {
+        super('gunboat', null, null, { gunboatLevel: 2 });
+        const boost = Math.max(0, encounterIndex - 1);
+        const hpScale = 1 + boost * 0.15;
+
+        this.type = 'cerebralPsion';
+        this.isDungeonBoss = true;
+        this.isGunboat = true;
+        this.gunboatLevel = 2;
+        this.dungeonAsset = 'dungeon5.png';
+
+        this.cruiserHullScale = 6.0;
+        this.gunboatScale = this.cruiserHullScale;
+        this.radius = Math.round(22 * this.cruiserHullScale);
+
+        const baseHp = 140;
+        this.hp = Math.round(baseHp * hpScale);
+        this.maxHp = this.hp;
+
+        this.shieldRadius = Math.round(34 * this.cruiserHullScale);
+        this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+        this.shieldSegments = new Array(12).fill(4);
+        this.innerShieldSegments = new Array(16).fill(4);
+        this.innerShieldRotation = 0;
+        this.baseGunboatRange = 1000;
+        this.gunboatRange = this.baseGunboatRange;
+        this.cruiserBaseDamage = 2;
+        this.despawnImmune = true;
+        this.visualAngleOffset = Math.PI;
+
+        this.disableAutoFire = true;
+        this.phaseName = 'INTRO';
+        this.phaseTimer = 60;
+        this.phaseIndex = 0;
+        this.phaseTick = 0;
+
+        // Psionic abilities
+        this.echoes = [];
+        this.teleportCooldown = 0;
+        this.realityFractureTriggered = false;
+        this.inRealityFracture = false;
+
+        this.phaseSeq = [
+            { name: 'TELEPORT_STRIKE', duration: 140 },
+            { name: 'PSYCHIC_FIELD', duration: 180 },
+            { name: 'ECHO_SUMMON', duration: 160 },
+            { name: 'MIND_CRUSH', duration: 120 },
+            { name: 'PSIONIC_STORM', duration: 200 }
+        ];
+
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 2800;
+        this.pos.x = player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+
+        this.turnSpeed = (Math.PI * 2) / (12 * SIM_FPS);
+        this.wallElasticity = 0.3;
+        this.t = 0;
+    }
+
+    updateAIState() {
+        this.aiTimer = 999999;
+    }
+
+    update(deltaTime = SIM_STEP_MS) {
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+        this.phaseTimer -= dtFactor;
+        this.teleportCooldown -= dtFactor;
+
+        // Reality Fracture at 40% HP
+        if (!this.realityFractureTriggered && this.hp / this.maxHp <= 0.4) {
+            this.realityFractureTriggered = true;
+            this.inRealityFracture = true;
+            this.spawnEchoes(3); // Spawn 3 fake echoes
+            showOverlayMessage("REALITY FRACTURE!", '#f0f', 2000);
+            setTimeout(() => { this.inRealityFracture = false; }, 10000);
+        }
+
+        // Phase progression
+        if (this.phaseTimer <= 0) {
+            const next = this.phaseSeq[this.phaseIndex % this.phaseSeq.length];
+            this.phaseIndex++;
+            this.phaseName = next.name;
+            this.phaseTimer = next.duration;
+            this.phaseTick = 0;
+            showOverlayMessage(`CEREBRAL PSION: ${this.phaseName}`, '#f0f', 900);
+
+            // Teleport on phase change
+            if (this.phaseName !== 'INTRO' && this.teleportCooldown <= 0) {
+                this.teleport();
+            }
+        }
+
+        // Movement style per phase - Cruiser-based
+        const charging = false;
+        if (charging) {
+            this.circleStrafePreferred = false;
+            this.aiState = 'SEEK';
+            this.thrustPower = 0.64;
+            this.maxSpeed = 8.4;
+            this.gunboatRange = this.baseGunboatRange + 350;
+        } else {
+            // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
+            const dx = player.pos.x - this.pos.x;
+            const dy = player.pos.y - this.pos.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
+            if (!this.moveMode) this.moveMode = 'CIRCLE';
+            this.moveModeTimer -= deltaTime / 16.67;
+            if (this.moveModeTimer <= 0) {
+                const r = Math.random();
+                if (dist > 1700) this.moveMode = (r < 0.55) ? 'SEEK' : (r < 0.80 ? 'CIRCLE' : 'ORBIT');
+                else this.moveMode = (r < 0.38) ? 'CIRCLE' : (r < 0.60 ? 'ORBIT' : (r < 0.82 ? 'SEEK' : 'FLANK'));
+                this.flankSide = Math.random() < 0.5 ? 1 : -1;
+                this.moveModeTimer = 22 + Math.floor(Math.random() * 45);
+            }
+
+            if (this.moveMode === 'SEEK') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'SEEK';
+                this.thrustPower = 0.52;
+                this.maxSpeed = 7.8;
+            } else if (this.moveMode === 'ORBIT') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'ORBIT';
+                this.thrustPower = 0.48;
+                this.maxSpeed = 6.6;
+            } else if (this.moveMode === 'FLANK') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'FLANK';
+                this.thrustPower = 0.56;
+                this.maxSpeed = 8.2;
+            } else {
+                this.circleStrafePreferred = true;
+                this.aiState = 'CIRCLE';
+                this.thrustPower = 0.40;
+                this.maxSpeed = 5.8;
+            }
+            this.gunboatRange = this.baseGunboatRange;
+        }
+
+        this.innerShieldRotation -= 0.06 * dtFactor;
+        super.update(deltaTime);
+
+        // Phase attacks
+        if (typeof this.phaseTickAccum === 'undefined') this.phaseTickAccum = 0;
+        this.phaseTickAccum += dtFactor;
+        while (this.phaseTickAccum >= 1) {
+            this.phaseTickAccum -= 1;
+            this.phaseTick++;
+            this.runPhaseAttacks();
+        }
+
+        // Update echoes
+        this.updateEchoes();
+    }
+
+    runPhaseAttacks() {
+        if (!player || player.dead) return;
+
+        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+
+        if (this.phaseName === 'TELEPORT_STRIKE') {
+            if (this.phaseTick % 40 === 0) {
+                // Teleport near player
+                const teleportDist = 500;
+                const a = Math.random() * Math.PI * 2;
+                this.pos.x = player.pos.x + Math.cos(a) * teleportDist;
+                this.pos.y = player.pos.y + Math.sin(a) * teleportDist;
+                this.prevPos.x = this.pos.x;
+                this.prevPos.y = this.pos.y;
+                spawnParticles(this.pos.x, this.pos.y, 20, '#f0f');
+            }
+            if (this.phaseTick % 30 === 0) {
+                // Flame breath cone
+                this.fireFlameBreath(aim);
+            }
+            if (this.phaseTick % 50 === 0) {
+                // Chitin spread
+                for (let i = 0; i < 12; i++) {
+                    const a = aim - 0.6 + (i / 11) * 1.2;
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 8, 4, '#f6f'));
+                }
+                playSound('shotgun');
+            }
+        } else if (this.phaseName === 'PSYCHIC_FIELD') {
+            if (this.phaseTick % 60 === 0) {
+                // Homing missiles
+                guidedMissiles.push(new FlagshipGuidedMissile(this));
+                playSound('heavy_shoot');
+            }
+            // Psychic field - distorts player controls (visual only)
+            if (this.phaseTick % 10 === 0) {
+                spawnParticles(this.pos.x + (Math.random() - 0.5) * 300, this.pos.y + (Math.random() - 0.5) * 300, 2, '#a0f');
+            }
+        } else if (this.phaseName === 'ECHO_SUMMON') {
+            if (this.phaseTick % 80 === 0) {
+                this.spawnEchoes(1);
+            }
+            // All echoes fire curtain pattern
+            if (this.phaseTick % 15 === 0) {
+                for (let i = -2; i <= 2; i++) {
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, true, 1, 10, 3, '#f0f'));
+                }
+                playSound('rapid_shoot');
+            }
+        } else if (this.phaseName === 'MIND_CRUSH') {
+            if (this.phaseTick % 20 === 0) {
+                // Radial shockwave
+                spawnParticles(this.pos.x, this.pos.y, 15, '#f0f');
+                // Push player away
+                if (player && !player.dead) {
+                    const dx = player.pos.x - this.pos.x;
+                    const dy = player.pos.y - this.pos.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist < 800 && dist > 0) {
+                        const pushForce = 15;
+                        player.vel.x += (dx / dist) * pushForce;
+                        player.vel.y += (dy / dist) * pushForce;
+                    }
+                }
+            }
+            // Tractor beam effect (pull player in)
+            if (this.phaseTick % 5 === 0 && player && !player.dead) {
+                const dx = this.pos.x - player.pos.x;
+                const dy = this.pos.y - player.pos.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist < 1000 && dist > 0) {
+                    player.vel.x += (dx / dist) * 0.5;
+                    player.vel.y += (dy / dist) * 0.5;
+                }
+            }
+        } else if (this.phaseName === 'PSIONIC_STORM') {
+            if (this.phaseTick % 8 === 0) {
+                // Teleport randomly
+                const teleportDist = 600 + Math.random() * 400;
+                const a = Math.random() * Math.PI * 2;
+                this.pos.x = player.pos.x + Math.cos(a) * teleportDist;
+                this.pos.y = player.pos.y + Math.sin(a) * teleportDist;
+                this.prevPos.x = this.pos.x;
+                this.prevPos.y = this.pos.y;
+            }
+            if (this.phaseTick % 12 === 0) {
+                // All attacks rapid fire
+                bullets.push(new Bullet(this.pos.x, this.pos.y, aim, true, 1, 12, 3, '#f0f'));
+                playSound('rapid_shoot');
+            }
+        }
+    }
+
+    fireFlameBreath(aim) {
+        // Create flame breath area (damage zone)
+        const range = 700;
+        const cone = Math.PI / 4;
+        // Visual indicator
+        spawnParticles(this.pos.x + Math.cos(aim) * 200, this.pos.y + Math.sin(aim) * 200, 10, '#f84');
+        // Damage applied through collision in main loop
+    }
+
+    teleport() {
+        const dist = 400 + Math.random() * 600;
+        const angle = Math.random() * Math.PI * 2;
+        this.pos.x = player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+        this.teleportCooldown = 90;
+        spawnParticles(this.pos.x, this.pos.y, 25, '#f0f');
+        playSound('warp_in');
+    }
+
+    spawnEchoes(count) {
+        for (let i = 0; i < count; i++) {
+            const angle = (Math.PI * 2 / count) * i;
+            const echo = new PsychicEcho(this, angle);
+            this.echoes.push(echo);
+        }
+    }
+
+    updateEchoes() {
+        this.echoes = this.echoes.filter(e => e && !e.dead);
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+
+        // Clean up echoes
+        this.echoes.forEach(e => { if (e && !e.dead) e.kill(); });
+        this.echoes = [];
+
+        pixiCleanupObject(this);
+        spawnBossExplosion(this.pos.x, this.pos.y, 3.5, 26);
+        spawnLargeExplosion(this.pos.x, this.pos.y, 3.5);
+        spawnParticles(this.pos.x, this.pos.y, 120, '#f0f');
+        playSound('base_explode');
+        shakeMagnitude = Math.max(shakeMagnitude, 22);
+        shakeTimer = Math.max(shakeTimer, 24);
+
+        for (let i = 0; i < 16; i++) {
+            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
+        }
+        for (let i = 0; i < 6; i++) {
+            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
+        }
+        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+
+        bossActive = false;
+        if (cerebralPsion === this) cerebralPsion = null;
+        if (boss === this) boss = null;
+
+        showOverlayMessage("CEREBRAL PSION DESTROYED", '#f0f', 3000);
+        if (musicEnabled) setMusicMode('normal');
+    }
+}
+
+// Fleshforge - Living Bio-Factory (dungeon6.png)
+// Theme: 3 regen chambers, consumes asteroids, leaves organic residue
+class Fleshforge extends Enemy {
+    constructor(encounterIndex = 1) {
+        super('gunboat', null, null, { gunboatLevel: 2 });
+        const boost = Math.max(0, encounterIndex - 1);
+        const hpScale = 1 + boost * 0.25;
+
+        this.type = 'fleshforge';
+        this.isDungeonBoss = true;
+        this.isGunboat = true;
+        this.gunboatLevel = 2;
+        this.dungeonAsset = 'dungeon6.png';
+
+        this.cruiserHullScale = 7.0;
+        this.gunboatScale = this.cruiserHullScale;
+        this.radius = Math.round(22 * this.cruiserHullScale);
+
+        const baseHp = 180;
+        this.hp = Math.round(baseHp * hpScale);
+        this.maxHp = this.hp;
+
+        this.shieldRadius = Math.round(34 * this.cruiserHullScale);
+        this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+        this.shieldSegments = new Array(16).fill(3);
+        this.innerShieldSegments = new Array(22).fill(3);
+        this.innerShieldRotation = 0;
+        this.baseGunboatRange = 900;
+        this.gunboatRange = this.baseGunboatRange;
+        this.cruiserBaseDamage = 2;
+        this.despawnImmune = true;
+        this.visualAngleOffset = Math.PI;
+
+        this.disableAutoFire = true;
+        this.phaseName = 'INTRO';
+        this.phaseTimer = 60;
+        this.phaseIndex = 0;
+        this.phaseTick = 0;
+
+        // Regen chambers
+        this.regenChambers = [
+            { active: true, hp: 20, maxHp: 20, angle: 0, dist: 100 },
+            { active: true, hp: 20, maxHp: 20, angle: (Math.PI * 2 / 3), dist: 100 },
+            { active: true, hp: 20, maxHp: 20, angle: (Math.PI * 4 / 3), dist: 100 }
+        ];
+        this.regenCooldown = 90;
+        this.emergencyRebuildTriggered = false;
+
+        this.phaseSeq = [
+            { name: 'FORGE_ACTIVATE', duration: 160 },
+            { name: 'CONSUME', duration: 140 },
+            { name: 'ASSEMBLY_LINE', duration: 180 },
+            { name: 'MELTDOWN', duration: 120 }
+        ];
+
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 2800;
+        this.pos.x = player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+
+        this.turnSpeed = (Math.PI * 2) / (20 * SIM_FPS);
+        this.wallElasticity = 0.3;
+        this.t = 0;
+    }
+
+    updateAIState() {
+        this.aiTimer = 999999;
+    }
+
+    update(deltaTime = SIM_STEP_MS) {
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+        this.phaseTimer -= dtFactor;
+        this.regenCooldown -= dtFactor;
+
+        // Emergency Rebuild at 20% HP if chambers intact
+        if (!this.emergencyRebuildTriggered && this.hp / this.maxHp <= 0.2) {
+            const activeChambers = this.regenChambers.filter(c => c.active).length;
+            if (activeChambers > 0) {
+                this.emergencyRebuildTriggered = true;
+                this.invulnerable = true;
+                showOverlayMessage("EMERGENCY REBUILD!", '#0f0', 1500);
+                setTimeout(() => {
+                    this.hp = Math.round(this.maxHp * 0.5);
+                    this.invulnerable = false;
+                    spawnParticles(this.pos.x, this.pos.y, 50, '#0f0');
+                }, 5000);
+            }
+        }
+
+        // Phase progression
+        if (this.phaseTimer <= 0) {
+            const next = this.phaseSeq[this.phaseIndex % this.phaseSeq.length];
+            this.phaseIndex++;
+            this.phaseName = next.name;
+            this.phaseTimer = next.duration;
+            this.phaseTick = 0;
+            showOverlayMessage(`FLESHFORGE: ${this.phaseName}`, '#0f0', 900);
+        }
+
+        // Movement style per phase - Cruiser-based
+        const charging = (this.phaseName === 'MELTDOWN');
+        if (charging) {
+            this.circleStrafePreferred = false;
+            this.aiState = 'SEEK';
+            this.thrustPower = 0.64;
+            this.maxSpeed = 8.4;
+            this.gunboatRange = this.baseGunboatRange + 350;
+        } else {
+            // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
+            const dx = player.pos.x - this.pos.x;
+            const dy = player.pos.y - this.pos.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
+            if (!this.moveMode) this.moveMode = 'CIRCLE';
+            this.moveModeTimer -= deltaTime / 16.67;
+            if (this.moveModeTimer <= 0) {
+                const r = Math.random();
+                if (dist > 1700) this.moveMode = (r < 0.55) ? 'SEEK' : (r < 0.80 ? 'CIRCLE' : 'ORBIT');
+                else this.moveMode = (r < 0.38) ? 'CIRCLE' : (r < 0.60 ? 'ORBIT' : (r < 0.82 ? 'SEEK' : 'FLANK'));
+                this.flankSide = Math.random() < 0.5 ? 1 : -1;
+                this.moveModeTimer = 22 + Math.floor(Math.random() * 45);
+            }
+
+            if (this.moveMode === 'SEEK') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'SEEK';
+                this.thrustPower = 0.52;
+                this.maxSpeed = 7.8;
+            } else if (this.moveMode === 'ORBIT') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'ORBIT';
+                this.thrustPower = 0.48;
+                this.maxSpeed = 6.6;
+            } else if (this.moveMode === 'FLANK') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'FLANK';
+                this.thrustPower = 0.56;
+                this.maxSpeed = 8.2;
+            } else {
+                this.circleStrafePreferred = true;
+                this.aiState = 'CIRCLE';
+                this.thrustPower = 0.40;
+                this.maxSpeed = 5.8;
+            }
+            this.gunboatRange = this.baseGunboatRange;
+        }
+
+        this.innerShieldRotation -= 0.05 * dtFactor;
+        super.update(deltaTime);
+
+        // Regen chambers heal boss
+        if (this.regenCooldown <= 0) {
+            const activeChambers = this.regenChambers.filter(c => c.active).length;
+            if (activeChambers > 0 && this.hp < this.maxHp) {
+                this.hp = Math.min(this.maxHp, this.hp + activeChambers);
+                this.regenCooldown = 90;
+                spawnParticles(this.pos.x, this.pos.y, activeChambers * 3, '#0f0');
+            }
+        }
+
+        // Phase attacks
+        if (typeof this.phaseTickAccum === 'undefined') this.phaseTickAccum = 0;
+        this.phaseTickAccum += dtFactor;
+        while (this.phaseTickAccum >= 1) {
+            this.phaseTickAccum -= 1;
+            this.phaseTick++;
+            this.runPhaseAttacks();
+        }
+    }
+
+    runPhaseAttacks() {
+        if (!player || player.dead) return;
+
+        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+
+        if (this.phaseName === 'FORGE_ACTIVATE') {
+            if (this.phaseTick % 20 === 0) {
+                // Cannon salvos from chambers
+                for (let i = 0; i < 3; i++) {
+                    const chamber = this.regenChambers[i];
+                    if (chamber.active) {
+                        const wx = this.pos.x + Math.cos(this.angle + chamber.angle) * chamber.dist * 7;
+                        const wy = this.pos.y + Math.sin(this.angle + chamber.angle) * chamber.dist * 7;
+                        bullets.push(new Bullet(wx, wy, aim, true, 2, 11, 4, '#0f0'));
+                    }
+                }
+                playSound('shoot');
+            }
+        } else if (this.phaseName === 'CONSUME') {
+            // Leave napalm trails
+            if (this.phaseTick % 30 === 0) {
+                if (typeof spawnNapalmZone === 'function') {
+                    spawnNapalmZone(this.pos.x, this.pos.y, 2, 60);
+                }
+            }
+            if (this.phaseTick % 40 === 0) {
+                // Cannon fire
+                bullets.push(new Bullet(this.pos.x, this.pos.y, aim, true, 2, 12, 4, '#0f0'));
+                playSound('heavy_shoot');
+            }
+        } else if (this.phaseName === 'ASSEMBLY_LINE') {
+            if (this.phaseTick % 60 === 0) {
+                // Cluster bombs
+                if (typeof ClusterBomb !== 'undefined') {
+                    const bomb = new ClusterBomb(this.pos.x, this.pos.y, aim, true);
+                    bomb.damage = 3;
+                    bullets.push(bomb);
+                }
+                playSound('heavy_shoot');
+            }
+            if (this.phaseTick % 25 === 0) {
+                // Curtain fire
+                for (let i = -3; i <= 3; i++) {
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, true, 1, 9, 3, '#0f0'));
+                }
+                playSound('rapid_shoot');
+            }
+        } else if (this.phaseName === 'MELTDOWN') {
+            if (this.phaseTick % 6 === 0) {
+                // Rapid fire all weapons
+                bullets.push(new Bullet(this.pos.x, this.pos.y, aim + (Math.random() - 0.5) * 0.3, true, 2, 14, 3, '#0f0'));
+                playSound('rapid_shoot');
+            }
+            if (this.phaseTick % 40 === 0) {
+                // Ring attack
+                for (let i = 0; i < 16; i++) {
+                    const a = (Math.PI * 2 / 16) * i;
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 9, 4, '#0f0'));
+                }
+                playSound('shotgun');
+            }
+        }
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+
+        pixiCleanupObject(this);
+        spawnBossExplosion(this.pos.x, this.pos.y, 4.0, 26);
+        spawnLargeExplosion(this.pos.x, this.pos.y, 4.0);
+        spawnParticles(this.pos.x, this.pos.y, 140, '#0f0');
+        playSound('base_explode');
+        shakeMagnitude = Math.max(shakeMagnitude, 24);
+        shakeTimer = Math.max(shakeTimer, 26);
+
+        for (let i = 0; i < 18; i++) {
+            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
+        }
+        for (let i = 0; i < 7; i++) {
+            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
+        }
+        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+
+        bossActive = false;
+        if (fleshforge === this) fleshforge = null;
+        if (boss === this) boss = null;
+
+        showOverlayMessage("FLESHFORGE DESTROYED", '#0f0', 3000);
+        if (musicEnabled) setMusicMode('normal');
+    }
+}
+
+// VortexMatriarch - Gravity Manipulating Hive Mother (dungeon7.png)
+// Theme: Gravity wells, gravitic shield, hive defenders
+class VortexMatriarch extends Enemy {
+    constructor(encounterIndex = 1) {
+        super('gunboat', null, null, { gunboatLevel: 2 });
+        const boost = Math.max(0, encounterIndex - 1);
+        const hpScale = 1 + boost * 0.18;
+
+        this.type = 'vortexMatriarch';
+        this.isDungeonBoss = true;
+        this.isGunboat = true;
+        this.gunboatLevel = 2;
+        this.dungeonAsset = 'dungeon7.png';
+
+        this.cruiserHullScale = 6.3;
+        this.gunboatScale = this.cruiserHullScale;
+        this.radius = Math.round(22 * this.cruiserHullScale);
+
+        const baseHp = 150;
+        this.hp = Math.round(baseHp * hpScale);
+        this.maxHp = this.hp;
+
+        this.shieldRadius = Math.round(34 * this.cruiserHullScale);
+        this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+        this.shieldSegments = new Array(14).fill(4);
+        this.innerShieldSegments = new Array(18).fill(4);
+        this.innerShieldRotation = 0;
+        this.baseGunboatRange = 950;
+        this.gunboatRange = this.baseGunboatRange;
+        this.cruiserBaseDamage = 2;
+        this.despawnImmune = true;
+        this.visualAngleOffset = Math.PI;
+
+        this.disableAutoFire = true;
+        this.phaseName = 'INTRO';
+        this.phaseTimer = 60;
+        this.phaseIndex = 0;
+        this.phaseTick = 0;
+
+        // Gravity abilities
+        this.gravityWells = [];
+        this.gravityWellCooldown = 0;
+        this.graviticShieldActive = false;
+        this.graviticShieldCooldown = 0;
+        this.eventHorizonTriggered = false;
+
+        this.phaseSeq = [
+            { name: 'GRAVITY_WELL', duration: 140 },
+            { name: 'DEFENDERS_CALL', duration: 160 },
+            { name: 'REFLECTION', duration: 130 },
+            { name: 'ORBITAL_BOMBARDMENT', duration: 180 },
+            { name: 'SINGULARITY', duration: 150 }
+        ];
+
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 2800;
+        this.pos.x = player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+
+        this.turnSpeed = (Math.PI * 2) / (14 * SIM_FPS);
+        this.wallElasticity = 0.3;
+        this.t = 0;
+    }
+
+    updateAIState() {
+        this.aiTimer = 999999;
+    }
+
+    update(deltaTime = SIM_STEP_MS) {
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+        this.phaseTimer -= dtFactor;
+        this.gravityWellCooldown -= dtFactor;
+        this.graviticShieldCooldown -= dtFactor;
+
+        // Event Horizon at 35% HP
+        if (!this.eventHorizonTriggered && this.hp / this.maxHp <= 0.35) {
+            this.eventHorizonTriggered = true;
+            this.activateEventHorizon();
+        }
+
+        // Phase progression
+        if (this.phaseTimer <= 0) {
+            const next = this.phaseSeq[this.phaseIndex % this.phaseSeq.length];
+            this.phaseIndex++;
+            this.phaseName = next.name;
+            this.phaseTimer = next.duration;
+            this.phaseTick = 0;
+            showOverlayMessage(`VORTEX MATRIARCH: ${this.phaseName}`, '#0af', 900);
+        }
+
+        // Movement style per phase - Cruiser-based
+        const charging = false;
+        if (charging) {
+            this.circleStrafePreferred = false;
+            this.aiState = 'SEEK';
+            this.thrustPower = 0.64;
+            this.maxSpeed = 8.4;
+            this.gunboatRange = this.baseGunboatRange + 350;
+        } else {
+            // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
+            const dx = player.pos.x - this.pos.x;
+            const dy = player.pos.y - this.pos.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
+            if (!this.moveMode) this.moveMode = 'CIRCLE';
+            this.moveModeTimer -= deltaTime / 16.67;
+            if (this.moveModeTimer <= 0) {
+                const r = Math.random();
+                if (dist > 1700) this.moveMode = (r < 0.55) ? 'SEEK' : (r < 0.80 ? 'CIRCLE' : 'ORBIT');
+                else this.moveMode = (r < 0.38) ? 'CIRCLE' : (r < 0.60 ? 'ORBIT' : (r < 0.82 ? 'SEEK' : 'FLANK'));
+                this.flankSide = Math.random() < 0.5 ? 1 : -1;
+                this.moveModeTimer = 22 + Math.floor(Math.random() * 45);
+            }
+
+            if (this.moveMode === 'SEEK') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'SEEK';
+                this.thrustPower = 0.52;
+                this.maxSpeed = 7.8;
+            } else if (this.moveMode === 'ORBIT') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'ORBIT';
+                this.thrustPower = 0.48;
+                this.maxSpeed = 6.6;
+            } else if (this.moveMode === 'FLANK') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'FLANK';
+                this.thrustPower = 0.56;
+                this.maxSpeed = 8.2;
+            } else {
+                this.circleStrafePreferred = true;
+                this.aiState = 'CIRCLE';
+                this.thrustPower = 0.40;
+                this.maxSpeed = 5.8;
+            }
+            this.gunboatRange = this.baseGunboatRange;
+        }
+
+        this.innerShieldRotation -= 0.07 * dtFactor;
+        super.update(deltaTime);
+
+        // Update gravity wells
+        this.gravityWells = this.gravityWells.filter(w => w && !w.dead);
+
+        // Phase attacks
+        if (typeof this.phaseTickAccum === 'undefined') this.phaseTickAccum = 0;
+        this.phaseTickAccum += dtFactor;
+        while (this.phaseTickAccum >= 1) {
+            this.phaseTickAccum -= 1;
+            this.phaseTick++;
+            this.runPhaseAttacks();
+        }
+    }
+
+    runPhaseAttacks() {
+        if (!player || player.dead) return;
+
+        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+
+        if (this.phaseName === 'GRAVITY_WELL') {
+            if (this.phaseTick % 50 === 0 && this.gravityWellCooldown <= 0) {
+                // Spawn gravity wells
+                for (let i = 0; i < 2; i++) {
+                    const offset = (Math.random() - 0.5) * 400;
+                    const well = new GravityWell(this.pos.x + offset, this.pos.y + offset, this);
+                    this.gravityWells.push(well);
+                }
+                this.gravityWellCooldown = 120;
+            }
+            if (this.phaseTick % 30 === 0) {
+                // Ring attack
+                for (let i = 0; i < 14; i++) {
+                    const a = (Math.PI * 2 / 14) * i;
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 9, 4, '#0af'));
+                }
+                playSound('shotgun');
+            }
+        } else if (this.phaseName === 'DEFENDERS_CALL') {
+            if (this.phaseTick % 40 === 0) {
+                // Spawn hive defenders
+                for (let i = 0; i < 4; i++) {
+                    const a = Math.random() * Math.PI * 2;
+                    const d = 600 + Math.random() * 300;
+                    const e = new Enemy('defender', { x: this.pos.x + Math.cos(a) * d, y: this.pos.y + Math.sin(a) * d });
+                    e.despawnImmune = true;
+                    enemies.push(e);
+                }
+                showOverlayMessage("DEFENDERS DEPLOYED", '#0af', 1200);
+            }
+            // Tractor beam pull
+            if (this.phaseTick % 5 === 0 && player && !player.dead) {
+                const dx = this.pos.x - player.pos.x;
+                const dy = this.pos.y - player.pos.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist < 1200 && dist > 0) {
+                    player.vel.x += (dx / dist) * 0.6;
+                    player.vel.y += (dy / dist) * 0.6;
+                }
+            }
+        } else if (this.phaseName === 'REFLECTION') {
+            if (this.phaseTick === 1) {
+                this.graviticShieldActive = true;
+                showOverlayMessage("GRAVITIC SHIELD ACTIVE", '#0af', 1500);
+            }
+            if (this.phaseTick === this.phaseSeq[2].duration - 30) {
+                this.graviticShieldActive = false;
+            }
+            if (this.phaseTick % 45 === 0) {
+                // Minefield
+                for (let i = 0; i < 5; i++) {
+                    const a = (Math.PI * 2 / 5) * i;
+                    bossBombs.push(new CruiserMineBomb(this, a, 700, 2, this.radius * 1.5));
+                }
+                playSound('heavy_shoot');
+            }
+        } else if (this.phaseName === 'ORBITAL_BOMBARDMENT') {
+            if (this.phaseTick % 35 === 0) {
+                // Guided missiles
+                guidedMissiles.push(new FlagshipGuidedMissile(this));
+                playSound('heavy_shoot');
+            }
+            if (this.phaseTick % 25 === 0) {
+                // Spread shots
+                for (let i = -2; i <= 2; i++) {
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, true, 1, 11, 4, '#0af'));
+                }
+                playSound('shoot');
+            }
+        } else if (this.phaseName === 'SINGULARITY') {
+            if (this.phaseTick % 15 === 0) {
+                // Massive gravity pull
+                if (player && !player.dead) {
+                    const dx = this.pos.x - player.pos.x;
+                    const dy = this.pos.y - player.pos.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist < 1500 && dist > 0) {
+                        player.vel.x += (dx / dist) * 1.5;
+                        player.vel.y += (dy / dist) * 1.5;
+                    }
+                }
+                spawnParticles(this.pos.x, this.pos.y, 8, '#0af');
+            }
+            if (this.phaseTick % 40 === 0) {
+                // Ring attacks
+                for (let i = 0; i < 20; i++) {
+                    const a = (Math.PI * 2 / 20) * i;
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 10, 4, '#0cf'));
+                }
+                playSound('shotgun');
+            }
+        }
+    }
+
+    activateEventHorizon() {
+        showOverlayMessage("EVENT HORIZON!", '#0af', 2000);
+        // Create massive gravity well that damages
+        const damageWell = {
+            pos: this.pos,
+            radius: 200,
+            pullRadius: 1500,
+            damage: 30,
+            active: true,
+            duration: 180
+        };
+        // Apply damage after pull duration
+        setTimeout(() => {
+            if (player && !player.dead) {
+                const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (dist < damageWell.pullRadius) {
+                    player.hp = Math.max(0, player.hp - damageWell.damage);
+                    showOverlayMessage("EVENT HORIZON DAMAGE!", '#f00', 1500);
+                }
+            }
+        }, 3000);
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+
+        // Clean up gravity wells
+        this.gravityWells.forEach(w => { if (w && !w.dead) w.kill(); });
+        this.gravityWells = [];
+
+        pixiCleanupObject(this);
+        spawnBossExplosion(this.pos.x, this.pos.y, 3.8, 26);
+        spawnLargeExplosion(this.pos.x, this.pos.y, 3.8);
+        spawnParticles(this.pos.x, this.pos.y, 130, '#0af');
+        playSound('base_explode');
+        shakeMagnitude = Math.max(shakeMagnitude, 23);
+        shakeTimer = Math.max(shakeTimer, 25);
+
+        for (let i = 0; i < 17; i++) {
+            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
+        }
+        for (let i = 0; i < 7; i++) {
+            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
+        }
+        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+
+        bossActive = false;
+        if (vortexMatriarch === this) vortexMatriarch = null;
+        if (boss === this) boss = null;
+
+        showOverlayMessage("VORTEX MATRIARCH DESTROYED", '#0af', 3000);
+        if (musicEnabled) setMusicMode('normal');
+    }
+}
+
+// ChitinusPrime - Armored Bio-Tank (dungeon8.png)
+// Theme: Chitin armor, rampage mode, revenge burst
+class ChitinusPrime extends Enemy {
+    constructor(encounterIndex = 1) {
+        super('gunboat', null, null, { gunboatLevel: 2 });
+        const boost = Math.max(0, encounterIndex - 1);
+        const hpScale = 1 + boost * 0.30;
+
+        this.type = 'chitinusPrime';
+        this.isDungeonBoss = true;
+        this.isGunboat = true;
+        this.gunboatLevel = 2;
+        this.dungeonAsset = 'dungeon8.png';
+
+        this.cruiserHullScale = 7.5;
+        this.gunboatScale = this.cruiserHullScale;
+        this.radius = Math.round(22 * this.cruiserHullScale);
+
+        const baseHp = 200;
+        this.hp = Math.round(baseHp * hpScale);
+        this.maxHp = this.hp;
+
+        this.shieldRadius = Math.round(34 * this.cruiserHullScale);
+        this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+        // Chitin armor - segmented with more coverage
+        this.shieldSegments = new Array(20).fill(5);
+        this.innerShieldSegments = new Array(24).fill(5);
+        this.innerShieldRotation = 0;
+        this.baseGunboatRange = 850;
+        this.gunboatRange = this.baseGunboatRange;
+        this.cruiserBaseDamage = 3;
+        this.despawnImmune = true;
+        this.visualAngleOffset = Math.PI;
+
+        this.disableAutoFire = true;
+        this.phaseName = 'INTRO';
+        this.phaseTimer = 60;
+        this.phaseIndex = 0;
+        this.phaseTick = 0;
+
+        // Chitin abilities
+        this.inRampageMode = false;
+        this.absorbedDamage = 0;
+        this.absorptionPhase = false;
+        this.revengeBurstTriggered = false;
+
+        this.phaseSeq = [
+            { name: 'ARMED_ASSAULT', duration: 180 },
+            { name: 'BOMBARDMENT', duration: 140 },
+            { name: 'ABSORPTION', duration: 160 },
+            { name: 'RAMPAGE', duration: 200 }
+        ];
+
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 2800;
+        this.pos.x = player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+
+        this.turnSpeed = (Math.PI * 2) / (22 * SIM_FPS);
+        this.wallElasticity = 0.25;
+        this.t = 0;
+    }
+
+    updateAIState() {
+        this.aiTimer = 999999;
+    }
+
+    update(deltaTime = SIM_STEP_MS) {
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+        this.phaseTimer -= dtFactor;
+
+        // Phase progression
+        if (this.phaseTimer <= 0) {
+            const next = this.phaseSeq[this.phaseIndex % this.phaseSeq.length];
+            this.phaseIndex++;
+            this.phaseName = next.name;
+            this.phaseTimer = next.duration;
+            this.phaseTick = 0;
+
+            if (this.phaseName === 'ABSORPTION') {
+                this.absorptionPhase = true;
+                this.absorbedDamage = 0;
+                showOverlayMessage("ABSORBING DAMAGE!", '#ff0', 1200);
+            } else if (this.absorptionPhase) {
+                this.absorptionPhase = false;
+                // Release revenge burst
+                this.releaseRevengeBurst();
+            }
+
+            showOverlayMessage(`CHITINUS PRIME: ${this.phaseName}`, '#ff0', 900);
+        }
+
+        // Movement style per phase - Cruiser-based
+        const charging = (this.phaseName === 'RAMPAGE');
+        if (charging) {
+            this.circleStrafePreferred = false;
+            this.aiState = 'SEEK';
+            this.thrustPower = 0.64;
+            this.maxSpeed = 8.4;
+            this.gunboatRange = this.baseGunboatRange + 350;
+        } else {
+            // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
+            const dx = player.pos.x - this.pos.x;
+            const dy = player.pos.y - this.pos.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
+            if (!this.moveMode) this.moveMode = 'CIRCLE';
+            this.moveModeTimer -= deltaTime / 16.67;
+            if (this.moveModeTimer <= 0) {
+                const r = Math.random();
+                if (dist > 1700) this.moveMode = (r < 0.55) ? 'SEEK' : (r < 0.80 ? 'CIRCLE' : 'ORBIT');
+                else this.moveMode = (r < 0.38) ? 'CIRCLE' : (r < 0.60 ? 'ORBIT' : (r < 0.82 ? 'SEEK' : 'FLANK'));
+                this.flankSide = Math.random() < 0.5 ? 1 : -1;
+                this.moveModeTimer = 22 + Math.floor(Math.random() * 45);
+            }
+
+            if (this.moveMode === 'SEEK') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'SEEK';
+                this.thrustPower = 0.52;
+                this.maxSpeed = 7.8;
+            } else if (this.moveMode === 'ORBIT') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'ORBIT';
+                this.thrustPower = 0.48;
+                this.maxSpeed = 6.6;
+            } else if (this.moveMode === 'FLANK') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'FLANK';
+                this.thrustPower = 0.56;
+                this.maxSpeed = 8.2;
+            } else {
+                this.circleStrafePreferred = true;
+                this.aiState = 'CIRCLE';
+                this.thrustPower = 0.40;
+                this.maxSpeed = 5.8;
+            }
+            this.gunboatRange = this.baseGunboatRange;
+        }
+
+        this.innerShieldRotation -= 0.04 * dtFactor;
+        super.update(deltaTime);
+
+        // Phase attacks
+        if (typeof this.phaseTickAccum === 'undefined') this.phaseTickAccum = 0;
+        this.phaseTickAccum += dtFactor;
+        while (this.phaseTickAccum >= 1) {
+            this.phaseTickAccum -= 1;
+            this.phaseTick++;
+            this.runPhaseAttacks();
+        }
+    }
+
+    runPhaseAttacks() {
+        if (!player || player.dead) return;
+
+        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+
+        if (this.phaseName === 'ARMED_ASSAULT') {
+            if (this.phaseTick % 12 === 0) {
+                // Triple fire
+                for (let i = -1; i <= 1; i++) {
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, aim + i * 0.12, true, 2, 13, 4, '#ff0'));
+                }
+                playSound('shoot');
+            }
+            if (this.phaseTick % 50 === 0) {
+                // Sweep laser
+                for (let i = 0; i < 8; i++) {
+                    const a = aim - 0.5 + (i / 7) * 1.0;
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 15, 3, '#fc0'));
+                }
+                playSound('rapid_shoot');
+            }
+        } else if (this.phaseName === 'BOMBARDMENT') {
+            if (this.phaseTick % 45 === 0) {
+                // Cluster bombs
+                if (typeof ClusterBomb !== 'undefined') {
+                    for (let i = 0; i < 5; i++) {
+                        const a = aim - 0.6 + (i / 4) * 1.2;
+                        const bomb = new ClusterBomb(this.pos.x, this.pos.y, a, true);
+                        bomb.damage = 2;
+                        bullets.push(bomb);
+                    }
+                }
+                playSound('heavy_shoot');
+            }
+            if (this.phaseTick % 60 === 0) {
+                // Minefield
+                for (let i = 0; i < 6; i++) {
+                    const a = (Math.PI * 2 / 6) * i;
+                    bossBombs.push(new CruiserMineBomb(this, a, 650, 2, this.radius * 1.4));
+                }
+                playSound('heavy_shoot');
+            }
+        } else if (this.phaseName === 'ABSORPTION') {
+            // Store damage during this phase
+            // Damage absorption handled in takeHit override
+            if (this.phaseTick % 30 === 0) {
+                // Wide chitin arc
+                for (let i = 0; i < 20; i++) {
+                    const a = aim - 1.0 + (i / 19) * 2.0;
+                    bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 1, 6, 4, '#ff0'));
+                }
+                playSound('shotgun');
+            }
+        } else if (this.phaseName === 'RAMPAGE') {
+            if (this.phaseTick % 8 === 0) {
+                // Rapid fire all weapons
+                bullets.push(new Bullet(this.pos.x, this.pos.y, aim + (Math.random() - 0.5) * 0.2, true, 2, 14, 3, '#f80'));
+                playSound('rapid_shoot');
+            }
+            if (this.phaseTick % 60 === 0) {
+                // Dash attack
+                const dashDir = { x: Math.cos(aim), y: Math.sin(aim) };
+                this.vel.x += dashDir.x * 3;
+                this.vel.y += dashDir.y * 3;
+                spawnParticles(this.pos.x, this.pos.y, 15, '#f80');
+            }
+            if (this.revengeBurstTriggered && this.phaseTick % 80 === 0) {
+                // Extra revenge bursts during rampage
+                this.releaseRevengeBurst();
+            }
+        }
+    }
+
+    takeDamage(amount, source) {
+        if (this.dead) return;
+
+        // Chitin armor reduces damage by 25%
+        const reducedDamage = amount * 0.75;
+
+        if (this.absorptionPhase) {
+            // Store 50% of damage for revenge burst
+            this.absorbedDamage += reducedDamage * 0.5;
+            // Only take 50% damage during absorption
+            this.hp -= reducedDamage * 0.5;
+        } else {
+            this.hp -= reducedDamage;
+        }
+
+        spawnParticles(this.pos.x, this.pos.y, 5, '#ff0');
+
+        if (this.hp <= 0) {
+            this.kill();
+        }
+    }
+
+    releaseRevengeBurst() {
+        if (this.absorbedDamage <= 0) return;
+
+        const damagePerProjectile = Math.max(1, Math.round(this.absorbedDamage / 24));
+        showOverlayMessage("REVENGE BURST!", '#f00', 1200);
+
+        for (let i = 0; i < 24; i++) {
+            const a = (Math.PI * 2 / 24) * i;
+            const b = new Bullet(this.pos.x, this.pos.y, a, true, damagePerProjectile, 10, 4, '#f00');
+            b.life = 120;
+            bullets.push(b);
+        }
+        playSound('shotgun');
+        this.absorbedDamage = 0;
+        this.revengeBurstTriggered = true;
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+
+        pixiCleanupObject(this);
+        spawnBossExplosion(this.pos.x, this.pos.y, 4.5, 26);
+        spawnLargeExplosion(this.pos.x, this.pos.y, 4.5);
+        spawnParticles(this.pos.x, this.pos.y, 150, '#ff0');
+        playSound('base_explode');
+        shakeMagnitude = Math.max(shakeMagnitude, 25);
+        shakeTimer = Math.max(shakeTimer, 27);
+
+        for (let i = 0; i < 20; i++) {
+            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
+        }
+        for (let i = 0; i < 8; i++) {
+            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
+        }
+        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+
+        bossActive = false;
+        if (chitinusPrime === this) chitinusPrime = null;
+        if (boss === this) boss = null;
+
+        showOverlayMessage("CHITINUS PRIME DESTROYED", '#ff0', 3000);
+        if (musicEnabled) setMusicMode('normal');
+    }
+}
+
+// PsyLich - Undying Phase-Shifting Entity (dungeon9.png)
+// Theme: Phase shift, soul drain tether, 3 lives
+class PsyLich extends Enemy {
+    constructor(encounterIndex = 1) {
+        super('gunboat', null, null, { gunboatLevel: 2 });
+        const boost = Math.max(0, encounterIndex - 1);
+        const hpScale = 1 + boost * 0.12;
+
+        this.type = 'psyLich';
+        this.isDungeonBoss = true;
+        this.isGunboat = true;
+        this.gunboatLevel = 2;
+        this.dungeonAsset = 'dungeon9.png';
+
+        this.cruiserHullScale = 5.8;
+        this.gunboatScale = this.cruiserHullScale;
+        this.radius = Math.round(22 * this.cruiserHullScale);
+
+        const baseHp = 130;
+        this.hp = Math.round(baseHp * hpScale);
+        this.maxHp = this.hp;
+        this.livesRemaining = 2; // Has 3 lives total
+
+        this.shieldRadius = Math.round(34 * this.cruiserHullScale);
+        this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+        this.shieldSegments = new Array(10).fill(4);
+        this.innerShieldSegments = new Array(14).fill(4);
+        this.innerShieldRotation = 0;
+        this.baseGunboatRange = 1000;
+        this.gunboatRange = this.baseGunboatRange;
+        this.cruiserBaseDamage = 2;
+        this.despawnImmune = true;
+        this.visualAngleOffset = Math.PI;
+
+        this.disableAutoFire = true;
+        this.phaseName = 'INTRO';
+        this.phaseTimer = 60;
+        this.phaseIndex = 0;
+        this.phaseTick = 0;
+
+        // Phase shift abilities
+        this.isIntangible = false;
+        this.phaseShiftCooldown = 0;
+        this.soulDrainActive = false;
+        this.soulDrainTether = null;
+
+        this.phaseSeq = [
+            { name: 'PHASE_IN', duration: 120 },
+            { name: 'INTANGIBLE', duration: 100 },
+            { name: 'PSYCHIC_ASSAULT', duration: 160 },
+            { name: 'LIFE_DRAIN', duration: 140 },
+            { name: 'DEATH_THROES', duration: 80 }
+        ];
+
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 2800;
+        this.pos.x = player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+
+        this.turnSpeed = (Math.PI * 2) / (10 * SIM_FPS);
+        this.wallElasticity = 0.3;
+        this.t = 0;
+    }
+
+    updateAIState() {
+        this.aiTimer = 999999;
+    }
+
+    update(deltaTime = SIM_STEP_MS) {
+        const dtFactor = deltaTime / 16.67;
+        this.t += dtFactor;
+        this.phaseTimer -= dtFactor;
+        this.phaseShiftCooldown -= dtFactor;
+
+        // Phase progression
+        if (this.phaseTimer <= 0) {
+            const next = this.phaseSeq[this.phaseIndex % this.phaseSeq.length];
+            this.phaseIndex++;
+            this.phaseName = next.name;
+            this.phaseTimer = next.duration;
+            this.phaseTick = 0;
+
+            // Handle intangible state
+            if (this.phaseName === 'INTANGIBLE') {
+                this.isIntangible = true;
+                showOverlayMessage("PHASE SHIFT - INVULNERABLE", '#a0f', 1200);
+            } else if (this.isIntangible) {
+                this.isIntangible = false;
+            }
+
+            showOverlayMessage(`PSYLICH: ${this.phaseName}`, '#a0f', 900);
+        }
+
+        // Movement style per phase - Cruiser-based
+        const charging = false;
+        if (charging) {
+            this.circleStrafePreferred = false;
+            this.aiState = 'SEEK';
+            this.thrustPower = 0.64;
+            this.maxSpeed = 8.4;
+            this.gunboatRange = this.baseGunboatRange + 350;
+        } else {
+            // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
+            const dx = player.pos.x - this.pos.x;
+            const dy = player.pos.y - this.pos.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
+            if (!this.moveMode) this.moveMode = 'CIRCLE';
+            this.moveModeTimer -= deltaTime / 16.67;
+            if (this.moveModeTimer <= 0) {
+                const r = Math.random();
+                if (dist > 1700) this.moveMode = (r < 0.55) ? 'SEEK' : (r < 0.80 ? 'CIRCLE' : 'ORBIT');
+                else this.moveMode = (r < 0.38) ? 'CIRCLE' : (r < 0.60 ? 'ORBIT' : (r < 0.82 ? 'SEEK' : 'FLANK'));
+                this.flankSide = Math.random() < 0.5 ? 1 : -1;
+                this.moveModeTimer = 22 + Math.floor(Math.random() * 45);
+            }
+
+            if (this.moveMode === 'SEEK') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'SEEK';
+                this.thrustPower = 0.52;
+                this.maxSpeed = 7.8;
+            } else if (this.moveMode === 'ORBIT') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'ORBIT';
+                this.thrustPower = 0.48;
+                this.maxSpeed = 6.6;
+            } else if (this.moveMode === 'FLANK') {
+                this.circleStrafePreferred = false;
+                this.aiState = 'FLANK';
+                this.thrustPower = 0.56;
+                this.maxSpeed = 8.2;
+            } else {
+                this.circleStrafePreferred = true;
+                this.aiState = 'CIRCLE';
+                this.thrustPower = 0.40;
+                this.maxSpeed = 5.8;
+            }
+            this.gunboatRange = this.baseGunboatRange;
+        }
+
+        this.innerShieldRotation -= 0.08 * dtFactor;
+        super.update(deltaTime);
+
+        // Update soul drain tether
+        if (this.soulDrainTether && this.soulDrainTether.dead) {
+            this.soulDrainTether = null;
+            this.soulDrainActive = false;
+        }
+
+        // Phase attacks
+        if (typeof this.phaseTickAccum === 'undefined') this.phaseTickAccum = 0;
+        this.phaseTickAccum += dtFactor;
+        while (this.phaseTickAccum >= 1) {
+            this.phaseTickAccum -= 1;
+            this.phaseTick++;
+            this.runPhaseAttacks();
+        }
+    }
+
+    runPhaseAttacks() {
+        if (!player || player.dead) return;
+
+        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+
+        if (this.phaseName === 'PHASE_IN') {
+            if (this.phaseTick === 1) {
+                // Materialize effect
+                spawnParticles(this.pos.x, this.pos.y, 25, '#a0f');
+            }
+            if (this.phaseTick % 30 === 0) {
+                // Activate soul drain
+                if (!this.soulDrainActive) {
+                    this.soulDrainTether = new SoulDrainTether(this);
+                    enemies.push(this.soulDrainTether);
+                    this.soulDrainActive = true;
+                }
+            }
+            if (this.phaseTick % 40 === 0) {
+                // Flame breath
+                spawnParticles(this.pos.x + Math.cos(aim) * 200, this.pos.y + Math.sin(aim) * 200, 10, '#f84');
+            }
+        } else if (this.phaseName === 'INTANGIBLE') {
+            // Invulnerable - move through player
+            if (this.phaseTick % 60 === 0) {
+                // Teleport around player
+                const dist = 300;
+                const a = Math.random() * Math.PI * 2;
+                this.pos.x = player.pos.x + Math.cos(a) * dist;
+                this.pos.y = player.pos.y + Math.sin(a) * dist;
+                this.prevPos.x = this.pos.x;
+                this.prevPos.y = this.pos.y;
+                spawnParticles(this.pos.x, this.pos.y, 15, '#a0f');
+            }
+            if (this.phaseTick % 40 === 0) {
+                // Drop bio-pods while intangible
+                for (let i = 0; i < 6; i++) {
+                    const a = Math.random() * Math.PI * 2;
+                    warpBioPods.push(new WarpBioPod(this.pos.x, this.pos.y, a, this));
+                }
+            }
+        } else if (this.phaseName === 'PSYCHIC_ASSAULT') {
+            if (this.phaseTick % 25 === 0) {
+                // Homing missiles
+                guidedMissiles.push(new FlagshipGuidedMissile(this));
+                playSound('heavy_shoot');
+            }
+            if (this.phaseTick % 15 === 0) {
+                // Mind-warp zone particles
+                spawnParticles(this.pos.x + (Math.random() - 0.5) * 300, this.pos.y + (Math.random() - 0.5) * 300, 3, '#a0f');
+            }
+        } else if (this.phaseName === 'LIFE_DRAIN') {
+            if (this.phaseTick === 1) {
+                // Massive soul drain
+                if (!this.soulDrainActive) {
+                    this.soulDrainTether = new SoulDrainTether(this);
+                    enemies.push(this.soulDrainTether);
+                    this.soulDrainActive = true;
+                    // Extend duration for massive drain
+                    if (this.soulDrainTether) {
+                        this.soulDrainTether.life = 180;
+                        this.soulDrainTether.damagePerSecond = 8;
+                        this.soulDrainTether.healPerSecond = 8;
+                    }
+                }
+            }
+            if (this.phaseTick % 10 === 0) {
+                // Rapid fire
+                bullets.push(new Bullet(this.pos.x, this.pos.y, aim, true, 1, 12, 3, '#f0a'));
+                playSound('rapid_shoot');
+            }
+        } else if (this.phaseName === 'DEATH_THROES') {
+            if (this.phaseTick === 1) {
+                // Fade out effect
+                this.alpha = 0.5;
+            }
+            if (this.phaseTick === 40) {
+                // Shockwave then check for respawn
+                this.triggerDeathOrRespawn();
+            }
+        }
+    }
+
+    triggerDeathOrRespawn() {
+        // Create shockwave
+        spawnParticles(this.pos.x, this.pos.y, 30, '#a0f');
+        if (player && !player.dead) {
+            const dx = player.pos.x - this.pos.x;
+            const dy = player.pos.y - this.pos.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < 800 && dist > 0) {
+                const pushForce = 20;
+                player.vel.x += (dx / dist) * pushForce;
+                player.vel.y += (dy / dist) * pushForce;
+            }
+        }
+
+        if (this.livesRemaining > 0) {
+            // Respawn
+            this.livesRemaining--;
+            this.hp = this.maxHp;
+            this.isIntangible = true;
+            this.phaseName = 'PHASE_IN';
+            this.phaseTimer = 120;
+            this.phaseTick = 0;
+            this.phaseIndex = 0;
+            this.alpha = 1;
+
+            // Teleport to new position
+            const dist = 2000 + Math.random() * 800;
+            const angle = Math.random() * Math.PI * 2;
+            this.pos.x = player.pos.x + Math.cos(angle) * dist;
+            this.pos.y = player.pos.y + Math.sin(angle) * dist;
+            this.prevPos.x = this.pos.x;
+            this.prevPos.y = this.pos.y;
+
+            showOverlayMessage(`PSYLICH RESURRECTS! ${this.livesRemaining + 1} LIVES REMAINING`, '#a0f', 2500);
+            spawnParticles(this.pos.x, this.pos.y, 50, '#a0f');
+            playSound('warp_in');
+
+            setTimeout(() => { this.isIntangible = false; }, 3000);
+        } else {
+            // Final death
+            this.kill();
+        }
+    }
+
+    takeDamage(amount, source) {
+        if (this.dead) return;
+        if (this.isIntangible) {
+            spawnParticles(this.pos.x, this.pos.y, 3, '#a0f');
+            return; // No damage while intangible
+        }
+        this.hp -= amount;
+        spawnParticles(this.pos.x, this.pos.y, 5, '#a0f');
+        if (this.hp <= 0) {
+            this.hp = 0;
+            // Trigger death sequence through phase system
+            if (this.phaseName !== 'DEATH_THROES') {
+                this.phaseName = 'DEATH_THROES';
+                this.phaseTimer = 80;
+                this.phaseTick = 0;
+            }
+        }
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+
+        // Clean up soul drain tether
+        if (this.soulDrainTether && !this.soulDrainTether.dead) {
+            this.soulDrainTether.kill();
+        }
+        this.soulDrainTether = null;
+
+        pixiCleanupObject(this);
+        spawnBossExplosion(this.pos.x, this.pos.y, 4.0, 26);
+        spawnLargeExplosion(this.pos.x, this.pos.y, 4.0);
+        spawnParticles(this.pos.x, this.pos.y, 150, '#a0f');
+        playSound('base_explode');
+        shakeMagnitude = Math.max(shakeMagnitude, 26);
+        shakeTimer = Math.max(shakeTimer, 28);
+
+        for (let i = 0; i < 22; i++) {
+            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
+        }
+        for (let i = 0; i < 10; i++) {
+            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
+        }
+        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+
+        bossActive = false;
+        if (psyLich === this) psyLich = null;
+        if (boss === this) boss = null;
+
+        showOverlayMessage("PSYLICH FOREVER VANQUISHED", '#a0f', 4000);
+        if (musicEnabled) setMusicMode('normal');
+    }
+
+    draw(ctx) {
+        super.draw(ctx);
+        if (this.dead) return;
+
+        // Draw intangible effect
+        if (this.isIntangible) {
+            const rPos = this.getRenderPos(renderAlpha);
+            ctx.save();
+            ctx.globalAlpha = 0.4 + Math.sin(Date.now() * 0.01) * 0.2;
+            ctx.strokeStyle = '#a0f';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(rPos.x, rPos.y, this.radius + 10, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Draw soul drain tether effect
+        if (this.soulDrainActive && this.soulDrainTether && !this.soulDrainTether.dead) {
+            ctx.save();
+            ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.015) * 0.3;
+            ctx.strokeStyle = '#f08';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(this.pos.x, this.pos.y);
+            if (player && !player.dead) {
+                ctx.lineTo(player.pos.x, player.pos.y);
+            }
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+}
+
 //space station class
 class SpaceStation extends Entity {
     // Initialize the Space Station with massive health and shields
@@ -17168,6 +19801,15 @@ let destroyer = null; // Current active destroyer (either Destroyer or Destroyer
 let nextDestroyerSpawnTime = null; // Time for next destroyer to spawn
 let currentDestroyerType = 1; // Track which type to spawn (1 or 2)
 let stationArena = { x: 0, y: 0, radius: 2800, active: false };
+
+// --- Dungeon Bosses ---
+let necroticHive = null;     // Bio-mechanical Swarm Controller (dungeon4.png)
+let cerebralPsion = null;    // Psionic Mind Controller (dungeon5.png)
+let fleshforge = null;       // Living Bio-Factory (dungeon6.png)
+let vortexMatriarch = null;  // Gravity Manipulating Hive Mother (dungeon7.png)
+let chitinusPrime = null;    // Armored Bio-Tank (dungeon8.png)
+let psyLich = null;          // Undying Phase-Shifting Entity (dungeon9.png)
+let dungeonBossPool = ['NecroticHive', 'CerebralPsion', 'Fleshforge', 'VortexMatriarch', 'ChitinusPrime', 'PsyLich'];
 let sectorTransitionActive = false;
 let warpCountdownAt = null;
 let gameEnded = false;
@@ -22878,15 +25520,9 @@ function gameLoopLogic(opts = null) {
     const alpha = (opts && opts.alpha !== undefined) ? opts.alpha : 1.0;
     renderAlpha = alpha; // Set global for entity draw methods
     const renderPos = player.getRenderPos(alpha);
-    let camX, camY;
-    const arenaLockActive = !!(bossArena && bossArena.active && !(boss && (boss.isCruiser || boss.isFlagship || boss.isWarpBoss || boss.type === 'flagship' || boss.isCaveBoss)));
-    if (arenaLockActive) {
-        camX = bossArena.x - width / (2 * zoom);
-        camY = bossArena.y - height / (2 * zoom);
-    } else {
-        camX = renderPos.x - width / (2 * zoom);
-        camY = renderPos.y - height / (2 * zoom);
-    }
+    // Camera always follows player - no arena locking
+    let camX = renderPos.x - width / (2 * zoom);
+    let camY = renderPos.y - height / (2 * zoom);
     if (shakeTimer > 0) {
         if (doUpdate) {
             shakeTimer -= deltaTime / 16.67;
