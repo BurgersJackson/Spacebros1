@@ -16258,8 +16258,33 @@ class PsyLich extends Enemy {
             spawnParticles(this.pos.x, this.pos.y, 3, '#a0f');
             return; // No damage while intangible
         }
-        this.hp -= amount;
-        spawnParticles(this.pos.x, this.pos.y, 5, '#a0f');
+
+        let remaining = Math.ceil(amount);
+
+        // Apply damage to outer shields first
+        if (this.shieldSegments && this.shieldSegments.length > 0) {
+            for (let i = 0; i < this.shieldSegments.length && remaining > 0; i++) {
+                const absorb = Math.min(remaining, this.shieldSegments[i]);
+                this.shieldSegments[i] -= absorb;
+                remaining -= absorb;
+            }
+        }
+
+        // Apply damage to inner shields
+        if (this.innerShieldSegments && this.innerShieldSegments.length > 0 && remaining > 0) {
+            for (let i = 0; i < this.innerShieldSegments.length && remaining > 0; i++) {
+                const absorb = Math.min(remaining, this.innerShieldSegments[i]);
+                this.innerShieldSegments[i] -= absorb;
+                remaining -= absorb;
+            }
+        }
+
+        // Only apply HP damage after shields are depleted
+        if (remaining > 0) {
+            this.hp -= remaining;
+            spawnParticles(this.pos.x, this.pos.y, 5, '#a0f');
+        }
+
         if (this.hp <= 0) {
             this.hp = 0;
             // Trigger death sequence through phase system
@@ -22555,6 +22580,31 @@ function resolveEntityCollision() {
                     playSound('hit');
 
                     player.takeHit(ramDamage);
+                }
+            }
+
+            // Dungeon boss collision - player bounces off and takes damage
+            if (e.isDungeonBoss) {
+                const dist = Math.hypot(player.pos.x - e.pos.x, player.pos.y - e.pos.y);
+                if (dist < player.radius + e.radius) {
+                    const angle = Math.atan2(player.pos.y - e.pos.y, player.pos.x - e.pos.x);
+                    const nx = Math.cos(angle);
+                    const ny = Math.sin(angle);
+
+                    // Strong pushback
+                    const pushForce = 12;
+                    player.vel.x += nx * pushForce;
+                    player.vel.y += ny * pushForce;
+                    e.vel.x -= nx * pushForce * 0.3;
+                    e.vel.y -= ny * pushForce * 0.3;
+
+                    // Ram damage based on boss tier (higher for later bosses)
+                    const ramDamage = 3 + Math.floor(sectorIndex * 0.5);
+                    player.takeHit(ramDamage);
+
+                    // Visuals
+                    spawnParticles((player.pos.x + e.pos.x) / 2, (player.pos.y + e.pos.y) / 2, 12, '#f44');
+                    playSound('hit');
                 }
             }
         }
