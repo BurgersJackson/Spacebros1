@@ -1,6 +1,6 @@
 # Phase 4: Entity Classes - Status Report
 
-**Last Updated:** 2026-01-12T11:20:00-08:00  
+**Last Updated:** 2026-01-12T12:05:31-08:00  
 **Status:** IN PROGRESS
 
 ---
@@ -15,7 +15,7 @@ Phase 4 involves extracting entity classes from `main.js` into separate module f
 
 | Metric | Original | Current | Change |
 |--------|----------|---------|--------|
-| **main.js lines** | 26,438 | 24,539 | **-1,899** |
+| **main.js lines** | 26,438 | 21,462 | **-4,976** |
 
 ---
 
@@ -56,9 +56,43 @@ Phase 4 involves extracting entity classes from `main.js` into separate module f
 - **Shockwave**: `src/js/entities/projectiles/Shockwave.js`
 - **CruiserMineBomb**: `src/js/entities/projectiles/CruiserMineBomb.js`
 - **FlagshipGuidedMissile**: `src/js/entities/projectiles/FlagshipGuidedMissile.js`
+- **Destroyer2GuidedMissile**: `src/js/entities/projectiles/Destroyer2GuidedMissile.js`
+- **ClusterBomb**: `src/js/entities/projectiles/ClusterBomb.js`
+- **NapalmZone**: `src/js/entities/projectiles/NapalmZone.js`
 - **Status:** Integrated and registered.
 
-### 5. pixi-context.js ✅
+### 5. Cruiser ✅
+- **File:** `src/js/entities/bosses/Cruiser.js`
+- **Status:** Integrated with dependency registration and module Bullet signatures.
+
+### 6. Flagship ✅
+- **File:** `src/js/entities/bosses/Flagship.js`
+- **Status:** Integrated with dependency registration and shield gfx cleanup on death.
+
+### 7. SuperFlagshipBoss ✅
+- **File:** `src/js/entities/bosses/SuperFlagshipBoss.js`
+- **Status:** Integrated with dependency registration and shield gfx cleanup on death.
+
+### 8. WarpSentinelBoss ✅
+- **File:** `src/js/entities/bosses/WarpSentinelBoss.js`
+- **Status:** Integrated with dependency registration and WarpBioPod module.
+
+### 9. WarpBioPod ✅
+- **File:** `src/js/entities/zones/WarpBioPod.js`
+- **Status:** Integrated with dependency registration and module Bullet signature.
+
+### 10. SpaceStation ✅
+- **File:** `src/js/entities/bosses/SpaceStation.js`
+- **Status:** Integrated with dependency registration.
+
+### 11. Dungeon Boss Helpers ✅
+- **DungeonDrone**: `src/js/entities/bosses/dungeon/DungeonDrone.js`
+- **PsychicEcho**: `src/js/entities/bosses/dungeon/PsychicEcho.js`
+- **GravityWell**: `src/js/entities/bosses/dungeon/GravityWell.js`
+- **SoulDrainTether**: `src/js/entities/bosses/dungeon/SoulDrainTether.js`
+- **Status:** Integrated with dependency registration where needed.
+
+### 12. pixi-context.js ✅
 - **File:** `src/js/rendering/pixi-context.js`
 - **Status:** Complete.
 
@@ -66,16 +100,13 @@ Phase 4 involves extracting entity classes from `main.js` into separate module f
 
 ## Next Steps
 
-### 1. Extract Cruiser (Boss)
-- **File:** `src/js/entities/enemies/Cruiser.js`
-- **Prerequisites:** Done (Projectiles extracted).
-- **Status:** Ready for extraction.
-
-### 2. Extract Other Bosses
+### 1. Extract Other Bosses
 - `Destroyer`
-- `WarpSentinelBoss`
+- `FinalBoss`
+- `Destroyer2`
+ - Dungeon bosses (NecroticHive, CerebralPsion, Fleshforge, VortexMatriarch, ChitinusPrime, PsyLich)
 
-### 3. Unify Bullet Class
+### 2. Unify Bullet Class
 - `main.js` still has a legacy `Bullet` class definition. Future extractions should use the module `Bullet` class. Eventually remove `Bullet` from `main.js`.
 
 ---

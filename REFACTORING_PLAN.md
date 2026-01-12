@@ -32,6 +32,7 @@ src/js/
 ├── main.js                    # 29,285 lines - EVERYTHING is here
 ├── core/                      # Already extracted
 │   ├── constants.js           # Game constants, upgrade data
+│   ├── game-context.js        # Central state singleton (extracted)
 │   ├── math.js                # Vector, SpatialHash
 │   ├── performance.js         # View bounds, bullet grid
 │   ├── profiler.js            # Performance profiling
@@ -42,7 +43,11 @@ src/js/
 ├── rendering/
 │   ├── pixi-setup.js          # PixiJS initialization
 │   ├── sprite-pools.js        # Sprite pool management
-│   └── colors.js              # Color utilities
+│   ├── colors.js              # Color utilities
+│   ├── pixi-context.js        # Centralized PixiJS state access
+│   ├── texture-loader.js      # Texture loading (extracted)
+│   ├── background-renderer.js # Background rendering (extracted)
+│   └── minimap-renderer.js    # Minimap rendering (extracted)
 └── entities/
     ├── Entity.js              # Base entity class
     ├── FloatingText.js        # Damage numbers
@@ -119,6 +124,7 @@ src/js/
 │   ├── texture-loader.js      # NEW
 │   ├── background-renderer.js # NEW
 │   ├── minimap-renderer.js    # NEW
+│   ├── pixi-context.js        # NEW: centralized PixiJS state access
 │   └── ...existing files
 ├── ui/                        # NEW FOLDER
 │   ├── index.js
@@ -130,6 +136,33 @@ src/js/
     ├── index.js
     └── upgrade-data.js
 ```
+
+---
+
+## Current Implementation Status (as of 2026-01-12T11:38:56-08:00)
+
+### Completed
+- **Phase 1**: `src/js/core/game-context.js` exists and is in use.
+- **Phase 2 (partial)**: `src/js/systems/` contains `save-manager.js`, `meta-manager.js`, `upgrade-manager.js`, `contract-manager.js`, `event-scheduler.js`.
+- **Phase 3**: `src/js/rendering/texture-loader.js`, `src/js/rendering/background-renderer.js`, `src/js/rendering/minimap-renderer.js` are extracted.
+- **Rendering bridge**: `src/js/rendering/pixi-context.js` is in place for centralized PixiJS layers/pools/textures. Most extracted entities use it, while particle systems still rely on a `pixiResources` object passed in by `main.js`.
+- **Phase 4 (partial)**:
+  - Environment: `EnvironmentAsteroid`, `WarpGate`, `Dungeon1Gate`
+  - Enemies: `Enemy`, `Pinwheel`
+  - Projectiles: `Bullet`, `Shockwave`, `CruiserMineBomb`, `FlagshipGuidedMissile`
+  - Bosses: `Cruiser`, `Flagship`
+
+### Remaining Work
+- **Phase 4**:
+  - Bosses: `SuperFlagshipBoss`, `WarpSentinelBoss`, `FinalBoss`, `SpaceStation`, `Destroyer`, `Destroyer2`, dungeon bosses (NecroticHive, CerebralPsion, Fleshforge, VortexMatriarch, ChitinusPrime, PsyLich)
+  - Projectiles: `Destroyer2GuidedMissile`, `ClusterBomb`, `NapalmZone`
+  - Cave entities: `CaveLevel`, `CaveMonsterBase`, `CaveMonster1/2/3`, `CaveWallTurret`, `CaveGasVent`, `CaveRockfall`, `CaveDraftZone`, `CaveCritter`, `CaveGuidedMissile`
+  - Zones: `WarpMazeZone`, `Dungeon1Zone`, `RadiationStorm`, `AnomalyZone`
+  - Support: `Drone`, `ContractBeacon`, `GateRing`, `WallTurret`
+  - Player: `Spaceship`
+  - Remove legacy `Bullet` from `main.js` after all references are migrated.
+- **Phase 5**: Input manager, collision manager, spawn manager, and game loop extraction.
+- **Phase 6**: UI module extraction.
 
 ---
 
@@ -316,6 +349,8 @@ src/js/
 
 **Estimated Time**: 2-3 hours
 **Risk Level**: LOW
+
+**Status**: COMPLETE (GameContext extracted and in use).
 
 ### 1.1 Create GameContext Singleton
 
@@ -769,6 +804,8 @@ After creating these files:
 **Estimated Time**: 4-6 hours
 **Risk Level**: MEDIUM
 
+**Status**: IN PROGRESS (save/meta/upgrade/contract/event-scheduler extracted; input/collision/spawn/game-loop not yet extracted).
+
 ### 2.1 Save Manager
 
 **Create file**: `src/js/systems/save-manager.js`
@@ -1033,6 +1070,8 @@ After creating these files:
 **Estimated Time**: 3-4 hours
 **Risk Level**: MEDIUM
 
+**Status**: IN PROGRESS (texture-loader, background-renderer, minimap-renderer, pixi-context extracted; main.js still owns some Pixi globals and particle rendering uses per-call pixiResources).
+
 ### 3.1 Texture Loader
 
 **Create file**: `src/js/rendering/texture-loader.js`
@@ -1146,6 +1185,8 @@ export * from './minimap-renderer.js';
 
 **Estimated Time**: 8-12 hours
 **Risk Level**: HIGH
+
+**Status**: IN PROGRESS (EnvironmentAsteroid, WarpGate, Dungeon1Gate, Enemy, Pinwheel, Bullet, Shockwave, CruiserMineBomb, FlagshipGuidedMissile, Cruiser, Flagship extracted; remaining bosses, cave, zones, support, player pending).
 
 ### Important: Entity Extraction Pattern
 
@@ -1354,6 +1395,8 @@ export * from './player/index.js';
 
 **Estimated Time**: 6-8 hours
 **Risk Level**: CRITICAL
+
+**Status**: NOT STARTED (input/collision/spawn/game-loop extraction pending).
 
 ### 5.1 Input Manager
 
@@ -1564,6 +1607,8 @@ export * from './game-loop.js';
 
 **Estimated Time**: 4-5 hours
 **Risk Level**: MEDIUM
+
+**Status**: NOT STARTED.
 
 ### 6.1 Menu System
 
