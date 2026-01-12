@@ -1,6 +1,6 @@
 # Phase 4: Entity Classes - Status Report
 
-**Last Updated:** 2026-01-12T10:35:00-08:00  
+**Last Updated:** 2026-01-12T10:55:00-08:00  
 **Status:** IN PROGRESS
 
 ---
@@ -15,7 +15,7 @@ Phase 4 involves extracting entity classes from `main.js` into separate module f
 
 | Metric | Original | Current | Change |
 |--------|----------|---------|--------|
-| **main.js lines** | 26,438 | 25,437 | **-1,001** |
+| **main.js lines** | 26,438 | 25,033 | **-1,405** |
 
 ---
 
@@ -41,39 +41,40 @@ Phase 4 involves extracting entity classes from `main.js` into separate module f
   - Uses `registerEnemyDependencies` for logic callbacks (`spawnExplosion`, `checkDespawn`, etc.).
   - Full PixiJS `draw()` method implementation preserved (no simplified fallback).
 
-### 3. pixi-context.js ✅
+### 3. Pinwheel ✅
+- **File:** `src/js/entities/enemies/Pinwheel.js`
+- **Lines extracted:** ~415
+- **Integration:**
+  - Uses `pixiBaseLayer` via `pixi-context.js`.
+  - Dependency injection for `spawnParticles`, `checkDespawn`, etc.
+
+### 4. pixi-context.js ✅
 - **File:** `src/js/rendering/pixi-context.js`
 - **Status:** Complete. Defines the shared rendering context.
 
 ---
 
-## Next Steps
+## Next Steps (Recommended Path)
 
-### 1. Verify Enemy Spawning and Rendering
-- Test: Do enemies spawn?
-- Test: Do they look correct (textures, shields, name tags)?
-- Test: Do they explode/die correctly?
+To extract the **Cruiser Boss**, we must first extract its dependencies to avoid circular issues or confusing module graphs.
 
-### 2. Extract Pinwheel
-- **File:** `src/js/main.js` (~350 lines)
-- **Target:** `src/js/entities/enemies/Pinwheel.js` (or `environment`?)
-  - Pinwheel is a static enemy/hazard. Usually grouped with enemies or environment. `main.js` treats it as an enemy in `GameContext.enemies` loop sometimes, or separate `GameContext.pinwheels`.
-  - Recommend `src/js/entities/enemies/Pinwheel.js`.
+### 1. Extract Shockwave
+- **File:** `src/js/entities/projectiles/Shockwave.js`
+- **Reason:** Dependency for `CruiserMineBomb`.
+- **Status:** Ready to extract.
 
-### 3. Extract Bosses
-- Cruiser, Overseer, etc.
+### 2. Extract CruiserMineBomb
+- **File:** `src/js/entities/projectiles/CruiserMineBomb.js`
+- **Reason:** Dependency for `Cruiser`.
+- **Status:** Depends on `Shockwave`.
 
----
+### 3. Extract FlagshipGuidedMissile
+- **File:** `src/js/entities/projectiles/FlagshipGuidedMissile.js`
+- **Reason:** Dependency for `Cruiser` and `Flagship`.
 
-## How it Works: The Architecture
+### 4. Extract Cruiser (Boss)
+- **File:** `src/js/entities/enemies/Cruiser.js`
+- **Reason:** Major boss class. Depends on the above projectiles.
 
-1.  **pixi-context.js**: The Hub.
-    - Exposes `pixiEnemyLayer`, `pixiTextures` etc.
-    - `main.js` pushes its local layer references into this hub at startup.
-2.  **Entity Modules**: The Spokes.
-    - `Enemy.js` imports layers from `pixi-context.js`.
-    - Draws sprites into those layers.
-3.  **Dependency Injection**: Logic.
-    - `main.js` injects global functions (`spawnExplosion`) into Entity Modules via `register...Dependencies`.
-
-This architecture decouples drawing (via context) and logic (via injection/GameContext).
+### 5. Verification
+- Verify Boss encounters work correctly.

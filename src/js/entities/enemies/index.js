@@ -3,7 +3,5 @@
  * Re-exports all enemy entities.
  */
 
-export {
-    Enemy,
-    registerEnemyDependencies
-} from './Enemy.js';
+export * from './Enemy.js';
+export * from './Pinwheel.js';
