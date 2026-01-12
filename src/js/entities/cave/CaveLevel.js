@@ -10,9 +10,10 @@ import { CaveRewardPickup } from './CaveRewardPickup.js';
 import { CaveWallSwitch } from './CaveWallSwitch.js';
 import { createCaveMonsterBoss } from './cave-factory.js';
 import { WarpSentinelBoss } from '../bosses/WarpSentinelBoss.js';
-import { resolveCircleSegment } from '../../core/math.js';
+import { closestPointOnSegment, resolveCircleSegment } from '../../core/math.js';
 import { caveDeps } from './cave-dependencies.js';
 import { pixiWorldRoot } from '../../rendering/pixi-context.js';
+import { playSound, setMusicMode, musicEnabled } from '../../audio/audio-manager.js';
 
 export class CaveLevel {
     constructor() {
@@ -147,77 +148,351 @@ export class CaveLevel {
     updateFireWall(deltaTime = 16.67) {
         if (!this.active || !this.fireWall) return;
         const fire = this.fireWall;
-        if (GameContext.player && !GameContext.player.dead) {
-            // Accelerate firewall if it falls too far behind
-            const dist = fire.y - GameContext.player.pos.y;
-            let targetSpeed = 160;
-            if (dist > 2800) targetSpeed = 450;
-            else if (dist > 1800) targetSpeed = 320;
+        const dtSec = Math.max(0, deltaTime) / 1000;
+        fire.y -= fire.speed * dtSec;
+        if (fire.minY !== undefined && fire.y < fire.minY) fire.y = fire.minY;
 
-            // Allow firewall to slow down if close, but not stop
-            if (dist < 800) targetSpeed = 140;
+        if (GameContext.player && !GameContext.player.dead && GameContext.player.pos.y >= fire.y) {
+            fire.damageTimer += deltaTime;
+            const ticks = Math.floor(fire.damageTimer / 1000);
+            if (ticks > 0) {
+                const damage = fire.damagePerSecond * ticks;
+                GameContext.player.takeHit(damage);
+                fire.damageTimer -= ticks * 1000;
+            }
+        } else {
+            fire.damageTimer = 0;
+        }
 
-            // Apply speed change smoothly
-            fire.speed = fire.speed * 0.98 + targetSpeed * 0.02;
-
-            if (fire.y > fire.minY) {
-                fire.y -= (fire.speed * (deltaTime / 1000));
-
-                // Damage player if they touch the firewall
-                // The firewall is a line at fire.y. Player is above it (smaller Y).
-                // If player.y > fire.y - buffer, they are in the fire.
-                if (GameContext.player.pos.y > fire.y - 100) {
-                    fire.damageTimer -= deltaTime;
-                    if (fire.damageTimer <= 0) {
-                        // Apply damage logic
-                        if (caveDeps.applyAOEDamageToPlayer) caveDeps.applyAOEDamageToPlayer(GameContext.player.pos.x, GameContext.player.pos.y, 200, 1);
-                        fire.damageTimer = 200; // 5 dps approx
-                    }
-                }
+        for (let i = 0; i < GameContext.enemies.length; i++) {
+            const e = GameContext.enemies[i];
+            if (e && !e.dead && e.pos.y >= fire.y && typeof e.takeHit === 'function') {
+                e.takeHit(fire.damagePerSecond * dtSec);
             }
         }
     }
 
     boundsAt(y) {
-        // Simplified bounds for straight walls
-        return { left: -this.baseWidth * 0.5, right: this.baseWidth * 0.5 };
+        if (!this.leftPts || this.leftPts.length < 2) return { left: -1500, right: 1500 };
+        const idx = Math.max(0, Math.min(this.leftPts.length - 1, Math.floor((this.startY - y) / this.stepY)));
+        const l = this.leftPts[idx];
+        const r = this.rightPts[idx];
+        return { left: l ? l.x : -1500, right: r ? r.x : 1500 };
     }
 
     bucketIndexForY(y) {
-        return Math.floor((this.startY - y) / this.stepY);
+        const idx = Math.floor((this.startY - y) / this.stepY);
+        return Math.max(0, Math.min(this.buckets.length - 1, idx));
+    }
+
+    centerXAt(y) {
+        const b = this.boundsAt(y);
+        return (b.left + b.right) * 0.5;
+    }
+
+    segmentsNearY(y, spanBuckets = 3) {
+        if (!this.buckets || this.buckets.length === 0) return [];
+        const idx = this.bucketIndexForY(y);
+        const segs = [];
+        for (let i = Math.max(0, idx - spanBuckets); i <= Math.min(this.buckets.length - 1, idx + spanBuckets); i++) {
+            const b = this.buckets[i];
+            if (b && b.length) segs.push(...b);
+        }
+        for (let g = 0; g < this.gates.length; g++) {
+            const gate = this.gates[g];
+            if (!gate || gate.open) continue;
+            if (Math.abs(gate.y - y) < this.stepY * (spanBuckets + 2)) {
+                if (gate.segments && gate.segments.length) segs.push(...gate.segments);
+            }
+        }
+        for (let d = 0; d < this.doors.length; d++) {
+            const door = this.doors[d];
+            if (!door || door.open) continue;
+            if (door.segments && door.segments.length) {
+                const yy = (door.segments[0].y0 + door.segments[0].y1) * 0.5;
+                if (Math.abs(yy - y) < this.stepY * (spanBuckets + 2)) segs.push(...door.segments);
+            }
+        }
+        if (this.entranceSeal && this.entranceSeal.segments && this.entranceSeal.segments.length) {
+            if (Math.abs(this.entranceSeal.y - y) < this.stepY * (spanBuckets + 3)) segs.push(...this.entranceSeal.segments);
+        }
+        if (this.entranceSeal && this.entranceSeal.sideSegments && this.entranceSeal.sideSegments.length) {
+            if (y > this.startY - this.stepY * (spanBuckets + 3) && y < this.entranceSeal.y + this.stepY * (spanBuckets + 3)) segs.push(...this.entranceSeal.sideSegments);
+        }
+        if (!this.exitUnlocked && this.exitSeal && this.exitSeal.segments && this.exitSeal.segments.length) {
+            if (Math.abs(this.exitSeal.y - y) < this.stepY * (spanBuckets + 3)) segs.push(...this.exitSeal.segments);
+        }
+        if (!this.exitUnlocked && this.exitSeal && this.exitSeal.sideSegments && this.exitSeal.sideSegments.length) {
+            if (y > this.exitSeal.y - this.stepY * (spanBuckets + 3) && y < this.exitSeal.y + this.stepY * (spanBuckets + 6)) segs.push(...this.exitSeal.sideSegments);
+        }
+        for (let i = 0; i < this.rockfalls.length; i++) {
+            const rf = this.rockfalls[i];
+            if (!rf || rf.dead || rf.state !== 'fallen' || !rf.segments) continue;
+            if (Math.abs(rf.pos.y - y) < this.stepY * (spanBuckets + 3)) segs.push(...rf.segments);
+        }
+        return segs;
+    }
+
+    buildGateSegments(y) {
+        const bounds = this.boundsAt(y);
+        const left = bounds.left + 10;
+        const right = bounds.right - 10;
+        const segs = [];
+        const rows = 2;
+        for (let r = 0; r < rows; r++) {
+            const ry = y + (r === 0 ? -40 : 40);
+            const n = 22;
+            const step = (right - left) / n;
+            for (let i = 0; i < n; i++) {
+                const x0 = left + i * step;
+                const x1 = left + (i + 1) * step;
+                const j0 = (Math.random() - 0.5) * 60;
+                const j1 = (Math.random() - 0.5) * 60;
+                segs.push({ x0, y0: ry + j0, x1, y1: ry + j1, kind: 'gate' });
+            }
+        }
+        return segs;
+    }
+
+    openGate(index) {
+        return;
     }
 
     applyWallCollisions(entity) {
-        if (!entity || entity.dead) return;
+        if (!this.active || !entity || entity.dead) return;
+        const segs = this.segmentsNearY(entity.pos.y, 3);
+        const elasticity = (entity === GameContext.player) ? 0.92 : 0.55;
+        for (let i = 0; i < segs.length; i++) {
+            const s = segs[i];
+            resolveCircleSegment(entity, s.x0, s.y0, s.x1, s.y1, elasticity);
+        }
+        this.applyFireWallCollision(entity);
+    }
 
-        // Ensure buckets are initialized
-        if (!this.buckets || this.buckets.length === 0) return;
+    applyFireWallCollision(entity) {
+        return;
+    }
 
-        const i = this.bucketIndexForY(entity.pos.y);
-        const range = 2; // Check neighboring buckets
-        const count = this.buckets.length;
+    bulletHitsWall(bullet) {
+        const segs = this.segmentsNearY(bullet.pos.y, 2);
+        for (let i = 0; i < segs.length; i++) {
+            const s = segs[i];
+            const cp = closestPointOnSegment(bullet.pos.x, bullet.pos.y, s.x0, s.y0, s.x1, s.y1);
+            const dx = bullet.pos.x - cp.x;
+            const dy = bullet.pos.y - cp.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < (bullet.radius || 0) + 0.8) return true;
+        }
+        return false;
+    }
 
-        for (let k = i - range; k <= i + range; k++) {
-            if (k >= 0 && k < count) {
-                const b = this.buckets[k];
-                if (b) {
-                    for (const seg of b) {
-                        if (resolveCircleSegment(entity, seg.x0, seg.y0, seg.x1, seg.y1, 0.7)) {
-                            // Collision happened
-                        }
-                    }
-                }
+    clipInterior(ctx, camX, camY, height, zoom) {
+        if (!this.active) return;
+        const z = zoom || (GameContext.currentZoom || ZOOM_LEVEL);
+        const y0 = camY - 1400;
+        const y1 = camY + (height / z) + 1400;
+        const step = this.stepY;
+        ctx.beginPath();
+        for (let y = y0; y <= y1; y += step) {
+            const b = this.boundsAt(y);
+            if (y === y0) ctx.moveTo(b.left, y);
+            else ctx.lineTo(b.left, y);
+        }
+        for (let y = y1; y >= y0; y -= step) {
+            const b = this.boundsAt(y);
+            ctx.lineTo(b.right, y);
+        }
+        ctx.closePath();
+        ctx.clip();
+    }
+
+    toggleDoor(id) {
+        for (let i = 0; i < this.doors.length; i++) {
+            const d = this.doors[i];
+            if (d && d.id === id) {
+                d.open = !d.open;
+                if (caveDeps.showOverlayMessage) caveDeps.showOverlayMessage(d.open ? "DOOR OPENED" : "DOOR CLOSED", '#0ff', 900, 1);
+                return;
             }
         }
+    }
 
-        // Entrance seal
-        if (this.entranceSeal) {
-            for (const seg of this.entranceSeal.segments) {
-                resolveCircleSegment(entity, seg.x0, seg.y0, seg.x1, seg.y1, 0.5);
+    spawnGateRelays(gateIndex) {
+        return;
+    }
+
+    onRelayDestroyed(gateIndex) {
+        const gate = this.gates[gateIndex];
+        if (!gate || gate.open || !gate.relaysEnabled || !gate.relaysSpawned || gate.relaysCleared) return;
+        gate.relaysRemaining = Math.max(0, (gate.relaysRemaining || 0) - 1);
+        if (caveDeps.showOverlayMessage) caveDeps.showOverlayMessage(`RELAYS LEFT: ${gate.relaysRemaining}`, '#ff0', 800, 2);
+        if (gate.relaysRemaining <= 0) {
+            gate.relaysCleared = true;
+            if (caveDeps.showOverlayMessage) caveDeps.showOverlayMessage("GATE SHIELD DOWN", '#0f0', 1600, 3);
+            playSound('powerup');
+            if (!gate.bossEnabled) {
+                this.openGate(gateIndex);
             }
-            for (const seg of this.entranceSeal.sideSegments) {
-                resolveCircleSegment(entity, seg.x0, seg.y0, seg.x1, seg.y1, 0.5);
+        }
+    }
+
+    drawGridBackground(ctx, camX, camY, width, height, zoom) {
+        let z = zoom || (GameContext.currentZoom || ZOOM_LEVEL);
+        if (!isFinite(z) || z <= 0) z = ZOOM_LEVEL;
+        const w = width / z;
+        const h = height / z;
+        const grid = 420;
+        const minor = 210;
+
+        const x0 = Math.floor((camX - 1200) / minor) * minor;
+        const x1 = camX + w + 1200;
+        const y0 = Math.floor((camY - 1200) / minor) * minor;
+        const y1 = camY + h + 1200;
+
+        ctx.save();
+        ctx.lineWidth = 1 / z;
+        ctx.globalAlpha = 1;
+
+        ctx.strokeStyle = 'rgba(0,255,255,0.05)';
+        ctx.beginPath();
+        for (let x = x0; x <= x1; x += minor) {
+            ctx.moveTo(x, y0);
+            ctx.lineTo(x, y1);
+        }
+        for (let y = y0; y <= y1; y += minor) {
+            ctx.moveTo(x0, y);
+            ctx.lineTo(x1, y);
+        }
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(0,255,255,0.10)';
+        ctx.beginPath();
+        const gx0 = Math.floor((camX - 1200) / grid) * grid;
+        const gy0 = Math.floor((camY - 1200) / grid) * grid;
+        for (let x = gx0; x <= x1; x += grid) {
+            ctx.moveTo(x, y0);
+            ctx.lineTo(x, y1);
+        }
+        for (let y = gy0; y <= y1; y += grid) {
+            ctx.moveTo(x0, y);
+            ctx.lineTo(x1, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    drawFireWall(ctx, camX, camY, width, height, zoom) {
+        if (!this.fireWall) return;
+        const z = zoom || (GameContext.currentZoom || ZOOM_LEVEL);
+        if (!isFinite(z) || z <= 0) return;
+        const viewTop = camY - 1200;
+        const viewBottom = camY + (height / z) + 1200;
+        const rangeTop = Math.min(this.startY, this.fireWall.y);
+        const rangeBottom = Math.max(this.startY, this.fireWall.y);
+        if (rangeBottom < viewTop || rangeTop > viewBottom) return;
+        const drawTop = Math.max(rangeTop, viewTop);
+        const drawBottom = Math.min(rangeBottom, viewBottom);
+        if (drawBottom <= drawTop) return;
+        const worldWidth = width / z;
+        const padding = 720;
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        const gradient = ctx.createLinearGradient(camX - padding, drawTop, camX - padding, drawBottom);
+        gradient.addColorStop(0, 'rgba(255,165,72,0.85)');
+        gradient.addColorStop(0.6, 'rgba(255,80,0,0.65)');
+        gradient.addColorStop(1, 'rgba(255,0,0,0.25)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(camX - padding, drawTop, worldWidth + padding * 2, drawBottom - drawTop);
+        ctx.strokeStyle = 'rgba(255,200,120,0.6)';
+        ctx.lineWidth = 3 / z;
+        ctx.beginPath();
+        ctx.moveTo(camX - padding, this.fireWall.y);
+        ctx.lineTo(camX + worldWidth + padding, this.fireWall.y);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    drawEntities(ctx, camX, camY, height, zoom) {
+        if (!this.active) return;
+        let z = zoom || (GameContext.currentZoom || ZOOM_LEVEL);
+        if (!isFinite(z) || z <= 0) z = ZOOM_LEVEL;
+        const safeCamX = (isFinite(camX) ? camX : (GameContext.player ? GameContext.player.pos.x - (height / (2 * z)) : 0));
+        const safeCamY = (isFinite(camY) ? camY : (GameContext.player ? GameContext.player.pos.y - (height / (2 * z)) : 0));
+        const y0 = safeCamY - 1200;
+        const y1 = safeCamY + (height / z) + 1200;
+
+        for (let i = 0; i < this.wallTurrets.length; i++) {
+            const t = this.wallTurrets[i];
+            if (!t || t.dead) continue;
+            if (t.pos.y < y0 - 1600 || t.pos.y > y1 + 1600) {
+                if (t._pixiContainer) t._pixiContainer.visible = false;
+                continue;
             }
+            t.draw(ctx);
+        }
+
+        for (let i = 0; i < this.switches.length; i++) {
+            const s = this.switches[i];
+            if (!s || s.dead) continue;
+            if (s.pos.y < y0 - 1600 || s.pos.y > y1 + 1600) {
+                if (s._pixiContainer) s._pixiContainer.visible = false;
+                continue;
+            }
+            s.draw(ctx);
+        }
+        for (let i = 0; i < this.relays.length; i++) {
+            const r = this.relays[i];
+            if (!r || r.dead) continue;
+            if (r.pos.y < y0 - 1600 || r.pos.y > y1 + 1600) {
+                if (r._pixiContainer) r._pixiContainer.visible = false;
+                continue;
+            }
+            r.draw(ctx);
+        }
+        for (let i = 0; i < this.rewards.length; i++) {
+            const r = this.rewards[i];
+            if (!r || r.dead) continue;
+            if (r.pos.y < y0 - 1600 || r.pos.y > y1 + 1600) {
+                if (r._pixiContainer) r._pixiContainer.visible = false;
+                continue;
+            }
+            r.draw(ctx);
+        }
+        for (let i = 0; i < this.gasVents.length; i++) {
+            const h = this.gasVents[i];
+            if (!h || h.dead) continue;
+            if (h.pos.y < y0 - 2000 || h.pos.y > y1 + 2000) {
+                if (h._pixiContainer) h._pixiContainer.visible = false;
+                continue;
+            }
+            h.draw(ctx);
+        }
+        for (let i = 0; i < this.draftZones.length; i++) {
+            const d = this.draftZones[i];
+            if (!d) continue;
+            if (d.pos.y < y0 - 2600 || d.pos.y > y1 + 2600) {
+                if (d._pixiContainer) d._pixiContainer.visible = false;
+                continue;
+            }
+            d.draw(ctx);
+        }
+        for (let i = 0; i < this.rockfalls.length; i++) {
+            const r = this.rockfalls[i];
+            if (!r || r.dead) continue;
+            if (r.pos.y < y0 - 2600 || r.pos.y > y1 + 2600) {
+                if (r._pixiContainer) r._pixiContainer.visible = false;
+                continue;
+            }
+            r.draw(ctx);
+        }
+        for (let i = 0; i < this.critters.length; i++) {
+            const c = this.critters[i];
+            if (!c || c.dead) continue;
+            if (c.pos.y < y0 - 1600 || c.pos.y > y1 + 1600) {
+                if (c._pixiContainer) c._pixiContainer.visible = false;
+                continue;
+            }
+            c.draw(ctx);
         }
     }
 
