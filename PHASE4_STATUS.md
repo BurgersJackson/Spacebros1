@@ -1,6 +1,6 @@
 # Phase 4: Entity Classes - Status Report
 
-**Last Updated:** 2026-01-12T12:05:31-08:00  
+**Last Updated:** 2026-01-12T13:27:58-08:00  
 **Status:** IN PROGRESS
 
 ---
@@ -15,7 +15,7 @@ Phase 4 involves extracting entity classes from `main.js` into separate module f
 
 | Metric | Original | Current | Change |
 |--------|----------|---------|--------|
-| **main.js lines** | 26,438 | 21,462 | **-4,976** |
+| **main.js lines** | 26,438 | 15,937 | **-10,501** |
 
 ---
 
@@ -92,21 +92,68 @@ Phase 4 involves extracting entity classes from `main.js` into separate module f
 - **SoulDrainTether**: `src/js/entities/bosses/dungeon/SoulDrainTether.js`
 - **Status:** Integrated with dependency registration where needed.
 
-### 12. pixi-context.js ✅
+### 12. Destroyer ✅
+- **File:** `src/js/entities/bosses/Destroyer.js`
+- **Status:** Integrated with dependency registration.
+
+### 13. Destroyer2 ✅
+- **File:** `src/js/entities/bosses/Destroyer2.js`
+- **Status:** Integrated with dependency registration.
+
+### 14. FinalBoss ✅
+- **File:** `src/js/entities/bosses/FinalBoss.js`
+- **Status:** Integrated with dependency registration.
+
+### 15. Dungeon Bosses ✅
+- **NecroticHive**: `src/js/entities/bosses/dungeon/NecroticHive.js`
+- **CerebralPsion**: `src/js/entities/bosses/dungeon/CerebralPsion.js`
+- **Fleshforge**: `src/js/entities/bosses/dungeon/Fleshforge.js`
+- **VortexMatriarch**: `src/js/entities/bosses/dungeon/VortexMatriarch.js`
+- **ChitinusPrime**: `src/js/entities/bosses/dungeon/ChitinusPrime.js`
+- **PsyLich**: `src/js/entities/bosses/dungeon/PsyLich.js`
+- **Status:** Integrated with dependency registration.
+
+### 16. Support Entities ✅
+- **Drone**: `src/js/entities/support/Drone.js`
+- **ContractBeacon**: `src/js/entities/support/ContractBeacon.js`
+- **GateRing**: `src/js/entities/support/GateRing.js`
+- **WallTurret**: `src/js/entities/support/WallTurret.js`
+- **Status:** Integrated with dependency registration.
+
+### 17. Zones ✅
+- **WarpMazeZone**: `src/js/entities/zones/WarpMazeZone.js`
+- **Dungeon1Zone**: `src/js/entities/zones/Dungeon1Zone.js`
+- **RadiationStorm**: `src/js/entities/zones/RadiationStorm.js`
+- **AnomalyZone**: `src/js/entities/zones/AnomalyZone.js`
+- **Status:** Integrated with dependency registration.
+
+### 18. pixi-context.js ✅
 - **File:** `src/js/rendering/pixi-context.js`
 - **Status:** Complete.
+
+### 19. Cave Entities (Partial) ⚠️
+- **Files:** `src/js/entities/cave/CaveGuidedMissile.js`, `src/js/entities/cave/CaveWallTurret.js`, `src/js/entities/cave/CaveWallSwitch.js`, `src/js/entities/cave/CavePowerRelay.js`, `src/js/entities/cave/CaveRewardPickup.js`, `src/js/entities/cave/AsteroidTurret.js`, `src/js/entities/cave/CaveGasVent.js`, `src/js/entities/cave/CaveRockfall.js`
+- **Index:** `src/js/entities/cave/index.js`
+- **Status:** Extracted, but not wired into `src/js/main.js` yet. Classes still exist in `src/js/main.js`.
 
 ---
 
 ## Next Steps
 
 ### 1. Extract Other Bosses
-- `Destroyer`
-- `FinalBoss`
-- `Destroyer2`
- - Dungeon bosses (NecroticHive, CerebralPsion, Fleshforge, VortexMatriarch, ChitinusPrime, PsyLich)
+ - None
 
-### 2. Unify Bullet Class
+### 2. Finish Cave Entities
+- Create `CaveDraftZone` and `CaveCritter` modules and export them in `src/js/entities/cave/index.js`.
+- Extract `CaveLevel`, `CaveMonsterBase`, `CaveMonster1/2/3`.
+- Wire all cave entities into `src/js/main.js` (imports + dependency registration).
+- Remove cave class definitions from `src/js/main.js`.
+- Export cave barrel in `src/js/entities/index.js`.
+
+### 3. Extract Player
+- `Spaceship`
+
+### 4. Unify Bullet Class
 - `main.js` still has a legacy `Bullet` class definition. Future extractions should use the module `Bullet` class. Eventually remove `Bullet` from `main.js`.
 
 ---

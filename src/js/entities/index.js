@@ -11,3 +11,4 @@ export * from './environment/index.js';
 export * from './enemies/index.js';
 export * from './bosses/index.js';
 export * from './zones/index.js';
+export * from './support/index.js';
