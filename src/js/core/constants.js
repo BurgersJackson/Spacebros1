@@ -68,6 +68,7 @@ export const EXPLOSION1_FRAME_H = 1024 / EXPLOSION1_ROWS;
 // --- Player Hull ---
 export const PLAYER_HULL_RENDER_SCALE = 2.5;
 export const PLAYER_HULL_ROT_OFFSET = Math.PI / 2; // World angle 0=right, art is nose-up
+export const PLAYER_SHIELD_RADIUS_SCALE = 1.5;
 
 // --- Pixi/Canvas Toggle ---
 export const USE_PIXI_OVERLAY = true;

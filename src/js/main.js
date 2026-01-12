@@ -14,7 +14,7 @@ import {
     ZOOM_LEVEL, SIM_FPS, SIM_STEP_MS, SIM_MAX_STEPS_PER_FRAME,
     PIXI_SPRITE_POOL_MAX, USE_PIXI_OVERLAY, BACKGROUND_MUSIC_URL,
     ENABLE_NEBULA, NEBULA_ALPHA, ENABLE_PROJECTILE_IMPACT_SOUNDS,
-    META_SHOP_UPGRADE_DATA
+    PLAYER_SHIELD_RADIUS_SCALE, UPGRADE_DATA
 } from './core/constants.js';
 import { Particle, SmokeParticle, Explosion, WarpParticle, Coin, FloatingText, HealthPowerUp, SpaceNugget, getOrCreateFloatingText, LightningArc } from './entities/index.js';
 import {
@@ -36,73 +36,58 @@ import {
     clearOverlayMessageTimeout,
     formatTime,
     showOverlayMessage,
-    updateContractUI as updateContractUIHelper,
     updateHealthUI as updateHealthUIHelper,
     updateTurboUI as updateTurboUIHelper,
     updateWarpUI as updateWarpUIHelper,
     updateXpUI as updateXpUIHelper
 } from './utils/ui-helpers.js';
+import {
+    SAVE_PREFIX,
+    SAVE_LAST_KEY,
+    applyPendingProfile as applyPendingProfileSystem,
+    createNewProfile as createNewProfileRecord,
+    deleteProfile as deleteProfileRecord,
+    getProfileList as getProfileListSystem,
+    listSaveSlots as listSaveSlotsSystem,
+    saveGame as saveGameSystem,
+    selectProfile as selectProfileRecord
+} from './systems/save-manager.js';
+import {
+    applyMetaUpgrades as applyMetaUpgradesSystem,
+    depositMetaNuggets as depositMetaNuggetsSystem,
+    getReturningFromModal as getReturningFromModalSystem,
+    loadMetaProfile as loadMetaProfileSystem,
+    registerMetaShopNavigationHandlers,
+    resetMetaProfile as resetMetaProfileSystem,
+    saveMetaProfile as saveMetaProfileSystem,
+    setReturningFromModal as setReturningFromModalSystem,
+    updateMetaUI as updateMetaUISystem
+} from './systems/meta-manager.js';
+import {
+    getArenaCountdownTimeLeft,
+    isArenaCountdownActive,
+    scheduleNextMiniEvent,
+    scheduleNextRadiationStorm,
+    scheduleNextShootingStar,
+    setArenaCountdownTimeLeft,
+    startArenaCountdown,
+    stopArenaCountdown,
+    updateArenaCountdownDisplay
+} from './systems/event-scheduler.js';
+import {
+    completeContract as completeContractSystem,
+    registerContractHandlers,
+    updateContract as updateContractSystem,
+    updateContractUI as updateContractUISystem
+} from './systems/contract-manager.js';
+import {
+    applyUpgrade as applyUpgradeSystem,
+    registerUpgradeHandlers,
+    showLevelUpMenu as showLevelUpMenuSystem
+} from './systems/upgrade-manager.js';
 
 // --- Performance Debug (load after other modules) ---
 import './core/perf-debug.js';
-
-// --- Upgrade Data ---
-const UPGRADE_DATA = {
-    "categories": [
-        {
-            "name": "Weapons",
-            "upgrades": [
-                { "id": "turret_damage", "name": "Turret Damage", "tier1": "+20% damage", "tier2": "+40% total", "tier3": "+70% total", "notes": "Core DPS boost." },
-                { "id": "turret_fire_rate", "name": "Turret Fire Rate", "tier1": "+15% RPS", "tier2": "+30% total", "tier3": "+50% total", "notes": "Stacks multiplicatively." },
-                { "id": "turret_range", "name": "Turret Range", "tier1": "+25% range", "tier2": "+50% total", "tier3": "+100% total", "notes": "Hits farther threats." },
-                { "id": "multi_shot", "name": "Multi-Shot", "tier1": "Fires 2 proj.", "tier2": "Fires 3 proj.", "tier3": "Fires 4 proj.", "notes": "Parallel fire." },
-                { "id": "shotgun", "name": "Flak Shotgun", "tier1": "Unlock: 5 Pellets", "tier2": "8 Pellets, +Range", "tier3": "12 Pellets", "notes": "Close-range burst." },
-                { "id": "static_weapons", "name": "Static Weapons", "tier1": "Unlock Forward Laser", "tier2": "Add Side Lasers", "tier3": "Add Rear Laser", "tier4": "Dual Rear Stream", "tier5": "Dual Front Stream", "notes": "Always-on turrets." },
-                { "id": "homing_missiles", "name": "Homing Missiles", "tier1": "2 Missiles, 1 DMG", "tier2": "2 Missiles, 2 DMG", "tier3": "2 Missiles, 3 DMG", "tier4": "2 Missiles, 4 DMG", "tier5": "2 Missiles, 5 DMG", "notes": "Precision swarm." },
-                { "id": "volley_shot", "name": "Volley Shot", "tier1": "Auto-fires 3-shot burst every 3s", "tier2": "5-shot burst every 3s", "tier3": "7-shot burst every 3s", "tier4": "9-shot burst every 3s", "tier5": "11-shot burst every 3s", "notes": "Automatic burst damage. No input required." },
-                { "id": "ciws", "name": "CIWS", "tier1": "Auto-targets 400u, 1 dmg", "tier2": "2 dmg", "tier3": "3 dmg", "tier4": "4 dmg", "tier5": "5 dmg", "notes": "Rapid-fire defense. Targets all enemies." },
-                { "id": "chain_lightning", "name": "Chain Lightning", "tier1": "Projectiles chain to 1 enemy (200u)", "tier2": "Chain to 2 enemies (250u)", "tier3": "Chain to 3 enemies (300u)", "notes": "Arc damage hits grouped enemies. Great vs swarms." },
-                { "id": "backstabber", "name": "Backstabber", "tier1": "+50% damage from behind", "tier2": "+100% damage from behind", "tier3": "+150% damage, slow enemies 2s", "notes": "Positioning matters. Flanking = huge damage." }
-            ]
-        },
-        {
-            "name": "Shields & Hull",
-            "upgrades": [
-                { "id": "hull_strength", "name": "Hull Strength", "tier1": "+25 Max HP, Heal 25", "tier2": "+25 Max HP, Heal 25", "tier3": "+25 Max HP, Heal 25", "notes": "Increases survival." },
-                { "id": "segment_count", "name": "Segment Count", "tier1": "+2 segments (total 10)", "tier2": "+4 total (14)", "tier3": "+8 total (18)", "notes": "Larger shield bubble." },
-                { "id": "outer_shield", "name": "Outer Shield", "tier1": "6 purple segments", "tier2": "8 segments (restore all)", "tier3": "12 segments (restore all)", "notes": "Extra rotating ring (1 HP/seg)." },
-                { "id": "shield_regen", "name": "Shield Regen", "tier1": "Regen 1 seg./5s", "tier2": "1 seg./3s", "tier3": "1 seg./1s", "notes": "Sustain in long fights." },
-                { "id": "hp_regen", "name": "Hull Regen", "tier1": "Regen 1 HP / 5s", "tier2": "Regen 2 HP / 5s", "tier3": "Regen 3 HP / 5s", "notes": "Slow passive healing." },
-                { "id": "reactive_shield", "name": "Reactive Shield", "tier1": "1 seg. per 50 coins", "tier2": "2 seg. per 50 coins", "tier3": "3 seg. per 50 coins, +25% shield HP", "notes": "Collecting coins restores shields." },
-                { "id": "damage_mitigation", "name": "Damage Mitigation", "tier1": "-10% damage taken, +5% move speed", "tier2": "-20% damage taken, +10% move speed", "tier3": "-30% damage taken, +15% move speed", "notes": "Tanky AND fast. General survivability." }
-            ]
-        },
-        {
-            "name": "Mobility",
-            "upgrades": [
-                { "id": "speed", "name": "Speed", "tier1": "+15% max speed", "tier2": "+30% total", "tier3": "+50% total", "notes": "Dodge better." },
-                { "id": "turbo_boost", "name": "Turbo Boost", "tier1": "+50% speed for 2s", "tier2": "+50% speed for 3.5s", "tier3": "+50% speed for 5s", "notes": "Press E / Gamepad X." }
-            ]
-        },
-        {
-            "name": "Specials",
-            "upgrades": [
-                { "id": "xp_magnet", "name": "XP Magnet", "tier1": "2x range", "tier2": "4x range", "tier3": "8x range", "notes": "Faster leveling." },
-                { "id": "area_nuke", "name": "Area Nuke", "tier1": "Auto-fire 500u blast (5 dmg)", "tier2": "600u range, 10 dmg", "tier3": "800u range, 15 dmg", "notes": "Auto-activates when ready." },
-                { "id": "invincibility", "name": "Phase Shield", "tier1": "3s Active / 20s CD", "tier2": "5s Active / 15s CD", "tier3": "7s Active / 10s CD + Regen", "notes": "Auto-cycling invulnerability." },
-                { "id": "slow_field", "name": "Stasis Field", "tier1": "Stops roamers 3s", "tier2": "Stops 5s, +25% Area", "tier3": "Stops 8s, +25% Area", "notes": "Freezes enemies." },
-                { "id": "time_dilation", "name": "Time Dilation", "tier1": "Enemies move 20% slower near you", "tier2": "40% slow, 300u radius", "tier3": "60% slow, 450u radius", "notes": "Passive danger zone. Easier dodging." },
-                { "id": "momentum", "name": "Momentum", "tier1": "Moving increases fire rate (+10%)", "tier2": "+20% fire rate, +15% damage", "tier3": "+30% fire rate, +25% damage", "notes": "Keep moving to maximize DPS. Hit-and-run style." }
-            ]
-        },
-        {
-            "name": "Drones",
-            "upgrades": [
-                { "id": "companion_drones", "name": "Companion Drones", "tier1": "Unlock Shooter Drone", "tier2": "Add Shield Drone", "tier3": "Add Heal Drone", "notes": "Orbiting support bots." }
-            ]
-        }
-    ]
-};
 
 // --- Globals ---
 const mouseState = GameContext.mouseState;
@@ -110,11 +95,6 @@ const mouseState = GameContext.mouseState;
 // Pixi Textures (Global)
 let pixiParticleSmokeTexture;
 let pixiParticleWarpTexture;
-
-// --- Meta Shop Modal State ---
-let currentModalUpgradeId = null;
-let modalSourceButtonIndex = null; // Remember which button index opened the modal
-let returningFromModal = false; // Flag to prevent index reset when returning from modal
 
 // --- Base Classes (Vector and Entity imported from modules) ---
 
@@ -2899,13 +2879,13 @@ function endGame(elapsedMs) {
     GameContext.canResumeGame = false; // Game ended - can't resume
     stopMusic();
     try {
-        depositMetaNuggets();
+        depositMetaNuggetsSystem();
     } catch (e) { console.warn('meta deposit failed', e); }
     // Save both game profile and meta profile (store upgrades)
     if (GameContext.currentProfileName) {
         try {
             autoSaveToCurrentProfile(); // Saves game state
-            saveMetaProfile();          // Saves meta shop upgrades
+            saveMetaProfileSystem();          // Saves meta shop upgrades
         } catch (e) { console.warn('save on end game failed', e); }
     }
     const endEl = document.getElementById('end-screen');
@@ -2962,63 +2942,6 @@ function checkDespawn(entity, range = 6000) {
     }
 }
 
-
-// Arena countdown system
-let arenaCountdownActive = false;
-let arenaCountdownInterval = null;
-let arenaCountdownTimeLeft = 0;
-let arenaCountdownElement = null; // Cached DOM element
-
-function startArenaCountdown() {
-    if (arenaCountdownActive) return;
-
-    arenaCountdownActive = true;
-    arenaCountdownTimeLeft = 10;
-
-    // Cache the element reference on first use
-    if (!arenaCountdownElement) {
-        arenaCountdownElement = document.getElementById('arena-countdown');
-    }
-
-    updateArenaCountdownDisplay();
-}
-
-function updateArenaCountdownDisplay() {
-    const el = arenaCountdownElement;
-    if (!el) return;
-
-    if (arenaCountdownTimeLeft <= 0) {
-        el.style.display = 'none';
-        el.className = ''; // Clear all classes
-        return;
-    }
-
-    el.innerText = `ARENA FIGHT\n${arenaCountdownTimeLeft}`;
-    el.style.display = 'block';
-
-    // Use CSS classes instead of inline styles for better performance
-    el.className = ''; // Clear existing classes
-    if (arenaCountdownTimeLeft <= 3) {
-        el.classList.add('countdown-critical');
-    } else if (arenaCountdownTimeLeft <= 5) {
-        el.classList.add('countdown-warning');
-    } else {
-        el.classList.add('countdown-normal');
-    }
-}
-
-function stopArenaCountdown() {
-    if (arenaCountdownInterval) {
-        clearInterval(arenaCountdownInterval);
-        arenaCountdownInterval = null;
-    }
-    arenaCountdownActive = false;
-    const el = arenaCountdownElement;
-    if (el) {
-        el.style.display = 'none';
-        el.className = ''; // Clear all classes
-    }
-}
 
 // --- Map Entities ---
 class EnvironmentAsteroid extends Entity {
@@ -3379,7 +3302,6 @@ function rayCast(x1, y1, angle, maxDist) {
 }
 
 // Player sprite is rendered larger than its physics radius; scale shield radii to match visuals.
-const PLAYER_SHIELD_RADIUS_SCALE = 1.5;
 
 class Spaceship extends Entity {
     constructor(shipType = 'standard') {
@@ -3581,7 +3503,7 @@ class Spaceship extends Entity {
         // Pause and Show Menu
         playSound('levelup');
         GameContext.gameActive = false; // Soft pause logic required
-        showLevelUpMenu();
+        showLevelUpMenuSystem();
     }
 
     takeHit(damage, ignoreShields = false) {
@@ -9465,7 +9387,7 @@ class CaveLevel {
                     showOverlayMessage("UPGRADE CACHE", '#f0f', 1200, 3);
                     playSound('levelup');
                     GameContext.gameActive = false;
-                    showLevelUpMenu();
+                    showLevelUpMenuSystem();
                 } else if (rw.rewardType === 'fragment') {
                     GameContext.player.caveKeyFragments = (GameContext.player.caveKeyFragments || 0) + 1;
                     showOverlayMessage(`KEY FRAGMENT ${GameContext.player.caveKeyFragments}/4`, '#ff0', 1200, 2);
@@ -9475,7 +9397,7 @@ class CaveLevel {
                         showOverlayMessage("FRAGMENTS COMPLETE: BONUS UPGRADE", '#ff0', 1600, 3);
                         playSound('levelup');
                         GameContext.gameActive = false;
-                        showLevelUpMenu();
+                        showLevelUpMenuSystem();
                     }
                 }
             }
@@ -20482,690 +20404,6 @@ function spawnBarrelSmoke(x, y, angle) {
     }
 }
 
-// --- Meta Progression ---
-function loadMetaProfile() {
-    try {
-        // Use profile-specific key for meta data
-        const profileKey = GameContext.currentProfileName
-            ? `meta_profile_v1_${GameContext.currentProfileName}`
-            : 'meta_profile_v1';
-        let raw = localStorage.getItem(profileKey);
-        console.log('[META LOAD] Loading meta profile from key:', profileKey, '| Found:', !!raw);
-
-        // Migration: if no data found in profile-specific key, check the legacy key
-        // This recovers data saved before the initialization order fix
-        if (!raw && GameContext.currentProfileName) {
-            const legacyKey = 'meta_profile_v1';
-            const legacyRaw = localStorage.getItem(legacyKey);
-            if (legacyRaw) {
-                console.log('[META LOAD] Migration: Found legacy data, migrating to profile key');
-                raw = legacyRaw;
-                // Migrate the data to the correct key
-                localStorage.setItem(profileKey, legacyRaw);
-                // Optionally keep legacy data for fallback, or remove it:
-                // localStorage.removeItem(legacyKey);
-            }
-        }
-
-        // Always reset to defaults first, then load saved data
-        GameContext.metaProfile = {
-            bank: 0,
-            purchases: {}
-        };
-
-        if (raw) {
-            try {
-                const saved = JSON.parse(raw);
-                // Merge saved data over defaults
-                if (typeof saved.bank === 'number') GameContext.metaProfile.bank = saved.bank;
-                if (saved.purchases) {
-                    GameContext.metaProfile.purchases = Object.assign(GameContext.metaProfile.purchases, saved.purchases);
-                }
-            } catch (e) {
-                console.warn('Failed to parse meta profile, using defaults', e);
-            }
-        }
-        if (!GameContext.metaProfile.purchases) GameContext.metaProfile.purchases = {};
-        GameContext.metaProfile.purchases = Object.assign({
-            startDamage: 0,
-            passiveHp: 0,
-            rerollTokens: 0,
-            hullPlating: 0,
-            shieldCore: 0,
-            staticBlueprint: 0,
-            missilePrimer: 0,
-            magnetBooster: 0,
-            nukeCapacitor: 0,
-            speedTuning: 0,
-            bankMultiplier: 0,
-            shopDiscount: 0,
-            extraLife: 0,
-            droneFabricator: 0,
-            // New upgrades
-            piercingRounds: 0,
-            explosiveRounds: 0,
-            criticalStrike: 0,
-            splitShot: 0,
-            thornArmor: 0,
-            lifesteal: 0,
-            evasionBoost: 0,
-            shieldRecharge: 0,
-            dashCooldown: 0,
-            dashDuration: 0,
-            xpMagnetPlus: 0,
-            autoReroll: 0,
-            nuggetMagnet: 0,
-            contractSpeed: 0,
-            startingRerolls: 0,
-            luckyDrop: 0,
-            bountyHunter: 0,
-            comboMeter: 0,
-            startingWeapon: 0,
-            secondWind: 0,
-            batteryCapacitor: 0
-        }, GameContext.metaProfile.purchases);
-        if (GameContext.metaProfile.purchases.warpPrecharge) delete GameContext.metaProfile.purchases.warpPrecharge;
-        if (typeof GameContext.metaProfile.bank !== 'number') GameContext.metaProfile.bank = 0;
-
-        // Migrate old boolean saves to counts
-        for (const key of ['startDamage', 'passiveHp', 'hullPlating', 'shieldCore',
-            'staticBlueprint', 'missilePrimer', 'magnetBooster',
-            'nukeCapacitor', 'speedTuning', 'bankMultiplier',
-            'shopDiscount', 'extraLife', 'droneFabricator']) {
-            if (GameContext.metaProfile.purchases[key] === true) {
-                GameContext.metaProfile.purchases[key] = 1;
-            } else if (GameContext.metaProfile.purchases[key] === false) {
-                GameContext.metaProfile.purchases[key] = 0;
-            }
-        }
-
-        // Log loaded purchases for debugging
-        const purchasedItems = Object.entries(GameContext.metaProfile.purchases || {})
-            .filter(([k, v]) => v > 0)
-            .map(([k, v]) => `${k}:${v}`);
-        console.log('[META LOAD] Loaded bank:', GameContext.metaProfile.bank, '| Purchases:', purchasedItems.length > 0 ? purchasedItems.join(', ') : 'none');
-    } catch (e) {
-        console.warn('failed to load meta profile', e);
-    }
-}
-function resetMetaProfile() {
-    GameContext.metaProfile = {
-        bank: 0, purchases: {
-            startDamage: 0,
-            passiveHp: 0,
-            rerollTokens: 0,
-            hullPlating: 0,
-            shieldCore: 0,
-            staticBlueprint: 0,
-            missilePrimer: 0,
-            magnetBooster: 0,
-            nukeCapacitor: 0,
-            speedTuning: 0,
-            bankMultiplier: 0,
-            shopDiscount: 0,
-            extraLife: 0,
-            droneFabricator: 0,
-            // New upgrades
-            piercingRounds: 0,
-            explosiveRounds: 0,
-            criticalStrike: 0,
-            splitShot: 0,
-            thornArmor: 0,
-            lifesteal: 0,
-            evasionBoost: 0,
-            shieldRecharge: 0,
-            dashCooldown: 0,
-            dashDuration: 0,
-            xpMagnetPlus: 0,
-            autoReroll: 0,
-            nuggetMagnet: 0,
-            contractSpeed: 0,
-            startingRerolls: 0,
-            luckyDrop: 0,
-            bountyHunter: 0,
-            comboMeter: 0,
-            startingWeapon: 0,
-            secondWind: 0
-        }
-    };
-}
-function saveMetaProfile() {
-    try {
-        // Use profile-specific key for meta data
-        const profileKey = GameContext.currentProfileName
-            ? `meta_profile_v1_${GameContext.currentProfileName}`
-            : 'meta_profile_v1';
-        GameContext.metaProfile.lastSavedAt = Date.now();
-        const dataToSave = JSON.stringify(GameContext.metaProfile);
-        localStorage.setItem(profileKey, dataToSave);
-        console.log('[META SAVE] Saved meta profile to key:', profileKey, '| Purchases:', Object.keys(GameContext.metaProfile.purchases || {}).length, 'items');
-        updateMetaUI();
-    } catch (e) { console.warn('failed to save meta profile', e); }
-}
-function depositMetaNuggets() {
-    const tier = GameContext.metaProfile.purchases.bankMultiplier || 0;
-    // Base 10% per tier for first 3 tiers, then diminishing
-    let bonus = 0.1 * Math.min(tier, 3);
-    if (tier > 3) {
-        const table = { 0: 1.0, 1: 1.1, 2: 1.2, 3: 1.3 };
-        const extraValue = getDiminishingValue(tier, table, 0.99);
-        bonus = extraValue - 1.0;
-    }
-    GameContext.metaProfile.bank += Math.round(GameContext.spaceNuggets * (1 + bonus));
-    saveMetaProfile();
-}
-function updateMetaUI() {
-    const bankEl = document.getElementById('meta-bank');
-    if (bankEl) bankEl.innerText = GameContext.metaProfile.bank;
-    const startEl = document.getElementById('meta-start-dmg');
-    if (startEl) {
-        const tier = GameContext.metaProfile.purchases.startDamage || 0;
-        const cost = getMetaUpgradeCost('startDamage', 10);
-        startEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const passiveEl = document.getElementById('meta-passive-hp');
-    if (passiveEl) {
-        const tier = GameContext.metaProfile.purchases.passiveHp || 0;
-        const cost = getMetaUpgradeCost('passiveHp', 15);
-        passiveEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const rerollEl = document.getElementById('meta-reroll-count');
-    if (rerollEl) rerollEl.innerText = GameContext.metaProfile.purchases.rerollTokens || 0;
-    const hullEl = document.getElementById('meta-hull');
-    if (hullEl) {
-        const tier = GameContext.metaProfile.purchases.hullPlating || 0;
-        const cost = getMetaUpgradeCost('hullPlating', 30);
-        hullEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const shieldEl = document.getElementById('meta-shield-core');
-    if (shieldEl) {
-        const tier = GameContext.metaProfile.purchases.shieldCore || 0;
-        const cost = getMetaUpgradeCost('shieldCore', 30);
-        shieldEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const staticEl = document.getElementById('meta-static');
-    if (staticEl) {
-        const tier = GameContext.metaProfile.purchases.staticBlueprint || 0;
-        const cost = getMetaUpgradeCost('staticBlueprint', 40);
-        staticEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const missileEl = document.getElementById('meta-missile');
-    if (missileEl) {
-        const tier = GameContext.metaProfile.purchases.missilePrimer || 0;
-        const cost = getMetaUpgradeCost('missilePrimer', 40);
-        missileEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const magnetEl = document.getElementById('meta-magnet');
-    if (magnetEl) {
-        const tier = GameContext.metaProfile.purchases.magnetBooster || 0;
-        const cost = getMetaUpgradeCost('magnetBooster', 25);
-        magnetEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const nukeEl = document.getElementById('meta-nuke');
-    if (nukeEl) {
-        const tier = GameContext.metaProfile.purchases.nukeCapacitor || 0;
-        const cost = getMetaUpgradeCost('nukeCapacitor', 35);
-        nukeEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const speedEl = document.getElementById('meta-speed');
-    if (speedEl) {
-        const tier = GameContext.metaProfile.purchases.speedTuning || 0;
-        const cost = getMetaUpgradeCost('speedTuning', 25);
-        speedEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const bankMultEl = document.getElementById('meta-bank-mult');
-    if (bankMultEl) {
-        const tier = GameContext.metaProfile.purchases.bankMultiplier || 0;
-        const cost = getMetaUpgradeCost('bankMultiplier', 50);
-        bankMultEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const discountEl = document.getElementById('meta-discount');
-    if (discountEl) {
-        const tier = GameContext.metaProfile.purchases.shopDiscount || 0;
-        const cost = getMetaUpgradeCost('shopDiscount', 50);
-        discountEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const extraLifeEl = document.getElementById('meta-extra-life');
-    if (extraLifeEl) {
-        const tier = GameContext.metaProfile.purchases.extraLife || 0;
-        const cost = getMetaUpgradeCost('extraLife', 60);
-        extraLifeEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const droneEl = document.getElementById('meta-drone');
-    if (droneEl) {
-        const tier = GameContext.metaProfile.purchases.droneFabricator || 0;
-        const cost = getMetaUpgradeCost('droneFabricator', 40);
-        droneEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    // New upgrades
-    const piercingEl = document.getElementById('meta-piercing');
-    if (piercingEl) {
-        const tier = GameContext.metaProfile.purchases.piercingRounds || 0;
-        const cost = getMetaUpgradeCost('piercingRounds', 45);
-        piercingEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const explosiveEl = document.getElementById('meta-explosive');
-    if (explosiveEl) {
-        const tier = GameContext.metaProfile.purchases.explosiveRounds || 0;
-        const cost = getMetaUpgradeCost('explosiveRounds', 55);
-        explosiveEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const critEl = document.getElementById('meta-crit');
-    if (critEl) {
-        const tier = GameContext.metaProfile.purchases.criticalStrike || 0;
-        const cost = getMetaUpgradeCost('criticalStrike', 50);
-        critEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const splitEl = document.getElementById('meta-split');
-    if (splitEl) {
-        const tier = GameContext.metaProfile.purchases.splitShot || 0;
-        const cost = getMetaUpgradeCost('splitShot', 60);
-        splitEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const thornEl = document.getElementById('meta-thorn');
-    if (thornEl) {
-        const tier = GameContext.metaProfile.purchases.thornArmor || 0;
-        const cost = getMetaUpgradeCost('thornArmor', 35);
-        thornEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const lifestealEl = document.getElementById('meta-lifesteal');
-    if (lifestealEl) {
-        const tier = GameContext.metaProfile.purchases.lifesteal || 0;
-        const cost = getMetaUpgradeCost('lifesteal', 40);
-        lifestealEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const evasionEl = document.getElementById('meta-evasion');
-    if (evasionEl) {
-        const tier = GameContext.metaProfile.purchases.evasionBoost || 0;
-        const cost = getMetaUpgradeCost('evasionBoost', 45);
-        evasionEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const shieldRegenEl = document.getElementById('meta-shieldregen');
-    if (shieldRegenEl) {
-        const tier = GameContext.metaProfile.purchases.shieldRecharge || 0;
-        const cost = getMetaUpgradeCost('shieldRecharge', 30);
-        shieldRegenEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const dashCdEl = document.getElementById('meta-dashcd');
-    if (dashCdEl) {
-        const tier = GameContext.metaProfile.purchases.dashCooldown || 0;
-        const cost = getMetaUpgradeCost('dashCooldown', 35);
-        dashCdEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const dashDurEl = document.getElementById('meta-dashdur');
-    if (dashDurEl) {
-        const tier = GameContext.metaProfile.purchases.dashDuration || 0;
-        const cost = getMetaUpgradeCost('dashDuration', 30);
-        dashDurEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const xpMagEl = document.getElementById('meta-xpmag');
-    if (xpMagEl) {
-        const tier = GameContext.metaProfile.purchases.xpMagnetPlus || 0;
-        const cost = getMetaUpgradeCost('xpMagnetPlus', 25);
-        xpMagEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const autoRerollEl = document.getElementById('meta-autoreroll');
-    if (autoRerollEl) {
-        const tier = GameContext.metaProfile.purchases.autoReroll || 0;
-        const cost = getMetaUpgradeCost('autoReroll', 50);
-        autoRerollEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const nuggetMagEl = document.getElementById('meta-nuggetmag');
-    if (nuggetMagEl) {
-        const tier = GameContext.metaProfile.purchases.nuggetMagnet || 0;
-        const cost = getMetaUpgradeCost('nuggetMagnet', 35);
-        nuggetMagEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const contractSpeedEl = document.getElementById('meta-contractspeed');
-    if (contractSpeedEl) {
-        const tier = GameContext.metaProfile.purchases.contractSpeed || 0;
-        const cost = getMetaUpgradeCost('contractSpeed', 40);
-        contractSpeedEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const startRerollEl = document.getElementById('meta-startreroll');
-    if (startRerollEl) {
-        const tier = GameContext.metaProfile.purchases.startingRerolls || 0;
-        const cost = getMetaUpgradeCost('startingRerolls', 30);
-        startRerollEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const luckyEl = document.getElementById('meta-lucky');
-    if (luckyEl) {
-        const tier = GameContext.metaProfile.purchases.luckyDrop || 0;
-        const cost = getMetaUpgradeCost('luckyDrop', 55);
-        luckyEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const bountyEl = document.getElementById('meta-bounty');
-    if (bountyEl) {
-        const tier = GameContext.metaProfile.purchases.bountyHunter || 0;
-        const cost = getMetaUpgradeCost('bountyHunter', 45);
-        bountyEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const comboEl = document.getElementById('meta-combo');
-    if (comboEl) {
-        const tier = GameContext.metaProfile.purchases.comboMeter || 0;
-        const cost = getMetaUpgradeCost('comboMeter', 50);
-        comboEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const startWeaponEl = document.getElementById('meta-startweapon');
-    if (startWeaponEl) {
-        const tier = GameContext.metaProfile.purchases.startingWeapon || 0;
-        const cost = getMetaUpgradeCost('startingWeapon', 60);
-        startWeaponEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const secondWindEl = document.getElementById('meta-secondwind');
-    if (secondWindEl) {
-        const tier = GameContext.metaProfile.purchases.secondWind || 0;
-        const cost = getMetaUpgradeCost('secondWind', 70);
-        secondWindEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const batteryEl = document.getElementById('meta-battery');
-    if (batteryEl) {
-        const tier = GameContext.metaProfile.purchases.batteryCapacitor || 0;
-        const cost = getMetaUpgradeCost('batteryCapacitor', 45);
-        batteryEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-
-    // Setup click handlers for upgrade descriptions
-    const upgradeButtonMap = {
-        'buy-start-dmg': 'startDamage',
-        'buy-passive-hp': 'passiveHp',
-        'buy-hull': 'hullPlating',
-        'buy-shield-core': 'shieldCore',
-        'buy-static': 'staticBlueprint',
-        'buy-missile': 'missilePrimer',
-        'buy-magnet': 'magnetBooster',
-        'buy-nuke': 'nukeCapacitor',
-        'buy-speed': 'speedTuning',
-        'buy-bank-mult': 'bankMultiplier',
-        'buy-discount': 'shopDiscount',
-        'buy-extra-life': 'extraLife',
-        'buy-drone': 'droneFabricator',
-        'buy-piercing': 'piercingRounds',
-        'buy-explosive': 'explosiveRounds',
-        'buy-crit': 'criticalStrike',
-        'buy-split': 'splitShot',
-        'buy-thorn': 'thornArmor',
-        'buy-lifesteal': 'lifesteal',
-        'buy-evasion': 'evasionBoost',
-        'buy-shieldregen': 'shieldRecharge',
-        'buy-dashcd': 'dashCooldown',
-        'buy-dashdur': 'dashDuration',
-        'buy-xpmag': 'xpMagnetPlus',
-        'buy-autoreroll': 'autoReroll',
-        'buy-nuggetmag': 'nuggetMagnet',
-        'buy-contractspeed': 'contractSpeed',
-        'buy-startreroll': 'startingRerolls',
-        'buy-lucky': 'luckyDrop',
-        'buy-bounty': 'bountyHunter',
-        'buy-combo': 'comboMeter',
-        'buy-startweapon': 'startingWeapon',
-        'buy-secondwind': 'secondWind',
-        'buy-battery': 'batteryCapacitor'
-    };
-    Object.entries(upgradeButtonMap).forEach(([btnId, upgradeId]) => {
-        const button = document.getElementById(btnId);
-        if (button) {
-            button.onclick = (e) => showMetaShopUpgradeModal(upgradeId, e.target);
-        }
-    });
-}
-
-function showUpgradeDescription(upgradeId) {
-    const data = META_SHOP_UPGRADE_DATA[upgradeId];
-    if (!data) return;
-
-    const titleEl = document.getElementById('desc-panel-title');
-    const contentEl = document.getElementById('desc-panel-content');
-    const tierInfoEl = document.getElementById('desc-panel-tier-info');
-
-    const currentTier = GameContext.metaProfile.purchases[upgradeId] || 0;
-
-    titleEl.textContent = data.name.toUpperCase();
-
-    let html = `<div style="margin-bottom: 8px;">${data.description}</div>`;
-    if (currentTier === 0) {
-        html += `<div style="color: #ff0;">First Tier: ${data.tier1}</div>`;
-    } else {
-        html += `<div style="color: #0f0;">Current Tier: ${currentTier}</div>`;
-        html += `<div style="color: #ff0;">Next Tier Benefits:</div>`;
-        if (data[`tier${currentTier + 1}`]) {
-            html += `<div>- ${data[`tier${currentTier + 1}`]}</div>`;
-        }
-    }
-    html += `<div style="color: #888; font-size: 12px; margin-top: 8px;">${data.notes}</div>`;
-
-    contentEl.innerHTML = html;
-    tierInfoEl.textContent = `OWNED: TIER ${currentTier}`;
-}
-
-/**
- * Show the meta shop upgrade modal with full details
- * @param {string} upgradeId - The upgrade ID from META_SHOP_UPGRADE_DATA
- * @param {HTMLElement} clickedButton - The button that was clicked to open this modal
- */
-function showMetaShopUpgradeModal(upgradeId, clickedButton) {
-    const data = META_SHOP_UPGRADE_DATA[upgradeId];
-    if (!data) {
-        console.error(`Unknown upgrade ID: ${upgradeId}`);
-        return;
-    }
-
-    // Store current upgrade for the Buy button
-    currentModalUpgradeId = upgradeId;
-
-    // Store the index of the clicked button so we can restore it when closing
-    if (clickedButton) {
-        const shopButtons = Array.from(document.querySelectorAll('#meta-shop .meta-item button'));
-        modalSourceButtonIndex = shopButtons.indexOf(clickedButton);
-    } else {
-        modalSourceButtonIndex = null;
-    }
-
-    // Get modal elements
-    const modal = document.getElementById('meta-shop-modal');
-    const titleEl = document.getElementById('meta-modal-title');
-    const contentEl = document.getElementById('meta-modal-content');
-    const costEl = document.getElementById('meta-modal-cost');
-    const tierEl = document.getElementById('meta-modal-tier-info');
-    const buyBtn = document.getElementById('meta-modal-buy');
-
-    if (!modal || !titleEl || !contentEl || !costEl || !tierEl || !buyBtn) {
-        console.error('Meta shop modal elements missing');
-        return;
-    }
-
-    // Get current tier and calculate cost
-    const currentTier = GameContext.metaProfile.purchases[upgradeId] || 0;
-
-    // Get base cost from mapping (same mapping used in updateMetaUI)
-    const baseCostMap = {
-        'startDamage': 10, 'passiveHp': 15, 'hullPlating': 30, 'shieldCore': 30,
-        'staticBlueprint': 40, 'missilePrimer': 40, 'magnetBooster': 25,
-        'nukeCapacitor': 35, 'speedTuning': 25, 'bankMultiplier': 50,
-        'shopDiscount': 50, 'extraLife': 60, 'droneFabricator': 40,
-        'piercingRounds': 45, 'explosiveRounds': 55, 'criticalStrike': 50,
-        'splitShot': 60, 'thornArmor': 35, 'lifesteal': 40,
-        'evasionBoost': 45, 'shieldRecharge': 30, 'dashCooldown': 35,
-        'dashDuration': 30, 'xpMagnetPlus': 25, 'autoReroll': 50,
-        'nuggetMagnet': 35, 'contractSpeed': 40, 'startingRerolls': 30,
-        'luckyDrop': 55, 'bountyHunter': 45, 'comboMeter': 50,
-        'startingWeapon': 60, 'secondWind': 70, 'batteryCapacitor': 45
-    };
-
-    const baseCost = baseCostMap[upgradeId] || 50;
-    const cost = getMetaUpgradeCost(upgradeId, baseCost);
-    const canAfford = GameContext.metaProfile.bank >= cost;
-
-    // Populate modal content
-    titleEl.textContent = data.name.toUpperCase();
-
-    let html = `<div style="margin-bottom: 12px;">${data.description}</div>`;
-
-    if (currentTier === 0) {
-        html += `<div style="color: #ff0; margin-top: 10px;"><strong>First Tier:</strong> ${data.tier1}</div>`;
-    } else {
-        html += `<div style="color: #0f0; margin-top: 10px;"><strong>Current Tier:</strong> ${currentTier}</div>`;
-
-        // Check if there are more tiers available or if we are in infinite mode
-        // Note: nextBenefitText is calculated below this block in the original code, 
-        // but we need to move that logic UP or duplicate the check here.
-        // Let's use the same logic pattern.
-        const nextTierKey = `tier${currentTier + 1}`;
-        let nextText = data[nextTierKey];
-
-        if (!nextText) {
-            nextText = "Increases effectiveness further (Infinite Scaling)";
-            if (upgradeId.includes('Damage') || upgradeId === 'batteryCapacitor' || upgradeId === 'nukeCapacitor') {
-                nextText = "Increases damage output";
-            } else if (upgradeId === 'passiveHp' || upgradeId === 'hullPlating') {
-                nextText = "Increases maximum hull HP";
-            } else if (upgradeId === 'shieldCore') {
-                nextText = "Adds segments or increases shield HP";
-            }
-        }
-
-        html += `<div style="color: #ff0; margin-top: 8px;"><strong>Next Tier Benefits:</strong></div>`;
-        html += `<div style="margin-left: 15px;">- ${nextText}</div>`;
-    }
-
-    html += `<div style="color: #888; font-size: 13px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #333;">${data.notes}</div>`;
-
-    contentEl.innerHTML = html;
-    costEl.textContent = `Cost: ${cost} Meta Nuggets`;
-    costEl.style.color = canAfford ? '#0f0' : '#f00';
-    tierEl.textContent = `OWNED: TIER ${currentTier}`;
-
-    // Enable/disable Buy button based on affordability
-    // Infinite Upgrade Logic: If defined tier text runs out, generate generic text
-    const nextTierKey = `tier${currentTier + 1}`;
-
-    // Default to defined text, or generic if infinite
-    let nextBenefitText = data[nextTierKey];
-    if (!nextBenefitText) {
-        // Generate generic text based on upgrade type
-        nextBenefitText = "Increases effectiveness further (Infinite Scaling)";
-        if (upgradeId.includes('Damage') || upgradeId === 'batteryCapacitor' || upgradeId === 'nukeCapacitor') {
-            nextBenefitText = "Increases damage output";
-        } else if (upgradeId === 'passiveHp' || upgradeId === 'hullPlating') {
-            nextBenefitText = "Increases maximum hull HP";
-        } else if (upgradeId === 'shieldCore') {
-            nextBenefitText = "Adds more shield segments";
-        }
-    }
-
-    buyBtn.disabled = !canAfford;
-    buyBtn.textContent = canAfford ? `BUY (${cost} NUGS)` : `NEED ${cost} NUGS`;
-
-    // Show modal
-    modal.style.display = 'block';
-
-    // Setup modal button handlers
-    setupMetaShopModalHandlers(upgradeId, cost, currentTier);
-}
-
-/**
- * Setup event handlers for the meta shop modal buttons
- * @param {string} upgradeId - The upgrade ID
- * @param {number} cost - The cost to purchase
- * @param {number} currentTier - Current tier before purchase
- */
-function setupMetaShopModalHandlers(upgradeId, cost, currentTier) {
-    const modal = document.getElementById('meta-shop-modal');
-    const backBtn = document.getElementById('meta-modal-back');
-    const buyBtn = document.getElementById('meta-modal-buy');
-
-    if (!modal || !backBtn || !buyBtn) return;
-
-    // Remove old handlers to prevent duplicates
-    const newBackBtn = backBtn.cloneNode(true);
-    const newBuyBtn = buyBtn.cloneNode(true);
-    backBtn.parentNode.replaceChild(newBackBtn, backBtn);
-    buyBtn.parentNode.replaceChild(newBuyBtn, buyBtn);
-
-    // Reset gamepad navigation for this modal
-    GameContext.menuSelectionIndex = 0;
-    gpState.lastMenuElements = null;
-
-    // Wait one frame to ensure DOM has updated, then setup navigation
-    requestAnimationFrame(() => {
-        const activeElements = getActiveMenuElements();
-        if (activeElements.length > 0) {
-            updateMenuVisuals(activeElements);
-            // Focus on the first button (Buy button since it comes first in DOM)
-            activeElements[0].focus();
-        }
-    });
-
-    // Function to close modal
-    const closeModal = () => {
-        modal.style.display = 'none';
-        currentModalUpgradeId = null;
-
-        // Save the index we want to restore
-        const savedIndex = modalSourceButtonIndex;
-        modalSourceButtonIndex = null;
-
-        // Set flag to preserve index when transitioning back to shop
-        if (savedIndex !== null && savedIndex >= 0) {
-            GameContext.menuSelectionIndex = savedIndex;
-            returningFromModal = true;
-        }
-
-        // Reset gamepad navigation to return to shop menu
-        gpState.lastMenuElements = null;
-    };
-
-    // Back button - just close modal
-    newBackBtn.addEventListener('click', closeModal);
-
-    // Buy button - execute purchase
-    newBuyBtn.addEventListener('click', () => {
-        if (GameContext.metaProfile.bank >= cost) {
-            // Execute purchase
-            GameContext.metaProfile.bank -= cost;
-            GameContext.metaProfile.purchases[upgradeId] = currentTier + 1;
-            saveMetaProfile();
-
-            // Show success message
-            const data = META_SHOP_UPGRADE_DATA[upgradeId];
-            showOverlayMessage(`${data.name.toUpperCase()} TIER ${currentTier + 1}!`, '#0f0', 1500);
-
-            // Update UI
-            updateMetaUI();
-
-            // Close modal
-            closeModal();
-        } else {
-            showOverlayMessage(`NEED ${cost} NUGS`, '#f00', 1500);
-        }
-    });
-
-    // Escape key to close - use same logic as closeModal
-    const onEscape = (e) => {
-        if (e.key === 'Escape' && modal.style.display === 'block') {
-            e.preventDefault();
-
-            // Save the index we want to restore
-            const savedIndex = modalSourceButtonIndex;
-            modalSourceButtonIndex = null;
-
-            modal.style.display = 'none';
-            currentModalUpgradeId = null;
-
-            // Set flag to preserve index when transitioning back to shop
-            if (savedIndex !== null && savedIndex >= 0) {
-                GameContext.menuSelectionIndex = savedIndex;
-                returningFromModal = true;
-            }
-
-            gpState.lastMenuElements = null;
-
-            window.removeEventListener('keydown', onEscape);
-        }
-    };
-    window.addEventListener('keydown', onEscape);
-}
-
 // Companion Drones
 class Drone extends Entity {
     constructor(type) {
@@ -21250,7 +20488,7 @@ function spawnDrone(type) {
 }
 
 function updateContractUI() {
-    updateContractUIHelper(GameContext);
+    updateContractUISystem();
 }
 
 function updateMiniEventUI() {
@@ -21278,33 +20516,7 @@ function clearMiniEvent() {
 }
 
 function completeContract(success = true) {
-    if (!GameContext.activeContract) return;
-    const contractId = GameContext.activeContract.id;
-    if (success) {
-        const rewardNugs = (GameContext.activeContract.rewardNugs !== undefined) ? GameContext.activeContract.rewardNugs : 4;
-        for (let i = 0; i < rewardNugs; i++) GameContext.nuggets.push(new SpaceNugget(GameContext.player.pos.x + (Math.random() - 0.5) * 120, GameContext.player.pos.y + (Math.random() - 0.5) * 120, 1));
-        // Bonus gold (coins) for all contracts
-        GameContext.coins.push(new Coin(GameContext.player.pos.x + (Math.random() - 0.5) * 80, GameContext.player.pos.y + (Math.random() - 0.5) * 80, 10));
-        const rewardScore = (GameContext.activeContract.rewardScore !== undefined) ? GameContext.activeContract.rewardScore : 5000;
-        GameContext.score += rewardScore;
-        showOverlayMessage("CONTRACT COMPLETE", '#0f0', 1500);
-    } else {
-        showOverlayMessage("CONTRACT FAILED", '#f00', 1500);
-    }
-    // Cleanup entities
-    clearArrayWithPixiCleanup(GameContext.contractEntities.beacons);
-    clearArrayWithPixiCleanup(GameContext.contractEntities.gates);
-    clearArrayWithPixiCleanup(GameContext.contractEntities.anomalies);
-    clearArrayWithPixiCleanup(GameContext.contractEntities.fortresses);
-    clearArrayWithPixiCleanup(GameContext.contractEntities.wallTurrets);
-    // Cleanup anomaly contract debris
-    if (contractId) {
-        filterArrayWithPixiCleanup(GameContext.environmentAsteroids, a => !a.contractId || a.contractId !== contractId);
-        filterArrayWithPixiCleanup(GameContext.enemies, e => !e.contractId || e.contractId !== contractId);
-    }
-    GameContext.activeContract = null;
-    GameContext.nextContractAt = Date.now() + 45000 + Math.random() * 30000;
-    updateContractUI();
+    completeContractSystem(success);
 }
 
 class ContractBeacon extends Entity {
@@ -21594,6 +20806,18 @@ class GateRing extends Entity {
         ctx.restore();
     }
 }
+
+registerContractHandlers({
+    findSpawnPointRelative,
+    ContractBeacon,
+    GateRing,
+    SpaceNugget,
+    Coin,
+    showOverlayMessage,
+    playSound,
+    clearArrayWithPixiCleanup,
+    filterArrayWithPixiCleanup
+});
 
 class AnomalyZone extends Entity {
     constructor(x, y, contractId = null) {
@@ -22041,30 +21265,6 @@ class WallTurret extends Entity {
     }
 }
 
-function scheduleNextShootingStar() {
-    if (GameContext.sectorIndex >= 2) {
-        GameContext.nextShootingStarTime = Date.now() + 60000; // every ~1 minute
-    } else {
-        // 3-5 minutes = 180000 to 300000 ms
-        GameContext.nextShootingStarTime = Date.now() + 180000 + Math.random() * 120000;
-    }
-}
-
-function scheduleNextRadiationStorm(fromNow = Date.now()) {
-    GameContext.nextRadiationStormAt = null;
-    GameContext.radiationStorm = null;
-}
-
-function spawnRadiationStormRelative() {
-    return;
-}
-
-function scheduleNextMiniEvent(fromNow = Date.now()) {
-    const min = 120000;  // 2m
-    const max = 210000;  // 3.5m
-    GameContext.nextMiniEventAt = fromNow + min + Math.floor(Math.random() * (max - min + 1));
-}
-
 function spawnMiniEventRelative() {
     if (!GameContext.player) return;
     const p = findSpawnPointRelative(true, 2400, 4400);
@@ -22072,6 +21272,10 @@ function spawnMiniEventRelative() {
     GameContext.miniEvent = new MiniEventDefendCache(p.x, p.y);
     showOverlayMessage("MINI-EVENT: DEFEND THE CACHE", '#ff0', 2200, 1);
     playSound('contract');
+}
+
+function spawnRadiationStormRelative() {
+    return;
 }
 
 function findSpawnPointRelative(random = false, min = 1500, max = 2500) {
@@ -22747,97 +21951,8 @@ function updateNuggetUI() {
 }
 
 // --- Profile Save / Load (player stats only) ---
-const SAVE_PREFIX = 'neon_space_profile_v1_';
-const SAVE_LAST_KEY = 'neon_space_profile_last';
-let pendingProfile = null;
 let selectedProfileName = null;
 let fromPauseMenu = false;
-
-function buildProfileData() {
-    if (!GameContext.player) return null;
-    return {
-        version: 1,
-        timestamp: Date.now(),
-        lastSavedAt: Date.now(),
-        score: GameContext.score,
-        sectorIndex: GameContext.sectorIndex,
-        totalKills: GameContext.totalKills,
-        highScore: GameContext.highScore,
-        totalPlayTimeMs: GameContext.totalPlayTimeMs,
-        player: {
-            hp: GameContext.player.hp,
-            maxHp: GameContext.player.maxHp,
-            shieldSegments: [...GameContext.player.shieldSegments],
-            maxShieldSegments: GameContext.player.maxShieldSegments,
-            outerShieldSegments: [...(GameContext.player.outerShieldSegments || [])],
-            maxOuterShieldSegments: GameContext.player.maxOuterShieldSegments || 0,
-            stats: { ...GameContext.player.stats },
-            inventory: { ...GameContext.player.inventory },
-            level: GameContext.player.level,
-            xp: GameContext.player.xp,
-            nextLevelXp: GameContext.player.nextLevelXp,
-            magnetRadius: GameContext.player.magnetRadius,
-            nukeUnlocked: GameContext.player.nukeUnlocked,
-            nukeCooldown: GameContext.player.nukeCooldown,
-            nukeMaxCooldown: GameContext.player.nukeMaxCooldown,
-            staticWeapons: [...GameContext.player.staticWeapons],
-            shieldRotation: GameContext.player.shieldRotation,
-            outerShieldRotation: GameContext.player.outerShieldRotation,
-            outerShieldRadius: GameContext.player.outerShieldRadius,
-            invincibilityCycle: { ...GameContext.player.invincibilityCycle },
-            turboBoost: { ...GameContext.player.turboBoost },
-            nukeDamage: GameContext.player.nukeDamage,
-            nukeRange: GameContext.player.nukeRange
-        }
-    };
-}
-
-function applyProfile(profile) {
-    if (!profile || !profile.player || !GameContext.player) {
-        pendingProfile = profile || null;
-        return;
-    }
-    const src = profile.player;
-    GameContext.player.maxHp = src.maxHp || GameContext.player.maxHp;
-    GameContext.player.hp = Math.min(src.hp || GameContext.player.hp, GameContext.player.maxHp);
-    if (src.shieldSegments) GameContext.player.shieldSegments = [...src.shieldSegments];
-    GameContext.player.maxShieldSegments = src.maxShieldSegments || GameContext.player.shieldSegments.length;
-    if (typeof src.maxOuterShieldSegments === 'number') GameContext.player.maxOuterShieldSegments = src.maxOuterShieldSegments;
-    if (src.outerShieldSegments) GameContext.player.outerShieldSegments = [...src.outerShieldSegments];
-    GameContext.player.stats = { ...GameContext.player.stats, ...(src.stats || {}) };
-    GameContext.player.inventory = { ...(src.inventory || {}) };
-    GameContext.player.level = src.level || GameContext.player.level;
-    GameContext.player.xp = src.xp || 0;
-    GameContext.player.nextLevelXp = src.nextLevelXp || GameContext.player.nextLevelXp;
-    if (typeof src.magnetRadius === 'number') GameContext.player.magnetRadius = src.magnetRadius;
-    GameContext.player.nukeUnlocked = !!src.nukeUnlocked;
-    if (typeof src.nukeCooldown === 'number') GameContext.player.nukeCooldown = src.nukeCooldown;
-    if (typeof src.nukeMaxCooldown === 'number') GameContext.player.nukeMaxCooldown = src.nukeMaxCooldown;
-    if (typeof src.nukeDamage === 'number') GameContext.player.nukeDamage = src.nukeDamage;
-    if (typeof src.nukeRange === 'number') GameContext.player.nukeRange = src.nukeRange;
-    GameContext.player.staticWeapons = src.staticWeapons ? [...src.staticWeapons] : GameContext.player.staticWeapons;
-    if (typeof src.shieldRotation === 'number') GameContext.player.shieldRotation = src.shieldRotation;
-    if (typeof src.outerShieldRotation === 'number') GameContext.player.outerShieldRotation = src.outerShieldRotation;
-    if (typeof src.outerShieldRadius === 'number') GameContext.player.outerShieldRadius = src.outerShieldRadius;
-    GameContext.player.invincibilityCycle = { ...GameContext.player.invincibilityCycle, ...(src.invincibilityCycle || {}) };
-    if (src.turboBoost) GameContext.player.turboBoost = { ...GameContext.player.turboBoost, ...(src.turboBoost || {}) };
-    // Stock ship always has a minimal turbo boost even on older saves.
-    GameContext.player.turboBoost.unlocked = true;
-    GameContext.player.turboBoost.durationFrames = Math.max(60, GameContext.player.turboBoost.durationFrames || 0);
-    GameContext.player.turboBoost.cooldownTotalFrames = 600;
-    GameContext.player.turboBoost.speedMult = Math.max(1.25, GameContext.player.turboBoost.speedMult || 0);
-
-    // Restore profile statistics
-    if (typeof profile.totalKills === 'number') GameContext.totalKills = profile.totalKills;
-    if (typeof profile.highScore === 'number') GameContext.highScore = profile.highScore;
-    if (typeof profile.totalPlayTimeMs === 'number') GameContext.totalPlayTimeMs = profile.totalPlayTimeMs;
-
-    updateHealthUI();
-    updateWarpUI();
-    updateTurboUI();
-    updateXpUI();
-    pendingProfile = null;
-}
 
 function showAbortConfirmDialog() {
     return new Promise((resolve) => {
@@ -23017,54 +22132,6 @@ function showRenamePromptDialog(defaultName) {
     });
 }
 
-function listSaveSlots() {
-    const slots = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith(SAVE_PREFIX)) {
-            slots.push(k.replace(SAVE_PREFIX, ''));
-        }
-    }
-    return slots;
-}
-
-function getProfileList() {
-    const profiles = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith(SAVE_PREFIX)) {
-            const raw = localStorage.getItem(k);
-            try {
-                const data = JSON.parse(raw);
-                const name = k.replace(SAVE_PREFIX, '');
-                const p = data.player || {};
-
-                const storedHighScore = data.highScore || 0;
-                const currentScore = data.score || 0;
-                const effectiveHighScore = Math.max(storedHighScore, currentScore);
-
-                profiles.push({
-                    name: name,
-                    level: p.level || 1,
-                    xp: p.xp || 0,
-                    nextXp: p.nextLevelXp || 100,
-                    hp: p.hp || 100,
-                    maxHp: p.maxHp || 100,
-                    totalKills: data.totalKills || 0,
-                    sectorIndex: data.sectorIndex || 1,
-                    score: data.score || 0,
-                    highScore: effectiveHighScore,
-                    totalPlayTimeMs: data.totalPlayTimeMs || 0,
-                    timestamp: data.lastSavedAt || data.timestamp || 0
-                });
-            } catch (e) {
-                console.warn('Failed to parse profile', name, e);
-            }
-        }
-    }
-    return profiles.sort((a, b) => b.timestamp - a.timestamp);
-}
-
 function formatPlayTime(ms) {
     const totalSec = Math.floor(ms / 1000);
     const hours = Math.floor(totalSec / 3600);
@@ -23097,12 +22164,11 @@ function selectProfile(name) {
     // Reset stats when switching profiles to prevent carryover
     resetProfileStats();
 
-    GameContext.currentProfileName = name;
-    localStorage.setItem(SAVE_LAST_KEY, name);
+    selectProfileRecord(name);
 
     // Reload meta profile for the selected profile
     GameContext.metaProfile = { purchases: {}, bank: 0 };
-    loadMetaProfile();
+    loadMetaProfileSystem();
 
     updateStartScreenDisplay();
     showOverlayMessage(`SELECTED: ${name}`, '#ff0', 1200);
@@ -23115,80 +22181,16 @@ function resetProfileStats() {
 }
 
 function createNewProfile() {
-    const existingProfiles = listSaveSlots();
-
-    // Clear legacy global meta profile key to prevent migration to new profiles
-    localStorage.removeItem('meta_profile_v1');
-
-    let counter = 1;
-    let newName;
-    do {
-        newName = `profile${counter}`;
-        counter++;
-    } while (existingProfiles.includes(newName));
-
-    const template = {
-        version: 1,
-        timestamp: Date.now(),
-        lastSavedAt: Date.now(),
-        score: 0,
-        sectorIndex: 1,
-        totalKills: 0,
-        highScore: 0,
-        totalPlayTimeMs: 0,
-        player: null
-    };
-
-    try {
-        localStorage.setItem(SAVE_PREFIX + newName, JSON.stringify(template));
-
-        // Initialize empty meta profile for new profile
-        const newMetaProfile = {
-            bank: 0,
-            purchases: {
-                startDamage: 0,
-                passiveHp: 0,
-                rerollTokens: 0,
-                hullPlating: 0,
-                shieldCore: 0,
-                staticBlueprint: 0,
-                missilePrimer: 0,
-                magnetBooster: 0,
-                nukeCapacitor: 0,
-                speedTuning: 0,
-                bankMultiplier: 0,
-                shopDiscount: 0,
-                extraLife: 0,
-                droneFabricator: 0,
-                piercingRounds: 0,
-                explosiveRounds: 0,
-                criticalStrike: 0,
-                splitShot: 0,
-                thornArmor: 0,
-                lifesteal: 0,
-                evasionBoost: 0,
-                shieldRecharge: 0,
-                dashCooldown: 0,
-                dashDuration: 0,
-                xpMagnetPlus: 0,
-                autoReroll: 0,
-                nuggetMagnet: 0,
-                contractSpeed: 0,
-                startingRerolls: 0,
-                luckyDrop: 0,
-                bountyHunter: 0,
-                comboMeter: 0,
-                startingWeapon: 0,
-                secondWind: 0
-            }
-        };
-        localStorage.setItem(`meta_profile_v1_${newName}`, JSON.stringify(newMetaProfile));
-    } catch (e) {
+    const newName = createNewProfileRecord();
+    if (!newName) {
         showOverlayMessage("PROFILE CREATE FAILED", '#f00', 1500);
         return;
     }
 
-    selectProfile(newName);
+    selectProfileRecord(newName);
+    GameContext.metaProfile = { purchases: {}, bank: 0 };
+    loadMetaProfileSystem();
+    updateStartScreenDisplay();
     showSaveMenu();
     showOverlayMessage(`CREATED: ${newName}`, '#0f0', 1200);
 }
@@ -23212,7 +22214,7 @@ async function renameSelectedProfile() {
     if (!newName || newName === oldName) return;
 
     // Check if name already exists
-    const existingProfiles = listSaveSlots();
+    const existingProfiles = listSaveSlotsSystem();
     if (existingProfiles.includes(newName)) {
         showOverlayMessage("PROFILE NAME EXISTS", '#f00', 1500);
         return;
@@ -23264,14 +22266,11 @@ async function deleteSelectedProfile() {
         return;
     }
 
-    localStorage.removeItem(SAVE_PREFIX + selectedProfileName);
-    localStorage.removeItem(`meta_profile_v1_${selectedProfileName}`);
-    if (GameContext.currentProfileName === selectedProfileName) {
-        GameContext.currentProfileName = null;
-        localStorage.removeItem(SAVE_LAST_KEY);
+    deleteProfileRecord(selectedProfileName);
+    if (!GameContext.currentProfileName) {
         resetProfileStats();
-        resetMetaProfile(); // Clear in-memory upgrades
-        updateMetaUI();     // Update UI to show 0 bank/upgrades
+        resetMetaProfileSystem(); // Clear in-memory upgrades
+        updateMetaUISystem();     // Update UI to show 0 bank/upgrades
         updateStartScreenDisplay();
     }
 
@@ -23284,7 +22283,7 @@ function showSaveMenu() {
     const menu = document.getElementById('save-menu');
     const listEl = document.getElementById('profile-list');
 
-    const profiles = getProfileList();
+    const profiles = getProfileListSystem();
     listEl.innerHTML = '';
 
     // Auto-select a profile: current profile if it exists and is valid, otherwise first profile
@@ -23361,7 +22360,7 @@ function showSaveMenu() {
 
 function autoSaveToCurrentProfile() {
     if (!GameContext.currentProfileName) return;
-    saveToSlot(GameContext.currentProfileName, true);
+    saveGameSystem(GameContext.currentProfileName, true);
 }
 
 function showCustomPrompt(message, defaultValue) {
@@ -23421,19 +22420,6 @@ function showCustomPrompt(message, defaultValue) {
     });
 }
 
-function saveToSlot(slot, silent = false) {
-    try {
-        const data = buildProfileData();
-        if (!data) throw new Error('no player');
-        localStorage.setItem(SAVE_PREFIX + slot, JSON.stringify(data));
-        localStorage.setItem(SAVE_LAST_KEY, slot);
-        if (!silent) showOverlayMessage(`PROFILE SAVED (${slot})`, '#0f0', 1500);
-    } catch (e) {
-        console.warn('save failed', e);
-        if (!silent) showOverlayMessage("SAVE FAILED", '#f00', 1500);
-    }
-}
-
 function wipeProfiles() {
     // Remove all stored profiles and meta progression
     const toDelete = [];
@@ -23446,11 +22432,10 @@ function wipeProfiles() {
     toDelete.forEach(k => localStorage.removeItem(k));
     localStorage.removeItem(SAVE_LAST_KEY);
     localStorage.removeItem('meta_profile_v1');
-    resetMetaProfile();
-    pendingProfile = null;
+    resetMetaProfileSystem();
     GameContext.rerollTokens = 0;
     GameContext.currentProfileName = null;
-    updateMetaUI();
+    updateMetaUISystem();
     updateStartScreenDisplay();
     showOverlayMessage("PROFILE RESET - STARTING FRESH", '#0f0', 2000);
 }
@@ -23617,601 +22602,6 @@ function spawnNewPinwheelRelative(initial = false) {
     GameContext.enemies.push(new Enemy('defender', { x: defX, y: defY }, b));
 }
 
-// --- Upgrade Logic ---
-
-function showLevelUpMenu() {
-    const container = document.getElementById('upgrade-container');
-    container.innerHTML = '';
-    const parent = container.parentElement;
-    const existingReroll = document.getElementById('reroll-btn');
-    if (existingReroll) existingReroll.remove();
-
-    // 1. Filter Valid Upgrades with tier requirements
-    const validUpgrades = [];
-
-    // Count upgrades at each tier
-    let tier2Count = 0;
-    let tier4Count = 0;
-    Object.values(GameContext.player.inventory).forEach(tier => {
-        if (tier === 2) tier2Count++;
-        if (tier === 3) tier2Count++; // tier 3+ counts toward tier 2 requirement
-        if (tier === 4) tier4Count++;
-        if (tier === 5) tier4Count++; // tier 5 counts toward tier 4 requirement
-    });
-
-    UPGRADE_DATA.categories.forEach(cat => {
-        cat.upgrades.forEach(up => {
-            const currentTier = GameContext.player.inventory[up.id] || 0;
-            const nextTier = currentTier + 1;
-
-            // Tier requirements:
-            // - Can't get tier 3 unless player has at least 5 tier 2 upgrades
-            // - Can't get tier 5 unless player has at least 5 tier 4 upgrades
-            if (nextTier >= 3 && tier2Count < 5) {
-                return; // Skip tier 3+ until player has 5 tier 2 upgrades
-            }
-            if (nextTier >= 5 && tier4Count < 5) {
-                return; // Skip tier 5 until player has 5 tier 4 upgrades
-            }
-
-            validUpgrades.push({ ...up, category: cat.name });
-        });
-    });
-
-    // Handle case when no upgrades are available (shouldn't happen with infinite tiers)
-    if (validUpgrades.length === 0) {
-        // Show message that no upgrades are available
-        showOverlayMessage("NO UPGRADES AVAILABLE!", '#f00', 2000);
-
-        // Give bonus health as a reward for leveling up
-        if (GameContext.player && !GameContext.player.dead) {
-            GameContext.player.hp = Math.min(GameContext.player.hp + 3, GameContext.player.maxHp);
-            updateHealthUI();
-            playSound('powerup');
-        }
-
-        // Resume game with the same timing reset logic as normal upgrade selection
-        // This prevents jitter and timing issues when resuming
-        requestAnimationFrame(() => {
-            setTimeout(() => {
-                // Force reset interpolation for all entities to prevent visual jumps
-                const resetEnt = (e) => {
-                    if (e && e.pos && e.prevPos) {
-                        e.prevPos.x = e.pos.x;
-                        e.prevPos.y = e.pos.y;
-                    }
-                };
-                if (GameContext.player) resetEnt(GameContext.player);
-                if (GameContext.boss) resetEnt(GameContext.boss);
-                if (GameContext.spaceStation) resetEnt(GameContext.spaceStation);
-                if (GameContext.enemies) GameContext.enemies.forEach(resetEnt);
-                if (GameContext.pinwheels) GameContext.pinwheels.forEach(resetEnt);
-                if (GameContext.bullets) GameContext.bullets.forEach(resetEnt);
-                if (GameContext.particles) GameContext.particles.forEach(resetEnt);
-                if (GameContext.floatingTexts) GameContext.floatingTexts.forEach(resetEnt);
-
-                // Reset simAccMs to zero to avoid catching up
-                simAccMs = 0;
-                // Update simLastPerfAt to current time to prevent large delta
-                simLastPerfAt = performance.now();
-
-                suppressWarpGateUntil = getGameNowMs() + 750;
-                suppressWarpInputUntil = suppressWarpGateUntil;
-                GameContext.gameActive = true;
-                if (musicEnabled) startMusic();
-            }, 100);
-        });
-        return;
-    }
-
-    // 2. Pick 3 Random with weighted selection (prioritize unseen upgrades)
-    const choices = [];
-    const count = Math.min(3, validUpgrades.length);
-
-    // Weight upgrades: unseen get 3x weight, already seen get 1x weight
-    const weightedUpgrades = [];
-    for (const upgrade of validUpgrades) {
-        const hasBeenShown = GameContext.shownUpgradesThisRun.has(upgrade.id);
-        const weight = hasBeenShown ? 1 : 3; // Unseen upgrades are 3x more likely
-
-        // Add the upgrade multiple times based on weight to create weighted pool
-        for (let w = 0; w < weight; w++) {
-            weightedUpgrades.push(upgrade);
-        }
-    }
-
-    // Pick from weighted pool without duplicates
-    const pickedIds = new Set();
-    for (let i = 0; i < count; i++) {
-        if (weightedUpgrades.length === 0) break;
-
-        const idx = Math.floor(Math.random() * weightedUpgrades.length);
-        const choice = weightedUpgrades[idx];
-
-        // Skip if we already picked this upgrade
-        if (!pickedIds.has(choice.id)) {
-            choices.push(choice);
-            pickedIds.add(choice.id);
-
-            // Mark as shown for this run
-            GameContext.shownUpgradesThisRun.add(choice.id);
-        }
-
-        // Remove all instances of this upgrade from the pool to avoid duplicates
-        for (let j = weightedUpgrades.length - 1; j >= 0; j--) {
-            if (weightedUpgrades[j].id === choice.id) {
-                weightedUpgrades.splice(j, 1);
-            }
-        }
-    }
-
-    // Reroll button - uses tokens if available, otherwise costs 5 nuggets
-    const rerollBtn = document.createElement('button');
-    rerollBtn.id = 'reroll-btn';
-    rerollBtn.style.marginTop = '10px';
-    rerollBtn.style.padding = '12px 24px';
-    rerollBtn.style.fontSize = '16px';
-    rerollBtn.style.backgroundColor = '#4a2';
-    rerollBtn.style.color = '#fff';
-    rerollBtn.style.cursor = 'pointer';
-
-    const updateRerollButton = () => {
-        if (GameContext.rerollTokens > 0) {
-            rerollBtn.textContent = `REROLL OPTIONS (TOKENS: ${GameContext.rerollTokens})`;
-            rerollBtn.style.backgroundColor = '#4a2';
-            rerollBtn.disabled = false;
-        } else {
-            rerollBtn.textContent = `REROLL (5 NUGGETS)`;
-            rerollBtn.style.backgroundColor = GameContext.spaceNuggets >= 5 ? '#2a4' : '#333';
-            rerollBtn.disabled = GameContext.spaceNuggets < 5;
-        }
-    };
-
-    updateRerollButton();
-
-    rerollBtn.onclick = () => {
-        if (GameContext.rerollTokens > 0) {
-            // Use purchased reroll token
-            GameContext.rerollTokens--;
-            GameContext.metaProfile.purchases.rerollTokens = GameContext.rerollTokens;
-            saveMetaProfile();
-            showLevelUpMenu();
-        } else if (GameContext.spaceNuggets >= 5) {
-            // Spend 5 nuggets
-            GameContext.spaceNuggets -= 5;
-            updateNuggetUI();
-            showLevelUpMenu();
-        }
-    };
-
-    parent.insertBefore(rerollBtn, container);
-
-    // 3. Create DOM
-    choices.forEach((choice, index) => {
-        const currentTier = GameContext.player.inventory[choice.id] || 0;
-        const nextTier = currentTier + 1;
-        // Get tier description with fallback to previous tier if undefined
-        let desc = choice[`tier${nextTier}`];
-        if (!desc) {
-            // Fallback: try lower tiers or show max tier message
-            for (let t = nextTier - 1; t >= 1; t--) {
-                if (choice[`tier${t}`]) {
-                    desc = choice[`tier${t}`];
-                    break;
-                }
-            }
-            if (!desc) desc = "Further upgrade";
-        }
-
-        const card = document.createElement('div');
-        card.className = 'upgrade-card';
-        card.innerHTML = `
-                    <div class="upgrade-title">${choice.name}</div>
-                    <div style="color:#aaa; font-size:12px; margin-bottom:10px">${choice.category}</div>
-                    <div class="upgrade-desc">${desc}</div>
-                    <div style="font-size:12px; color:#888; margin-top:10px">${choice.notes}</div>
-                `;
-
-        card.onmouseenter = () => {
-            const active = getActiveMenuElements();
-            const cardIndex = active.indexOf(card);
-            if (cardIndex >= 0) {
-                GameContext.menuSelectionIndex = cardIndex;
-                updateMenuVisuals(active);
-            }
-        };
-
-        card.onmouseleave = () => {
-            const active = getActiveMenuElements();
-            GameContext.menuSelectionIndex = active.indexOf(document.getElementById('reroll-btn'));
-            updateMenuVisuals(active);
-        };
-
-        card.onclick = () => {
-            // Apply the upgrade first
-            applyUpgrade(choice.id, nextTier);
-            document.getElementById('levelup-screen').style.display = 'none';
-
-            // Smooth timing reset to prevent jitter on resume
-            // We don't reset simLastPerfAt to 0 anymore - that causes a large frameDt spike
-            // Instead, we let the frame accumulator naturally handle the pause
-
-            // Delay resume to allow browser layout/GC to settle
-            requestAnimationFrame(() => {
-                // Force garbage collection if available (Chrome dev tools)
-                if (typeof window !== 'undefined' && window.gc && typeof window.gc === 'function') {
-                    try { window.gc(); } catch (e) { }
-                }
-
-                setTimeout(() => {
-                    // Force reset interpolation for all entities to prevent visual jumps
-                    // if the first frame has weird timing.
-                    const resetEnt = (e) => {
-                        if (e && e.pos && e.prevPos) {
-                            e.prevPos.x = e.pos.x;
-                            e.prevPos.y = e.pos.y;
-                        }
-                    };
-                    if (GameContext.player) resetEnt(GameContext.player);
-                    if (GameContext.boss) resetEnt(GameContext.boss);
-                    if (GameContext.spaceStation) resetEnt(GameContext.spaceStation);
-                    if (GameContext.enemies) GameContext.enemies.forEach(resetEnt);
-                    if (GameContext.pinwheels) GameContext.pinwheels.forEach(resetEnt);
-                    if (GameContext.bullets) GameContext.bullets.forEach(resetEnt);
-                    if (GameContext.particles) GameContext.particles.forEach(resetEnt);
-                    if (GameContext.floatingTexts) GameContext.floatingTexts.forEach(resetEnt);
-
-                    // Reset simAccMs to zero to avoid catching up
-                    simAccMs = 0;
-                    // Update simLastPerfAt to current time to prevent large delta
-                    simLastPerfAt = performance.now();
-
-                    suppressWarpGateUntil = getGameNowMs() + 750;
-                    suppressWarpInputUntil = suppressWarpGateUntil;
-                    GameContext.gameActive = true;
-                    if (musicEnabled) startMusic();
-                }, 100); // Reduced from 200ms for snappier resume
-            });
-        };
-        container.appendChild(card);
-    });
-
-    document.getElementById('levelup-screen').style.display = 'flex';
-    // Keep background music playing during the upgrade choice.
-
-    // Restore 3 HP whenever the upgrade/level-up menu appears
-    try {
-        if (GameContext.player && !GameContext.player.dead) {
-            GameContext.player.hp = Math.min(GameContext.player.hp + 3, GameContext.player.maxHp);
-            updateHealthUI();
-            playSound('powerup');
-        }
-    } catch (e) { console.warn('heal on levelup failed', e); }
-
-    // Reset selection for gamepad
-    GameContext.menuSelectionIndex = 0;
-    const cards = getActiveMenuElements();
-    if (cards.length > 0) updateMenuVisuals(cards);
-}
-
-/**
- * Calculate progressive diminishing returns for infinite tiers
- * Formula: baseValue * (1 + sum of 0.01 * decayFactor^(i-1) for each tier beyond 3)
- * Tier 4: +1%, Tier 5: +1.99%, Tier 6: +2.97%, etc. (progressive decay)
- */
-function getDiminishingValue(tier, baseTable, decayFactor = 0.99) {
-    if (tier <= 3) return baseTable[tier] || 1.0;
-
-    const baseValue = baseTable[3] || 1.0;
-    const tiersBeyond = tier - 3;
-
-    // Progressive decay: each tier gives slightly less than the last
-    // Tier 4: +0.01, Tier 5: +0.0099, Tier 6: +0.009801, etc.
-    let totalBonus = 0;
-    for (let i = 1; i <= tiersBeyond; i++) {
-        totalBonus += 0.01 * Math.pow(decayFactor, i - 1);
-    }
-
-    return baseValue * (1 + totalBonus);
-}
-
-/**
- * Calculate meta upgrade cost with slow exponential scaling
- * Formula: baseCost * (1.2 ^ currentTier)
- * Tier 1: base, Tier 2: *1.2, Tier 3: *1.44, etc.
- */
-function getMetaUpgradeCost(upgradeId, baseCost) {
-    const currentTier = GameContext.metaProfile.purchases[upgradeId] || 0;
-    // Tier-based shop discount: 10% per tier for first 3 tiers, then diminishing
-    const discountTier = GameContext.metaProfile.purchases.shopDiscount || 0;
-    let discount = 1.0;
-    if (discountTier > 0) {
-        const discountMultiplier = 0.1 * Math.min(discountTier, 3);
-        if (discountTier > 3) {
-            const table = { 0: 1.0, 1: 0.9, 2: 0.8, 3: 0.7 };
-            const extraValue = getDiminishingValue(discountTier, table, 0.99);
-            discount = extraValue;
-        } else {
-            discount = 1.0 - discountMultiplier;
-        }
-    }
-    const cost = Math.ceil(baseCost * Math.pow(1.2, currentTier) * discount);
-    return cost;
-}
-
-function applyUpgrade(id, tier) {
-    const prevTier = GameContext.player.inventory[id] || 0;
-    GameContext.player.inventory[id] = tier;
-
-    // Track upgrades for cruiser first-spawn logic 
-    try {
-        GameContext.dreadManager.upgradesChosen = (GameContext.dreadManager.upgradesChosen || 0) + 1;
-        // On the 3rd chosen upgrade, schedule the first cruiser to spawn after 10s
-        // On the 3rd chosen upgrade, schedule the first cruiser to spawn after 10s
-        if (!GameContext.dreadManager.firstSpawnDone && GameContext.dreadManager.upgradesChosen >= 3 && !GameContext.bossActive && !GameContext.dreadManager.timerActive) {
-            GameContext.dreadManager.timerAt = Date.now() + 10000; // 10 seconds (real time)
-            GameContext.dreadManager.timerActive = true;
-            // Countdown will automatically show 10 seconds before spawn
-        }
-    } catch (e) { console.warn('dreadManager upgrade increment failed', e); }
-
-    // Logic Map 
-    switch (id) {
-        case 'turret_damage':
-            {
-                const table = { 0: 1.0, 1: 1.5, 2: 2.0, 3: 3.0 };
-                const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
-                const next = table[tier] || getDiminishingValue(tier, table, 0.99);
-                const ratio = (prev > 0) ? (next / prev) : 1.0;
-                GameContext.player.stats.damageMult *= ratio;
-            }
-            break;
-        case 'turret_fire_rate':
-            {
-                const table = { 0: 1.0, 1: 1.15, 2: 1.30, 3: 1.50 };
-                const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
-                const next = table[tier] || getDiminishingValue(tier, table, 0.99);
-                const ratio = (prev > 0) ? (next / prev) : 1.0;
-                GameContext.player.stats.fireRateMult *= ratio;
-            }
-            break;
-        case 'turret_range':
-            {
-                const table = { 0: 1.0, 1: 1.25, 2: 1.50, 3: 2.0 };
-                const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
-                const next = table[tier] || getDiminishingValue(tier, table, 0.99);
-                const ratio = (prev > 0) ? (next / prev) : 1.0;
-                GameContext.player.stats.rangeMult *= ratio;
-            }
-            break;
-        case 'multi_shot':
-            GameContext.player.stats.multiShot = tier + 1; // 2, 3, 4
-            break;
-        case 'static_weapons':
-            {
-                // Remove old upgrade-sourced weapons to prevent duplicates when re-upgrading
-                GameContext.player.staticWeapons = GameContext.player.staticWeapons.filter(w => w.source !== 'upgrade');
-
-                const weaponTypes = ['forward', 'side', 'rear', 'dual_rear', 'dual_front'];
-
-                // Add weapons for current tier (with source tracking)
-                for (let i = 0; i < tier && i < weaponTypes.length; i++) {
-                    GameContext.player.staticWeapons.push({ type: weaponTypes[i], source: 'upgrade' });
-                }
-
-                // Beyond defined types, add cycling duplicates with effectiveness penalty
-                if (tier > weaponTypes.length) {
-                    for (let i = weaponTypes.length; i < tier; i++) {
-                        const duplicateIndex = i - weaponTypes.length;
-                        const effectiveness = Math.max(0.2, 1 - (duplicateIndex * 0.2)); // 80%, 60%, 40%, 20%
-                        GameContext.player.staticWeapons.push({
-                            type: weaponTypes[i % weaponTypes.length],
-                            source: 'upgrade',
-                            effectiveness: effectiveness
-                        });
-                    }
-                }
-                GameContext.player.staticCannonCount = GameContext.player.staticWeapons.length; // Vis only
-            }
-            break;
-        case 'homing_missiles':
-            GameContext.player.stats.homingFromUpgrade = tier;
-            // Update effective value (for backward compatibility with auto-fire check)
-            GameContext.player.stats.homing = Math.max(GameContext.player.stats.homingFromUpgrade, GameContext.player.stats.homingFromMeta);
-            break;
-        case 'segment_count':
-            if (tier === 1) GameContext.player.shieldSegments.push(2, 2); // 8+2=10
-            if (tier === 2) GameContext.player.shieldSegments.push(2, 2, 2, 2); // 10+4=14
-            if (tier === 3) GameContext.player.shieldSegments.push(2, 2, 2, 2); // 14+4=18
-            if (tier === 4) GameContext.player.shieldSegments.push(2, 2, 2, 2, 2, 2, 2, 2); // 18+8=26
-            if (tier === 5) GameContext.player.shieldSegments.push(2, 2, 2, 2, 2, 2, 2, 2); // 26+8=30
-            GameContext.player.maxShieldSegments = GameContext.player.shieldSegments.length;
-            break;
-        case 'outer_shield':
-            if (tier === 1) GameContext.player.maxOuterShieldSegments = 6;
-            if (tier === 2) GameContext.player.maxOuterShieldSegments = 8;
-            if (tier === 3) GameContext.player.maxOuterShieldSegments = 12;
-            if (tier === 4) GameContext.player.maxOuterShieldSegments = 16;
-            if (tier === 5) GameContext.player.maxOuterShieldSegments = 20;
-            GameContext.player.outerShieldRadius = GameContext.player.shieldRadius + (26 * PLAYER_SHIELD_RADIUS_SCALE);
-            GameContext.player.outerShieldSegments = new Array(GameContext.player.maxOuterShieldSegments).fill(1);
-            break;
-        case 'shield_regen':
-            if (tier === 1) GameContext.player.stats.shieldRegenRate = 5;
-            if (tier === 2) GameContext.player.stats.shieldRegenRate = 3;
-            if (tier === 3) GameContext.player.stats.shieldRegenRate = 1;
-            if (tier === 4) GameContext.player.stats.shieldRegenRate = 0.75;
-            if (tier === 5) GameContext.player.stats.shieldRegenRate = 0.5;
-            break;
-        case 'hp_regen':
-            GameContext.player.stats.hpRegenAmount = tier; // 1/2/3 HP per tick
-            GameContext.player.stats.hpRegenRate = 5; // fixed 5s tick
-            GameContext.player.lastHpRegenTime = Date.now();
-            break;
-        case 'hull_strength':
-            GameContext.player.maxHp += 25;
-            GameContext.player.hp = Math.min(GameContext.player.hp + 25, GameContext.player.maxHp); // restore 25 HP on upgrade
-            updateHealthUI();
-            break;
-        case 'speed':
-            {
-                const table = { 0: 1.0, 1: 1.15, 2: 1.30, 3: 1.50 };
-                const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
-                const next = table[tier] || getDiminishingValue(tier, table, 0.99);
-                const ratio = (prev > 0) ? (next / prev) : 1.0;
-                GameContext.player.stats.speedMult *= ratio;
-            }
-            break;
-        case 'turbo_boost': {
-            GameContext.player.turboBoost.unlocked = true;
-            if (tier === 1) GameContext.player.turboBoost.durationFrames = 120; // 2.0s
-            if (tier === 2) GameContext.player.turboBoost.durationFrames = 210; // 3.5s
-            if (tier === 3) GameContext.player.turboBoost.durationFrames = 300; // 5.0s
-            if (tier === 4) GameContext.player.turboBoost.durationFrames = 390; // 6.5s
-            if (tier === 5) GameContext.player.turboBoost.durationFrames = 480; // 8.0s
-            GameContext.player.turboBoost.cooldownTotalFrames = 600; // fixed 10s cooldown
-            GameContext.player.turboBoost.speedMult = 1.5;
-            GameContext.player.turboBoost.activeFrames = 0;
-            GameContext.player.turboBoost.cooldownFrames = 0;
-            updateTurboUI();
-            break;
-        }
-        case 'xp_magnet':
-            if (tier === 1) GameContext.player.magnetRadius = 300;
-            if (tier === 2) GameContext.player.magnetRadius = 600;
-            if (tier === 3) GameContext.player.magnetRadius = 1200;
-            if (tier === 4) GameContext.player.magnetRadius = 1800;
-            if (tier === 5) GameContext.player.magnetRadius = 2400;
-            break;
-        case 'area_nuke':
-            GameContext.player.nukeUnlocked = true;
-            GameContext.player.nukeMaxCooldown = 600; // 10s
-            if (tier === 1) { GameContext.player.nukeDamage = 5; GameContext.player.nukeRange = 600; }
-            if (tier === 2) { GameContext.player.nukeDamage = 10; GameContext.player.nukeRange = 700; }
-            if (tier === 3) { GameContext.player.nukeDamage = 15; GameContext.player.nukeRange = 900; }
-            if (tier === 4) { GameContext.player.nukeDamage = 20; GameContext.player.nukeRange = 1000; }
-            if (tier === 5) { GameContext.player.nukeDamage = 25; GameContext.player.nukeRange = 1200; }
-            break;
-        case 'invincibility':
-            GameContext.player.invincibilityCycle.unlocked = true;
-            if (tier === 1) GameContext.player.invincibilityCycle.stats = { duration: 180, cooldown: 1200, regen: false }; // 3s / 20s
-            if (tier === 2) GameContext.player.invincibilityCycle.stats = { duration: 300, cooldown: 900, regen: false }; // 5s / 15s
-            if (tier === 3) GameContext.player.invincibilityCycle.stats = { duration: 420, cooldown: 600, regen: true }; // 7s / 10s
-            if (tier === 4) GameContext.player.invincibilityCycle.stats = { duration: 540, cooldown: 480, regen: true }; // 9s / 8s
-            if (tier === 5) GameContext.player.invincibilityCycle.stats = { duration: 720, cooldown: 360, regen: true }; // 12s / 6s
-            GameContext.player.invincibilityCycle.state = 'ready';
-            GameContext.player.invincibilityCycle.timer = 0;
-            break;
-        case 'slow_field':
-            if (tier === 1) { GameContext.player.stats.slowField = 250; GameContext.player.stats.slowFieldDuration = 180; }
-            if (tier === 2) { GameContext.player.stats.slowField = 312; GameContext.player.stats.slowFieldDuration = 300; }
-            if (tier === 3) { GameContext.player.stats.slowField = 390; GameContext.player.stats.slowFieldDuration = 480; }
-            if (tier === 4) { GameContext.player.stats.slowField = 390; GameContext.player.stats.slowFieldDuration = 600; }
-            if (tier === 5) { GameContext.player.stats.slowField = 487; GameContext.player.stats.slowFieldDuration = 720; }
-            break;
-        case 'companion_drones': {
-            const ensureDrone = (t) => {
-                if (!GameContext.drones.find(d => d.type === t)) spawnDrone(t);
-            };
-            if (tier >= 1) ensureDrone('shooter');
-            if (tier >= 2) ensureDrone('shield');
-            if (tier >= 3) ensureDrone('heal');
-            if (tier >= 4) ensureDrone('shooter'); // 2nd shooter
-            if (tier >= 5) ensureDrone('shield'); // 2nd shield
-            break;
-        }
-        case 'volley_shot':
-            GameContext.player.volleyShotUnlocked = true;
-            if (tier === 1) { GameContext.player.volleyShotCount = 3; }
-            if (tier === 2) { GameContext.player.volleyShotCount = 5; }
-            if (tier === 3) { GameContext.player.volleyShotCount = 7; }
-            if (tier === 4) { GameContext.player.volleyShotCount = 9; }
-            if (tier === 5) { GameContext.player.volleyShotCount = 11; }
-            break;
-        case 'ciws':
-            console.log('[CIWS] Applying CIWS upgrade, tier:', tier);
-            GameContext.player.ciwsUnlocked = true;
-            // Tier determines damage: 1, 2, 3, 4, 5
-            GameContext.player.ciwsDamage = tier;
-            console.log('[CIWS] CIWS unlocked:', GameContext.player.ciwsUnlocked, 'damage:', GameContext.player.ciwsDamage);
-            break;
-        case 'chain_lightning':
-            if (tier === 1) { GameContext.player.chainLightningCount = 1; GameContext.player.chainLightningRange = 200; }
-            if (tier === 2) { GameContext.player.chainLightningCount = 2; GameContext.player.chainLightningRange = 250; }
-            if (tier === 3) { GameContext.player.chainLightningCount = 3; GameContext.player.chainLightningRange = 300; }
-            if (tier === 4) { GameContext.player.chainLightningCount = 4; GameContext.player.chainLightningRange = 350; }
-            if (tier === 5) { GameContext.player.chainLightningCount = 5; GameContext.player.chainLightningRange = 400; }
-            break;
-        case 'backstabber':
-            if (tier === 1) GameContext.player.stats.backstabberBonus = 1.5;
-            if (tier === 2) GameContext.player.stats.backstabberBonus = 2.0;
-            if (tier === 3) { GameContext.player.stats.backstabberBonus = 2.5; GameContext.player.stats.backstabberSlow = 120; }
-            if (tier === 4) { GameContext.player.stats.backstabberBonus = 3.0; GameContext.player.stats.backstabberSlow = 180; }
-            if (tier === 5) { GameContext.player.stats.backstabberBonus = 3.5; GameContext.player.stats.backstabberSlow = 240; }
-            break;
-        case 'reactive_shield':
-            if (tier === 1) GameContext.player.stats.reactiveShield = 1;
-            if (tier === 2) GameContext.player.stats.reactiveShield = 2;
-            if (tier === 3) {
-                GameContext.player.stats.reactiveShield = 3;
-                GameContext.player.stats.reactiveShieldBonusHp = true;
-                // Upgrade existing shield segments from 2 HP to 3 HP
-                if (GameContext.player.shieldSegments) {
-                    for (let i = 0; i < GameContext.player.shieldSegments.length; i++) {
-                        if (GameContext.player.shieldSegments[i] === 2) GameContext.player.shieldSegments[i] = 3;
-                    }
-                    GameContext.player.shieldsDirty = true;
-                }
-            }
-            if (tier === 4) {
-                GameContext.player.stats.reactiveShield = 4;
-                GameContext.player.stats.reactiveShieldBonusHp = true;
-                // Upgrade existing shield segments from 2/3 HP to 4 HP
-                if (GameContext.player.shieldSegments) {
-                    for (let i = 0; i < GameContext.player.shieldSegments.length; i++) {
-                        if (GameContext.player.shieldSegments[i] < 4) GameContext.player.shieldSegments[i] = 4;
-                    }
-                    GameContext.player.shieldsDirty = true;
-                }
-            }
-            if (tier === 5) {
-                GameContext.player.stats.reactiveShield = 5;
-                GameContext.player.stats.reactiveShieldBonusHp = true;
-                // Upgrade existing shield segments to 5 HP
-                if (GameContext.player.shieldSegments) {
-                    for (let i = 0; i < GameContext.player.shieldSegments.length; i++) {
-                        if (GameContext.player.shieldSegments[i] < 5) GameContext.player.shieldSegments[i] = 5;
-                    }
-                    GameContext.player.shieldsDirty = true;
-                }
-            }
-            break;
-        case 'damage_mitigation':
-            if (tier === 1) { GameContext.player.stats.damageMitigation = 0.9; GameContext.player.stats.speedBonusFromMit = 1.05; }
-            if (tier === 2) { GameContext.player.stats.damageMitigation = 0.8; GameContext.player.stats.speedBonusFromMit = 1.10; }
-            if (tier === 3) { GameContext.player.stats.damageMitigation = 0.7; GameContext.player.stats.speedBonusFromMit = 1.15; }
-            if (tier === 4) { GameContext.player.stats.damageMitigation = 0.6; GameContext.player.stats.speedBonusFromMit = 1.20; }
-            if (tier === 5) { GameContext.player.stats.damageMitigation = 0.5; GameContext.player.stats.speedBonusFromMit = 1.25; }
-            break;
-        case 'time_dilation':
-            if (tier === 1) { GameContext.player.stats.timeDilation = 0.8; GameContext.player.stats.timeDilationRange = 200; }
-            if (tier === 2) { GameContext.player.stats.timeDilation = 0.6; GameContext.player.stats.timeDilationRange = 300; }
-            if (tier === 3) { GameContext.player.stats.timeDilation = 0.4; GameContext.player.stats.timeDilationRange = 450; }
-            if (tier === 4) { GameContext.player.stats.timeDilation = 0.2; GameContext.player.stats.timeDilationRange = 600; }
-            if (tier === 5) { GameContext.player.stats.timeDilation = 0.0; GameContext.player.stats.timeDilationRange = 750; }
-            break;
-        case 'momentum':
-            if (tier === 1) { GameContext.player.stats.momentumFireRate = 1.10; GameContext.player.stats.momentumDamage = 1.0; }
-            if (tier === 2) { GameContext.player.stats.momentumFireRate = 1.20; GameContext.player.stats.momentumDamage = 1.15; }
-            if (tier === 3) { GameContext.player.stats.momentumFireRate = 1.30; GameContext.player.stats.momentumDamage = 1.25; }
-            if (tier === 4) { GameContext.player.stats.momentumFireRate = 1.40; GameContext.player.stats.momentumDamage = 1.35; }
-            if (tier === 5) { GameContext.player.stats.momentumFireRate = 1.50; GameContext.player.stats.momentumDamage = 1.50; }
-            break;
-    }
-
-    showOverlayMessage(`${id.replace('_', ' ').toUpperCase()} UPGRADED!`, '#ff0', 1500);
-}
-
 // --- Core Loop ---
 
 function updateGamepad() {
@@ -24277,7 +22667,7 @@ function updateGamepad() {
 
             if (menuChanged) {
                 // Preserve index when returning from modal to shop
-                if (!returningFromModal) {
+                if (!getReturningFromModalSystem()) {
                     GameContext.menuSelectionIndex = 0;
                 }
                 gpState.lastMenuElements = activeElements;
@@ -24285,8 +22675,8 @@ function updateGamepad() {
             }
 
             // Reset the flag after processing menu change
-            if (returningFromModal && menuChanged) {
-                returningFromModal = false;
+            if (getReturningFromModalSystem() && menuChanged) {
+                setReturningFromModalSystem(false);
             }
 
             const selectedEl = activeElements[GameContext.menuSelectionIndex];
@@ -24380,19 +22770,8 @@ function updateGamepad() {
                     // 1. Check if meta shop modal is open
                     const modal = document.getElementById('meta-shop-modal');
                     if (modal && modal.style.display === 'block') {
-                        // Close the modal and restore saved index
-                        modal.style.display = 'none';
-                        currentModalUpgradeId = null;
-
-                        // Set flag to preserve index when transitioning back to shop
-                        const savedIndex = modalSourceButtonIndex;
-                        modalSourceButtonIndex = null;
-
-                        if (savedIndex !== null && savedIndex >= 0) {
-                            GameContext.menuSelectionIndex = savedIndex;
-                            returningFromModal = true;
-                        }
-
+                        const backBtn = document.getElementById('meta-modal-back');
+                        if (backBtn) backBtn.click();
                         gpState.lastMenuElements = null;
                         handled = true;
                     }
@@ -24668,6 +23047,31 @@ function updateMenuVisuals(elements) {
     });
 }
 
+registerMetaShopNavigationHandlers({
+    getActiveMenuElements,
+    updateMenuVisuals,
+    getGpState: () => gpState
+});
+
+registerUpgradeHandlers({
+    playSound,
+    showOverlayMessage,
+    updateHealthUI,
+    updateTurboUI,
+    updateNuggetUI,
+    getActiveMenuElements,
+    updateMenuVisuals,
+    startMusic,
+    isMusicEnabled: () => musicEnabled,
+    saveMetaProfile: saveMetaProfileSystem,
+    getGameNowMs,
+    setSimAccMs: (value) => { simAccMs = value; },
+    setSimLastPerfAt: (value) => { simLastPerfAt = value; },
+    setSuppressWarpGateUntil: (value) => { suppressWarpGateUntil = value; },
+    setSuppressWarpInputUntil: (value) => { suppressWarpInputUntil = value; },
+    spawnDrone
+});
+
 function killPlayer() {
     GameContext.player.dead = true;
     if (GameContext.metaExtraLifeCount > 0) {
@@ -24686,10 +23090,10 @@ function killPlayer() {
         GameContext.gameActive = false;
         resetWarpState();
         stopMusic();
-        try { depositMetaNuggets(); } catch (e) { console.warn('meta deposit failed', e); }
+        try { depositMetaNuggetsSystem(); } catch (e) { console.warn('meta deposit failed', e); }
         if (GameContext.currentProfileName) {
             autoSaveToCurrentProfile(); // Saves game state
-            saveMetaProfile();          // Saves meta shop upgrades
+            saveMetaProfileSystem();          // Saves meta shop upgrades
         }
         document.getElementById('start-screen').style.display = 'block';
         document.querySelector('#start-screen h1').innerText = "BETTER LUCK NEXT TIME";
@@ -24901,64 +23305,7 @@ function gameLoopLogic(opts = null) {
             }
         }
 
-        // Contracts: spawn and update (normal mode only, not during arena boss)
-        if (GameContext.gameMode === 'normal' && GameContext.gameActive && !GameContext.gamePaused && !GameContext.bossActive && !warpActive && !GameContext.dungeon1Active && !GameContext.caveMode) {
-            if (!GameContext.activeContract && now >= GameContext.nextContractAt) {
-                GameContext.contractSequence++;
-                const pick = Math.random();
-                const target = findSpawnPointRelative(true, 6000, 9000);
-
-                if (pick < 0.60) {
-                    // Scan Beacon
-                    const beacon = new ContractBeacon(target.x, target.y, "SCAN BEACON");
-                    GameContext.contractEntities.beacons.push(beacon);
-                    GameContext.activeContract = {
-                        id: `C${GameContext.contractSequence}`,
-                        type: 'scan_beacon',
-                        state: 'travel',
-                        title: 'SCAN BEACON',
-                        target: { x: target.x, y: target.y },
-                        progress: 0,
-                        rewardNugs: 4 + Math.floor(Math.random() * 3),
-                        rewardScore: 7000
-                    };
-                    showOverlayMessage("NEW CONTRACT: SCAN BEACON (STAY IN ZONE)", '#0f0', 2000, 2);
-                    playSound('contract');
-                } else {
-                    // Gate run puzzle
-                    const gateCount = 5;
-                    GameContext.contractEntities.gates = [];
-                    const dir = Math.random() * Math.PI * 2;
-                    for (let i = 0; i < gateCount; i++) {
-                        const d = 1800 + i * 1500;
-                        const a = dir + (Math.random() - 0.5) * 0.45;
-                        const gx = GameContext.player.pos.x + Math.cos(a) * d;
-                        const gy = GameContext.player.pos.y + Math.sin(a) * d;
-                        GameContext.contractEntities.gates.push(new GateRing(gx, gy, i, gateCount));
-                    }
-                    GameContext.activeContract = {
-                        id: `C${GameContext.contractSequence}`,
-                        type: 'gate_run',
-                        state: 'active',
-                        title: 'GATE RUN',
-                        gateIndex: 0,
-                        gateCount,
-                        endsAt: Date.now() + 45000,
-                        rewardNugs: 6 + Math.floor(Math.random() * 4),
-                        rewardScore: 10000
-                    };
-                    showOverlayMessage("NEW CONTRACT: GATE RUN", '#0f0', 2000, 2);
-                    playSound('contract');
-                }
-                updateContractUI();
-            }
-
-            if (GameContext.activeContract && GameContext.activeContract.type === 'gate_run') {
-                if (Date.now() > GameContext.activeContract.endsAt) {
-                    completeContract(false);
-                }
-            }
-        }
+        updateContractSystem(now, warpActive);
 
         // Pause the cruiser timer while the player is inside (or very near) an anomaly. 
         // (Warp-zone pausing is handled via the warp snapshot so it doesn't count warp time.) 
@@ -24991,23 +23338,23 @@ function gameLoopLogic(opts = null) {
             if (!GameContext.sectorTransitionActive && !warpActive && !GameContext.caveMode && !inAnomaly && !inStationFight && !inTractorBeam && !waitingForResume && GameContext.dreadManager.timerActive && !GameContext.bossActive && GameContext.dreadManager.timerAt) {
                 const remainingMs = GameContext.dreadManager.timerAt - now;
                 if (remainingMs <= 10000 && remainingMs > 0) {
-                    if (!arenaCountdownActive) {
+                    if (!isArenaCountdownActive()) {
                         startArenaCountdown();
                     }
                     const remainingSecs = Math.ceil(remainingMs / 1000);
                     if (remainingSecs > 0 && remainingSecs <= 10) {
-                        if (remainingSecs !== arenaCountdownTimeLeft) {
-                            arenaCountdownTimeLeft = remainingSecs;
+                        if (remainingSecs !== getArenaCountdownTimeLeft()) {
+                            setArenaCountdownTimeLeft(remainingSecs);
                             updateArenaCountdownDisplay();
                         }
                     }
                 } else {
-                    if (arenaCountdownActive) {
+                    if (isArenaCountdownActive()) {
                         stopArenaCountdown();
                     }
                 }
             } else {
-                if (arenaCountdownActive) {
+                if (isArenaCountdownActive()) {
                     stopArenaCountdown();
                 }
             }
@@ -27320,7 +25667,7 @@ function startGame() {
     // Auto-create profile if none exists (e.g. after deleting all profiles)
     if (!GameContext.currentProfileName) {
         console.log('[START] No profile selected, checking for auto-create');
-        const existing = listSaveSlots();
+        const existing = listSaveSlotsSystem();
         if (existing.length === 0) {
             console.log('[START] Auto-creating default profile');
             const newName = 'profile1';
@@ -27482,339 +25829,9 @@ function startGame() {
         // Setup game world (clear all entities)
         setupGameWorld();
 
-        // Apply meta bonuses (tier-based with diminishing returns)
-        const startDamageTier = GameContext.metaProfile.purchases.startDamage || 0;
-        if (startDamageTier > 0) {
-            // Infinite Scaling: +10% base damage per tier (linear)
-            GameContext.player.stats.damageMult *= (1 + (0.1 * startDamageTier));
-        }
+        applyMetaUpgradesSystem(spawnDrone);
 
-        const passiveHpTier = GameContext.metaProfile.purchases.passiveHp || 0;
-        if (passiveHpTier > 0) {
-            GameContext.player.maxHp += 10 * passiveHpTier;
-            GameContext.player.hp = GameContext.player.maxHp;
-            updateHealthUI();
-        }
-
-        const hullPlatingTier = GameContext.metaProfile.purchases.hullPlating || 0;
-        if (hullPlatingTier > 0) {
-            GameContext.player.maxHp += 15 * hullPlatingTier;
-            GameContext.player.hp = GameContext.player.maxHp;
-        }
-
-        const shieldCoreTier = GameContext.metaProfile.purchases.shieldCore || 0;
-        if (shieldCoreTier > 0) {
-            const bonusSegments = Math.ceil(shieldCoreTier / 2);
-            const bonusHp = Math.floor(shieldCoreTier / 2);
-            const totalSegments = 8 + bonusSegments;
-            const totalHp = 2 + bonusHp;
-
-            // Re-initialize shield array with updated counts and HP
-            GameContext.player.shieldSegments = new Array(totalSegments).fill(totalHp);
-            GameContext.player.maxShieldSegments = totalSegments;
-        }
-
-        const staticBlueprintTier = GameContext.metaProfile.purchases.staticBlueprint || 0;
-        if (staticBlueprintTier > 0) {
-            // Add forward lasers with effectiveness penalty for duplicates
-            for (let i = 0; i < staticBlueprintTier; i++) {
-                const effectiveness = Math.max(0.2, 1 - (i * 0.2)); // 100%, 80%, 60%, 40%, 20%
-                GameContext.player.staticWeapons.push({
-                    type: 'forward',
-                    source: 'meta',
-                    effectiveness: effectiveness
-                });
-            }
-        }
-
-        const missilePrimerTier = GameContext.metaProfile.purchases.missilePrimer || 0;
-        GameContext.player.stats.homingFromMeta = missilePrimerTier;
-        if (missilePrimerTier > 0) {
-            // Update effective value (for backward compatibility with auto-fire check)
-            GameContext.player.stats.homing = Math.max(GameContext.player.stats.homingFromUpgrade, GameContext.player.stats.homingFromMeta);
-            GameContext.player.missileTimer = 0;
-        }
-
-        const magnetBoosterTier = GameContext.metaProfile.purchases.magnetBooster || 0;
-        if (magnetBoosterTier > 0) {
-            // Base 300, then increasing with diminishing returns
-            const baseRadius = 300;
-            const extraRadius = magnetBoosterTier > 1 ? (magnetBoosterTier - 1) * 50 * Math.pow(0.9, magnetBoosterTier - 2) : 0;
-            GameContext.player.magnetRadius = Math.max(GameContext.player.magnetRadius, baseRadius + extraRadius);
-        }
-
-        const nukeCapacitorTier = GameContext.metaProfile.purchases.nukeCapacitor || 0;
-        if (nukeCapacitorTier > 0) {
-            GameContext.player.defenseRingTier = nukeCapacitorTier;
-            GameContext.player.defenseOrbDamage = 5 + (nukeCapacitorTier - 1);
-            GameContext.player.defenseOrbs = [];
-            const count = nukeCapacitorTier; // 1 per tier
-            for (let i = 0; i < count; i++) {
-                GameContext.player.defenseOrbs.push({
-                    angleOffset: (Math.PI * 2 * i) / count,
-                    hitCooldowns: new WeakMap()
-                });
-            }
-        }
-
-        const speedTuningTier = GameContext.metaProfile.purchases.speedTuning || 0;
-        if (speedTuningTier > 0) {
-            // Infinite Scaling: +5% speed per tier
-            GameContext.player.stats.speedMult *= (1 + (0.05 * speedTuningTier));
-        }
-
-        const droneFabricatorTier = GameContext.metaProfile.purchases.droneFabricator || 0;
-        if (droneFabricatorTier > 0) {
-            // Spawn shooter drones (max 5 to prevent overcrowding)
-            const droneCount = Math.min(droneFabricatorTier, 5);
-            for (let i = 0; i < droneCount; i++) {
-                spawnDrone('shooter');
-            }
-        }
-
-        // ========== NEW UPGRADES ==========
-
-        // Piercing Rounds - Projectiles pierce through enemies
-        const piercingRoundsTier = GameContext.metaProfile.purchases.piercingRounds || 0;
-        if (piercingRoundsTier > 0) {
-            // Base: 1, 2, 3 pierce, then diminishing
-            let pierceCount = Math.min(piercingRoundsTier, 3);
-            if (piercingRoundsTier > 3) {
-                pierceCount += (piercingRoundsTier - 3) * 0.5;
-            }
-            GameContext.player.stats.pierceCount = (GameContext.player.stats.pierceCount || 0) + pierceCount;
-        }
-
-        // Explosive Rounds - Chance for mini-explosions on impact
-        const explosiveRoundsTier = GameContext.metaProfile.purchases.explosiveRounds || 0;
-        if (explosiveRoundsTier > 0) {
-            let explosiveChance = 0.2 * Math.min(explosiveRoundsTier, 3);
-            if (explosiveRoundsTier > 3) {
-                explosiveChance += 0.05 * (explosiveRoundsTier - 3);
-            }
-            GameContext.player.stats.explosiveChance = (GameContext.player.stats.explosiveChance || 0) + Math.min(explosiveChance, 1.0);
-            GameContext.player.stats.explosiveDamage = (GameContext.player.stats.explosiveDamage || 0) + 30;
-        }
-
-        // Critical Strike - Chance to deal double damage
-        const criticalStrikeTier = GameContext.metaProfile.purchases.criticalStrike || 0;
-        if (criticalStrikeTier > 0) {
-            let critChance = 0.05 * Math.min(criticalStrikeTier, 3);
-            if (criticalStrikeTier > 3) {
-                critChance += 0.02 * (criticalStrikeTier - 3);
-            }
-            GameContext.player.stats.critChance = (GameContext.player.stats.critChance || 0) + Math.min(critChance, 0.30);
-            GameContext.player.stats.critDamage = (GameContext.player.stats.critDamage || 1.0) + 1.0; // 2x damage
-        }
-
-        // Split Shot - Chance to fire additional projectile
-        const splitShotTier = GameContext.metaProfile.purchases.splitShot || 0;
-        if (splitShotTier > 0) {
-            let splitChance = 0.1 * Math.min(splitShotTier, 3);
-            if (splitShotTier > 3) {
-                splitChance += 0.03 * (splitShotTier - 3);
-            }
-            GameContext.player.stats.splitChance = (GameContext.player.stats.splitChance || 0) + Math.min(splitChance, 0.50);
-        }
-
-        // Thorn Armor - Reflect damage when hit
-        const thornArmorTier = GameContext.metaProfile.purchases.thornArmor || 0;
-        if (thornArmorTier > 0) {
-            let thornPercent = 0.1 * Math.min(thornArmorTier, 3);
-            if (thornArmorTier > 3) {
-                thornPercent += 0.02 * (thornArmorTier - 3);
-            }
-            GameContext.player.stats.thornReflect = Math.min(thornPercent, 0.35);
-        }
-
-        // Lifesteal - Heal on dealing damage
-        const lifestealTier = GameContext.metaProfile.purchases.lifesteal || 0;
-        if (lifestealTier > 0) {
-            // Thresholds: 100, 75, 50, then diminishing
-            const thresholds = [100, 75, 50];
-            let threshold = thresholds[Math.min(lifestealTier - 1, 2)];
-            if (lifestealTier > 3) {
-                threshold -= 5 * (lifestealTier - 3);
-            }
-            GameContext.player.stats.lifestealThreshold = Math.max(threshold, 25);
-            GameContext.player.stats.lifestealTracking = 0; // Track damage dealt
-        }
-
-        // Evasion Boost - Chance to avoid damage entirely
-        const evasionBoostTier = GameContext.metaProfile.purchases.evasionBoost || 0;
-        if (evasionBoostTier > 0) {
-            let evasionChance = 0.05 * Math.min(evasionBoostTier, 3);
-            if (evasionBoostTier > 3) {
-                evasionChance += 0.02 * (evasionBoostTier - 3);
-            }
-            GameContext.player.stats.evasionChance = (GameContext.player.stats.evasionChance || 0) + Math.min(evasionChance, 0.25);
-        }
-
-        // Shield Recharge - Shield segments regenerate during combat
-        const shieldRechargeTier = GameContext.metaProfile.purchases.shieldRecharge || 0;
-        if (shieldRechargeTier > 0) {
-            const intervals = [30, 20, 15]; // seconds
-            let interval = intervals[Math.min(shieldRechargeTier - 1, 2)];
-            if (shieldRechargeTier > 3) {
-                interval = Math.max(interval - (shieldRechargeTier - 3), 5);
-            }
-            GameContext.player.stats.shieldRechargeInterval = interval * 60; // Convert to frames
-            GameContext.player.stats.shieldRechargeTimer = 0;
-            GameContext.player.stats.shieldRechargeLast = Date.now();
-        }
-
-        // Dash Cooldown - Reduce turbo boost cooldown
-        const dashCooldownTier = GameContext.metaProfile.purchases.dashCooldown || 0;
-        if (dashCooldownTier > 0) {
-            let cooldownReduction = Math.min(dashCooldownTier, 3);
-            if (dashCooldownTier > 3) {
-                cooldownReduction += 0.3 * (dashCooldownTier - 3);
-            }
-            GameContext.player.stats.turboCooldownReduction = cooldownReduction; // In seconds
-        }
-
-        // Dash Duration - Longer turbo boost duration
-        const dashDurationTier = GameContext.metaProfile.purchases.dashDuration || 0;
-        if (dashDurationTier > 0) {
-            let durationBonus = 0.5 * Math.min(dashDurationTier, 3);
-            if (dashDurationTier > 3) {
-                durationBonus += 0.2 * (dashDurationTier - 3);
-            }
-            GameContext.player.stats.turboDurationBonus = durationBonus * 60; // Convert to frames
-        }
-
-        // XP Magnet Range+ - Increases existing magnet booster effect
-        const xpMagnetPlusTier = GameContext.metaProfile.purchases.xpMagnetPlus || 0;
-        if (xpMagnetPlusTier > 0) {
-            let magnetBonus = 0.2 * Math.min(xpMagnetPlusTier, 3);
-            if (xpMagnetPlusTier > 3) {
-                magnetBonus += 0.1 * (xpMagnetPlusTier - 3);
-            }
-            GameContext.player.stats.magnetBonusMult = (GameContext.player.stats.magnetBonusMult || 1.0) + magnetBonus;
-        }
-
-        // Auto-Reroll - Chance for free reroll on level-up
-        const autoRerollTier = GameContext.metaProfile.purchases.autoReroll || 0;
-        if (autoRerollTier > 0) {
-            let autoRerollChance = 0.1 * Math.min(autoRerollTier, 3);
-            if (autoRerollTier > 3) {
-                autoRerollChance += 0.03 * (autoRerollTier - 3);
-            }
-            GameContext.player.stats.autoRerollChance = Math.min(autoRerollChance, 0.50);
-        }
-
-        // Nugget Magnet - Increase magnet radius specifically for Space Nuggets
-        const nuggetMagnetTier = GameContext.metaProfile.purchases.nuggetMagnet || 0;
-        if (nuggetMagnetTier > 0) {
-            let nuggetMagnetBonus = 0.5 * Math.min(nuggetMagnetTier, 3);
-            if (nuggetMagnetTier > 3) {
-                nuggetMagnetBonus += 0.25 * (nuggetMagnetTier - 3);
-            }
-            GameContext.player.stats.nuggetMagnetBonus = (GameContext.player.stats.nuggetMagnetBonus || 1.0) + nuggetMagnetBonus;
-        }
-
-        // Contract Speed - Contract objectives complete faster
-        const contractSpeedTier = GameContext.metaProfile.purchases.contractSpeed || 0;
-        if (contractSpeedTier > 0) {
-            let contractSpeedBonus = 0.1 * Math.min(contractSpeedTier, 3);
-            if (contractSpeedTier > 3) {
-                contractSpeedBonus += 0.05 * (contractSpeedTier - 3);
-            }
-            GameContext.player.stats.contractSpeedMult = (GameContext.player.stats.contractSpeedMult || 1.0) + contractSpeedBonus;
-        }
-
-        // Starting Rerolls - Start each run with free reroll tokens
-        const startingRerollsTier = GameContext.metaProfile.purchases.startingRerolls || 0;
-        if (startingRerollsTier > 0) {
-            let startingTokens = Math.min(startingRerollsTier, 3);
-            if (startingRerollsTier > 3) {
-                startingTokens += 0.5 * (startingRerollsTier - 3);
-            }
-            GameContext.rerollTokens += Math.floor(startingTokens);
-        }
-
-        // Lucky Drop - Increased chance for rare pickups
-        const luckyDropTier = GameContext.metaProfile.purchases.luckyDrop || 0;
-        if (luckyDropTier > 0) {
-            let healthDropBonus = 0.05 * Math.min(luckyDropTier, 3);
-            let nuggetBonus = 0.02 * Math.min(luckyDropTier, 3);
-            if (luckyDropTier > 3) {
-                healthDropBonus += 0.02 * (luckyDropTier - 3);
-                nuggetBonus += 0.01 * (luckyDropTier - 3);
-            }
-            GameContext.player.stats.luckyHealthDrop = healthDropBonus;
-            GameContext.player.stats.luckyNuggetDrop = nuggetBonus;
-        }
-
-        // Bounty Hunter - Bonus nuggets for elite/boss kills
-        const bountyHunterTier = GameContext.metaProfile.purchases.bountyHunter || 0;
-        if (bountyHunterTier > 0) {
-            let eliteBonus = 5 * Math.min(bountyHunterTier, 3);
-            let bossBonus = 20 * Math.min(bountyHunterTier, 3);
-            if (bountyHunterTier > 3) {
-                eliteBonus += 3 * (bountyHunterTier - 3);
-                bossBonus += 10 * (bountyHunterTier - 3);
-            }
-            GameContext.player.stats.bountyEliteBonus = eliteBonus;
-            GameContext.player.stats.bountyBossBonus = bossBonus;
-        }
-
-        // Combo Meter - Damage increases with consecutive hits without taking damage
-        const comboMeterTier = GameContext.metaProfile.purchases.comboMeter || 0;
-        if (comboMeterTier > 0) {
-            let comboDamagePer10 = 0.01 * Math.min(comboMeterTier, 3);
-            let maxComboDamage = 0.10 * Math.min(comboMeterTier, 3);
-            if (comboMeterTier > 3) {
-                comboDamagePer10 += 0.003 * (comboMeterTier - 3);
-                maxComboDamage += 0.05 * (comboMeterTier - 3);
-            }
-            GameContext.player.stats.comboDamagePer10 = comboDamagePer10;
-            GameContext.player.stats.maxComboDamage = maxComboDamage;
-            GameContext.player.stats.comboStacks = 0;
-            GameContext.player.stats.comboLastHitTime = 0;
-        }
-
-        // Starting Weapon - Start with shotgun unlocked
-        const startingWeaponTier = GameContext.metaProfile.purchases.startingWeapon || 0;
-        if (startingWeaponTier > 0) {
-            GameContext.player.inventory['shotgun'] = Math.min(startingWeaponTier, 3);
-            if (startingWeaponTier > 3) {
-                // Damage boost for tier 4+
-                let damageBonus = 0.05 * (startingWeaponTier - 3);
-                GameContext.player.stats.startingShotgunDamageMult = 1.0 + damageBonus;
-            }
-        }
-
-        // Second Wind - Short invulnerability after taking damage
-        const secondWindTier = GameContext.metaProfile.purchases.secondWind || 0;
-        if (secondWindTier > 0) {
-            const durations = [0.5, 1.0, 1.5]; // seconds
-            const cooldowns = [10, 8, 6]; // seconds
-            let duration = durations[Math.min(secondWindTier - 1, 2)];
-            let cooldown = cooldowns[Math.min(secondWindTier - 1, 2)];
-            if (secondWindTier > 3) {
-                duration += 0.2 * (secondWindTier - 3);
-                cooldown = Math.max(cooldown - 0.5 * (secondWindTier - 3), 3);
-            }
-            GameContext.player.stats.secondWindDuration = duration * 60; // frames
-            GameContext.player.stats.secondWindCooldown = cooldown * 60; // frames
-            GameContext.player.stats.secondWindTimer = 0;
-            GameContext.player.stats.secondWindReady = true;
-        }
-
-        // Battery Capacitor - Manual discharge AOE ability
-        const batteryTier = GameContext.metaProfile.purchases.batteryCapacitor || 0;
-        if (batteryTier > 0) {
-            GameContext.player.batteryUnlocked = true;
-            GameContext.player.batteryDamage = batteryTier * 100;
-            if (batteryTier === 1) { GameContext.player.batteryRange = 800; }
-            if (batteryTier === 2) { GameContext.player.batteryRange = 900; }
-            if (batteryTier === 3) { GameContext.player.batteryRange = 1000; }
-        }
-
-        if (pendingProfile) {
-            applyProfile(pendingProfile);
-        }
+        applyPendingProfileSystem();
         updateHealthUI();
 
         document.getElementById('score').innerText = GameContext.score;
@@ -27929,7 +25946,7 @@ function togglePause() {
     // Pause timer bookkeeping
     if (GameContext.gamePaused) {
         GameContext.pauseStartTime = getGameNowMs();
-        if (arenaCountdownActive) stopArenaCountdown();
+        if (isArenaCountdownActive()) stopArenaCountdown();
     } else {
         if (GameContext.pauseStartTime) {
             const pauseMs = Math.max(0, getGameNowMs() - GameContext.pauseStartTime);
@@ -27952,14 +25969,14 @@ function togglePause() {
 function quitGame() {
     // Deposit nuggets and save before aborting
     try {
-        depositMetaNuggets();
+        depositMetaNuggetsSystem();
     } catch (e) { console.warn('meta deposit failed on abort', e); }
 
     // Save game state and meta profile
     if (GameContext.currentProfileName) {
         try {
             autoSaveToCurrentProfile();
-            saveMetaProfile();
+            saveMetaProfileSystem();
         } catch (e) { console.warn('save failed on abort', e); }
     }
 
@@ -28325,7 +26342,7 @@ function showUpgradesMenu() {
     });
 
     // Update meta UI to show current values
-    updateMetaUI();
+    updateMetaUISystem();
 
     GameContext.menuSelectionIndex = 0;
     menuDebounce = Date.now() + 300;
@@ -28530,7 +26547,7 @@ function grantDebugUpgrade(upgradeId, tier, upgradeName) {
 
     const prevTier = GameContext.player.inventory[upgradeId] || 0;
 
-    applyUpgrade(upgradeId, tier);
+    applyUpgradeSystem(upgradeId, tier);
 
     const action = tier > prevTier ? `UPGRADED to Tier ${tier}` :
         tier < prevTier ? `DOWNGRADED to Tier ${tier}` :
@@ -28898,7 +26915,7 @@ GameContext.currentProfileName = localStorage.getItem(SAVE_LAST_KEY) || null;
 
 let autoCreated = false;
 if (!GameContext.currentProfileName) {
-    const existing = listSaveSlots();
+    const existing = listSaveSlotsSystem();
     if (existing.length === 0) {
         console.log('[PROFILE] Auto-creating default profile');
         const newName = 'profile1';
@@ -28941,9 +26958,9 @@ if (!GameContext.currentProfileName) {
 }
 
 if (!autoCreated) {
-    loadMetaProfile();
+    loadMetaProfileSystem();
 }
-updateMetaUI();
+updateMetaUISystem();
 updateStartScreenDisplay();
 
 // Save on app close (beforeunload event)
@@ -28951,7 +26968,7 @@ window.addEventListener('beforeunload', () => {
     if (GameContext.currentProfileName) {
         try {
             autoSaveToCurrentProfile(); // Saves game state
-            saveMetaProfile();          // Saves meta shop upgrades
+            saveMetaProfileSystem();          // Saves meta shop upgrades
         } catch (e) {
             // Silent fail on beforeunload - console won't be visible anyway
         }
@@ -28966,7 +26983,7 @@ if (window.SpacebrosApp && window.SpacebrosApp.ipcRenderer) {
             try {
                 autoSaveToCurrentProfile(); // Saves game state
                 console.log('[SAVE] Game profile saved');
-                saveMetaProfile();          // Saves meta shop upgrades
+                saveMetaProfileSystem();          // Saves meta shop upgrades
                 console.log('[SAVE] Meta profile saved');
             } catch (e) {
                 console.warn('[SAVE] Save on quit failed:', e);
