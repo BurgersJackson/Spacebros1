@@ -347,6 +347,8 @@ export const GameContext = {
     bullets: [],
     bossBombs: [],
     warpBioPods: [],
+    staggeredBombExplosions: [],
+    staggeredParticleBursts: [],
     guidedMissiles: [],
     napalmZones: [],
     enemies: [],
@@ -401,20 +403,30 @@ export const GameContext = {
     caveMode: false,
     caveLevel: null,
     dungeon1Active: false,
+    dungeon1CompletedOnce: false,
+    dungeon1GateUnlocked: false,
+    dungeon1OriginalPos: null,
     warpGateUnlocked: false,
+    warpCompletedOnce: false,
+    warpCountdownAt: null,
     
     // === Timing/Scheduling ===
     nextRadiationStormAt: 0,
     nextMiniEventAt: 0,
     nextShootingStarTime: 0,
-    nextDestroyerSpawnTime: 0,
+    nextIntensityBreakAt: 0,
+    intensityBreakActive: false,
+    nextDestroyerSpawnTime: null,
     nextContractAt: 0,
-    nextSpaceStationTime: 0,
+    nextSpaceStationTime: null,
     
     // === Progression ===
     score: 0,
     difficultyTier: 1,
     sectorIndex: 1,
+    pinwheelsDestroyed: 0,
+    pinwheelsDestroyedTotal: 0,
+    maxRoamers: 5,
     spaceNuggets: 0,
     totalKills: 0,
     highScore: 0,
@@ -424,31 +436,70 @@ export const GameContext = {
     roamerRespawnQueue: [],
     baseRespawnTimers: [],
     asteroidRespawnTimers: [],
-    gunboatRespawnAt: 0,
+    gunboatRespawnAt: null,
+    gunboatLevel2Unlocked: false,
     
     // === Boss Encounter Tracking ===
     cruiserEncounterCount: 0,
     pendingStations: 0,
     currentDestroyerType: 1,
+    stationHealthBarVisible: false,
     
     // === Meta Progression ===
     metaProfile: {
         bank: 0,
-        purchases: {}
+        purchases: {
+            startDamage: 0,
+            passiveHp: 0,
+            rerollTokens: 0,
+            hullPlating: 0,
+            shieldCore: 0,
+            staticBlueprint: 0,
+            missilePrimer: 0,
+            magnetBooster: 0,
+            nukeCapacitor: 0,
+            speedTuning: 0,
+            bankMultiplier: 0,
+            shopDiscount: 0,
+            extraLife: 0,
+            droneFabricator: 0,
+            piercingRounds: 0,
+            explosiveRounds: 0,
+            criticalStrike: 0,
+            splitShot: 0,
+            thornArmor: 0,
+            lifesteal: 0,
+            evasionBoost: 0,
+            shieldRecharge: 0,
+            dashCooldown: 0,
+            dashDuration: 0,
+            xpMagnetPlus: 0,
+            autoReroll: 0,
+            nuggetMagnet: 0,
+            contractSpeed: 0,
+            startingRerolls: 0,
+            luckyDrop: 0,
+            bountyHunter: 0,
+            comboMeter: 0,
+            startingWeapon: 0,
+            secondWind: 0,
+            batteryCapacitor: 0
+        }
     },
     rerollTokens: 0,
     metaExtraLifeCount: 0,
+    shownUpgradesThisRun: new Set(),
     currentProfileName: null,
     
     // === Contract System ===
     activeContract: null,
-    contractSequence: [],
+    contractSequence: 0,
     contractEntities: {
         beacons: [],
         gates: [],
         anomalies: [],
         fortresses: [],
-        turrets: []
+        wallTurrets: []
     },
     
     // === Input State ===
@@ -457,10 +508,14 @@ export const GameContext = {
     mouseScreen: { x: 0, y: 0 },
     mouseWorld: { x: 0, y: 0 },
     gpState: {
-        leftStick: { x: 0, y: 0 },
-        rightStick: { x: 0, y: 0 },
-        triggers: { left: 0, right: 0 },
-        buttons: {}
+        move: { x: 0, y: 0 },
+        aim: { x: 0, y: 0 },
+        fire: false,
+        warp: false,
+        turbo: false,
+        battery: false,
+        pausePressed: false,
+        lastMenuElements: null
     },
     gamepadIndex: -1,
     usingGamepad: false,
@@ -491,8 +546,13 @@ export const GameContext = {
         timerActive: false,
         firstSpawnDone: false,
         cruiserTimerPausedAt: 0,
-        upgradesChosen: 0
+        upgradesChosen: 0,
+        timerAt: null,
+        minDelayMs: 120000,
+        maxDelayMs: 300000
     },
+    cruiserTimerPausedAt: null,
+    cruiserTimerResumeAt: 0,
     
     // === Arcade Mode ===
     arcadeBoss: null,
@@ -502,6 +562,8 @@ export const GameContext = {
     // === UI State ===
     menuSelectionIndex: 0,
     overlayTimeout: null,
+    minimapFrame: 0,
+    pendingTransitionClear: false,
     
     // === Debug ===
     DEBUG_COLLISION: false,
@@ -515,11 +577,13 @@ export const GameContext = {
         this.difficultyTier = 1;
         this.sectorIndex = 1;
         this.spaceNuggets = 0;
-        
+
         // Clear entity arrays
         this.bullets = [];
         this.bossBombs = [];
         this.warpBioPods = [];
+        this.staggeredBombExplosions = [];
+        this.staggeredParticleBursts = [];
         this.guidedMissiles = [];
         this.napalmZones = [];
         this.enemies = [];
@@ -538,7 +602,7 @@ export const GameContext = {
         this.environmentAsteroids = [];
         this.warpParticles = [];
         this.shockwaves = [];
-        
+
         // Clear boss references
         this.boss = null;
         this.bossActive = false;
@@ -546,11 +610,83 @@ export const GameContext = {
         this.destroyer = null;
         this.radiationStorm = null;
         this.miniEvent = null;
-        
+        this.warpGate = null;
+        this.warpZone = null;
+        this.dungeon1Gate = null;
+        this.dungeon1Zone = null;
+        this.necroticHive = null;
+        this.cerebralPsion = null;
+        this.fleshforge = null;
+        this.vortexMatriarch = null;
+        this.chitinusPrime = null;
+        this.psyLich = null;
+
         // Reset arenas
         this.bossArena = { x: 0, y: 0, radius: 2500, active: false, growing: false };
         this.stationArena = { x: 0, y: 0, radius: 2800, active: false };
-        
+        this.dungeon1Arena = { x: 0, y: 0, radius: 3000, active: false };
+
+        // Reset cave/warp state
+        this.caveMode = false;
+        this.caveLevel = null;
+        this.dungeon1Active = false;
+        this.dungeon1CompletedOnce = false;
+        this.dungeon1GateUnlocked = false;
+        this.dungeon1OriginalPos = null;
+        this.warpGateUnlocked = false;
+        this.warpCompletedOnce = false;
+        this.warpCountdownAt = null;
+
+        // Reset timing
+        this.nextRadiationStormAt = 0;
+        this.nextMiniEventAt = 0;
+        this.nextShootingStarTime = 0;
+        this.nextIntensityBreakAt = 0;
+        this.intensityBreakActive = false;
+        this.nextDestroyerSpawnTime = null;
+        this.nextContractAt = 0;
+        this.nextSpaceStationTime = null;
+
+        // Reset progression
+        this.pinwheelsDestroyed = 0;
+        this.pinwheelsDestroyedTotal = 0;
+        this.maxRoamers = 5;
+
+        // Clear respawn queues
+        this.roamerRespawnQueue = [];
+        this.baseRespawnTimers = [];
+        this.asteroidRespawnTimers = [];
+        this.gunboatRespawnAt = null;
+        this.gunboatLevel2Unlocked = false;
+
+        // Reset state flags
+        this.minimapFrame = 0;
+        this.pendingTransitionClear = false;
+        this.pendingStations = 0;
+        this.stationHealthBarVisible = false;
+        this.sectorTransitionActive = false;
+
+        // Reset meta state
+        this.rerollTokens = 0;
+        this.metaExtraLifeCount = 0;
+        this.shownUpgradesThisRun = new Set();
+        this.activeContract = null;
+        this.contractSequence = 0;
+        this.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+
+        // Reset dread manager
+        this.dreadManager = {
+            timerActive: false,
+            firstSpawnDone: false,
+            cruiserTimerPausedAt: 0,
+            upgradesChosen: 0,
+            timerAt: null,
+            minDelayMs: 120000,
+            maxDelayMs: 300000
+        };
+        this.cruiserTimerPausedAt = null;
+        this.cruiserTimerResumeAt = 0;
+
         // Clear grids
         this.asteroidGrid.clear();
         this.targetGrid.clear();
@@ -598,8 +734,7 @@ export * from './ui-helpers.js';
 **Create file**: `src/js/utils/spawn-utils.js`
 
 Extract from main.js (~line 22315):
-- `findSpawnPointRelative(player, minDist, maxDist)`
-- `getOffscreenSpawnPosition(player, minDist, maxDist)`
+- `findSpawnPointRelative(state, random, min, max)`
 
 **Create file**: `src/js/utils/cleanup-utils.js`
 
@@ -607,18 +742,18 @@ Extract from main.js:
 - `pixiCleanupObject(entity)`
 - `clearArrayWithPixiCleanup(arr)`
 - `destroyBulletSprite(bullet)`
-- `releaseEntitySprite(entity)`
 
 **Create file**: `src/js/utils/ui-helpers.js`
 
 Extract from main.js:
 - `formatTime(ms)`
-- `showOverlayMessage(text, color, duration)`
-- `updateHealthUI()`
-- `updateWarpUI()`
-- `updateTurboUI()`
-- `updateXpUI()`
-- `updateContractUI()`
+- `showOverlayMessage(text, color, duration, priority)`
+- `clearOverlayMessageTimeout()`
+- `updateHealthUI(state)`
+- `updateWarpUI(state)`
+- `updateTurboUI(state)`
+- `updateXpUI(state)`
+- `updateContractUI(state)`
 
 ### 1.4 Test Phase 1
 
@@ -1513,10 +1648,7 @@ export function updateHealthUI() { /* ... */ }
 export function updateWarpUI() { /* ... */ }
 export function updateTurboUI() { /* ... */ }
 export function updateXpUI() { /* ... */ }
-export function updateScoreUI() { /* ... */ }
-export function updateTimerUI() { /* ... */ }
-export function updateBatteryUI() { /* ... */ }
-export function updateVolleyUI() { /* ... */ }
+export function updateContractUI() { /* ... */ }
 ```
 
 ### 6.5 Gamepad Navigation
