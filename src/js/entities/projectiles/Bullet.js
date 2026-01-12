@@ -28,6 +28,7 @@ export class Bullet extends Entity {
         this.maxLife = this.life;
         this.color = opts.color || '#0ff';
         this.owner = opts.owner || 'player'; // 'player' or 'enemy'
+        this.isEnemy = (this.owner === 'enemy');
         this.piercing = opts.piercing || false;
         this.hitCount = 0;
         this.maxHits = opts.maxHits || 1;

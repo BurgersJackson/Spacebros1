@@ -1,6 +1,6 @@
 # Phase 4: Entity Classes - Status Report
 
-**Last Updated:** 2026-01-12T10:55:00-08:00  
+**Last Updated:** 2026-01-12T11:20:00-08:00  
 **Status:** IN PROGRESS
 
 ---
@@ -15,7 +15,7 @@ Phase 4 involves extracting entity classes from `main.js` into separate module f
 
 | Metric | Original | Current | Change |
 |--------|----------|---------|--------|
-| **main.js lines** | 26,438 | 25,033 | **-1,405** |
+| **main.js lines** | 26,438 | 24,539 | **-1,899** |
 
 ---
 
@@ -25,56 +25,57 @@ Phase 4 involves extracting entity classes from `main.js` into separate module f
 - Use `setPixiContext` to bridge main.js layers.
 - Updates texture state via `setAsteroidTexturesReady`.
 
+### 2. Fixed Enemy Spawning Bug ✅
+- Fixed `Enemy` spawning at (0,0) by passing `GameContext` to `findSpawnPointRelative`.
+
+### 3. Fixed Bullet Firing & Collision ✅
+- Updated `Enemy.js` and `Pinwheel.js` to use the `Bullet.js` module constructor signature (`opts` object).
+- **Added `isEnemy` property to `Bullet.js`** to ensure compatibility with `main.js` collision and logic checks.
+
 ---
 
 ## Completed Extractions
 
 ### 1. EnvironmentAsteroid ✅
 - **File:** `src/js/entities/environment/EnvironmentAsteroid.js`
-- **Status:** Integrated via pixi-context.
+- **Status:** Integrated.
 
 ### 2. Enemy ✅ (MAJOR)
 - **File:** `src/js/entities/enemies/Enemy.js`
 - **Lines extracted:** ~880
-- **Integration:** 
-  - Imports rendering resources from `pixi-context.js` (layers, pools, textures).
-  - Uses `registerEnemyDependencies` for logic callbacks (`spawnExplosion`, `checkDespawn`, etc.).
-  - Full PixiJS `draw()` method implementation preserved (no simplified fallback).
+- **Status:** Integrated.
+- **Note:** Uses Module `Bullet` (new signature).
 
 ### 3. Pinwheel ✅
 - **File:** `src/js/entities/enemies/Pinwheel.js`
 - **Lines extracted:** ~415
-- **Integration:**
-  - Uses `pixiBaseLayer` via `pixi-context.js`.
-  - Dependency injection for `spawnParticles`, `checkDespawn`, etc.
+- **Status:** Integrated.
+- **Note:** Uses Module `Bullet` (new signature).
 
-### 4. pixi-context.js ✅
+### 4. Projectiles (Dependencies for Bosses) ✅
+- **Shockwave**: `src/js/entities/projectiles/Shockwave.js`
+- **CruiserMineBomb**: `src/js/entities/projectiles/CruiserMineBomb.js`
+- **FlagshipGuidedMissile**: `src/js/entities/projectiles/FlagshipGuidedMissile.js`
+- **Status:** Integrated and registered.
+
+### 5. pixi-context.js ✅
 - **File:** `src/js/rendering/pixi-context.js`
-- **Status:** Complete. Defines the shared rendering context.
+- **Status:** Complete.
 
 ---
 
-## Next Steps (Recommended Path)
+## Next Steps
 
-To extract the **Cruiser Boss**, we must first extract its dependencies to avoid circular issues or confusing module graphs.
-
-### 1. Extract Shockwave
-- **File:** `src/js/entities/projectiles/Shockwave.js`
-- **Reason:** Dependency for `CruiserMineBomb`.
-- **Status:** Ready to extract.
-
-### 2. Extract CruiserMineBomb
-- **File:** `src/js/entities/projectiles/CruiserMineBomb.js`
-- **Reason:** Dependency for `Cruiser`.
-- **Status:** Depends on `Shockwave`.
-
-### 3. Extract FlagshipGuidedMissile
-- **File:** `src/js/entities/projectiles/FlagshipGuidedMissile.js`
-- **Reason:** Dependency for `Cruiser` and `Flagship`.
-
-### 4. Extract Cruiser (Boss)
+### 1. Extract Cruiser (Boss)
 - **File:** `src/js/entities/enemies/Cruiser.js`
-- **Reason:** Major boss class. Depends on the above projectiles.
+- **Prerequisites:** Done (Projectiles extracted).
+- **Status:** Ready for extraction.
 
-### 5. Verification
-- Verify Boss encounters work correctly.
+### 2. Extract Other Bosses
+- `Destroyer`
+- `WarpSentinelBoss`
+
+### 3. Unify Bullet Class
+- `main.js` still has a legacy `Bullet` class definition. Future extractions should use the module `Bullet` class. Eventually remove `Bullet` from `main.js`.
+
+---

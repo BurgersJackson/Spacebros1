@@ -234,7 +234,7 @@ export class Pinwheel extends Entity {
                             const a = shootAngle + i * 0.15;
                             const bx = this.pos.x + Math.cos(a) * 75;
                             const by = this.pos.y + Math.sin(a) * 75;
-                            GameContext.bullets.push(new Bullet(bx, by, a, true, 3, 8, 8, '#fa0'));
+                            GameContext.bullets.push(new Bullet(bx, by, a, 8, { owner: 'enemy', damage: 3, life: 480, color: '#fa0' }));
                             if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, a);
                         }
                         playSound('heavy_shoot');
@@ -244,7 +244,7 @@ export class Pinwheel extends Entity {
                         const a = shootAngle + spread;
                         const bx = this.pos.x + Math.cos(a) * 75;
                         const by = this.pos.y + Math.sin(a) * 75;
-                        GameContext.bullets.push(new Bullet(bx, by, a, true, 1, 14, 3, '#0ff'));
+                        GameContext.bullets.push(new Bullet(bx, by, a, 14, { owner: 'enemy', damage: 1, life: 180, color: '#0ff' }));
                         if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, a);
                         playSound('rapid_shoot');
                         this.shootTimer = Math.round(15 * cooldownMult);
@@ -255,7 +255,7 @@ export class Pinwheel extends Entity {
                             const a = this.angle + i * (Math.PI * 2 / 3);
                             const bx = this.pos.x + Math.cos(a) * 70;
                             const by = this.pos.y + Math.sin(a) * 70;
-                            GameContext.bullets.push(new Bullet(bx, by, a, true, damage));
+                            GameContext.bullets.push(new Bullet(bx, by, a, 8, { owner: 'enemy', damage: damage, life: 240 }));
                             if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, a);
                         }
                         playSound('shoot');

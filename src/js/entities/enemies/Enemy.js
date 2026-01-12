@@ -77,7 +77,7 @@ export class Enemy extends Entity {
             this.pos.x = startPos.x;
             this.pos.y = startPos.y;
         } else {
-            const start = findSpawnPointRelative(true);
+            const start = findSpawnPointRelative(GameContext, true);
             this.pos.x = start.x;
             this.pos.y = start.y;
         }
@@ -275,7 +275,7 @@ export class Enemy extends Entity {
         if (this.modifier === 'explosive') {
             for (let i = 0; i < 8; i++) {
                 const a = (Math.PI * 2 / 8) * i;
-                GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 2, 10, 4, '#f80'));
+                GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, a, 10, { owner: 'enemy', damage: 2, life: 240, color: '#f80' }));
             }
             if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 20, '#f80');
         }
@@ -569,14 +569,14 @@ export class Enemy extends Entity {
                     const by = this.pos.y + Math.sin(angle) * muzzle;
                     const dmg = this.isCruiser ? (this.cruiserBaseDamage || 1) : (this.gunboatLevel === 1 ? 2 : 3);
                     const bulletSpeed = this.isCruiser ? 18 : 22;
-                    GameContext.bullets.push(new Bullet(bx, by, angle, true, dmg, bulletSpeed, 4, '#0ff'));
+                    GameContext.bullets.push(new Bullet(bx, by, angle, bulletSpeed, { owner: 'enemy', damage: dmg, life: 240, color: '#0ff' }));
                     if (this.isCruiser) {
                         // Cruiser twin barrels
                         const a2 = angle + 0.08;
-                        GameContext.bullets.push(new Bullet(bx, by, a2, true, dmg, bulletSpeed, 4, '#0ff'));
+                        GameContext.bullets.push(new Bullet(bx, by, a2, bulletSpeed, { owner: 'enemy', damage: dmg, life: 240, color: '#0ff' }));
                     } else if (this.gunboatLevel === 2) {
                         const a2 = angle + 0.08;
-                        GameContext.bullets.push(new Bullet(bx, by, a2, true, 3, 22, 4, '#0ff'));
+                        GameContext.bullets.push(new Bullet(bx, by, a2, 22, { owner: 'enemy', damage: 3, life: 240, color: '#0ff' }));
                     } else {
                         // Gunboat level 1 single shot
                     }
@@ -585,10 +585,10 @@ export class Enemy extends Entity {
                 } else if (this.type === 'elite_roamer' || this.type === 'hunter') {
                     const bx = this.pos.x + Math.cos(angle) * 25;
                     const by = this.pos.y + Math.sin(angle) * 25;
-                    GameContext.bullets.push(new Bullet(bx, by, angle, true, 1, 11, 5, '#f0f'));
+                    GameContext.bullets.push(new Bullet(bx, by, angle, 11, { owner: 'enemy', damage: 1, life: 300, color: '#f0f' }));
                     if (this.modifier === 'split') {
                         const a2 = angle + (Math.random() - 0.5) * 0.2;
-                        GameContext.bullets.push(new Bullet(bx, by, a2, true, 1, 11, 5, '#f0f'));
+                        GameContext.bullets.push(new Bullet(bx, by, a2, 11, { owner: 'enemy', damage: 1, life: 300, color: '#f0f' }));
                     }
                     if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, angle);
                     this.shootTimer = this.type === 'hunter' ? 20 : 30;
@@ -597,14 +597,14 @@ export class Enemy extends Entity {
                         const a = angle + i * 0.2;
                         const bx = this.pos.x + Math.cos(a) * 20;
                         const by = this.pos.y + Math.sin(a) * 20;
-                        GameContext.bullets.push(new Bullet(bx, by, a, true, 1));
+                        GameContext.bullets.push(new Bullet(bx, by, a, 16, { owner: 'enemy', damage: 1, life: 180 }));
                         if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, a);
                     }
                     this.shootTimer = 40;
                 } else {
                     const bx = this.pos.x + Math.cos(angle) * 20;
                     const by = this.pos.y + Math.sin(angle) * 20;
-                    GameContext.bullets.push(new Bullet(bx, by, angle, true, 1));
+                    GameContext.bullets.push(new Bullet(bx, by, angle, 16, { owner: 'enemy', damage: 1, life: 180 }));
                     if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, angle);
                     this.shootTimer = 40;
                 }
