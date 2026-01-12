@@ -182,3 +182,70 @@ export function randomRange(min, max) {
 export function randomInt(min, max) {
     return Math.floor(min + Math.random() * (max - min + 1));
 }
+
+/**
+ * Find the closest point on a line segment to a given point.
+ * @param {number} px Point X
+ * @param {number} py Point Y
+ * @param {number} ax Segment Start X
+ * @param {number} ay Segment Start Y
+ * @param {number} bx Segment End X
+ * @param {number} by Segment End Y
+ * @returns {{x: number, y: number, t: number}} Closest point and t-value
+ */
+export function closestPointOnSegment(px, py, ax, ay, bx, by) {
+    const abx = bx - ax;
+    const aby = by - ay;
+    const apx = px - ax;
+    const apy = py - ay;
+    const abLenSq = abx * abx + aby * aby;
+    let t = 0;
+    if (abLenSq > 0.000001) t = (apx * abx + apy * aby) / abLenSq;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    return { x: ax + abx * t, y: ay + aby * t, t };
+}
+
+/**
+ * Resolve collision between a circular entity and a line segment.
+ * @param {Entity} entity The entity with pos, radius, and vel
+ * @param {number} ax Segment Start X
+ * @param {number} ay Segment Start Y
+ * @param {number} bx Segment End X
+ * @param {number} by Segment End Y
+ * @param {number} elasticity Bounce factor (0 to 1)
+ * @returns {boolean} True if collision occurred
+ */
+export function resolveCircleSegment(entity, ax, ay, bx, by, elasticity = 0.7) {
+    const cp = closestPointOnSegment(entity.pos.x, entity.pos.y, ax, ay, bx, by);
+    let dx = entity.pos.x - cp.x;
+    let dy = entity.pos.y - cp.y;
+    let dist = Math.hypot(dx, dy);
+    if (dist < 0.0001) {
+        // Fallback: choose a stable normal.
+        const sx = bx - ax;
+        const sy = by - ay;
+        const nLen = Math.hypot(sx, sy) || 1;
+        dx = -sy / nLen;
+        dy = sx / nLen;
+        dist = 1;
+    }
+    const pad = 0.5;
+    const minDist = (entity.radius || 0) + pad;
+    if (dist >= minDist) return false;
+
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const overlap = minDist - dist;
+    entity.pos.x += nx * overlap;
+    entity.pos.y += ny * overlap;
+
+    if (entity.vel) {
+        const vn = entity.vel.x * nx + entity.vel.y * ny;
+        if (vn < 0) {
+            entity.vel.x -= nx * vn * (1 + elasticity);
+            entity.vel.y -= ny * vn * (1 + elasticity);
+        }
+    }
+    return true;
+}

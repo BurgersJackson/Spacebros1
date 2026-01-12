@@ -143,12 +143,18 @@ Phase 4 involves extracting entity classes from `main.js` into separate module f
 ### 1. Extract Other Bosses
  - None
 
-### 2. Finish Cave Entities
+### 2. Finish Cave Entities ✅
 - Create `CaveDraftZone` and `CaveCritter` modules and export them in `src/js/entities/cave/index.js`.
 - Extract `CaveLevel`, `CaveMonsterBase`, `CaveMonster1/2/3`.
 - Wire all cave entities into `src/js/main.js` (imports + dependency registration).
-- Remove cave class definitions from `src/js/main.js`.
-- Export cave barrel in `src/js/entities/index.js`.
+- Remove cave class definitions from `src/js/main.js`. (DONE)
+- Export cave barrel in `src/js/entities/index.js` (Pending/Not used yet).
+
+### 3. Move Player Class
+- Create `src/js/entities/player/Player.js`.
+- Move `Player` class definition.
+- Extract `PlayerShip` variants logic if needed.
+- Update `main.js` to import `Player`.
 
 ### 3. Extract Player
 - `Spaceship`
