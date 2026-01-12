@@ -9,6 +9,24 @@ import {
     bulletGrid, rebuildBulletGrid, distSq, distLessThan
 } from './core/performance.js';
 import { colorToPixi } from './rendering/colors.js';
+import {
+    pixiTextures,
+    pixiTextureAnchors,
+    pixiTextureRotOffsets,
+    pixiTextureBaseScales,
+    pixiTextureScaleToRadius,
+    loadAllTextures
+} from './rendering/texture-loader.js';
+import {
+    initStars,
+    updatePixiBackground,
+    updatePixiCaveGrid,
+    getStarTiles,
+    getNebulaTiles,
+    setStarTiles,
+    setNebulaTiles
+} from './rendering/background-renderer.js';
+import { drawMinimap } from './rendering/minimap-renderer.js';
 import { Entity } from './entities/Entity.js';
 import {
     ZOOM_LEVEL, SIM_FPS, SIM_STEP_MS, SIM_MAX_STEPS_PER_FRAME,
@@ -432,15 +450,17 @@ function setupCanvasResolution(internalW, internalH) {
         pixiCaveGridSprite.width = internalW;
         pixiCaveGridSprite.height = internalH;
     }
-    if (pixiStarTiles && pixiStarTiles.length) {
-        for (const t of pixiStarTiles) {
+    const starTiles = getStarTiles();
+    if (starTiles && starTiles.length) {
+        for (const t of starTiles) {
             if (!t || !t.spr) continue;
             t.spr.width = internalW;
             t.spr.height = internalH;
         }
     }
-    if (pixiNebulaTiles && pixiNebulaTiles.length) {
-        for (const t of pixiNebulaTiles) {
+    const nebulaTiles = getNebulaTiles();
+    if (nebulaTiles && nebulaTiles.length) {
+        for (const t of nebulaTiles) {
             if (!t || !t.spr) continue;
             t.spr.width = internalW;
             t.spr.height = internalH;
@@ -453,7 +473,7 @@ function handleWindowResize() {
     // Canvas size stays at internal resolution
     // CSS scaling automatically handles letterboxing
     // Just need to update stars for background
-    initStars();
+    initStars(width, height);
 }
 window.addEventListener('resize', handleWindowResize);
 
@@ -484,7 +504,7 @@ async function initializeCanvasResolution() {
     if (window.SpacebrosApp && window.SpacebrosApp.ipcRenderer) {
         window.SpacebrosApp.ipcRenderer.on('internal-resolution-changed', (res) => {
             setupCanvasResolution(res.width, res.height);
-            initStars();
+            initStars(width, height);
         });
     }
 }
@@ -508,8 +528,6 @@ let pixiScreenRoot = null;  // screen space (no camera transform)
 let pixiNebulaLayer = null;
 let pixiStarLayer = null;
 let pixiStarTilingLayer = null; // preferred GameContext.starfield (1-2 tiling sprites)
-let pixiStarTiles = null;
-let pixiNebulaTiles = null;
 let pixiNebulaPaletteIdx = null;
 
 // UI overlay layers (screen-space, for minimap and directional arrows)
@@ -537,56 +555,8 @@ let pixiParticleGlowTexture = null;
 // Sprite pools imported from ./rendering/pixi-setup.js (see imports at top)
 
 const pixiBulletTextures = { glow: null, laser: null, square: null };
-const pixiTextures = {
-    // Pickups / collectibles
-    coin1: null,
-    coin5: null,
-    coin10: null,
-    nugget: null,
-    gateKey: null,
-    health: null,
 
-    // Enemies
-    enemy_roamer: null,
-    enemy_elite_roamer: null,
-    enemy_hunter: null,
-    enemy_defender: null,
-    enemy_gunboat_1: null,
-    enemy_gunboat_2: null,
-    enemy_cruiser: null,
-
-    // Player
-    player_hull: null,
-    slacker_hull: null,
-    player_turret_base: null,
-    player_barrel: null,
-    player_thruster: null,
-    player_turbo_flame: null,
-
-    // Bases
-    base_standard: null,
-    base_heavy: null,
-    base_rapid: null,
-
-    // Space station
-    station_hull: null,
-    station_core: null,
-    station_turret: null,
-
-    // Destroyer ship
-    destroyer_hull: null,
-    destroyer_turret: null,
-    destroyer2_hull: null,
-
-    // Asteroids
-    asteroids: []
-};
-const pixiTextureAnchors = {};
-const pixiTextureRotOffsets = {};
-const pixiTextureBaseScales = {};
-const pixiTextureScaleToRadius = {};
-
-// Optional external sprite override for gunboats (falls back to procedural silhouette if missing)
+loadAllTextures();
 const GUNBOAT1_URL = 'assets/gunboat1.png';
 const GUNBOAT2_URL = 'assets/gunboat2.png';
 const gunboat1Image = new Image();
@@ -1761,23 +1731,25 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
         const w = window.innerWidth || 1920;
         const h = window.innerHeight || 1080;
 
-        pixiStarTiles = [
+        const starTiles = [
             { sprite: new PIXI.TilingSprite(starTexFar, w, h), parallax: 0.02 },
             { sprite: new PIXI.TilingSprite(starTexMid, w, h), parallax: 0.05 },
             { sprite: new PIXI.TilingSprite(starTexNear, w, h), parallax: 0.10 }
         ];
-        pixiStarTiles.forEach(layer => {
+        setStarTiles(starTiles);
+        starTiles.forEach(layer => {
             pixiStarTilingLayer.addChild(layer.sprite);
         });
 
         // Create 2 nebula layers (far, near)
         const nebulaTexFar = makeNebulaTexture(12, nebulaPalettes[pixiNebulaPaletteIdx]);
         const nebulaTexNear = makeNebulaTexture(8, nebulaPalettes[pixiNebulaPaletteIdx]);
-        pixiNebulaTiles = [
+        const nebulaTiles = [
             { sprite: new PIXI.TilingSprite(nebulaTexFar, w, h), parallax: 0.01 },
             { sprite: new PIXI.TilingSprite(nebulaTexNear, w, h), parallax: 0.03 }
         ];
-        pixiNebulaTiles.forEach(layer => {
+        setNebulaTiles(nebulaTiles);
+        nebulaTiles.forEach(layer => {
             layer.sprite.blendMode = PIXI.BLEND_MODES.ADD;
             pixiNebulaLayer.addChild(layer.sprite);
         });
@@ -2372,8 +2344,9 @@ function filterArrayWithPixiCleanup(arr, keepFn) {
 
 function resetPixiOverlaySprites() {
     // Nebula is a persistent screen-space backdrop; keep it mounted.
-    if (pixiNebulaLayer && pixiNebulaTiles && pixiNebulaTiles.length) {
-        for (const t of pixiNebulaTiles) {
+    const nebulaTiles = getNebulaTiles();
+    if (pixiNebulaLayer && nebulaTiles && nebulaTiles.length) {
+        for (const t of nebulaTiles) {
             if (t && t.spr && !t.spr.parent) pixiNebulaLayer.addChild(t.spr);
         }
     }
@@ -2521,248 +2494,23 @@ function resize() {
         pixiCaveGridSprite.width = internalWidth;
         pixiCaveGridSprite.height = internalHeight;
     }
-    if (pixiStarTiles && pixiStarTiles.length) {
-        for (const t of pixiStarTiles) {
+    const starTiles = getStarTiles();
+    if (starTiles && starTiles.length) {
+        for (const t of starTiles) {
             if (!t || !t.spr) continue;
             t.spr.width = internalWidth;
             t.spr.height = internalHeight;
         }
     }
-    if (pixiNebulaTiles && pixiNebulaTiles.length) {
-        for (const t of pixiNebulaTiles) {
+    const nebulaTiles = getNebulaTiles();
+    if (nebulaTiles && nebulaTiles.length) {
+        for (const t of nebulaTiles) {
             if (!t || !t.spr) continue;
             t.spr.width = internalWidth;
             t.spr.height = internalHeight;
         }
     }
-    initStars();
-}
-
-function initStars() {
-    GameContext.starfield = [];
-    GameContext.nebulas = [];
-    const count = Math.floor((width * height) / 3000);
-    for (let i = 0; i < count; i++) {
-        const baseAlpha = Math.random() * 0.4 + 0.05;
-        const s = {
-            x: Math.random() * width,
-            y: Math.random() * height,
-            size: Math.random() < 0.95 ? 1 : 2,
-            alpha: baseAlpha * 0.5,
-            parallax: 0.05 + Math.random() * 0.1
-        };
-        s.fillStyle = `rgba(255, 255, 255, ${s.alpha})`;
-        GameContext.starfield.push(s);
-    }
-
-    // Nebula backdrop is handled by Pixi (optional). Canvas fallback stays black + stars only.
-
-    // If Pixi is enabled, build/rebuild background sprites once (positions update per-frame).
-    if (pixiScreenRoot && pixiApp && pixiApp.renderer) {
-        try {
-            // Legacy per-star sprites: keep disabled (tiling is faster).
-            if (pixiStarLayer) pixiStarLayer.visible = false;
-
-            if (!Array.isArray(pixiStarTiles)) pixiStarTiles = [];
-            if (!Array.isArray(pixiNebulaTiles)) pixiNebulaTiles = [];
-
-            if (ENABLE_NEBULA && pixiNebulaLayer) {
-                const hexToRgb = (hex) => {
-                    const h = (hex >>> 0).toString(16).padStart(6, '0');
-                    return {
-                        r: parseInt(h.slice(0, 2), 16),
-                        g: parseInt(h.slice(2, 4), 16),
-                        b: parseInt(h.slice(4, 6), 16)
-                    };
-                };
-                const makeNebulaTileTexture = (tileSize, blobCount, paletteHex) => {
-                    const c = document.createElement('canvas');
-                    c.width = tileSize;
-                    c.height = tileSize;
-                    const cctx = c.getContext('2d');
-                    cctx.clearRect(0, 0, tileSize, tileSize);
-                    cctx.globalCompositeOperation = 'lighter';
-                    for (let i = 0; i < blobCount; i++) {
-                        const col = hexToRgb(paletteHex[i % paletteHex.length]);
-                        const cx = Math.random() * tileSize;
-                        const cy = Math.random() * tileSize;
-                        const r = tileSize * (0.20 + Math.random() * 0.55);
-                        const a = 0.03 + Math.random() * 0.08;
-                        for (const ox of [-tileSize, 0, tileSize]) {
-                            for (const oy of [-tileSize, 0, tileSize]) {
-                                const x = cx + ox;
-                                const y = cy + oy;
-                                const g = cctx.createRadialGradient(x, y, 0, x, y, r);
-                                g.addColorStop(0, `rgba(${col.r},${col.g},${col.b},${a.toFixed(3)})`);
-                                g.addColorStop(0.45, `rgba(${col.r},${col.g},${col.b},${(a * 0.35).toFixed(3)})`);
-                                g.addColorStop(1, `rgba(${col.r},${col.g},${col.b},0)`);
-                                cctx.fillStyle = g;
-                                cctx.fillRect(0, 0, tileSize, tileSize);
-                            }
-                        }
-                    }
-                    cctx.globalCompositeOperation = 'source-over';
-                    const vign = cctx.createRadialGradient(tileSize * 0.5, tileSize * 0.5, tileSize * 0.10, tileSize * 0.5, tileSize * 0.5, tileSize * 0.75);
-                    vign.addColorStop(0, 'rgba(0,0,0,0)');
-                    vign.addColorStop(1, 'rgba(0,0,0,0.18)');
-                    cctx.fillStyle = vign;
-                    cctx.fillRect(0, 0, tileSize, tileSize);
-
-                    const tex = PIXI.Texture.from(c);
-                    try {
-                        tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
-                        tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.OFF;
-                    } catch (e) { }
-                    return tex;
-                };
-
-                const palettes = [
-                    [0x0b1020, 0x2a1a5e, 0x4b2ccf, 0x0a5bd6, 0x00c2ff],
-                    [0x0b1020, 0x2a2a6e, 0x1c4cff, 0x00d6d6, 0x00aaff],
-                    [0x0b1020, 0x3b1366, 0x6a2cff, 0x1c7cff, 0x00b6ff]
-                ];
-                const idxBase = (typeof GameContext.sectorIndex === 'number' && isFinite(GameContext.sectorIndex)) ? (Math.abs(GameContext.sectorIndex) | 0) : 0;
-                const paletteIdx = idxBase % palettes.length;
-                const palette = palettes[paletteIdx];
-
-                const nebulaLayers = [
-                    { tileSize: 1024, blobs: 9, alphaMult: 1.00, parallax: 0.010 },
-                    { tileSize: 768, blobs: 7, alphaMult: 0.66, parallax: 0.018 }
-                ];
-
-                const needsNebulaRebuild = (pixiNebulaPaletteIdx !== paletteIdx) || (pixiNebulaTiles.length === 0);
-                if (needsNebulaRebuild) {
-                    // Rebuild nebula only when the palette changes (sector change) or on first init.
-                    const oldNebs = pixiNebulaLayer.removeChildren();
-                    for (const spr of oldNebs) {
-                        try { spr.destroy({ children: true, texture: false, baseTexture: false }); } catch (e) { }
-                    }
-                    for (const t of pixiNebulaTiles) {
-                        if (t && t.tex) {
-                            try { t.tex.destroy(true); } catch (e) { }
-                        }
-                    }
-                    pixiNebulaTiles = [];
-
-                    for (const L of nebulaLayers) {
-                        const tex = makeNebulaTileTexture(L.tileSize, L.blobs, palette);
-                        const spr = new PIXI.TilingSprite(tex, (typeof width === 'number' && width > 0) ? width : 1, (typeof height === 'number' && height > 0) ? height : 1);
-                        const mult = (typeof L.alphaMult === 'number' && isFinite(L.alphaMult)) ? L.alphaMult : 1;
-                        spr.alpha = (typeof NEBULA_ALPHA === 'number' && isFinite(NEBULA_ALPHA)) ? (NEBULA_ALPHA * mult) : (0.12 * mult);
-                        spr.tint = 0xffffff;
-                        spr.blendMode = PIXI.BLEND_MODES.NORMAL;
-                        pixiNebulaLayer.addChild(spr);
-                        pixiNebulaTiles.push({ spr, tex, parallax: L.parallax });
-                    }
-                    pixiNebulaPaletteIdx = paletteIdx;
-                }
-            }
-
-            // Preferred: tiling GameContext.starfield (no per-star sprite updates)
-            if (pixiStarTilingLayer) {
-                const makeStarTileTexture = (tileSize, count, minSize, maxSize, minAlpha, maxAlpha) => {
-                    const c = document.createElement('canvas');
-                    c.width = tileSize;
-                    c.height = tileSize;
-                    const cctx = c.getContext('2d');
-                    cctx.clearRect(0, 0, tileSize, tileSize);
-                    for (let i = 0; i < count; i++) {
-                        const x = Math.random() * tileSize;
-                        const y = Math.random() * tileSize;
-                        const sz = (minSize + Math.random() * (maxSize - minSize)) | 0;
-                        const a = minAlpha + Math.random() * (maxAlpha - minAlpha);
-                        cctx.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`;
-                        cctx.fillRect(x, y, Math.max(1, sz), Math.max(1, sz));
-                    }
-                    const tex = PIXI.Texture.from(c);
-                    try {
-                        // Avoid shimmer/brightness flicker on 1-2px stars while panning.
-                        tex.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
-                        tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.OFF;
-                    } catch (e) { }
-                    return tex;
-                };
-
-                if (pixiStarTiles.length === 0) {
-                    const tileSize = 512;
-                    const layers = [
-                        { count: 260, minSize: 1, maxSize: 2, minAlpha: 0.05, maxAlpha: 0.25, parallax: 0.06 },
-                        { count: 70, minSize: 2, maxSize: 3, minAlpha: 0.08, maxAlpha: 0.40, parallax: 0.12 }
-                    ];
-                    for (const L of layers) {
-                        const tex = makeStarTileTexture(tileSize, L.count, L.minSize, L.maxSize, L.minAlpha, L.maxAlpha);
-                        const spr = new PIXI.TilingSprite(tex, width, height);
-                        spr.alpha = 0.5;
-                        spr.tint = 0xffffff;
-                        spr.blendMode = PIXI.BLEND_MODES.NORMAL;
-                        pixiStarTilingLayer.addChild(spr);
-                        pixiStarTiles.push({ spr, tex, parallax: L.parallax });
-                    }
-                }
-            } else if (pixiStarLayer && pixiTextureWhite) {
-                // Fallback: per-star sprites
-                pixiStarLayer.visible = true;
-                for (const s of GameContext.starfield) {
-                    const spr = allocPixiSprite(pixiStarSpritePool, pixiStarLayer, pixiTextureWhite, s.size, 0);
-                    spr.alpha = s.alpha;
-                    spr.tint = 0xffffff;
-                    spr.blendMode = PIXI.BLEND_MODES.NORMAL;
-                    s._pixiSprite = spr;
-                }
-            }
-        } catch (e) { }
-    }
-}
-
-function updatePixiBackground(camX, camY) {
-    // Update nebula layers (additive blend, very slow parallax)
-    if (pixiNebulaTiles && pixiNebulaTiles.length) {
-        for (const t of pixiNebulaTiles) {
-            const spr = t && (t.sprite || t.spr);
-            if (!spr) continue;
-            if (spr.width !== width) spr.width = width;
-            if (spr.height !== height) spr.height = height;
-            const tx = -camX * (t.parallax || 0.012);
-            const ty = -camY * (t.parallax || 0.012);
-            spr.tilePosition.set(Math.round(tx), Math.round(ty));
-        }
-    }
-    // Update star layers (faster parallax for depth effect)
-    if (pixiStarTiles && pixiStarTiles.length) {
-        for (const t of pixiStarTiles) {
-            const spr = t && (t.sprite || t.spr);
-            if (!spr) continue;
-            if (spr.width !== width) spr.width = width;
-            if (spr.height !== height) spr.height = height;
-            const tx = -camX * (t.parallax || 0.08);
-            const ty = -camY * (t.parallax || 0.08);
-            spr.tilePosition.set(Math.round(tx), Math.round(ty));
-        }
-        return;
-    }
-    // Legacy fallback: per-star sprite positioning (disabled)
-    if (!pixiStarLayer) return;
-    for (const s of GameContext.starfield) {
-        const spr = s && s._pixiSprite;
-        if (!spr) continue;
-        if (!spr.parent) pixiStarLayer.addChild(spr);
-        let x = (s.x - camX * s.parallax) % width;
-        let y = (s.y - camY * s.parallax) % height;
-        if (x < 0) x += width;
-        if (y < 0) y += height;
-        spr.position.set(x, y);
-    }
-}
-
-function updatePixiCaveGrid(camX, camY, zoom, caveActive) {
-    if (!pixiCaveGridLayer || !pixiCaveGridSprite) return;
-    pixiCaveGridLayer.visible = !!caveActive;
-    if (!caveActive) return;
-    if (pixiCaveGridSprite.width !== width) pixiCaveGridSprite.width = width;
-    if (pixiCaveGridSprite.height !== height) pixiCaveGridSprite.height = height;
-    const z = (typeof zoom === 'number' && isFinite(zoom) && zoom > 0) ? zoom : (GameContext.currentZoom || ZOOM_LEVEL);
-    pixiCaveGridSprite.tileScale.set(z);
-    pixiCaveGridSprite.tilePosition.set(Math.round(-camX * z), Math.round(-camY * z));
+    initStars(width, height);
 }
 
 function startSectorTransition() {
@@ -2835,7 +2583,7 @@ function completeSectorWarp() {
     GameContext.warpGateUnlocked = false;
 
     // Avoid rebuilding stars/nebula when entering Sector 2 cave (background is hidden there).
-    if (GameContext.sectorIndex !== 2) initStars(); // update nebula palette
+    if (GameContext.sectorIndex !== 2) initStars(width, height); // update nebula palette
 
     // Sector 2: long cave run instead of open space.
     if (GameContext.sectorIndex === 2) {
@@ -22516,7 +22264,7 @@ function setupGameWorld() {
 
     generateMap();
     // Ensure the nebula palette matches Sector 1 when restarting after a Sector 2 cave run. 
-    initStars();
+    initStars(width, height);
 
     GameContext.maxRoamers = 3;
     document.getElementById('bases-display').innerText = `0`;
@@ -23716,14 +23464,14 @@ function gameLoopLogic(opts = null) {
                 if (pixiNebulaLayer) pixiNebulaLayer.visible = !!ENABLE_NEBULA;
                 if (pixiStarTilingLayer) pixiStarTilingLayer.visible = true;
                 if (pixiStarLayer) pixiStarLayer.visible = false; // legacy particle stars disabled
-                updatePixiCaveGrid(camX, camY, zoom, false);
+                updatePixiCaveGrid(camX, camY, zoom, false, width, height);
             }
         }
 
         // Draw Stars (always enabled)
         // if (!caveActiveBg) { // REMOVED: Enable stars in cave
         if (pixiScreenRoot && pixiStarLayer) {
-            updatePixiBackground(camX, camY);
+            updatePixiBackground(camX, camY, width, height);
         } else {
             for (let s of GameContext.starfield) {
                 let x = (s.x - camX * s.parallax) % width;
@@ -24902,7 +24650,7 @@ function gameLoopLogic(opts = null) {
         drawStationIndicator();
         drawDestroyerIndicator();
         drawWarpGateIndicator();
-        drawMinimap();
+        drawMinimap(pixiMinimapGraphics, canvas);
         drawContractIndicator();
         drawMiniEventIndicator();
         updateMiniEventUI();
@@ -25351,313 +25099,6 @@ function drawSlackerMouseLine() {
     pixiArrowsGraphics.lineStyle(2, 0xffffff, 0.5);
     pixiArrowsGraphics.moveTo(screenStartX, screenStartY);
     pixiArrowsGraphics.lineTo(screenMouseX, screenMouseY);
-}
-
-// Minimap position constants (bottom-right corner of screen)
-const MINIMAP_SIZE = 200;
-const MINIMAP_RADIUS = 100;
-const MINIMAP_OFFSET = 20;
-
-function drawMinimap() {
-    if (!pixiMinimapGraphics) return;
-    GameContext.minimapFrame++;
-    if (GameContext.minimapFrame % 2 === 1) return; // throttle updates
-
-    // Clear previous graphics
-    pixiMinimapGraphics.clear();
-
-    // Position minimap in bottom-right corner
-    const screenW = canvas.width;
-    const screenH = canvas.height;
-    const minimapX = screenW - MINIMAP_SIZE - MINIMAP_OFFSET;
-    const minimapY = screenH - MINIMAP_SIZE - MINIMAP_OFFSET;
-    const centerX = minimapX + MINIMAP_RADIUS;
-    const centerY = minimapY + MINIMAP_RADIUS;
-
-    // Draw circular background with cyan outline
-    pixiMinimapGraphics.lineStyle(2, 0x00ffff);  // Cyan outline
-    pixiMinimapGraphics.beginFill(0x000011);
-    pixiMinimapGraphics.drawCircle(centerX, centerY, MINIMAP_RADIUS);
-    pixiMinimapGraphics.endFill();
-
-    // Create a circular mask for clipping (reused each frame)
-    // We'll manually clip by checking bounds for each element
-
-    const warpActive = !!(GameContext.warpZone && GameContext.warpZone.active);
-    const radarRange = warpActive ? ((GameContext.warpZone.boundaryRadius || 6200) + 300) : 4000;
-    const scale = MINIMAP_RADIUS / radarRange;
-    const refX = warpActive ? GameContext.warpZone.pos.x : (GameContext.player ? GameContext.player.pos.x : 0);
-    const refY = warpActive ? GameContext.warpZone.pos.y : (GameContext.player ? GameContext.player.pos.y : 0);
-
-    // Helper to check if point is in circular bounds
-    const inBounds = (x, y) => (x * x + y * y) <= (MINIMAP_RADIUS * MINIMAP_RADIUS);
-
-    // Draw player
-    if (GameContext.player && !GameContext.player.dead) {
-        const px = warpActive ? ((GameContext.player.pos.x - refX) * scale) : 0;
-        const py = warpActive ? ((GameContext.player.pos.y - refY) * scale) : 0;
-        pixiMinimapGraphics.beginFill(0x00ff00);
-        pixiMinimapGraphics.drawCircle(centerX + px, centerY + py, 3);
-        pixiMinimapGraphics.endFill();
-    }
-
-    // Warp maze walls + turrets
-    if (warpActive && GameContext.warpZone) {
-        const segs = (typeof GameContext.warpZone.allSegments === 'function') ? GameContext.warpZone.allSegments() : [];
-        pixiMinimapGraphics.lineStyle(1, 0x00ffff, 0.65);
-        for (let i = 0; i < segs.length; i++) {
-            const s = segs[i];
-            const x0 = (s.x0 - refX) * scale;
-            const y0 = (s.y0 - refY) * scale;
-            const x1 = (s.x1 - refX) * scale;
-            const y1 = (s.y1 - refY) * scale;
-            if (Math.abs(x0) > 120 && Math.abs(x1) > 120 && Math.abs(y0) > 120 && Math.abs(y1) > 120) continue;
-            pixiMinimapGraphics.moveTo(centerX + x0, centerY + y0);
-            pixiMinimapGraphics.lineTo(centerX + x1, centerY + y1);
-        }
-
-        if (GameContext.warpZone.turrets && GameContext.warpZone.turrets.length > 0) {
-            pixiMinimapGraphics.beginFill(0x00ffff);
-            for (let i = 0; i < GameContext.warpZone.turrets.length; i++) {
-                const t = GameContext.warpZone.turrets[i];
-                if (!t || t.dead) continue;
-                const dx = (t.pos.x - refX) * scale;
-                const dy = (t.pos.y - refY) * scale;
-                if (inBounds(dx, dy)) {
-                    pixiMinimapGraphics.drawRect(centerX + dx - 1, centerY + dy - 1, 3, 3);
-                }
-            }
-            pixiMinimapGraphics.endFill();
-        }
-
-        if (GameContext.warpGate && !GameContext.warpGate.dead) {
-            const dx = (GameContext.warpGate.pos.x - refX) * scale;
-            const dy = (GameContext.warpGate.pos.y - refY) * scale;
-            pixiMinimapGraphics.lineStyle(2, 0xff8800, 0.9);
-            pixiMinimapGraphics.drawCircle(centerX + dx, centerY + dy, 7);
-        }
-    }
-
-    // Environment asteroids
-    pixiMinimapGraphics.lineStyle(1, 0x005500);
-    GameContext.environmentAsteroids.forEach(a => {
-        if (GameContext.player) {
-            const dx = (a.pos.x - refX) * scale;
-            const dy = (a.pos.y - refY) * scale;
-            if (inBounds(dx, dy)) {
-                pixiMinimapGraphics.drawCircle(centerX + dx, centerY + dy, Math.max(1, a.radius * scale));
-            }
-        }
-    });
-
-    // Enemies
-    pixiMinimapGraphics.beginFill(0xff0000);
-    GameContext.enemies.forEach(e => {
-        if (GameContext.player) {
-            const dx = (e.pos.x - refX) * scale;
-            const dy = (e.pos.y - refY) * scale;
-            if (inBounds(dx, dy)) {
-                pixiMinimapGraphics.drawRect(centerX + dx - 1, centerY + dy - 1, 3, 3);
-            }
-        }
-    });
-    pixiMinimapGraphics.endFill();
-
-    // Bases
-    pixiMinimapGraphics.beginFill(0xff00ff);
-    GameContext.pinwheels.forEach(b => {
-        if (GameContext.player) {
-            const dx = (b.pos.x - refX) * scale;
-            const dy = (b.pos.y - refY) * scale;
-            if (inBounds(dx, dy)) {
-                pixiMinimapGraphics.drawCircle(centerX + dx, centerY + dy, 5);
-            }
-        }
-    });
-    pixiMinimapGraphics.endFill();
-
-    // Boss
-    if (GameContext.bossActive && GameContext.boss && !GameContext.boss.dead && GameContext.player) {
-        const dx = (GameContext.boss.pos.x - refX) * scale;
-        const dy = (GameContext.boss.pos.y - refY) * scale;
-        pixiMinimapGraphics.beginFill(0xff0000);
-        pixiMinimapGraphics.drawCircle(centerX + dx, centerY + dy, 8);
-        pixiMinimapGraphics.endFill();
-    }
-
-    // Radiation storm
-    if (!warpActive && GameContext.radiationStorm && !GameContext.radiationStorm.dead && GameContext.player) {
-        const dx = GameContext.radiationStorm.pos.x - GameContext.player.pos.x;
-        const dy = GameContext.radiationStorm.pos.y - GameContext.player.pos.y;
-        const dist = Math.hypot(dx, dy);
-        const angle = Math.atan2(dy, dx);
-        pixiMinimapGraphics.lineStyle(2, 0xffdc00, 0.7);
-        if (dist * scale > 95) {
-            const px = Math.cos(angle) * 90;
-            const py = Math.sin(angle) * 90;
-            pixiMinimapGraphics.beginFill(0xffff00);
-            drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
-            pixiMinimapGraphics.endFill();
-        } else {
-            pixiMinimapGraphics.drawCircle(centerX + dx * scale, centerY + dy * scale, Math.max(4, GameContext.radiationStorm.radius * scale));
-        }
-    }
-
-    // Coins
-    pixiMinimapGraphics.beginFill(0xffff00);
-    GameContext.coins.forEach(c => {
-        if (GameContext.player) {
-            const dx = (c.pos.x - GameContext.player.pos.x) * scale;
-            const dy = (c.pos.y - GameContext.player.pos.y) * scale;
-            if (inBounds(dx, dy)) {
-                pixiMinimapGraphics.drawRect(centerX + dx, centerY + dy, 1, 1);
-            }
-        }
-    });
-    pixiMinimapGraphics.endFill();
-
-    // Powerups
-    pixiMinimapGraphics.beginFill(0x00ff00);
-    GameContext.powerups.forEach(p => {
-        if (GameContext.player) {
-            const dx = (p.pos.x - GameContext.player.pos.x) * scale;
-            const dy = (p.pos.y - GameContext.player.pos.y) * scale;
-            if (inBounds(dx, dy)) {
-                pixiMinimapGraphics.drawRect(centerX + dx - 1, centerY + dy - 1, 3, 3);
-            }
-        }
-    });
-    pixiMinimapGraphics.endFill();
-
-    // POIs
-    if (GameContext.player && GameContext.pois && GameContext.pois.length > 0) {
-        for (const p of GameContext.pois) {
-            if (!p || p.dead || p.claimed) continue;
-            const dx = p.pos.x - GameContext.player.pos.x;
-            const dy = p.pos.y - GameContext.player.pos.y;
-            const dist = Math.hypot(dx, dy);
-            const angle = Math.atan2(dy, dx);
-            const inRange = (dist * scale <= 95);
-            const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
-            const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
-            const color = colorToHex(p.color || '#0ff');
-            pixiMinimapGraphics.beginFill(color);
-            if (inRange) {
-                pixiMinimapGraphics.drawCircle(centerX + px, centerY + py, 4);
-            } else {
-                drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
-            }
-            pixiMinimapGraphics.endFill();
-        }
-    }
-
-    // Space station
-    if (GameContext.spaceStation && GameContext.player) {
-        const dx = GameContext.spaceStation.pos.x - GameContext.player.pos.x;
-        const dy = GameContext.spaceStation.pos.y - GameContext.player.pos.y;
-        const dist = Math.hypot(dx, dy);
-        const angle = Math.atan2(dy, dx);
-
-        pixiMinimapGraphics.beginFill(0xffffff);
-        if (dist * scale > 95) {
-            const px = Math.cos(angle) * 90;
-            const py = Math.sin(angle) * 90;
-            drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
-        } else {
-            const mx = dx * scale;
-            const my = dy * scale;
-            pixiMinimapGraphics.drawCircle(centerX + mx, centerY + my, 6);
-        }
-        pixiMinimapGraphics.endFill();
-    }
-
-    // Destroyer indicator on minimap
-    if (!warpActive && GameContext.player && GameContext.destroyer && !GameContext.destroyer.dead) {
-        const dx = GameContext.destroyer.pos.x - GameContext.player.pos.x;
-        const dy = GameContext.destroyer.pos.y - GameContext.player.pos.y;
-        const dist = Math.hypot(dx, dy);
-        const angle = Math.atan2(dy, dx);
-        const color = GameContext.destroyer.displayName === "DESTROYER II" ? 0xffff00 : 0xff8800;
-
-        const inRange = (dist * scale <= 95);
-        const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
-        const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
-
-        pixiMinimapGraphics.beginFill(color);
-        drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
-        pixiMinimapGraphics.endFill();
-    }
-
-    // Contract target indicator on minimap
-    if (!warpActive && GameContext.player && GameContext.activeContract) {
-        let tx = null, ty = null;
-        if (GameContext.activeContract.type === 'gate_run' && GameContext.contractEntities.gates.length > 0) {
-            const idx = GameContext.activeContract.gateIndex || 0;
-            const g = GameContext.contractEntities.gates[idx];
-            if (g && !g.dead) { tx = g.pos.x; ty = g.pos.y; }
-        } else if (GameContext.activeContract.target) {
-            tx = GameContext.activeContract.target.x; ty = GameContext.activeContract.target.y;
-        } else if (GameContext.contractEntities.beacons.length > 0) {
-            tx = GameContext.contractEntities.beacons[0].pos.x; ty = GameContext.contractEntities.beacons[0].pos.y;
-        }
-
-        if (tx !== null && ty !== null) {
-            const dx = tx - GameContext.player.pos.x;
-            const dy = ty - GameContext.player.pos.y;
-            const dist = Math.hypot(dx, dy);
-            const angle = Math.atan2(dy, dx);
-
-            const inRange = (dist * scale <= 95);
-            const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
-            const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
-
-            pixiMinimapGraphics.beginFill(0x00ff00);
-            drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
-            pixiMinimapGraphics.endFill();
-        }
-    }
-
-    // Mini-event indicator on minimap
-    if (!warpActive && GameContext.player && GameContext.miniEvent && !GameContext.miniEvent.dead) {
-        let tx = GameContext.miniEvent.pos.x, ty = GameContext.miniEvent.pos.y;
-        const dx = tx - GameContext.player.pos.x;
-        const dy = ty - GameContext.player.pos.y;
-        const dist = Math.hypot(dx, dy);
-        const angle = Math.atan2(dy, dx);
-        const inRange = (dist * scale <= 95);
-        const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
-        const py = inRange ? (dy * scale) : (Math.sin(angle) * 90);
-
-        pixiMinimapGraphics.beginFill(0xffff00);
-        drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
-        pixiMinimapGraphics.endFill();
-    }
-}
-
-// Helper function to draw arrows on the minimap
-function drawMinimapArrow(gfx, x, y, angle, length, width) {
-    const tipX = x + Math.cos(angle) * length;
-    const tipY = y + Math.sin(angle) * length;
-    const leftX = x + Math.cos(angle + 2.5) * width;
-    const leftY = y + Math.sin(angle + 2.5) * width;
-    const rightX = x + Math.cos(angle - 2.5) * width;
-    const rightY = y + Math.sin(angle - 2.5) * width;
-    gfx.drawPolygon([tipX, tipY, leftX, leftY, rightX, rightY]);
-}
-
-// Helper function to convert color string to hex number
-function colorToHex(colorStr) {
-    if (!colorStr || typeof colorStr !== 'string') return 0xffffff;
-    if (colorStr.startsWith('#')) {
-        return parseInt(colorStr.slice(1), 16);
-    }
-    // Handle named colors (basic subset)
-    const colors = {
-        'cyan': 0x00ffff, 'magenta': 0xff00ff, 'yellow': 0xffff00,
-        'red': 0xff0000, 'green': 0x00ff00, 'blue': 0x0000ff,
-        'white': 0xffffff, 'black': 0x000000, 'orange': 0xff8800
-    };
-    return colors[colorStr.toLowerCase()] || 0xffffff;
 }
 
 
@@ -26852,7 +26293,7 @@ if (settingsApplyBtn && isElectron) {
         if (resolutionChanged) {
             setupCanvasResolution(w, h);
             // Reinitialize background sprites
-            initStars();
+            initStars(width, height);
         }
 
         // Handle restart if frameless or vsync changed
