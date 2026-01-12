@@ -1,6 +1,6 @@
 # Phase 4: Entity Classes - Status Report
 
-**Last Updated:** 2026-01-12T13:27:58-08:00  
+**Last Updated:** 2026-01-12T15:06:00-08:00  
 **Status:** IN PROGRESS
 
 ---
@@ -134,7 +134,11 @@ Phase 4 involves extracting entity classes from `main.js` into separate module f
 ### 19. Cave Entities (Partial) ⚠️
 - **Files:** `src/js/entities/cave/CaveGuidedMissile.js`, `src/js/entities/cave/CaveWallTurret.js`, `src/js/entities/cave/CaveWallSwitch.js`, `src/js/entities/cave/CavePowerRelay.js`, `src/js/entities/cave/CaveRewardPickup.js`, `src/js/entities/cave/AsteroidTurret.js`, `src/js/entities/cave/CaveGasVent.js`, `src/js/entities/cave/CaveRockfall.js`
 - **Index:** `src/js/entities/cave/index.js`
-- **Status:** Extracted, but not wired into `src/js/main.js` yet. Classes still exist in `src/js/main.js`.
+- **Status:** Wired into `src/js/main.js`, legacy class definitions removed, cave barrel exported.
+
+### 20. Player ✅
+- **Spaceship**: `src/js/entities/player/Spaceship.js`
+- **Status:** Extracted, wired via dependency registration, and barrel exported.
 
 ---
 
@@ -147,19 +151,19 @@ Phase 4 involves extracting entity classes from `main.js` into separate module f
 - Create `CaveDraftZone` and `CaveCritter` modules and export them in `src/js/entities/cave/index.js`.
 - Extract `CaveLevel`, `CaveMonsterBase`, `CaveMonster1/2/3`.
 - Wire all cave entities into `src/js/main.js` (imports + dependency registration).
-- Remove cave class definitions from `src/js/main.js`. (DONE)
-- Export cave barrel in `src/js/entities/index.js` (Pending/Not used yet).
+- Remove cave class definitions from `src/js/main.js`.
+- Export cave barrel in `src/js/entities/index.js`.
 
 ### 3. Move Player Class
 - Create `src/js/entities/player/Player.js`.
 - Move `Player` class definition.
 - Extract `PlayerShip` variants logic if needed.
-- Update `main.js` to import `Player`.
+- Update `main.js` to import `Player`. (DONE for Spaceship)
 
 ### 3. Extract Player
-- `Spaceship`
+- `Spaceship` (DONE)
 
 ### 4. Unify Bullet Class
-- `main.js` still has a legacy `Bullet` class definition. Future extractions should use the module `Bullet` class. Eventually remove `Bullet` from `main.js`.
+- `main.js` legacy `Bullet` removed. Module `Bullet` now handles homing/bomb behaviors and Pixi glow rendering.
 
 ---

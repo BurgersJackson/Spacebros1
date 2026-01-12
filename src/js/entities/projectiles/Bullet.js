@@ -4,9 +4,18 @@
  */
 
 import { Entity } from '../Entity.js';
+import { GameContext } from '../../core/game-context.js';
 import { colorToPixi } from '../../rendering/colors.js';
 import { allocPixiSprite, releasePixiSprite } from '../../rendering/sprite-pools.js';
 import { SIM_STEP_MS } from '../../core/constants.js';
+import { playSound } from '../../audio/audio-manager.js';
+import { Shockwave } from './Shockwave.js';
+
+let _spawnFieryExplosion = null;
+
+export function registerBulletDependencies(deps) {
+    if (deps.spawnFieryExplosion) _spawnFieryExplosion = deps.spawnFieryExplosion;
+}
 
 /**
  * Bullet projectile with damage and owner tracking.
@@ -17,32 +26,117 @@ export class Bullet extends Entity {
         this._poolType = 'bullet';
         this.sprite = null;
 
-        this.vel.x = Math.cos(angle) * speed * 2; // Doubled for 60Hz
+        this.vel.x = Math.cos(angle) * speed * 2;
         this.vel.y = Math.sin(angle) * speed * 2;
         this.angle = angle;
         this.speed = speed * 2;
 
-        this.damage = opts.damage || 1;
-        this.radius = opts.radius || 4;
-        this.life = opts.life ? opts.life / 2 : 60; // halved
+        this.damage = (typeof opts.damage === 'number') ? opts.damage : 1;
+        this.radius = (typeof opts.radius === 'number') ? opts.radius : 4;
+        this.owner = (opts.owner !== undefined) ? opts.owner : (opts.isEnemy ? 'enemy' : 'player');
+        this.isEnemy = (typeof opts.isEnemy === 'boolean') ? opts.isEnemy : (this.owner === 'enemy');
+        this.life = (typeof opts.life === 'number')
+            ? opts.life
+            : (this.isEnemy ? 50 : (GameContext.player && GameContext.player.stats ? (50 * (GameContext.player.stats.rangeMult || 1)) : 50));
         this.maxLife = this.life;
-        this.color = opts.color || '#0ff';
-        this.owner = opts.owner || 'player'; // 'player' or 'enemy'
-        this.isEnemy = (this.owner === 'enemy');
+        this.color = opts.color || (this.isEnemy ? '#f00' : '#ff0');
         this.piercing = opts.piercing || false;
         this.hitCount = 0;
         this.maxHits = opts.maxHits || 1;
+        this.ignoreShields = !!opts.ignoreShields;
+        this.homing = (typeof opts.homing === 'number') ? opts.homing : 0;
+        this.pierceCount = (typeof opts.pierceCount === 'number') ? opts.pierceCount : 0;
+        this.isExplosive = !!opts.isExplosive;
+        this.isBomb = !!opts.isBomb;
+        this.explosionRadius = (typeof opts.explosionRadius === 'number') ? opts.explosionRadius : 0;
+        this.explosionDamage = (typeof opts.explosionDamage === 'number') ? opts.explosionDamage : 0;
+        this.useShockwave = !!opts.useShockwave;
+        this.isMissile = !!opts.isMissile;
+        this.isSplitShot = !!opts.isSplitShot;
+        this.hasCrit = !!opts.hasCrit;
+        this.shape = opts.shape || null;
 
-        // Visual style
-        this.style = opts.style || 'glow'; // 'glow', 'laser', 'square'
+        if (opts.style) {
+            this.style = opts.style;
+        } else if (this.isMissile) {
+            this.style = 'missile';
+        } else if (this.shape === 'square') {
+            this.style = 'square';
+        } else if (!this.isEnemy) {
+            this.style = 'laser';
+        } else {
+            this.style = 'glow';
+        }
     }
 
     update(deltaTime = SIM_STEP_MS) {
+        if (this.homing > 0 && !this.isEnemy) {
+            let target = null;
+            let minDist = Infinity;
+            const acquireRange = 8000;
+
+            const consider = (obj) => {
+                if (!obj || obj.dead || !obj.pos) return;
+                const d = Math.hypot(obj.pos.x - this.pos.x, obj.pos.y - this.pos.y);
+                if (d < minDist && d <= acquireRange) { minDist = d; target = obj; }
+            };
+
+            for (let e of GameContext.enemies) consider(e);
+            if (GameContext.bossActive && GameContext.boss && !GameContext.boss.dead) consider(GameContext.boss);
+            if (GameContext.pinwheels && GameContext.pinwheels.length > 0) for (let b of GameContext.pinwheels) consider(b);
+            if (GameContext.spaceStation && !GameContext.spaceStation.dead) consider(GameContext.spaceStation);
+            if (GameContext.destroyer && !GameContext.destroyer.dead) consider(GameContext.destroyer);
+            if (GameContext.contractEntities && GameContext.contractEntities.wallTurrets && GameContext.contractEntities.wallTurrets.length > 0) {
+                for (let t of GameContext.contractEntities.wallTurrets) consider(t);
+            }
+            if (GameContext.warpZone && GameContext.warpZone.active && GameContext.warpZone.turrets && GameContext.warpZone.turrets.length > 0) {
+                for (let t of GameContext.warpZone.turrets) consider(t);
+            }
+            if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active && GameContext.caveLevel.wallTurrets && GameContext.caveLevel.wallTurrets.length > 0) {
+                for (let t of GameContext.caveLevel.wallTurrets) consider(t);
+            }
+
+            if (target) {
+                const targetAngle = Math.atan2(target.pos.y - this.pos.y, target.pos.x - this.pos.x);
+                let angleDiff = targetAngle - this.angle;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+                const dtFactor = deltaTime / 16.67;
+                const turnRate = (this.homing === 2 ? 0.4 : 0.1) * dtFactor;
+                this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), turnRate);
+
+                this.vel.x = Math.cos(this.angle) * this.speed;
+                this.vel.y = Math.sin(this.angle) * this.speed;
+            }
+        }
+
+        super.update(deltaTime);
         const scale = deltaTime / 16.67;
-        this.pos.x += this.vel.x * scale;
-        this.pos.y += this.vel.y * scale;
         this.life -= scale;
-        if (this.life <= 0) this.dead = true;
+        if (this.life <= 0) {
+            if (this.isBomb && this.explosionRadius > 0) {
+                if (_spawnFieryExplosion) _spawnFieryExplosion(this.pos.x, this.pos.y, 1.5);
+                if (this.useShockwave) {
+                    GameContext.shockwaves.push(new Shockwave(
+                        this.pos.x,
+                        this.pos.y,
+                        this.explosionDamage || 10,
+                        this.explosionRadius || 150,
+                        { color: '#f80', damagePlayer: true }
+                    ));
+                }
+                playSound('explode');
+                if (GameContext.player && !GameContext.player.dead) {
+                    const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+                    if (dist < this.explosionRadius) {
+                        const dmg = this.explosionDamage || 5;
+                        GameContext.player.takeHit(dmg);
+                    }
+                }
+            }
+            this.dead = true;
+        }
     }
 
     /**
@@ -74,9 +168,24 @@ export class Bullet extends Entity {
                     spr.visible = true;
                     spr.position.set(this.pos.x, this.pos.y);
                     spr.rotation = this.angle;
-                    spr.tint = colorToPixi(this.color);
-                    spr.alpha = Math.min(1, this.life / 20);
-                    if (window.PIXI) spr.blendMode = PIXI.BLEND_MODES.ADD;
+                    spr.blendMode = PIXI.BLEND_MODES.ADD;
+
+                    const size = (this.radius || 4) * 2;
+                    if (this.style === 'missile') {
+                        spr.width = 20;
+                        spr.height = 20;
+                        spr.tint = 0xffffff;
+                    } else if (this.style === 'laser') {
+                        spr.width = size * 6;
+                        spr.height = size * 3.5;
+                        spr.tint = colorToPixi(this.color);
+                    } else {
+                        spr.width = size * 4;
+                        spr.height = size * 4;
+                        spr.tint = colorToPixi(this.color);
+                    }
+
+                    spr.alpha = 1;
                     return;
                 }
             }
