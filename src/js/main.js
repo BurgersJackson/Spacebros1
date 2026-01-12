@@ -1,5 +1,6 @@
 // --- Module Imports ---
 import { Vector, SpatialHash, _tempVec1, _tempVec2 } from './core/math.js';
+import { GameContext } from './core/game-context.js';
 import { globalProfiler } from './core/profiler.js';
 import { globalJitterMonitor } from './core/jitter-monitor.js';
 import { globalStaggeredCleanup, immediateCompactArray } from './core/staggered-cleanup.js';
@@ -25,6 +26,22 @@ import {
     pixiBulletSpritePool, pixiParticleSpritePool, pixiEnemySpritePools,
     pixiPickupSpritePool, pixiAsteroidSpritePool, pixiStarSpritePool
 } from './rendering/pixi-setup.js';
+import { findSpawnPointRelative as findSpawnPointRelativeHelper } from './utils/spawn-utils.js';
+import {
+    clearArrayWithPixiCleanup as clearArrayWithPixiCleanupHelper,
+    destroyBulletSprite as destroyBulletSpriteHelper,
+    pixiCleanupObject as pixiCleanupObjectHelper
+} from './utils/cleanup-utils.js';
+import {
+    clearOverlayMessageTimeout,
+    formatTime,
+    showOverlayMessage,
+    updateContractUI as updateContractUIHelper,
+    updateHealthUI as updateHealthUIHelper,
+    updateTurboUI as updateTurboUIHelper,
+    updateWarpUI as updateWarpUIHelper,
+    updateXpUI as updateXpUIHelper
+} from './utils/ui-helpers.js';
 
 // --- Performance Debug (load after other modules) ---
 import './core/perf-debug.js';
@@ -88,35 +105,16 @@ const UPGRADE_DATA = {
 };
 
 // --- Globals ---
-let mouseState = { down: false, leftDown: false, rightDown: false, middleDown: false };
-let overlayTimeout = null;
-let warpParticles = [];
-let starfield = [];
-let nebulas = [];
-let shockwaves = [];
-let menuSelectionIndex = 0;
-let sectorIndex = 1;
-let DEBUG_COLLISION = false; // Toggle for collision debug visualization
+const mouseState = GameContext.mouseState;
 
 // Pixi Textures (Global)
 let pixiParticleSmokeTexture;
 let pixiParticleWarpTexture;
 
-
-// --- Game Mode State ---
-let gameMode = 'normal'; // 'normal' or 'arcade'
-let arcadeBoss = null;
-let arcadeWave = 0;
-let arcadeWaveNextAt = 0;
-
 // --- Meta Shop Modal State ---
 let currentModalUpgradeId = null;
 let modalSourceButtonIndex = null; // Remember which button index opened the modal
 let returningFromModal = false; // Flag to prevent index reset when returning from modal
-
-// --- Spatial Grid (SpatialHash imported from module) ---
-const asteroidGrid = new SpatialHash(300); // Cell size approx max asteroid size + buffer
-const targetGrid = new SpatialHash(350); // Spatial hash for Enemies, Bases, Turrets
 
 // --- Base Classes (Vector and Entity imported from modules) ---
 
@@ -130,37 +128,37 @@ const targetGrid = new SpatialHash(350); // Spatial hash for Enemies, Bases, Tur
 
 // DEBUG: Spawn cruiser instantly from console with window.spawnCruiser()
 window.spawnCruiser = function () {
-    if (typeof bossActive !== 'undefined' && bossActive) {
+    if (typeof GameContext.bossActive !== 'undefined' && GameContext.bossActive) {
         console.log('[DEBUG] Boss already active');
         return;
     }
-    cruiserEncounterCount++;
-    if (destroyer) {
-        const idx = enemies.indexOf(destroyer);
-        if (idx !== -1) enemies.splice(idx, 1);
-        if (destroyer.pixiCleanupObject && typeof destroyer.pixiCleanupObject === 'function') {
-            destroyer.pixiCleanupObject();
+    GameContext.cruiserEncounterCount++;
+    if (GameContext.destroyer) {
+        const idx = GameContext.enemies.indexOf(GameContext.destroyer);
+        if (idx !== -1) GameContext.enemies.splice(idx, 1);
+        if (GameContext.destroyer.pixiCleanupObject && typeof GameContext.destroyer.pixiCleanupObject === 'function') {
+            GameContext.destroyer.pixiCleanupObject();
         }
-        destroyer = null;
+        GameContext.destroyer = null;
     }
-    clearArrayWithPixiCleanup(enemies);
-    clearArrayWithPixiCleanup(pinwheels);
-    baseRespawnTimers = [];
-    roamerRespawnQueue = [];
-    clearArrayWithPixiCleanup(bullets);
-    clearArrayWithPixiCleanup(bossBombs);
-    clearArrayWithPixiCleanup(guidedMissiles);
-    boss = new Cruiser(cruiserEncounterCount);
-    bossActive = true;
-    bossArena.x = (player.pos.x + boss.pos.x) / 2;
-    bossArena.y = (player.pos.y + boss.pos.y) / 2;
-    bossArena.radius = 2500;
-    bossArena.active = true;
-    bossArena.growing = false;
-    radiationStorm = null;
+    clearArrayWithPixiCleanup(GameContext.enemies);
+    clearArrayWithPixiCleanup(GameContext.pinwheels);
+    GameContext.baseRespawnTimers = [];
+    GameContext.roamerRespawnQueue = [];
+    clearArrayWithPixiCleanup(GameContext.bullets);
+    clearArrayWithPixiCleanup(GameContext.bossBombs);
+    clearArrayWithPixiCleanup(GameContext.guidedMissiles);
+    GameContext.boss = new Cruiser(GameContext.cruiserEncounterCount);
+    GameContext.bossActive = true;
+    GameContext.bossArena.x = (GameContext.player.pos.x + GameContext.boss.pos.x) / 2;
+    GameContext.bossArena.y = (GameContext.player.pos.y + GameContext.boss.pos.y) / 2;
+    GameContext.bossArena.radius = 2500;
+    GameContext.bossArena.active = true;
+    GameContext.bossArena.growing = false;
+    GameContext.radiationStorm = null;
     clearMiniEvent();
-    dreadManager.timerActive = false;
-    dreadManager.firstSpawnDone = true;
+    GameContext.dreadManager.timerActive = false;
+    GameContext.dreadManager.firstSpawnDone = true;
     showOverlayMessage("DEBUG: CRUISER SPAWNED", '#ff0', 2000);
     playSound('boss_spawn');
     if (musicEnabled) setMusicMode('cruiser');
@@ -193,8 +191,8 @@ document.addEventListener('keydown', function (e) {
         window.spawnDungeonBoss(randomBoss);
     } else if (e.ctrlKey && (e.key === 'h' || e.key === 'H')) {
         e.preventDefault();
-        DEBUG_COLLISION = !DEBUG_COLLISION;
-        showOverlayMessage(`HITBOX DEBUG: ${DEBUG_COLLISION ? "ON" : "OFF"}`, DEBUG_COLLISION ? '#0f0' : '#f00', 1500);
+        GameContext.DEBUG_COLLISION = !GameContext.DEBUG_COLLISION;
+        showOverlayMessage(`HITBOX DEBUG: ${GameContext.DEBUG_COLLISION ? "ON" : "OFF"}`, GameContext.DEBUG_COLLISION ? '#0f0' : '#f00', 1500);
     }
 });
 
@@ -212,60 +210,60 @@ document.addEventListener('keydown', function (e) {
 
 // DEBUG: Spawn station instantly (Ctrl+Shift+4)
 window.spawnStation = function () {
-    if (spaceStation) {
+    if (GameContext.spaceStation) {
         console.log('[DEBUG] Station already active');
         return;
     }
-    spaceStation = new SpaceStation();
+    GameContext.spaceStation = new SpaceStation();
     // Only decrement if there are pending stations (debug bypass)
-    if (pendingStations > 0) pendingStations--;
-    stationArena.x = spaceStation.pos.x;
-    stationArena.y = spaceStation.pos.y;
-    stationArena.radius = 2800;
-    stationArena.active = false;
+    if (GameContext.pendingStations > 0) GameContext.pendingStations--;
+    GameContext.stationArena.x = GameContext.spaceStation.pos.x;
+    GameContext.stationArena.y = GameContext.spaceStation.pos.y;
+    GameContext.stationArena.radius = 2800;
+    GameContext.stationArena.active = false;
     showOverlayMessage("DEBUG: SPACE STATION SPAWNED", '#ff0', 2000);
     playSound('station_spawn');
-    console.log('[DEBUG] Station spawned at', spaceStation.pos.x.toFixed(0), spaceStation.pos.y.toFixed(0));
+    console.log('[DEBUG] Station spawned at', GameContext.spaceStation.pos.x.toFixed(0), GameContext.spaceStation.pos.y.toFixed(0));
 };
 
 // DEBUG: Spawn final boss instantly (Ctrl+Shift+5)
 window.spawnFinalBoss = function () {
     console.log('[DEBUG] Attempting to spawn Final Boss...');
     try {
-        if (typeof bossActive !== 'undefined' && bossActive) {
+        if (typeof GameContext.bossActive !== 'undefined' && GameContext.bossActive) {
             console.log('[DEBUG] Boss already active');
             showOverlayMessage("BOSS ALREADY ACTIVE", '#f00', 1000);
             return;
         }
 
         console.log('[DEBUG] Clearing existing entities...');
-        clearArrayWithPixiCleanup(enemies);
-        clearArrayWithPixiCleanup(pinwheels);
-        baseRespawnTimers = [];
-        roamerRespawnQueue = [];
-        clearArrayWithPixiCleanup(bullets);
-        clearArrayWithPixiCleanup(bossBombs);
-        clearArrayWithPixiCleanup(guidedMissiles);
+        clearArrayWithPixiCleanup(GameContext.enemies);
+        clearArrayWithPixiCleanup(GameContext.pinwheels);
+        GameContext.baseRespawnTimers = [];
+        GameContext.roamerRespawnQueue = [];
+        clearArrayWithPixiCleanup(GameContext.bullets);
+        clearArrayWithPixiCleanup(GameContext.bossBombs);
+        clearArrayWithPixiCleanup(GameContext.guidedMissiles);
 
         // Position boss away from player
         const dist = 1000;
         const angle = Math.random() * Math.PI * 2;
-        const x = player.pos.x + Math.cos(angle) * dist;
-        const y = player.pos.y + Math.sin(angle) * dist;
+        const x = GameContext.player.pos.x + Math.cos(angle) * dist;
+        const y = GameContext.player.pos.y + Math.sin(angle) * dist;
 
         console.log('[DEBUG] Creating FinalBoss instance at', x, y);
         if (typeof FinalBoss === 'undefined') {
             throw new Error('FinalBoss class is not defined!');
         }
-        boss = new FinalBoss(x, y, null);
-        bossActive = true;
+        GameContext.boss = new FinalBoss(x, y, null);
+        GameContext.bossActive = true;
 
         console.log('[DEBUG] Setting up boss arena...');
-        bossArena.x = (player.pos.x + boss.pos.x) / 2;
-        bossArena.y = (player.pos.y + boss.pos.y) / 2;
-        bossArena.radius = 2500;
-        bossArena.active = true;
-        bossArena.growing = false;
+        GameContext.bossArena.x = (GameContext.player.pos.x + GameContext.boss.pos.x) / 2;
+        GameContext.bossArena.y = (GameContext.player.pos.y + GameContext.boss.pos.y) / 2;
+        GameContext.bossArena.radius = 2500;
+        GameContext.bossArena.active = true;
+        GameContext.bossArena.growing = false;
 
         showOverlayMessage("DEBUG: FINAL BOSS SPAWNED", '#ff0', 2000);
         playSound('boss_spawn');
@@ -298,69 +296,69 @@ window.enterDungeon1Debug = function () {
 window.spawnDungeonBoss = function (bossType) {
     console.log(`[DEBUG] Attempting to spawn ${bossType}...`);
     try {
-        if (typeof bossActive !== 'undefined' && bossActive) {
+        if (typeof GameContext.bossActive !== 'undefined' && GameContext.bossActive) {
             console.log('[DEBUG] Boss already active');
             showOverlayMessage("BOSS ALREADY ACTIVE", '#f00', 1000);
             return;
         }
 
-        clearArrayWithPixiCleanup(enemies);
-        clearArrayWithPixiCleanup(pinwheels);
-        baseRespawnTimers = [];
-        roamerRespawnQueue = [];
-        clearArrayWithPixiCleanup(bullets);
-        clearArrayWithPixiCleanup(bossBombs);
-        clearArrayWithPixiCleanup(guidedMissiles);
-        clearArrayWithPixiCleanup(warpBioPods);
+        clearArrayWithPixiCleanup(GameContext.enemies);
+        clearArrayWithPixiCleanup(GameContext.pinwheels);
+        GameContext.baseRespawnTimers = [];
+        GameContext.roamerRespawnQueue = [];
+        clearArrayWithPixiCleanup(GameContext.bullets);
+        clearArrayWithPixiCleanup(GameContext.bossBombs);
+        clearArrayWithPixiCleanup(GameContext.guidedMissiles);
+        clearArrayWithPixiCleanup(GameContext.warpBioPods);
 
         let newBoss;
         const dist = 2000;
         const angle = Math.random() * Math.PI * 2;
-        const x = player.pos.x + Math.cos(angle) * dist;
-        const y = player.pos.y + Math.sin(angle) * dist;
+        const x = GameContext.player.pos.x + Math.cos(angle) * dist;
+        const y = GameContext.player.pos.y + Math.sin(angle) * dist;
 
         switch (bossType) {
             case 'NecroticHive':
                 newBoss = new NecroticHive(1);
-                necroticHive = newBoss;
+                GameContext.necroticHive = newBoss;
                 break;
             case 'CerebralPsion':
                 newBoss = new CerebralPsion(1);
-                cerebralPsion = newBoss;
+                GameContext.cerebralPsion = newBoss;
                 break;
             case 'Fleshforge':
                 newBoss = new Fleshforge(1);
-                fleshforge = newBoss;
+                GameContext.fleshforge = newBoss;
                 break;
             case 'VortexMatriarch':
                 newBoss = new VortexMatriarch(1);
-                vortexMatriarch = newBoss;
+                GameContext.vortexMatriarch = newBoss;
                 break;
             case 'ChitinusPrime':
                 newBoss = new ChitinusPrime(1);
-                chitinusPrime = newBoss;
+                GameContext.chitinusPrime = newBoss;
                 break;
             case 'PsyLich':
                 newBoss = new PsyLich(1);
-                psyLich = newBoss;
+                GameContext.psyLich = newBoss;
                 break;
             default:
                 console.error('[DEBUG] Unknown boss type:', bossType);
                 return;
         }
 
-        boss = newBoss;
-        bossActive = true;
-        bossArena.x = (player.pos.x + boss.pos.x) / 2;
-        bossArena.y = (player.pos.y + boss.pos.y) / 2;
-        bossArena.radius = 3000;
-        bossArena.active = true;
-        bossArena.growing = false;
+        GameContext.boss = newBoss;
+        GameContext.bossActive = true;
+        GameContext.bossArena.x = (GameContext.player.pos.x + GameContext.boss.pos.x) / 2;
+        GameContext.bossArena.y = (GameContext.player.pos.y + GameContext.boss.pos.y) / 2;
+        GameContext.bossArena.radius = 3000;
+        GameContext.bossArena.active = true;
+        GameContext.bossArena.growing = false;
 
         showOverlayMessage(`DEBUG: ${bossType.toUpperCase()} SPAWNED`, '#ff0', 2000);
         playSound('boss_spawn');
         if (musicEnabled) setMusicMode('cruiser');
-        console.log(`[DEBUG] ${bossType} spawned successfully at`, boss.pos.x.toFixed(0), boss.pos.y.toFixed(0));
+        console.log(`[DEBUG] ${bossType} spawned successfully at`, GameContext.boss.pos.x.toFixed(0), GameContext.boss.pos.y.toFixed(0));
     } catch (err) {
         console.error(`[DEBUG] Failed to spawn ${bossType}:`, err);
         showOverlayMessage("ERROR SPAWNING BOSS: " + err.message, '#f00', 3000);
@@ -379,7 +377,7 @@ window.spawnPsyLich = function () { window.spawnDungeonBoss('PsyLich'); };
 // toggleMusic wrapper that updates DOM button
 function toggleMusic() {
     // Uses audioToggleMusic from module (imported as audioToggleMusic)
-    const enabled = audioToggleMusic(gameActive, gamePaused);
+    const enabled = audioToggleMusic(GameContext.gameActive, GameContext.gamePaused);
     const btn = document.getElementById('music-btn');
     if (btn) btn.innerText = enabled ? "MUSIC: ON" : "MUSIC: OFF";
 }
@@ -529,7 +527,7 @@ let pixiScreenRoot = null;  // screen space (no camera transform)
 // Screen-space background layers
 let pixiNebulaLayer = null;
 let pixiStarLayer = null;
-let pixiStarTilingLayer = null; // preferred starfield (1-2 tiling sprites)
+let pixiStarTilingLayer = null; // preferred GameContext.starfield (1-2 tiling sprites)
 let pixiStarTiles = null;
 let pixiNebulaTiles = null;
 let pixiNebulaPaletteIdx = null;
@@ -1696,7 +1694,7 @@ if (USE_PIXI_OVERLAY && window.PIXI) {
     const STAR_TILE_SIZE = 512;
     const NEBULA_TILE_SIZE = 512;
 
-    // Generate a starfield texture with random stars (seamless tile)
+    // Generate a GameContext.starfield texture with random stars (seamless tile)
     const makeStarfieldTexture = (starCount, minSize, maxSize, minAlpha, maxAlpha) => {
         const g = new PIXI.Graphics();
         for (let i = 0; i < starCount; i++) {
@@ -2359,11 +2357,8 @@ function releasePixiSprite(pool, spr) {
     if (pool && pool.length < PIXI_SPRITE_POOL_MAX) pool.push(spr);
 }
 
-function destroyBulletSprite(b) {
-    if (b && b.sprite && pixiBulletSpritePool) {
-        releasePixiSprite(pixiBulletSpritePool, b.sprite);
-        b.sprite = null;
-    }
+function destroyBulletSprite(bullet) {
+    destroyBulletSpriteHelper(bullet);
 }
 
 function releasePixiEnemySprite(spr) {
@@ -2375,73 +2370,11 @@ function releasePixiEnemySprite(spr) {
 }
 
 function pixiCleanupObject(obj) {
-    if (!obj) return;
-    // Safety check to prevent recursion
-    if (obj._pixiIsCleaning) return;
-    obj._pixiIsCleaning = true;
-
-    // Non-pooled containers (player/bases/stations/etc)
-    if (obj._pixiContainer) {
-        try { obj._pixiContainer.destroy({ children: true }); } catch (e) { }
-        obj._pixiContainer = null;
-    }
-    // Common sprite cleanup (pooled sprites)
-    if (obj.sprite) {
-        if (obj._pixiPool === 'enemy') releasePixiEnemySprite(obj.sprite);
-        else if (obj._pixiPool === 'pickup' && pixiPickupSpritePool) releasePixiSprite(pixiPickupSpritePool, obj.sprite);
-        else if (obj._pixiPool === 'asteroid' && pixiAsteroidSpritePool) releasePixiSprite(pixiAsteroidSpritePool, obj.sprite);
-        else if (obj._poolType === 'bullet' && pixiBulletSpritePool) releasePixiSprite(pixiBulletSpritePool, obj.sprite);
-        else if (obj._poolType === 'particle' && pixiParticleSpritePool) releasePixiSprite(pixiParticleSpritePool, obj.sprite);
-        obj.sprite = null;
-    }
-
-    // Comprehensive destruction of all _pixi Graphics/Text/etc.
-    // This allows classes to add pixi elements without manually updating the cleanup logic.
-    const keys = Object.keys(obj);
-    for (let k of keys) {
-        if (k.startsWith('_pixi') && obj[k] && k !== '_pixiIsCleaning') {
-            const val = obj[k];
-            if (Array.isArray(val)) {
-                val.forEach(item => {
-                    if (item && typeof item.destroy === 'function') {
-                        try {
-                            if (!item.destroyed) {
-                                item.visible = false;
-                                if (typeof item.clear === 'function') item.clear();
-                                if (item.parent) item.parent.removeChild(item);
-                                item.destroy(true);
-                            }
-                        } catch (e) { console.warn('[CLEANUP] Error destroying item:', e); }
-                    }
-                });
-            } else if (val && typeof val.destroy === 'function') {
-                try {
-                    if (!val.destroyed) {
-                        val.visible = false;
-                        if (typeof val.clear === 'function') val.clear();
-                        if (val.parent) val.parent.removeChild(val);
-                        val.destroy(true);
-                    }
-                } catch (e) { console.warn('[CLEANUP] Error destroying val:', e); }
-            }
-            obj[k] = null;
-        }
-    }
-
-    obj._pixiIsCleaning = false;
+    pixiCleanupObjectHelper(obj);
 }
 
 function clearArrayWithPixiCleanup(arr) {
-    if (!arr || arr.length === 0) return;
-    for (let i = 0; i < arr.length; i++) {
-        const obj = arr[i];
-        if (obj) {
-            // Mark as dead FIRST to prevent draw() from recreating graphics
-            obj.dead = true;
-            pixiCleanupObject(obj);
-        }
-    }
-    arr.length = 0;
+    clearArrayWithPixiCleanupHelper(arr);
 }
 
 function filterArrayWithPixiCleanup(arr, keepFn) {
@@ -2508,13 +2441,7 @@ function cleanupPixiWorldRootExtras() {
         }
     }
 }
-const healthFill = document.getElementById('health-fill');
 const overlayMessage = document.getElementById('overlay-message');
-const warpStatus = document.getElementById('warp-status');
-const warpFill = document.getElementById('warp-fill');
-const turboStatus = document.getElementById('turbo-status');
-const turboFill = document.getElementById('turbo-fill');
-const xpFill = document.getElementById('xp-fill');
 const fpsCounterEl = document.getElementById('fps-counter');
 let fpsLastFrameAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 let fpsSmoothMs = 16.7;
@@ -2541,31 +2468,24 @@ let internalHeight = 1080;
 let aspectRatio = internalWidth / internalHeight;
 
 let animationId;
-let gameActive = false;
-let gamePaused = false;
-let canResumeGame = false; // Only true after quitting to menu from pause menu
+GameContext.gameActive = false;
+GameContext.gamePaused = false;
+GameContext.canResumeGame = false; // Only true after quitting to menu from pause menu
 
 // ZOOM_LEVEL imported from ./core/constants.js
-let currentZoom = ZOOM_LEVEL;
-
-// Map Entities
-let environmentAsteroids = [];
-let asteroidRespawnTimers = [];
-let baseRespawnTimers = [];
+GameContext.currentZoom = ZOOM_LEVEL;
 
 // Camera Shake
-let shakeTimer = 0;
-let shakeMagnitude = 0;
+GameContext.shakeTimer = 0;
+GameContext.shakeMagnitude = 0;
 
 // Inputs
-const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, e: false, f: false };
+const keys = GameContext.keys;
 
 // Debug menu state
 let debugMenuVisible = false;
-const mouseScreen = { x: 0, y: 0 };
-const mouseWorld = { x: 0, y: 0 };
-let lastMouseInputAt = 0;
-let lastGamepadInputAt = 0;
+const mouseScreen = GameContext.mouseScreen;
+const mouseWorld = GameContext.mouseWorld;
 
 // Mouse movement direction for Slacker ship arrow
 let mouseMovementDir = { x: 0, y: 0 };  // Normalized direction vector
@@ -2574,18 +2494,7 @@ let mouseLastPos = { x: 0, y: 0 };      // Previous mouse position
 let smoothedDir = { x: 0, y: 0 };       // Smoothed direction vector
 
 // Gamepad State
-let gamepadIndex = null;
-let gpState = {
-    move: { x: 0, y: 0 },
-    aim: { x: 0, y: 0 },
-    fire: false,
-    warp: false,
-    turbo: false,
-    battery: false,
-    pausePressed: false,
-    lastMenuElements: null
-};
-let usingGamepad = false;
+const gpState = GameContext.gpState;
 let menuDebounce = 0;
 
 function updateInputMode(now = Date.now()) {
@@ -2593,22 +2502,22 @@ function updateInputMode(now = Date.now()) {
     const mouseGraceMs = 220; // Allow mouse to take over if it moves significantly
 
     // Strict priority: if aiming with stick (fresh input < 100ms), ignore mouse jitter entirely
-    const strictGamepad = (now - lastGamepadInputAt) < 100;
+    const strictGamepad = (now - GameContext.lastGamepadInputAt) < 100;
 
     if (strictGamepad) {
-        usingGamepad = true;
+        GameContext.usingGamepad = true;
     } else {
-        const gamepadRecent = (now - lastGamepadInputAt) < preferGamepadMs;
-        const mouseRecent = (now - lastMouseInputAt) < mouseGraceMs;
-        usingGamepad = gamepadRecent && !mouseRecent;
+        const gamepadRecent = (now - GameContext.lastGamepadInputAt) < preferGamepadMs;
+        const mouseRecent = (now - GameContext.lastMouseInputAt) < mouseGraceMs;
+        GameContext.usingGamepad = gamepadRecent && !mouseRecent;
     }
 
     // Hide cursor for gamepad OR Slacker ship mouse mode
     // But show cursor when menus are open (pause, levelup, etc.) or game is not active
     const levelupScreen = document.getElementById('levelup-screen');
-    const isMenuOpen = gamePaused || !gameActive || (levelupScreen && levelupScreen.style.display === 'flex');
+    const isMenuOpen = GameContext.gamePaused || !GameContext.gameActive || (levelupScreen && levelupScreen.style.display === 'flex');
 
-    if ((usingGamepad || (player && player.shipType === 'slacker')) && !isMenuOpen) {
+    if ((GameContext.usingGamepad || (GameContext.player && GameContext.player.shipType === 'slacker')) && !isMenuOpen) {
         document.body.classList.add('no-cursor');
     } else {
         document.body.classList.remove('no-cursor');
@@ -2650,8 +2559,8 @@ function resize() {
 }
 
 function initStars() {
-    starfield = [];
-    nebulas = [];
+    GameContext.starfield = [];
+    GameContext.nebulas = [];
     const count = Math.floor((width * height) / 3000);
     for (let i = 0; i < count; i++) {
         const baseAlpha = Math.random() * 0.4 + 0.05;
@@ -2663,7 +2572,7 @@ function initStars() {
             parallax: 0.05 + Math.random() * 0.1
         };
         s.fillStyle = `rgba(255, 255, 255, ${s.alpha})`;
-        starfield.push(s);
+        GameContext.starfield.push(s);
     }
 
     // Nebula backdrop is handled by Pixi (optional). Canvas fallback stays black + stars only.
@@ -2732,7 +2641,7 @@ function initStars() {
                     [0x0b1020, 0x2a2a6e, 0x1c4cff, 0x00d6d6, 0x00aaff],
                     [0x0b1020, 0x3b1366, 0x6a2cff, 0x1c7cff, 0x00b6ff]
                 ];
-                const idxBase = (typeof sectorIndex === 'number' && isFinite(sectorIndex)) ? (Math.abs(sectorIndex) | 0) : 0;
+                const idxBase = (typeof GameContext.sectorIndex === 'number' && isFinite(GameContext.sectorIndex)) ? (Math.abs(GameContext.sectorIndex) | 0) : 0;
                 const paletteIdx = idxBase % palettes.length;
                 const palette = palettes[paletteIdx];
 
@@ -2769,7 +2678,7 @@ function initStars() {
                 }
             }
 
-            // Preferred: tiling starfield (no per-star sprite updates)
+            // Preferred: tiling GameContext.starfield (no per-star sprite updates)
             if (pixiStarTilingLayer) {
                 const makeStarTileTexture = (tileSize, count, minSize, maxSize, minAlpha, maxAlpha) => {
                     const c = document.createElement('canvas');
@@ -2813,7 +2722,7 @@ function initStars() {
             } else if (pixiStarLayer && pixiTextureWhite) {
                 // Fallback: per-star sprites
                 pixiStarLayer.visible = true;
-                for (const s of starfield) {
+                for (const s of GameContext.starfield) {
                     const spr = allocPixiSprite(pixiStarSpritePool, pixiStarLayer, pixiTextureWhite, s.size, 0);
                     spr.alpha = s.alpha;
                     spr.tint = 0xffffff;
@@ -2853,7 +2762,7 @@ function updatePixiBackground(camX, camY) {
     }
     // Legacy fallback: per-star sprite positioning (disabled)
     if (!pixiStarLayer) return;
-    for (const s of starfield) {
+    for (const s of GameContext.starfield) {
         const spr = s && s._pixiSprite;
         if (!spr) continue;
         if (!spr.parent) pixiStarLayer.addChild(spr);
@@ -2871,129 +2780,129 @@ function updatePixiCaveGrid(camX, camY, zoom, caveActive) {
     if (!caveActive) return;
     if (pixiCaveGridSprite.width !== width) pixiCaveGridSprite.width = width;
     if (pixiCaveGridSprite.height !== height) pixiCaveGridSprite.height = height;
-    const z = (typeof zoom === 'number' && isFinite(zoom) && zoom > 0) ? zoom : (currentZoom || ZOOM_LEVEL);
+    const z = (typeof zoom === 'number' && isFinite(zoom) && zoom > 0) ? zoom : (GameContext.currentZoom || ZOOM_LEVEL);
     pixiCaveGridSprite.tileScale.set(z);
     pixiCaveGridSprite.tilePosition.set(Math.round(-camX * z), Math.round(-camY * z));
 }
 
 function startSectorTransition() {
-    sectorTransitionActive = true;
-    warpCountdownAt = Date.now() + 10000;
+    GameContext.sectorTransitionActive = true;
+    GameContext.warpCountdownAt = Date.now() + 10000;
     showOverlayMessage("WARPING TO NEW SECTOR IN 10s", '#0ff', 10000);
-    if (overlayTimeout) { clearTimeout(overlayTimeout); overlayTimeout = null; }
-    pendingStations = 0;
-    nextSpaceStationTime = null;
-    radiationStorm = null;
+    clearOverlayMessageTimeout();
+    GameContext.pendingStations = 0;
+    GameContext.nextSpaceStationTime = null;
+    GameContext.radiationStorm = null;
     clearMiniEvent();
-    gamePaused = false;
-    gameActive = true;
-    pendingTransitionClear = true; // clear arrays safely next frame
-    dreadManager.timerActive = false;
+    GameContext.gamePaused = false;
+    GameContext.gameActive = true;
+    GameContext.pendingTransitionClear = true; // clear arrays safely next frame
+    GameContext.dreadManager.timerActive = false;
 }
 
 function completeSectorWarp() {
-    gameActive = true;
-    gamePaused = false;
-    sectorTransitionActive = false;
-    warpCountdownAt = null;
-    sectorIndex++;
+    GameContext.gameActive = true;
+    GameContext.gamePaused = false;
+    GameContext.sectorTransitionActive = false;
+    GameContext.warpCountdownAt = null;
+    GameContext.sectorIndex++;
     // Heal player
-    player.hp = player.maxHp;
-    player.invulnerable = 180;
-    player.shieldSegments = player.shieldSegments.map(() => 2);
-    if (player.maxOuterShieldSegments && player.maxOuterShieldSegments > 0) {
-        player.outerShieldSegments = new Array(player.maxOuterShieldSegments).fill(1);
+    GameContext.player.hp = GameContext.player.maxHp;
+    GameContext.player.invulnerable = 180;
+    GameContext.player.shieldSegments = GameContext.player.shieldSegments.map(() => 2);
+    if (GameContext.player.maxOuterShieldSegments && GameContext.player.maxOuterShieldSegments > 0) {
+        GameContext.player.outerShieldSegments = new Array(GameContext.player.maxOuterShieldSegments).fill(1);
     }
     updateHealthUI();
 
     // Warp effect
-    spawnParticles(player.pos.x, player.pos.y, 40, '#0ff');
-    player.pos.x = 0;
-    player.pos.y = 0;
-    player.vel.x = 0;
-    player.vel.y = 0;
-    spawnParticles(player.pos.x, player.pos.y, 40, '#0ff');
+    spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 40, '#0ff');
+    GameContext.player.pos.x = 0;
+    GameContext.player.pos.y = 0;
+    GameContext.player.vel.x = 0;
+    GameContext.player.vel.y = 0;
+    spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 40, '#0ff');
 
     // Reset world for new sector
     resetPixiOverlaySprites();
-    clearArrayWithPixiCleanup(bullets);
-    clearArrayWithPixiCleanup(bossBombs);
-    clearArrayWithPixiCleanup(guidedMissiles);
-    clearArrayWithPixiCleanup(enemies);
-    clearArrayWithPixiCleanup(pinwheels);
-    clearArrayWithPixiCleanup(coins);
-    clearArrayWithPixiCleanup(nuggets);
-    clearArrayWithPixiCleanup(environmentAsteroids);
-    asteroidRespawnTimers = [];
-    baseRespawnTimers = [];
-    roamerRespawnQueue = [];
-    clearArrayWithPixiCleanup(caches);
-    clearArrayWithPixiCleanup(powerups);
-    clearArrayWithPixiCleanup(shootingStars);
-    clearArrayWithPixiCleanup(drones);
-    contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
-    activeContract = null;
-    nextContractAt = Date.now() + 30000;
-    radiationStorm = null;
+    clearArrayWithPixiCleanup(GameContext.bullets);
+    clearArrayWithPixiCleanup(GameContext.bossBombs);
+    clearArrayWithPixiCleanup(GameContext.guidedMissiles);
+    clearArrayWithPixiCleanup(GameContext.enemies);
+    clearArrayWithPixiCleanup(GameContext.pinwheels);
+    clearArrayWithPixiCleanup(GameContext.coins);
+    clearArrayWithPixiCleanup(GameContext.nuggets);
+    clearArrayWithPixiCleanup(GameContext.environmentAsteroids);
+    GameContext.asteroidRespawnTimers = [];
+    GameContext.baseRespawnTimers = [];
+    GameContext.roamerRespawnQueue = [];
+    clearArrayWithPixiCleanup(GameContext.caches);
+    clearArrayWithPixiCleanup(GameContext.powerups);
+    clearArrayWithPixiCleanup(GameContext.shootingStars);
+    clearArrayWithPixiCleanup(GameContext.drones);
+    GameContext.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+    GameContext.activeContract = null;
+    GameContext.nextContractAt = Date.now() + 30000;
+    GameContext.radiationStorm = null;
     scheduleNextRadiationStorm(Date.now() + 15000);
     clearMiniEvent();
-    nextMiniEventAt = Date.now() + 120000;
+    GameContext.nextMiniEventAt = Date.now() + 120000;
     scheduleNextMiniEvent(Date.now() + 20000);
-    clearArrayWithPixiCleanup(pois);
-    warpCompletedOnce = false;
-    caveMode = false;
-    caveLevel = null;
-    warpGateUnlocked = false;
+    clearArrayWithPixiCleanup(GameContext.pois);
+    GameContext.warpCompletedOnce = false;
+    GameContext.caveMode = false;
+    GameContext.caveLevel = null;
+    GameContext.warpGateUnlocked = false;
 
     // Avoid rebuilding stars/nebula when entering Sector 2 cave (background is hidden there).
-    if (sectorIndex !== 2) initStars(); // update nebula palette
+    if (GameContext.sectorIndex !== 2) initStars(); // update nebula palette
 
     // Sector 2: long cave run instead of open space.
-    if (sectorIndex === 2) {
+    if (GameContext.sectorIndex === 2) {
         startCaveSector2();
-        dreadManager.timerActive = false;
-        dreadManager.timerAt = null;
-        cruiserTimerPausedAt = null;
+        GameContext.dreadManager.timerActive = false;
+        GameContext.dreadManager.timerAt = null;
+        GameContext.cruiserTimerPausedAt = null;
         stopArenaCountdown();
         return;
     }
 
     generateMap();
     for (let i = 0; i < 3; i++) spawnNewPinwheelRelative(true);
-    gunboatRespawnAt = Date.now() + 5000;
-    gunboatLevel2Unlocked = true; // level 2 gunboats allowed after warp
+    GameContext.gunboatRespawnAt = Date.now() + 5000;
+    GameContext.gunboatLevel2Unlocked = true; // level 2 gunboats allowed after warp
     // Restart cruiser timer for the new sector
-    dreadManager.timerActive = true;
-    cruiserTimerPausedAt = null;
+    GameContext.dreadManager.timerActive = true;
+    GameContext.cruiserTimerPausedAt = null;
     const firstCruiserGraceMs = 180000; // 3 minutes breathing room after entering a new sector
-    const baseDelay = dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
-    dreadManager.timerAt = Date.now() + Math.max(firstCruiserGraceMs, baseDelay);
+    const baseDelay = GameContext.dreadManager.minDelayMs + Math.floor(Math.random() * (GameContext.dreadManager.maxDelayMs - GameContext.dreadManager.minDelayMs + 1));
+    GameContext.dreadManager.timerAt = Date.now() + Math.max(firstCruiserGraceMs, baseDelay);
 
     // Stations for new sector
-    pendingStations = 0;
-    if (spaceStation) pixiCleanupObject(spaceStation);
-    spaceStation = null;
-    stationHealthBarVisible = false;
-    nextSpaceStationTime = null;
-    if (destroyer) pixiCleanupObject(destroyer);
-    destroyer = null;
-    nextDestroyerSpawnTime = null;
+    GameContext.pendingStations = 0;
+    if (GameContext.spaceStation) pixiCleanupObject(GameContext.spaceStation);
+    GameContext.spaceStation = null;
+    GameContext.stationHealthBarVisible = false;
+    GameContext.nextSpaceStationTime = null;
+    if (GameContext.destroyer) pixiCleanupObject(GameContext.destroyer);
+    GameContext.destroyer = null;
+    GameContext.nextDestroyerSpawnTime = null;
     scheduleNextShootingStar();
     showOverlayMessage("NEW SECTOR ENTERED", '#0ff', 3000);
 }
 
 function endGame(elapsedMs) {
-    if (gameEnded) return;
-    gameEnded = true;
-    gameActive = false;
-    gamePaused = false;
-    canResumeGame = false; // Game ended - can't resume
+    if (GameContext.gameEnded) return;
+    GameContext.gameEnded = true;
+    GameContext.gameActive = false;
+    GameContext.gamePaused = false;
+    GameContext.canResumeGame = false; // Game ended - can't resume
     stopMusic();
     try {
         depositMetaNuggets();
     } catch (e) { console.warn('meta deposit failed', e); }
     // Save both game profile and meta profile (store upgrades)
-    if (currentProfileName) {
+    if (GameContext.currentProfileName) {
         try {
             autoSaveToCurrentProfile(); // Saves game state
             saveMetaProfile();          // Saves meta shop upgrades
@@ -3008,8 +2917,8 @@ function endGame(elapsedMs) {
     const sc = document.getElementById('end-score');
     const ng = document.getElementById('end-nuggets');
     if (t) t.innerText = formatTime(elapsedMs);
-    if (sc) sc.innerText = score;
-    if (ng) ng.innerText = spaceNuggets;
+    if (sc) sc.innerText = GameContext.score;
+    if (ng) ng.innerText = GameContext.spaceNuggets;
     setTimeout(() => {
         const btn = document.getElementById('restart-btn');
         if (btn) btn.focus();
@@ -3022,63 +2931,37 @@ function endGame(elapsedMs) {
 }
 
 function handleSpaceStationDestroyed() {
-    if (!spaceStation) return;
-    const sx = spaceStation.pos.x;
-    const sy = spaceStation.pos.y;
+    if (!GameContext.spaceStation) return;
+    const sx = GameContext.spaceStation.pos.x;
+    const sy = GameContext.spaceStation.pos.y;
     playSound('base_explode');
 
     spawnLargeExplosion(sx, sy, 3.5);
     spawnParticles(sx, sy, 200, '#fff');
-    for (let k = 0; k < 50; k++) coins.push(new Coin(sx + (Math.random() - 0.5) * 200, sy + (Math.random() - 0.5) * 200, 10));
-    for (let k = 0; k < 25; k++) nuggets.push(new SpaceNugget(sx + (Math.random() - 0.5) * 220, sy + (Math.random() - 0.5) * 220, 1));
+    for (let k = 0; k < 50; k++) GameContext.coins.push(new Coin(sx + (Math.random() - 0.5) * 200, sy + (Math.random() - 0.5) * 200, 10));
+    for (let k = 0; k < 25; k++) GameContext.nuggets.push(new SpaceNugget(sx + (Math.random() - 0.5) * 220, sy + (Math.random() - 0.5) * 220, 1));
     showOverlayMessage("SPACE STATION DESTROYED - WARP SIGNAL IN 30s", '#f80', 5000);
-    pixiCleanupObject(spaceStation);
-    spaceStation = null;
-    stationHealthBarVisible = false;
+    pixiCleanupObject(GameContext.spaceStation);
+    GameContext.spaceStation = null;
+    GameContext.stationHealthBarVisible = false;
     setTimeout(() => {
-        warpGateUnlocked = true;
+        GameContext.warpGateUnlocked = true;
     }, 30000);
-    score += 50000;
-    if (pendingStations > 0 && !sectorTransitionActive) nextSpaceStationTime = Date.now() + 7000;
+    GameContext.score += 50000;
+    if (GameContext.pendingStations > 0 && !GameContext.sectorTransitionActive) GameContext.nextSpaceStationTime = Date.now() + 7000;
 }
 
 window.addEventListener('resize', resize);
 resize();
 
 function checkDespawn(entity, range = 6000) {
-    if (!player) return;
-    const dist = Math.hypot(entity.pos.x - player.pos.x, entity.pos.y - player.pos.y);
+    if (!GameContext.player) return;
+    const dist = Math.hypot(entity.pos.x - GameContext.player.pos.x, entity.pos.y - GameContext.player.pos.y);
     if (dist > range) {
         entity.dead = true;
     }
 }
 
-let overlayToken = 0;
-let overlayPriority = 0;
-let overlayLockUntil = 0;
-
-function showOverlayMessage(text, color = '#0ff', duration = 2000, priority = 0) {
-    const el = document.getElementById('overlay-message');
-    const now = Date.now();
-    if (now < overlayLockUntil && priority < overlayPriority) return;
-
-    overlayPriority = priority;
-    overlayLockUntil = now + duration;
-    overlayToken++;
-    const token = overlayToken;
-
-    el.innerText = text;
-    el.style.color = color;
-    el.style.textShadow = `0 0 10px ${color}`;
-    el.style.display = 'block';
-    if (overlayTimeout) clearTimeout(overlayTimeout);
-    overlayTimeout = setTimeout(() => {
-        if (overlayToken !== token) return;
-        el.style.display = 'none';
-        overlayPriority = 0;
-        overlayLockUntil = 0;
-    }, duration);
-}
 
 // Arena countdown system
 let arenaCountdownActive = false;
@@ -3203,7 +3086,7 @@ class EnvironmentAsteroid extends Entity {
                 const a = new EnvironmentAsteroid(this.pos.x, this.pos.y, newR, newSize);
                 a.vel.x = this.vel.x + (Math.random() - 0.5) * 2;
                 a.vel.y = this.vel.y + (Math.random() - 0.5) * 2;
-                environmentAsteroids.push(a);
+                GameContext.environmentAsteroids.push(a);
                 spawned++;
             }
             // Ensure at least 1 child when splitting.
@@ -3211,7 +3094,7 @@ class EnvironmentAsteroid extends Entity {
                 const a = new EnvironmentAsteroid(this.pos.x, this.pos.y, newR, newSize);
                 a.vel.x = this.vel.x + (Math.random() - 0.5) * 2;
                 a.vel.y = this.vel.y + (Math.random() - 0.5) * 2;
-                environmentAsteroids.push(a);
+                GameContext.environmentAsteroids.push(a);
             }
         }
     }
@@ -3329,10 +3212,10 @@ class EnvironmentAsteroid extends Entity {
 }
 
 function generateMap() {
-    clearArrayWithPixiCleanup(environmentAsteroids);
-    asteroidRespawnTimers = [];
-    clearArrayWithPixiCleanup(caches);
-    clearArrayWithPixiCleanup(pois);
+    clearArrayWithPixiCleanup(GameContext.environmentAsteroids);
+    GameContext.asteroidRespawnTimers = [];
+    clearArrayWithPixiCleanup(GameContext.caches);
+    clearArrayWithPixiCleanup(GameContext.pois);
     for (let i = 0; i < 60; i++) {
         spawnOneAsteroidRelative(true);
     }
@@ -3341,7 +3224,7 @@ function generateMap() {
 }
 
 function spawnSectorPOIs() {
-    if (!player) return;
+    if (!GameContext.player) return;
     const constructors = [DerelictShipPOI, DebrisFieldPOI];
 
     const placed = [];
@@ -3350,8 +3233,8 @@ function spawnSectorPOIs() {
         for (let attempts = 0; attempts < 40; attempts++) {
             const angle = Math.random() * Math.PI * 2;
             const dist = 1900 + Math.random() * 2600;
-            const x = player.pos.x + Math.cos(angle) * dist;
-            const y = player.pos.y + Math.sin(angle) * dist;
+            const x = GameContext.player.pos.x + Math.cos(angle) * dist;
+            const y = GameContext.player.pos.y + Math.sin(angle) * dist;
             let ok = true;
             for (const p of placed) {
                 if (Math.hypot(x - p.x, y - p.y) < 1400) { ok = false; break; }
@@ -3360,7 +3243,7 @@ function spawnSectorPOIs() {
             placed.push({ x, y });
             const C = constructors[i];
             const poi = new C(x, y);
-            pois.push(poi);
+            GameContext.pois.push(poi);
             placedOne = true;
             break;
         }
@@ -3371,18 +3254,18 @@ function spawnSectorPOIs() {
 }
 
 function spawnExplorationCaches() {
-    if (!player) return;
+    if (!GameContext.player) return;
     for (let i = 0; i < 8; i++) {
         const angle = Math.random() * Math.PI * 2;
         const dist = 1200 + Math.random() * 2000;
-        const cx = player.pos.x + Math.cos(angle) * dist;
-        const cy = player.pos.y + Math.sin(angle) * dist;
-        caches.push(new ExplorationCache(cx, cy));
+        const cx = GameContext.player.pos.x + Math.cos(angle) * dist;
+        const cy = GameContext.player.pos.y + Math.sin(angle) * dist;
+        GameContext.caches.push(new ExplorationCache(cx, cy));
     }
 }
 
 function spawnOneAsteroidRelative(initial = false) {
-    if (!player) return;
+    if (!GameContext.player) return;
     let attempts = 0;
     while (attempts < 50) {
         attempts++;
@@ -3390,20 +3273,20 @@ function spawnOneAsteroidRelative(initial = false) {
         const minDist = initial ? 500 : 2000;
         const maxDist = initial ? 3000 : 4000;
         const dist = minDist + Math.random() * (maxDist - minDist);
-        const x = player.pos.x + Math.cos(angle) * dist;
-        const y = player.pos.y + Math.sin(angle) * dist;
+        const x = GameContext.player.pos.x + Math.cos(angle) * dist;
+        const y = GameContext.player.pos.y + Math.sin(angle) * dist;
         const r = 50 + Math.random() * 150;
 
         let safe = true;
         // Prevent spawning inside firewall in cave mode
-        if (caveMode && caveLevel && caveLevel.fireWall) {
-            const firewallY = caveLevel.fireWall.y;
+        if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.fireWall) {
+            const firewallY = GameContext.caveLevel.fireWall.y;
             // Don't spawn if asteroid would be below the firewall line
             if (y > firewallY) {
                 safe = false;
             }
         }
-        for (let b of pinwheels) {
+        for (let b of GameContext.pinwheels) {
             if (Math.hypot(x - b.pos.x, y - b.pos.y) < b.shieldRadius + r + 200) safe = false;
         }
 
@@ -3414,14 +3297,14 @@ function spawnOneAsteroidRelative(initial = false) {
             // Adjust radius for small indestructible asteroids
             const asteroidR = isIndestructible ? 40 + Math.random() * 50 : r;
             const asteroid = new EnvironmentAsteroid(x, y, asteroidR, sizeLevel, isIndestructible);
-            environmentAsteroids.push(asteroid);
+            GameContext.environmentAsteroids.push(asteroid);
             break;
         }
     }
 }
 
 function spawnOneWarpAsteroidRelative(initial = false) {
-    if (!player || !warpZone || !warpZone.active) return false;
+    if (!GameContext.player || !GameContext.warpZone || !GameContext.warpZone.active) return false;
     let attempts = 0;
     while (attempts < 60) {
         attempts++;
@@ -3429,13 +3312,13 @@ function spawnOneWarpAsteroidRelative(initial = false) {
         const minDist = initial ? 600 : 2000;
         const maxDist = initial ? 5200 : 5600;
         const dist = minDist + Math.random() * (maxDist - minDist);
-        const x = player.pos.x + Math.cos(angle) * dist;
-        const y = player.pos.y + Math.sin(angle) * dist;
+        const x = GameContext.player.pos.x + Math.cos(angle) * dist;
+        const y = GameContext.player.pos.y + Math.sin(angle) * dist;
 
-        const dxC = x - warpZone.pos.x;
-        const dyC = y - warpZone.pos.y;
+        const dxC = x - GameContext.warpZone.pos.x;
+        const dyC = y - GameContext.warpZone.pos.y;
         const dC = Math.hypot(dxC, dyC);
-        const boundary = (warpZone.boundaryRadius || 6200) - 220;
+        const boundary = (GameContext.warpZone.boundaryRadius || 6200) - 220;
         if (dC > boundary) continue;
 
         // Size mix: include big rocks like the normal space area.
@@ -3446,17 +3329,17 @@ function spawnOneWarpAsteroidRelative(initial = false) {
         else r = 50 + Math.random() * 80; // small 50..130
 
         // Keep within boundary with its own radius.
-        if (dC + r > (warpZone.boundaryRadius || 6200) - 40) continue;
+        if (dC + r > (GameContext.warpZone.boundaryRadius || 6200) - 40) continue;
 
         // Don't spawn directly on top of the player.
-        if (Math.hypot(x - player.pos.x, y - player.pos.y) < r + player.radius + 240) continue;
+        if (Math.hypot(x - GameContext.player.pos.x, y - GameContext.player.pos.y) < r + GameContext.player.radius + 240) continue;
 
         // Spawn indestructible asteroids from level 1, 1 for every 20 regular asteroids
         const isIndestructible = Math.random() < 0.05; // 1/20 = 0.05
         const sizeLevel = isIndestructible ? 1 : 3; // Small size for indestructible (reduced by 1)
         // Adjust radius for small indestructible asteroids
         const asteroidR = isIndestructible ? 40 + Math.random() * 50 : r;
-        environmentAsteroids.push(new EnvironmentAsteroid(x, y, asteroidR, sizeLevel, isIndestructible));
+        GameContext.environmentAsteroids.push(new EnvironmentAsteroid(x, y, asteroidR, sizeLevel, isIndestructible));
         return true;
     }
     return false;
@@ -3467,7 +3350,7 @@ function rayCast(x1, y1, angle, maxDist) {
     const vy = Math.sin(angle);
     let closest = { hit: false, dist: maxDist, x: x1 + vx * maxDist, y: y1 + vy * maxDist };
 
-    for (let ast of environmentAsteroids) {
+    for (let ast of GameContext.environmentAsteroids) {
         const cx = ast.pos.x;
         const cy = ast.pos.y;
         const r = ast.radius;
@@ -3697,7 +3580,7 @@ class Spaceship extends Entity {
 
         // Pause and Show Menu
         playSound('levelup');
-        gameActive = false; // Soft pause logic required
+        GameContext.gameActive = false; // Soft pause logic required
         showLevelUpMenu();
     }
 
@@ -3737,8 +3620,8 @@ class Spaceship extends Entity {
             updateHealthUI();
 
             // Screen shake (global variables)
-            if (typeof shakeMagnitude !== 'undefined') shakeMagnitude = 10;
-            if (typeof shakeTimer !== 'undefined') shakeTimer = 10;
+            if (typeof GameContext.shakeMagnitude !== 'undefined') GameContext.shakeMagnitude = 10;
+            if (typeof GameContext.shakeTimer !== 'undefined') GameContext.shakeTimer = 10;
 
             if (this.hp <= 0) {
                 killPlayer();
@@ -3801,7 +3684,7 @@ class Spaceship extends Entity {
         let moveX = gpState.move.x;
         let moveY = gpState.move.y;
 
-        if (!usingGamepad) {
+        if (!GameContext.usingGamepad) {
             if (keys.w) moveY -= 1;
             if (keys.s) moveY += 1;
             if (keys.a) moveX -= 1;
@@ -3809,7 +3692,7 @@ class Spaceship extends Entity {
         }
 
         // NEW: Slacker ship mouse movement
-        if (this.shipType === 'slacker' && !usingGamepad) {
+        if (this.shipType === 'slacker' && !GameContext.usingGamepad) {
             // Calculate direction from screen center to mouse cursor (Virtual Joystick)
             const screenCenterX = width / 2;
             const screenCenterY = height / 2;
@@ -3868,7 +3751,7 @@ class Spaceship extends Entity {
             // If no target, keep last turretAngle (don't reset)
         } else {
             // STANDARD: Manual turret control (existing behavior)
-            if (usingGamepad) {
+            if (GameContext.usingGamepad) {
                 // In gamepad mode, never snap aim back to mouse when sticks go idle.
                 if (aimMag > aimThresh) {
                     this.turretAngle = Math.atan2(gpState.aim.y, gpState.aim.x);
@@ -3908,7 +3791,7 @@ class Spaceship extends Entity {
         }
 
         // Slacker ship always rotates toward mouse (when not using gamepad)
-        if (this.shipType === 'slacker' && !usingGamepad) {
+        if (this.shipType === 'slacker' && !GameContext.usingGamepad) {
             const targetAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
             let angleDiff = targetAngle - this.angle;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
@@ -4034,10 +3917,10 @@ class Spaceship extends Entity {
                 // targetGrid includes: enemies, pinwheels, bosses, turrets
                 const queryRadius = 150;
                 const targets = [
-                    ...targetGrid.query(ox, oy, queryRadius),
-                    ...asteroidGrid.query(ox, oy, queryRadius),
-                    ...guidedMissiles,
-                    ...bossBombs
+                    ...GameContext.targetGrid.query(ox, oy, queryRadius),
+                    ...GameContext.asteroidGrid.query(ox, oy, queryRadius),
+                    ...GameContext.guidedMissiles,
+                    ...GameContext.bossBombs
                 ];
 
                 for (const target of targets) {
@@ -4217,7 +4100,7 @@ class Spaceship extends Entity {
         // Time-scaled friction
         // friction^dtScale
         // NEW: Slacker rotation mode - apply stronger braking when left mouse button held
-        const rotationModeBrake = (this.shipType === 'slacker' && !usingGamepad && mouseState.leftDown) ? 0.85 : 1.0;
+        const rotationModeBrake = (this.shipType === 'slacker' && !GameContext.usingGamepad && mouseState.leftDown) ? 0.85 : 1.0;
         this.vel.mult(Math.pow(this.friction * rotationModeBrake, dtScale));
 
         super.update(deltaTime);
@@ -4236,7 +4119,7 @@ class Spaceship extends Entity {
     }
 
     fireNuke() {
-        shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.nukeDamage, this.nukeRange, {
+        GameContext.shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.nukeDamage, this.nukeRange, {
             damageAsteroids: true,
             damageMissiles: true,
             damageBases: true,
@@ -4267,7 +4150,7 @@ class Spaceship extends Entity {
         this.batteryCharge = 0;
 
         // Primary blast
-        shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.batteryDamage, this.batteryRange, {
+        GameContext.shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.batteryDamage, this.batteryRange, {
             damageAsteroids: true,
             damageMissiles: true,
             color: '#0ff',
@@ -4278,7 +4161,7 @@ class Spaceship extends Entity {
         // Secondary ring effect (delayed)
         setTimeout(() => {
             if (!this.dead) {
-                shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.batteryDamage * 0.3, this.batteryRange * 1.2, {
+                GameContext.shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.batteryDamage * 0.3, this.batteryRange * 1.2, {
                     damageAsteroids: true,
                     damageMissiles: true,
                     color: '#08f',
@@ -4321,7 +4204,7 @@ class Spaceship extends Entity {
                 const b = new Bullet(this.pos.x, this.pos.y, angle, false, damage, 12, 3, '#f80', 2);
                 b.ignoreShields = false;
                 b.isMissile = true;
-                bullets.push(b);
+                GameContext.bullets.push(b);
                 spawnSmoke(this.pos.x, this.pos.y, 1);
             }
         }
@@ -4350,7 +4233,7 @@ class Spaceship extends Entity {
             // Slight damage reduction for volley (balance)
             b.damage *= 0.7;
 
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
 
         // Visual feedback
@@ -4364,7 +4247,7 @@ class Spaceship extends Entity {
         const range = this.ciwsRange;
 
         // Check all enemy bullets (including missiles, pinwheels, etc.)
-        for (let b of bullets) {
+        for (let b of GameContext.bullets) {
             if (b.isEnemy && !b.dead) {
                 const dist = Math.hypot(b.pos.x - this.pos.x, b.pos.y - this.pos.y);
                 if (dist <= range && dist < minDist) {
@@ -4375,8 +4258,8 @@ class Spaceship extends Entity {
         }
 
         // Check guided missiles array (destroyer missiles)
-        if (typeof guidedMissiles !== 'undefined') {
-            for (let m of guidedMissiles) {
+        if (typeof GameContext.guidedMissiles !== 'undefined') {
+            for (let m of GameContext.guidedMissiles) {
                 if (!m.dead) {
                     const dist = Math.hypot(m.pos.x - this.pos.x, m.pos.y - this.pos.y);
                     if (dist <= range && dist < minDist) {
@@ -4388,7 +4271,7 @@ class Spaceship extends Entity {
         }
 
         // Also check enemies array
-        for (let e of enemies) {
+        for (let e of GameContext.enemies) {
             if (e.dead) continue;
             const dist = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
             if (dist <= range && dist < minDist) {
@@ -4408,31 +4291,31 @@ class Spaceship extends Entity {
 
         // First priority: Boss ships (Cruiser or Destroyer)
         // Check global boss variable (Cruiser)
-        if (boss && !boss.dead) {
-            const dist = Math.hypot(boss.pos.x - this.pos.x, boss.pos.y - this.pos.y);
+        if (GameContext.boss && !GameContext.boss.dead) {
+            const dist = Math.hypot(GameContext.boss.pos.x - this.pos.x, GameContext.boss.pos.y - this.pos.y);
             if (dist <= range) {
-                return boss; // Always target boss if in range
+                return GameContext.boss; // Always target boss if in range
             }
         }
 
         // Check global destroyer variable (Destroyer boss)
-        if (typeof destroyer !== 'undefined' && destroyer && !destroyer.dead) {
-            const dist = Math.hypot(destroyer.pos.x - this.pos.x, destroyer.pos.y - this.pos.y);
+        if (typeof GameContext.destroyer !== 'undefined' && GameContext.destroyer && !GameContext.destroyer.dead) {
+            const dist = Math.hypot(GameContext.destroyer.pos.x - this.pos.x, GameContext.destroyer.pos.y - this.pos.y);
             if (dist <= range) {
-                return destroyer; // Always target destroyer if in range
+                return GameContext.destroyer; // Always target destroyer if in range
             }
         }
 
         // Check space station (high priority target)
-        if (typeof spaceStation !== 'undefined' && spaceStation && !spaceStation.dead) {
-            const dist = Math.hypot(spaceStation.pos.x - this.pos.x, spaceStation.pos.y - this.pos.y);
+        if (typeof GameContext.spaceStation !== 'undefined' && GameContext.spaceStation && !GameContext.spaceStation.dead) {
+            const dist = Math.hypot(GameContext.spaceStation.pos.x - this.pos.x, GameContext.spaceStation.pos.y - this.pos.y);
             if (dist <= range) {
-                return spaceStation; // Always target space station if in range
+                return GameContext.spaceStation; // Always target space station if in range
             }
         }
 
         // Check enemies for boss types (Cruiser, Destroyer, Destroyer2)
-        for (let e of enemies) {
+        for (let e of GameContext.enemies) {
             if (e.dead) continue;
             if (e.constructor.name === 'Cruiser' || e.constructor.name === 'Destroyer' ||
                 e.constructor.name === 'Destroyer2') {
@@ -4446,7 +4329,7 @@ class Spaceship extends Entity {
 
         // If no boss found, fall back to nearest enemy of any type
         if (!nearestTarget) {
-            for (let e of enemies) {
+            for (let e of GameContext.enemies) {
                 if (e.dead) continue;
                 const dist = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
                 if (dist <= range && dist < minDist) {
@@ -4457,8 +4340,8 @@ class Spaceship extends Entity {
         }
 
         // Check pinwheels array
-        if (typeof pinwheels !== 'undefined') {
-            for (let p of pinwheels) {
+        if (typeof GameContext.pinwheels !== 'undefined') {
+            for (let p of GameContext.pinwheels) {
                 if (p.dead) continue;
                 const dist = Math.hypot(p.pos.x - this.pos.x, p.pos.y - this.pos.y);
                 if (dist <= range && dist < minDist) {
@@ -4469,8 +4352,8 @@ class Spaceship extends Entity {
         }
 
         // Check guided missiles array (destroyer missiles)
-        if (typeof guidedMissiles !== 'undefined') {
-            for (let m of guidedMissiles) {
+        if (typeof GameContext.guidedMissiles !== 'undefined') {
+            for (let m of GameContext.guidedMissiles) {
                 if (m.dead) continue;
                 const dist = Math.hypot(m.pos.x - this.pos.x, m.pos.y - this.pos.y);
                 if (dist <= range && dist < minDist) {
@@ -4488,7 +4371,7 @@ class Spaceship extends Entity {
         const bulletSpeed = 18; // Same as player turret
         const damage = this.ciwsDamage;
         // White bullets for visibility (#fff, 3px)
-        bullets.push(new Bullet(this.pos.x, this.pos.y, angle, false, damage, bulletSpeed, 3, '#fff'));
+        GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, angle, false, damage, bulletSpeed, 3, '#fff'));
     }
 
     shoot() {
@@ -4504,7 +4387,7 @@ class Spaceship extends Entity {
         const shots = this.stats.multiShot;
 
         // DEBUG: Validation
-        if (bullets.length > 500) console.warn('[WARN] Bullet count high:', bullets.length);
+        if (GameContext.bullets.length > 500) console.warn('[WARN] Bullet count high:', GameContext.bullets.length);
 
         // Calculate firing vectors for parallel multi-shot
         const aimX = Math.cos(this.turretAngle);
@@ -4520,7 +4403,7 @@ class Spaceship extends Entity {
             const bx = this.pos.x + aimX * 25 + perpX * offset;
             const by = this.pos.y + aimY * 25 + perpY * offset;
 
-            bullets.push(new Bullet(bx, by, this.turretAngle, false, damage, bulletSpeed, 4, null, 0));
+            GameContext.bullets.push(new Bullet(bx, by, this.turretAngle, false, damage, bulletSpeed, 4, null, 0));
             spawnBarrelSmoke(bx, by, this.turretAngle);
 
             // Split Shot - chance to fire additional projectile at angle
@@ -4528,7 +4411,7 @@ class Spaceship extends Entity {
                 const splitAngle = this.turretAngle + (Math.random() - 0.5) * 0.5;
                 const splitBullet = new Bullet(bx, by, splitAngle, false, damage, bulletSpeed, 4, '#f80', 0);
                 splitBullet.isSplitShot = true;
-                bullets.push(splitBullet);
+                GameContext.bullets.push(splitBullet);
             }
         }
         // Player shooting SFX (MP3), rate-limited.
@@ -4552,20 +4435,20 @@ class Spaceship extends Entity {
             const weaponDamage = damage * finalEffectiveness;
 
             if (w.type === 'side') {
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI / 2, false, weaponDamage, bulletSpeed, 4, '#0f0'));
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle - Math.PI / 2, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI / 2, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle - Math.PI / 2, false, weaponDamage, bulletSpeed, 4, '#0f0'));
             } else if (w.type === 'rear') {
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI, false, weaponDamage, bulletSpeed, 4, '#0f0')); // Rear laser
+                GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI, false, weaponDamage, bulletSpeed, 4, '#0f0')); // Rear laser
             } else if (w.type === 'dual_rear') {
                 // Dual stream to the rear at angles
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI - Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI + Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI - Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI + Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
             } else if (w.type === 'dual_front') {
                 // Dual stream to the front at angles
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle - Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle - Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle + Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
             } else { // Forward
-                bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, this.angle, false, weaponDamage, bulletSpeed, 4, '#0f0'));
             }
         });
     }
@@ -4585,7 +4468,7 @@ class Spaceship extends Entity {
             const s = 12 + (Math.random() - 0.5) * 4;
             const b = new Bullet(this.pos.x, this.pos.y, a, false, dmg, s, 3, '#ff0', 0, 'square');
             b.life = (baseShotgunLife * tierRangeMult) * this.stats.rangeMult;
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
         spawnBarrelSmoke(this.pos.x, this.pos.y, this.turretAngle);
     }
@@ -4598,7 +4481,7 @@ class Spaceship extends Entity {
             damage *= comboBonus;
         }
         const forwardAngle = this.angle; // Forward in facing direction
-        bullets.push(new Bullet(this.pos.x, this.pos.y, forwardAngle, false, damage, 15, 4, '#0f0'));
+        GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, forwardAngle, false, damage, 15, 4, '#0f0'));
     }
 
     drawLaser(ctx) {
@@ -4754,7 +4637,7 @@ class Spaceship extends Entity {
                 this._pixiTurboFlameSpr.visible = turboActive;
                 if (turboActive) {
                     this._pixiTurboFlameSpr.rotation = this.angle;
-                    const t = (typeof frameNow === 'number' && frameNow > 0) ? frameNow : Date.now();
+                    const t = (typeof GameContext.frameNow === 'number' && GameContext.frameNow > 0) ? GameContext.frameNow : Date.now();
                     const flicker = 0.80 + Math.abs(Math.sin(t * 0.02)) * 0.45;
                     this._pixiTurboFlameSpr.scale.set(flicker);
                 }
@@ -4966,19 +4849,19 @@ class Spaceship extends Entity {
 // AOE damage function that respects shield penetration mechanics
 // Damages shield shards hit by the AOE, overflow penetrates to player
 function applyAOEDamageToPlayer(aoeX, aoeY, aoeRadius, totalDamage) {
-    if (!player || player.dead) return;
+    if (!GameContext.player || GameContext.player.dead) return;
 
     let remainingDamage = Math.max(0, Math.ceil(totalDamage));
-    const playerAngleToAOE = Math.atan2(aoeY - player.pos.y, aoeX - player.pos.x);
+    const playerAngleToAOE = Math.atan2(aoeY - GameContext.player.pos.y, aoeX - GameContext.player.pos.x);
 
     // Check outer shields first
-    if (player.outerShieldSegments && player.outerShieldSegments.some(s => s > 0)) {
-        const shieldAngle = playerAngleToAOE - player.outerShieldRotation;
+    if (GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.some(s => s > 0)) {
+        const shieldAngle = playerAngleToAOE - GameContext.player.outerShieldRotation;
         const normalizedAngle = (shieldAngle + Math.PI * 2) % (Math.PI * 2);
-        const segCount = player.outerShieldSegments.length;
+        const segCount = GameContext.player.outerShieldSegments.length;
 
         // Calculate the arc of shield segments hit by the AOE
-        const arcWidth = Math.atan2(aoeRadius, player.outerShieldRadius) * 2;
+        const arcWidth = Math.atan2(aoeRadius, GameContext.player.outerShieldRadius) * 2;
         const startAngle = normalizedAngle - arcWidth / 2;
         const endAngle = normalizedAngle + arcWidth / 2;
 
@@ -4988,22 +4871,22 @@ function applyAOEDamageToPlayer(aoeX, aoeY, aoeRadius, totalDamage) {
             // Check if this segment is within the AOE arc
             let angleDiff = Math.abs(segAngle - startAngle);
             if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
-            if (angleDiff <= arcWidth / 2 && player.outerShieldSegments[i] > 0) {
-                const absorb = Math.min(remainingDamage, player.outerShieldSegments[i]);
-                player.outerShieldSegments[i] -= absorb;
+            if (angleDiff <= arcWidth / 2 && GameContext.player.outerShieldSegments[i] > 0) {
+                const absorb = Math.min(remainingDamage, GameContext.player.outerShieldSegments[i]);
+                GameContext.player.outerShieldSegments[i] -= absorb;
                 remainingDamage -= absorb;
-                player.shieldsDirty = true;
+                GameContext.player.shieldsDirty = true;
             }
         }
     }
 
     // Check inner shields
-    if (player.shieldSegments && remainingDamage > 0) {
-        const shieldAngle = playerAngleToAOE - player.shieldRotation;
+    if (GameContext.player.shieldSegments && remainingDamage > 0) {
+        const shieldAngle = playerAngleToAOE - GameContext.player.shieldRotation;
         const normalizedAngle = (shieldAngle + Math.PI * 2) % (Math.PI * 2);
-        const segCount = player.shieldSegments.length;
+        const segCount = GameContext.player.shieldSegments.length;
 
-        const arcWidth = Math.atan2(aoeRadius, player.shieldRadius) * 2;
+        const arcWidth = Math.atan2(aoeRadius, GameContext.player.shieldRadius) * 2;
         const startAngle = normalizedAngle - arcWidth / 2;
         const endAngle = normalizedAngle + arcWidth / 2;
 
@@ -5011,18 +4894,18 @@ function applyAOEDamageToPlayer(aoeX, aoeY, aoeRadius, totalDamage) {
             const segAngle = (i / segCount) * Math.PI * 2;
             let angleDiff = Math.abs(segAngle - startAngle);
             if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
-            if (angleDiff <= arcWidth / 2 && player.shieldSegments[i] > 0) {
-                const absorb = Math.min(remainingDamage, player.shieldSegments[i]);
-                player.shieldSegments[i] -= absorb;
+            if (angleDiff <= arcWidth / 2 && GameContext.player.shieldSegments[i] > 0) {
+                const absorb = Math.min(remainingDamage, GameContext.player.shieldSegments[i]);
+                GameContext.player.shieldSegments[i] -= absorb;
                 remainingDamage -= absorb;
-                player.shieldsDirty = true;
+                GameContext.player.shieldsDirty = true;
             }
         }
     }
 
     // Apply remaining damage to player (shields already handled, don't pierce)
     if (remainingDamage > 0) {
-        player.takeHit(remainingDamage);
+        GameContext.player.takeHit(remainingDamage);
     }
 }
 
@@ -5047,42 +4930,42 @@ class Shockwave extends Entity {
         const dtFactor = deltaTime / 16.67;
 
         // Track player position if following
-        if (this.followPlayer && player && !player.dead) {
-            this.pos.x = player.pos.x;
-            this.pos.y = player.pos.y;
+        if (this.followPlayer && GameContext.player && !GameContext.player.dead) {
+            this.pos.x = GameContext.player.pos.x;
+            this.pos.y = GameContext.player.pos.y;
             // Also update prevPos to prevent interpolation trails
-            this.prevPos.x = player.pos.x;
-            this.prevPos.y = player.pos.y;
+            this.prevPos.x = GameContext.player.pos.x;
+            this.prevPos.y = GameContext.player.pos.y;
         }
 
         // Apply time-scaled expansion
         this.currentRadius += this.speed * dtFactor;
         if (this.currentRadius >= this.maxRadius) this.dead = true;
 
-        const targets = [...enemies];
-        if (this.damageBases) targets.push(...pinwheels);
-        if (boss && bossActive && !boss.dead) targets.push(boss);
-        if (this.damagePlayer && player && !player.dead) targets.push(player);
+        const targets = [...GameContext.enemies];
+        if (this.damageBases) targets.push(...GameContext.pinwheels);
+        if (GameContext.boss && GameContext.bossActive && !GameContext.boss.dead) targets.push(GameContext.boss);
+        if (this.damagePlayer && GameContext.player && !GameContext.player.dead) targets.push(GameContext.player);
 
         for (let e of targets) {
             if (this.ignoreEntity && e === this.ignoreEntity) continue;
             if (e.dead || this.hitList.includes(e)) continue;
             const dist = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
             if (dist < this.currentRadius + e.radius) {
-                if (e === player) {
-                    player.takeHit(this.damage);
+                if (e === GameContext.player) {
+                    GameContext.player.takeHit(this.damage);
                     this.hitList.push(e);
                 } else {
                     // Critical Strike
                     let damage = this.damage;
-                    if (!this.isEnemy && player.stats.critChance > 0 && Math.random() < player.stats.critChance) {
-                        damage *= player.stats.critDamage;
+                    if (!this.isEnemy && GameContext.player.stats.critChance > 0 && Math.random() < GameContext.player.stats.critChance) {
+                        damage *= GameContext.player.stats.critDamage;
                         this.hasCrit = true;
                         spawnParticles(e.pos.x, e.pos.y, 8, '#ff0');
                     }
 
                     e.hp -= damage;
-                    if (e === destroyer) {
+                    if (e === GameContext.destroyer) {
                         console.log(`[DESTROYER DEBUG] SHOCKWAVE: ${damage} damage | HP: ${e.hp + damage} -> ${e.hp} | Source: ${this.damageType || 'unknown'}`);
                     }
                     this.hitList.push(e);
@@ -5091,14 +4974,14 @@ class Shockwave extends Entity {
 
                     // Explosive Rounds
                     if (!this.isEnemy && this.isExplosive) {
-                        const explodeRadius = player.stats.explosiveRadius || 200;
-                        const explodeDmg = player.stats.explosiveDamage || 30;
+                        const explodeRadius = GameContext.player.stats.explosiveRadius || 200;
+                        const explodeDmg = GameContext.player.stats.explosiveDamage || 30;
                         spawnParticles(this.pos.x, this.pos.y, 12, '#f80');
                         for (let other of targets) {
                             if (other === e || other.dead || this.hitList.includes(other)) continue;
                             const d = Math.hypot(other.pos.x - this.pos.x, other.pos.y - this.pos.y);
                             if (d < explodeRadius + other.radius) {
-                                if (other === destroyer) {
+                                if (other === GameContext.destroyer) {
                                     const hpBefore = other.hp;
                                     other.hp -= explodeDmg;
                                     console.log(`[DESTROYER DEBUG] EXPLOSIVE SECONDARY: ${explodeDmg} damage | HP: ${hpBefore} -> ${other.hp}`);
@@ -5120,20 +5003,20 @@ class Shockwave extends Entity {
                     }
 
                     // Combo Meter - increment combo stacks on hit
-                    if (!this.isEnemy && player.stats.comboMeter > 0) {
-                        player.comboStacks = Math.min(player.comboStacks + 1, player.comboMaxStacks);
-                        player.lastHitTime = Date.now();
+                    if (!this.isEnemy && GameContext.player.stats.comboMeter > 0) {
+                        GameContext.player.comboStacks = Math.min(GameContext.player.comboStacks + 1, GameContext.player.comboMaxStacks);
+                        GameContext.player.lastHitTime = Date.now();
                     }
 
                     if (e.hp <= 0) {
                         e.kill();
                         // Lifesteal - heal on kill
-                        if (!this.isEnemy && player.stats.lifestealAmount > 0) {
-                            const healAmount = player.stats.lifestealAmount;
-                            if (player.hp < player.maxHp) {
-                                player.hp = Math.min(player.maxHp, player.hp + healAmount);
+                        if (!this.isEnemy && GameContext.player.stats.lifestealAmount > 0) {
+                            const healAmount = GameContext.player.stats.lifestealAmount;
+                            if (GameContext.player.hp < GameContext.player.maxHp) {
+                                GameContext.player.hp = Math.min(GameContext.player.maxHp, GameContext.player.hp + healAmount);
                                 updateHealthUI();
-                                spawnParticles(player.pos.x, player.pos.y, 5, '#0f0');
+                                spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 5, '#0f0');
                             }
                         }
                     }
@@ -5142,7 +5025,7 @@ class Shockwave extends Entity {
         }
 
         if (this.damageAsteroids) {
-            for (let ast of environmentAsteroids) {
+            for (let ast of GameContext.environmentAsteroids) {
                 if (!ast || ast.dead) continue;
                 if (ast.unbreakable) continue;
                 if (this.hitList.includes(ast)) continue;
@@ -5157,7 +5040,7 @@ class Shockwave extends Entity {
         }
 
         if (this.damageMissiles) {
-            for (let m of guidedMissiles) {
+            for (let m of GameContext.guidedMissiles) {
                 if (!m || m.dead) continue;
                 if (this.hitList.includes(m)) continue;
                 const dist = Math.hypot(m.pos.x - this.pos.x, m.pos.y - this.pos.y);
@@ -5237,8 +5120,8 @@ class CruiserMineBomb extends Entity {
         this.t += dtFactor;
         this.pos.add(this.vel);
 
-        if (player && !player.dead) {
-            const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        if (GameContext.player && !GameContext.player.dead) {
+            const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
             if (d <= this.proximityFuseRadius) {
                 this.explode();
                 return;
@@ -5277,7 +5160,7 @@ class CruiserMineBomb extends Entity {
         pixiCleanupObject(this);
         playSound('explode');
         spawnParticles(this.pos.x, this.pos.y, 40, '#fa0');
-        shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.damage, this.blastRadius, {
+        GameContext.shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.damage, this.blastRadius, {
             damagePlayer: true,
             damageBases: true,
             ignoreEntity: this.owner,
@@ -5325,7 +5208,7 @@ class FlagshipGuidedMissile extends Entity {
         this.speed = 11.0;
         this.turnRate = 0.085;
         this.lifeMs = 5000;
-        this.angle = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
+        this.angle = (GameContext.player && !GameContext.player.dead) ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x) : 0;
 
         const off = (owner && owner.radius) ? (owner.radius * 0.85 + 14) : 60;
         this.pos.x += Math.cos(this.angle) * off;
@@ -5344,39 +5227,39 @@ class FlagshipGuidedMissile extends Entity {
     }
 
     applyDamageToPlayer(amount) {
-        if (!player || player.dead) return;
-        if (player.invulnerable > 0) return;
+        if (!GameContext.player || GameContext.player.dead) return;
+        if (GameContext.player.invulnerable > 0) return;
         let remaining = Math.max(0, Math.ceil(amount));
 
-        if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
-            for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
-                if (player.outerShieldSegments[i] > 0) {
-                    const absorb = Math.min(remaining, player.outerShieldSegments[i]);
-                    player.outerShieldSegments[i] -= absorb;
+        if (GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.length > 0) {
+            for (let i = 0; i < GameContext.player.outerShieldSegments.length && remaining > 0; i++) {
+                if (GameContext.player.outerShieldSegments[i] > 0) {
+                    const absorb = Math.min(remaining, GameContext.player.outerShieldSegments[i]);
+                    GameContext.player.outerShieldSegments[i] -= absorb;
                     remaining -= absorb;
                 }
             }
         }
 
-        if (player.shieldSegments && player.shieldSegments.length > 0) {
-            for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
-                const absorb = Math.min(remaining, player.shieldSegments[i]);
-                player.shieldSegments[i] -= absorb;
+        if (GameContext.player.shieldSegments && GameContext.player.shieldSegments.length > 0) {
+            for (let i = 0; i < GameContext.player.shieldSegments.length && remaining > 0; i++) {
+                const absorb = Math.min(remaining, GameContext.player.shieldSegments[i]);
+                GameContext.player.shieldSegments[i] -= absorb;
                 remaining -= absorb;
             }
         }
 
         if (remaining > 0) {
-            player.hp -= remaining;
-            spawnParticles(player.pos.x, player.pos.y, 14, '#f00');
+            GameContext.player.hp -= remaining;
+            spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 14, '#f00');
             playSound('hit');
             updateHealthUI();
-            if (player.hp <= 0) killPlayer();
+            if (GameContext.player.hp <= 0) killPlayer();
         } else {
             playSound('shield_hit');
-            spawnParticles(player.pos.x, player.pos.y, 10, '#0ff');
+            spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#0ff');
         }
-        player.invulnerable = 22;
+        GameContext.player.invulnerable = 22;
     }
 
     takeHit(damage) {
@@ -5394,9 +5277,9 @@ class FlagshipGuidedMissile extends Entity {
         this.t += dtFactor;
         this.lifeMs -= deltaTime;
         if (this.lifeMs <= 0) { this.explode(); return; }
-        if (!player || player.dead) { this.explode(); return; }
+        if (!GameContext.player || GameContext.player.dead) { this.explode(); return; }
 
-        const targetAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const targetAngle = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
         let angleDiff = targetAngle - this.angle;
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
@@ -5427,8 +5310,8 @@ class FlagshipGuidedMissile extends Entity {
             const dmg = Math.max(0, Math.ceil(this.hp));
             if (dmg <= 0) return;
             const splashR = 180;
-            for (let i = 0; i < enemies.length; i++) {
-                const e = enemies[i];
+            for (let i = 0; i < GameContext.enemies.length; i++) {
+                const e = GameContext.enemies[i];
                 if (!e || e.dead) continue;
                 const d = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
                 if (d < splashR + (e.radius || 0)) {
@@ -5441,7 +5324,7 @@ class FlagshipGuidedMissile extends Entity {
         };
 
         try {
-            const nearby = asteroidGrid ? asteroidGrid.query(this.pos.x, this.pos.y) : [];
+            const nearby = GameContext.asteroidGrid ? GameContext.asteroidGrid.query(this.pos.x, this.pos.y) : [];
             for (let i = 0; i < nearby.length; i++) {
                 const ast = nearby[i];
                 if (!ast || ast.dead) continue;
@@ -5455,8 +5338,8 @@ class FlagshipGuidedMissile extends Entity {
             }
         } catch (e) { }
 
-        for (let i = 0; i < enemies.length; i++) {
-            const e = enemies[i];
+        for (let i = 0; i < GameContext.enemies.length; i++) {
+            const e = GameContext.enemies[i];
             if (!e || e.dead) continue;
             const d = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
             if (d < (e.radius || 0) + this.radius) {
@@ -5466,13 +5349,13 @@ class FlagshipGuidedMissile extends Entity {
             }
         }
 
-        const dP = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        if (dP < player.radius + this.radius) {
+        const dP = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+        if (dP < GameContext.player.radius + this.radius) {
             const dmg = Math.max(0, Math.ceil(this.hp));
             this.explode('#fa0');
             this.applyDamageToPlayer(dmg);
-            shakeMagnitude = Math.max(shakeMagnitude, 10);
-            shakeTimer = Math.max(shakeTimer, 10);
+            GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 10);
+            GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 10);
         }
     }
 
@@ -5561,12 +5444,12 @@ class ShootingStar extends Entity {
         super(0, 0);
         const angle = Math.random() * Math.PI * 2;
         const dist = 2500; // Start far out
-        this.pos.x = player.pos.x + Math.cos(angle) * dist;
-        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.pos.x = GameContext.player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = GameContext.player.pos.y + Math.sin(angle) * dist;
 
         // Aim somewhat near the player
-        const targetX = player.pos.x + (Math.random() - 0.5) * 1000;
-        const targetY = player.pos.y + (Math.random() - 0.5) * 1000;
+        const targetX = GameContext.player.pos.x + (Math.random() - 0.5) * 1000;
+        const targetY = GameContext.player.pos.y + (Math.random() - 0.5) * 1000;
         const travelAngle = Math.atan2(targetY - this.pos.y, targetX - this.pos.x);
 
         this.vel.x = Math.cos(travelAngle) * 15; // 50% slower
@@ -5613,7 +5496,7 @@ class ShootingStar extends Entity {
             spawnAsteroidExplosion(this.pos.x, this.pos.y, 1.4);
             const count = Math.floor(Math.random() * 7);
             for (let i = 0; i < count; i++) {
-                nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 80, this.pos.y + (Math.random() - 0.5) * 80, 1));
+                GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 80, this.pos.y + (Math.random() - 0.5) * 80, 1));
             }
         }
     }
@@ -5678,9 +5561,9 @@ class Bullet extends Entity {
             this.pierceCount = 0;
             this.isExplosive = false;
         } else {
-            this.life = 50 * (player.stats.rangeMult || 1);
-            this.pierceCount = player.stats.piercing || 0;
-            this.isExplosive = Math.random() < (player.stats.explosiveRounds || 0);
+            this.life = 50 * (GameContext.player.stats.rangeMult || 1);
+            this.pierceCount = GameContext.player.stats.piercing || 0;
+            this.isExplosive = Math.random() < (GameContext.player.stats.explosiveRounds || 0);
         }
     }
     reset(x, y, angle, isEnemy, damage = 1, speed = 10, radius = 4, color = null, homing = 0, shape = null) {
@@ -5699,19 +5582,19 @@ class Bullet extends Entity {
                 if (d < minDist && d <= acquireRange) { minDist = d; target = obj; }
             };
 
-            for (let e of enemies) consider(e);
-            if (bossActive && boss && !boss.dead) consider(boss);
-            if (pinwheels && pinwheels.length > 0) for (let b of pinwheels) consider(b);
-            if (spaceStation && !spaceStation.dead) consider(spaceStation);
-            if (destroyer && !destroyer.dead) consider(destroyer);
-            if (contractEntities && contractEntities.wallTurrets && contractEntities.wallTurrets.length > 0) {
-                for (let t of contractEntities.wallTurrets) consider(t);
+            for (let e of GameContext.enemies) consider(e);
+            if (GameContext.bossActive && GameContext.boss && !GameContext.boss.dead) consider(GameContext.boss);
+            if (GameContext.pinwheels && GameContext.pinwheels.length > 0) for (let b of GameContext.pinwheels) consider(b);
+            if (GameContext.spaceStation && !GameContext.spaceStation.dead) consider(GameContext.spaceStation);
+            if (GameContext.destroyer && !GameContext.destroyer.dead) consider(GameContext.destroyer);
+            if (GameContext.contractEntities && GameContext.contractEntities.wallTurrets && GameContext.contractEntities.wallTurrets.length > 0) {
+                for (let t of GameContext.contractEntities.wallTurrets) consider(t);
             }
-            if (warpZone && warpZone.active && warpZone.turrets && warpZone.turrets.length > 0) {
-                for (let t of warpZone.turrets) consider(t);
+            if (GameContext.warpZone && GameContext.warpZone.active && GameContext.warpZone.turrets && GameContext.warpZone.turrets.length > 0) {
+                for (let t of GameContext.warpZone.turrets) consider(t);
             }
-            if (caveMode && caveLevel && caveLevel.active && caveLevel.wallTurrets && caveLevel.wallTurrets.length > 0) {
-                for (let t of caveLevel.wallTurrets) consider(t);
+            if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active && GameContext.caveLevel.wallTurrets && GameContext.caveLevel.wallTurrets.length > 0) {
+                for (let t of GameContext.caveLevel.wallTurrets) consider(t);
             }
 
             if (target) {
@@ -5741,7 +5624,7 @@ class Bullet extends Entity {
 
                 // Create shockwave effect for bio mortars (nuke-style)
                 if (this.useShockwave) {
-                    shockwaves.push(new Shockwave(
+                    GameContext.shockwaves.push(new Shockwave(
                         this.pos.x,
                         this.pos.y,
                         this.explosionDamage || 10,
@@ -5753,11 +5636,11 @@ class Bullet extends Entity {
                 playSound('explode');
 
                 // Damage player if within explosion radius
-                if (player && !player.dead) {
-                    const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (GameContext.player && !GameContext.player.dead) {
+                    const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
                     if (dist < this.explosionRadius) {
                         const dmg = this.explosionDamage || 5;
-                        player.takeHit(dmg);
+                        GameContext.player.takeHit(dmg);
                     }
                 }
             }
@@ -5878,7 +5761,7 @@ class ClusterBomb extends Entity {
             const b = new Bullet(this.pos.x, this.pos.y, a, true, this.damage, 10, 5, this.color);
             b.owner = this.owner;
             b.life = 60;
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
 
         // Visual effect
@@ -5946,9 +5829,9 @@ class NapalmZone extends Entity {
         // Damage player if inside zone
         if (this.damageCooldown > 0) {
             this.damageCooldown -= deltaTime;
-        } else if (player && !player.dead && player.invulnerable <= 0) {
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
+        } else if (GameContext.player && !GameContext.player.dead && GameContext.player.invulnerable <= 0) {
+            const dx = GameContext.player.pos.x - this.pos.x;
+            const dy = GameContext.player.pos.y - this.pos.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist < this.radius) {
                 // Use AOE damage that respects shield penetration
@@ -5956,7 +5839,7 @@ class NapalmZone extends Entity {
                 this.damageCooldown = this.damageInterval;
                 // Visual feedback - spark effect
                 if (Math.random() < 0.3) {
-                    emitParticle(player.pos.x, player.pos.y, 0, 0, '#f50', 15);
+                    emitParticle(GameContext.player.pos.x, GameContext.player.pos.y, 0, 0, '#f50', 15);
                 }
             }
         }
@@ -6061,7 +5944,7 @@ class Enemy extends Entity {
         }
 
         this.radius = 20;
-        const speedMult = 1 + (difficultyTier - 1) * 0.1;
+        const speedMult = 1 + (GameContext.difficultyTier - 1) * 0.1;
         this.thrustPower = 0.72 * speedMult; // quadrupled (0.18 * 4) for 60Hz
         this.maxSpeed = 13.6 * speedMult; // doubled (6.8 * 2) for 60Hz
         this.rotationSpeed = 0.1; // 0.05 * 2
@@ -6070,21 +5953,21 @@ class Enemy extends Entity {
         if (this.type === 'roamer') {
             this.hp = 1;
         } else if (this.type === 'elite_roamer') {
-            this.hp = 6 + (difficultyTier * 2);
+            this.hp = 6 + (GameContext.difficultyTier * 2);
             this.shieldSegments = new Array(6).fill(1);
             this.shieldRadius = 26; // reduced 25%
             this.radius = 19; // reduced 25% (was 25)
             this.maxSpeed *= 1.05;
         } else if (this.type === 'hunter') {
-            this.hp = 12 + (difficultyTier * 3);
+            this.hp = 12 + (GameContext.difficultyTier * 3);
             this.radius = Math.round(22 * 1.35 * 0.75); // reduced 25%
-            this.maxSpeed = 13.0 + (difficultyTier * 0.5); // doubled
+            this.maxSpeed = 13.0 + (GameContext.difficultyTier * 0.5); // doubled
             this.thrustPower = 1.2; // quadrupled (0.3 * 4)
             this.shieldSegments = new Array(4).fill(1);
             this.shieldRadius = Math.round(30 * 1.35 * 0.75); // reduced 25%
             this.shootTimer = 20; // 40 / 2
         } else {
-            this.hp = 5 + (difficultyTier - 1) * 2;
+            this.hp = 5 + (GameContext.difficultyTier - 1) * 2;
         }
 
         this.shootTimer = 40; // 80 / 2
@@ -6119,7 +6002,7 @@ class Enemy extends Entity {
         this.gunboatLevel = 1;
         if (this.isGunboat) {
             const overrideLevel = opts.gunboatLevel;
-            this.gunboatLevel = overrideLevel ? overrideLevel : ((difficultyTier >= 4 || (player && player.level >= 6)) ? 2 : 1);
+            this.gunboatLevel = overrideLevel ? overrideLevel : ((GameContext.difficultyTier >= 4 || (GameContext.player && GameContext.player.level >= 6)) ? 2 : 1);
             this.radius = 30; // match player size
             this.hp = this.gunboatLevel === 1 ? 10 : 16;
             this.maxSpeed = 8.0; // doubled
@@ -6143,14 +6026,14 @@ class Enemy extends Entity {
     }
 
     getAimAngle() {
-        if (!player || player.dead) return 0;
-        const dx = player.pos.x - this.pos.x;
-        const dy = player.pos.y - this.pos.y;
+        if (!GameContext.player || GameContext.player.dead) return 0;
+        const dx = GameContext.player.pos.x - this.pos.x;
+        const dy = GameContext.player.pos.y - this.pos.y;
         const dist = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
         if ((this.type === 'elite_roamer' || this.type === 'hunter') && dist < 600) {
             const lead = Math.min(30, dist / 10);
-            return Math.atan2(player.pos.y + player.vel.y * lead - this.pos.y, player.pos.x + player.vel.x * lead - this.pos.x);
+            return Math.atan2(GameContext.player.pos.y + GameContext.player.vel.y * lead - this.pos.y, GameContext.player.pos.x + GameContext.player.vel.x * lead - this.pos.x);
         }
         return angle;
     }
@@ -6205,7 +6088,7 @@ class Enemy extends Entity {
             if (this.type === 'hunter') { val = 4; count = 7; }  // was 5
             if (this.type === 'defender') { val = 3; count = 4; }  // was 3
             if (this.nameTag) { val += 1; count += 2; }
-            const caveActive = (caveMode && caveLevel && caveLevel.active);
+            const caveActive = (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active);
             if (caveActive) {
                 let total = count * val;
                 if (this.isGunboat) total += 10 + (5 * 2);
@@ -6217,15 +6100,15 @@ class Enemy extends Entity {
             } else {
                 if (this.isGunboat) {
                     // Gunboat drops: 1 gold coin (value 10) + 5 regular (value 2)
-                    coins.push(new Coin(this.pos.x, this.pos.y, 10));
-                    for (let i = 0; i < 5; i++) coins.push(new Coin(this.pos.x, this.pos.y, 2));
+                    GameContext.coins.push(new Coin(this.pos.x, this.pos.y, 10));
+                    for (let i = 0; i < 5; i++) GameContext.coins.push(new Coin(this.pos.x, this.pos.y, 2));
                 }
                 for (let i = 0; i < count; i++) {
-                    coins.push(new Coin(this.pos.x, this.pos.y, val));
+                    GameContext.coins.push(new Coin(this.pos.x, this.pos.y, val));
                 }
             }
             if (this.nameTag) {
-                nuggets.push(new SpaceNugget(this.pos.x, this.pos.y, 1));
+                GameContext.nuggets.push(new SpaceNugget(this.pos.x, this.pos.y, 1));
             }
 
             // Sector 2 needs more nugz to match the pace of Sector 1 (no contracts/stations here).
@@ -6239,21 +6122,21 @@ class Enemy extends Entity {
                 if (Math.random() < p) {
                     const count = this.isGunboat ? 2 : 1;
                     for (let k = 0; k < count; k++) {
-                        nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 80, this.pos.y + (Math.random() - 0.5) * 80, 1));
+                        GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 80, this.pos.y + (Math.random() - 0.5) * 80, 1));
                     }
                 }
             }
         }
 
-        if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter') roamerRespawnQueue.push(2000 + Math.floor(Math.random() * 2000));
+        if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter') GameContext.roamerRespawnQueue.push(2000 + Math.floor(Math.random() * 2000));
         if (this.isGunboat) {
-            gunboatRespawnAt = Date.now() + 20000;
+            GameContext.gunboatRespawnAt = Date.now() + 20000;
         }
 
         if (this.modifier === 'explosive') {
             for (let i = 0; i < 8; i++) {
                 const a = (Math.PI * 2 / 8) * i;
-                bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 2, 10, 4, '#f80'));
+                GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, a, true, 2, 10, 4, '#f80'));
             }
             spawnParticles(this.pos.x, this.pos.y, 20, '#f80');
         }
@@ -6271,12 +6154,12 @@ class Enemy extends Entity {
             this.vel.x = 0;
             this.vel.y = 0;
             // Skip AI movement when frozen
-        } else if (player.stats.slowField > 0 && !this.isCruiser) {
+        } else if (GameContext.player.stats.slowField > 0 && !this.isCruiser) {
             if (this.freezeCooldown > 0) this.freezeCooldown -= dtFactor;
 
-            const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-            if (dist < player.stats.slowField && this.freezeCooldown <= 0) {
-                this.freezeTimer = player.stats.slowFieldDuration;
+            const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+            if (dist < GameContext.player.stats.slowField && this.freezeCooldown <= 0) {
+                this.freezeTimer = GameContext.player.stats.slowFieldDuration;
                 this.freezeCooldown = this.freezeTimer + 120; // 2s immunity after freeze
                 spawnParticles(this.pos.x, this.pos.y, 5, '#0ff');
             }
@@ -6308,9 +6191,9 @@ class Enemy extends Entity {
             const desiredVel = new Vector(0, 0);
             const wantsStandoff = (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter' || this.type === 'defender');
             if (this.circleStrafePreferred && this.aiState === 'CIRCLE') {
-                if (player && !player.dead) {
-                    const dx = player.pos.x - this.pos.x;
-                    const dy = player.pos.y - this.pos.y;
+                if (GameContext.player && !GameContext.player.dead) {
+                    const dx = GameContext.player.pos.x - this.pos.x;
+                    const dy = GameContext.player.pos.y - this.pos.y;
                     const dist = Math.hypot(dx, dy);
                     const angleToPlayer = Math.atan2(dy, dx);
                     const orbitDir = 1; // clockwise
@@ -6323,9 +6206,9 @@ class Enemy extends Entity {
                     if (dist < preferred - 150) { desiredVel.x -= dx * 0.001; desiredVel.y -= dy * 0.001; }
                 }
             } else if (this.aiState === 'SEEK') {
-                if (player && !player.dead) {
-                    const dx = player.pos.x - this.pos.x;
-                    const dy = player.pos.y - this.pos.y;
+                if (GameContext.player && !GameContext.player.dead) {
+                    const dx = GameContext.player.pos.x - this.pos.x;
+                    const dy = GameContext.player.pos.y - this.pos.y;
                     const dist = Math.hypot(dx, dy);
                     if (wantsStandoff) {
                         // Don't kamikaze: keep space and shoot from range.
@@ -6343,9 +6226,9 @@ class Enemy extends Entity {
                     }
                 }
             } else if (this.aiState === 'ORBIT') {
-                if (player && !player.dead) {
-                    const dx = player.pos.x - this.pos.x;
-                    const dy = player.pos.y - this.pos.y;
+                if (GameContext.player && !GameContext.player.dead) {
+                    const dx = GameContext.player.pos.x - this.pos.x;
+                    const dy = GameContext.player.pos.y - this.pos.y;
                     const dist = Math.hypot(dx, dy);
                     const angle = Math.atan2(dy, dx) + (this.type === 'elite_roamer' ? 0.05 : 0.02);
                     desiredVel.x = Math.cos(angle);
@@ -6354,9 +6237,9 @@ class Enemy extends Entity {
                     if (dist < 400) { desiredVel.x -= dx * 0.001; desiredVel.y -= dy * 0.001; }
                 }
             } else if (this.aiState === 'ATTACK_RUN') {
-                if (player && !player.dead) {
-                    const dx = player.pos.x - this.pos.x;
-                    const dy = player.pos.y - this.pos.y;
+                if (GameContext.player && !GameContext.player.dead) {
+                    const dx = GameContext.player.pos.x - this.pos.x;
+                    const dy = GameContext.player.pos.y - this.pos.y;
                     const dist = Math.hypot(dx, dy);
                     if (wantsStandoff) {
                         // "Attack run" becomes a strafe + maintain-range behavior (no ramming).
@@ -6383,14 +6266,14 @@ class Enemy extends Entity {
                 if (this.assignedBase && !this.assignedBase.dead) {
                     desiredVel.x = this.assignedBase.pos.x - this.pos.x;
                     desiredVel.y = this.assignedBase.pos.y - this.pos.y;
-                } else if (player) {
-                    desiredVel.x = this.pos.x - player.pos.x;
-                    desiredVel.y = this.pos.y - player.pos.y;
+                } else if (GameContext.player) {
+                    desiredVel.x = this.pos.x - GameContext.player.pos.x;
+                    desiredVel.y = this.pos.y - GameContext.player.pos.y;
                 }
             } else if (this.aiState === 'FLANK') {
-                if (player && !player.dead) {
-                    const dx = player.pos.x - this.pos.x;
-                    const dy = player.pos.y - this.pos.y;
+                if (GameContext.player && !GameContext.player.dead) {
+                    const dx = GameContext.player.pos.x - this.pos.x;
+                    const dy = GameContext.player.pos.y - this.pos.y;
                     const angleToPlayer = Math.atan2(dy, dx);
                     // Break off at ~60-90 degrees relative to player direction
                     const targetAngle = angleToPlayer + (this.flankSide * (Math.PI / 2.5));
@@ -6398,9 +6281,9 @@ class Enemy extends Entity {
                     desiredVel.y = Math.sin(targetAngle);
                 }
             } else if (this.aiState === 'EVADE') {
-                if (player) {
-                    const dx = this.pos.x - player.pos.x;
-                    const dy = this.pos.y - player.pos.y;
+                if (GameContext.player) {
+                    const dx = this.pos.x - GameContext.player.pos.x;
+                    const dy = this.pos.y - GameContext.player.pos.y;
                     desiredVel.x = -dy;
                     desiredVel.y = dx;
                 }
@@ -6408,14 +6291,14 @@ class Enemy extends Entity {
 
             if (desiredVel.mag() > 0) desiredVel.normalize();
 
-            if (this.type === 'elite_roamer' || difficultyTier >= 4) {
+            if (this.type === 'elite_roamer' || GameContext.difficultyTier >= 4) {
                 const dodgeForce = this.calculateDodge();
                 desiredVel.add(dodgeForce);
             }
 
             const sepForce = new Vector(0, 0);
             let count = 0;
-            for (let other of enemies) {
+            for (let other of GameContext.enemies) {
                 if (other === this || other.dead) continue;
                 let odx = this.pos.x - other.pos.x;
                 let ody = this.pos.y - other.pos.y;
@@ -6435,10 +6318,10 @@ class Enemy extends Entity {
             // Avoid pinwheels/stations/fortresses so we don't rely on collision pushing.
             const avoid = new Vector(0, 0);
             const obstacles = [];
-            for (let b of pinwheels) if (b && !b.dead) obstacles.push({ e: b, r: b.radius + 420 });
-            if (spaceStation && !spaceStation.dead) obstacles.push({ e: spaceStation, r: spaceStation.radius + 520 });
-            if (contractEntities && contractEntities.fortresses) {
-                for (let f of contractEntities.fortresses) if (f && !f.dead) obstacles.push({ e: f, r: f.radius + 420 });
+            for (let b of GameContext.pinwheels) if (b && !b.dead) obstacles.push({ e: b, r: b.radius + 420 });
+            if (GameContext.spaceStation && !GameContext.spaceStation.dead) obstacles.push({ e: GameContext.spaceStation, r: GameContext.spaceStation.radius + 520 });
+            if (GameContext.contractEntities && GameContext.contractEntities.fortresses) {
+                for (let f of GameContext.contractEntities.fortresses) if (f && !f.dead) obstacles.push({ e: f, r: f.radius + 420 });
             }
 
             for (let o of obstacles) {
@@ -6461,9 +6344,9 @@ class Enemy extends Entity {
             }
 
             // Anti-ram spacing: roamers/defenders should avoid colliding with the player.
-            if (wantsStandoff && player && !player.dead) {
-                const dx = this.pos.x - player.pos.x;
-                const dy = this.pos.y - player.pos.y;
+            if (wantsStandoff && GameContext.player && !GameContext.player.dead) {
+                const dx = this.pos.x - GameContext.player.pos.x;
+                const dy = this.pos.y - GameContext.player.pos.y;
                 const dist = Math.hypot(dx, dy);
                 const keepOut = (this.type === 'hunter') ? 300 : 260;
                 if (dist > 0.001 && dist < keepOut) {
@@ -6521,22 +6404,22 @@ class Enemy extends Entity {
         checkWallCollision(this, (typeof this.wallElasticity === 'number') ? this.wallElasticity : 0.8);
 
         let distToPlayer = Infinity;
-        if (player && !player.dead) distToPlayer = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        if (GameContext.player && !GameContext.player.dead) distToPlayer = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
         const attackRange = (this.type === 'elite_roamer' || this.type === 'hunter') ? 800 : 600;
 
         const gunboatRange = this.isGunboat ? (this.gunboatRange || 900) : attackRange;
         let roamerAsteroidBlocked = false;
-        if (!this.isGunboat && (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter' || this.type === 'defender') && player && !player.dead && this.freezeTimer <= 0) {
+        if (!this.isGunboat && (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter' || this.type === 'defender') && GameContext.player && !GameContext.player.dead && this.freezeTimer <= 0) {
             const angleToPlayer = this.getAimAngle();
             const hit = rayCast(this.pos.x, this.pos.y, angleToPlayer, distToPlayer);
             if (hit && hit.hit && hit.obj) {
-                const buffer = (player.radius || 0) + 10;
+                const buffer = (GameContext.player.radius || 0) + 10;
                 if (hit.dist < distToPlayer - buffer) roamerAsteroidBlocked = true;
             }
         }
 
         const shouldRoamerClear = roamerAsteroidBlocked && distToPlayer < (attackRange * 1.8);
-        if (!this.disableAutoFire && (distToPlayer < gunboatRange || shouldRoamerClear) && !player.dead && this.freezeTimer <= 0) {
+        if (!this.disableAutoFire && (distToPlayer < gunboatRange || shouldRoamerClear) && !GameContext.player.dead && this.freezeTimer <= 0) {
             this.shootTimer -= dtFactor;
             if (this.shootTimer <= 0) {
                 const angle = this.getAimAngle();
@@ -6546,40 +6429,40 @@ class Enemy extends Entity {
                     const by = this.pos.y + Math.sin(angle) * muzzle;
                     const dmg = this.isCruiser ? (this.cruiserBaseDamage || 1) : (this.gunboatLevel === 1 ? 2 : 3);
                     const bulletSpeed = this.isCruiser ? 18 : 22;
-                    bullets.push(new Bullet(bx, by, angle, true, dmg, bulletSpeed, 4, '#0ff'));
+                    GameContext.bullets.push(new Bullet(bx, by, angle, true, dmg, bulletSpeed, 4, '#0ff'));
                     if (this.isCruiser) {
                         // Cruiser twin barrels
                         const a2 = angle + 0.08;
-                        bullets.push(new Bullet(bx, by, a2, true, dmg, bulletSpeed, 4, '#0ff'));
+                        GameContext.bullets.push(new Bullet(bx, by, a2, true, dmg, bulletSpeed, 4, '#0ff'));
                     } else if (this.gunboatLevel === 2) {
                         const a2 = angle + 0.08;
-                        bullets.push(new Bullet(bx, by, a2, true, 3, 22, 4, '#0ff'));
+                        GameContext.bullets.push(new Bullet(bx, by, a2, true, 3, 22, 4, '#0ff'));
                     }
                     spawnBarrelSmoke(bx, by, angle);
                     this.shootTimer = this.isCruiser ? this.cruiserFireDelay || 24 : (this.gunboatLevel === 1 ? 11 : 9);
                 } else if (this.type === 'elite_roamer' || this.type === 'hunter') {
                     const bx = this.pos.x + Math.cos(angle) * 25;
                     const by = this.pos.y + Math.sin(angle) * 25;
-                    bullets.push(new Bullet(bx, by, angle, true, 1, 11, 5, '#f0f'));
+                    GameContext.bullets.push(new Bullet(bx, by, angle, true, 1, 11, 5, '#f0f'));
                     if (this.modifier === 'split') {
                         const a2 = angle + (Math.random() - 0.5) * 0.2;
-                        bullets.push(new Bullet(bx, by, a2, true, 1, 11, 5, '#f0f'));
+                        GameContext.bullets.push(new Bullet(bx, by, a2, true, 1, 11, 5, '#f0f'));
                     }
                     spawnBarrelSmoke(bx, by, angle);
                     this.shootTimer = this.type === 'hunter' ? 20 : 30;
-                } else if (difficultyTier >= 5 && this.type === 'roamer') {
+                } else if (GameContext.difficultyTier >= 5 && this.type === 'roamer') {
                     for (let i = -1; i <= 1; i++) {
                         const a = angle + i * 0.2;
                         const bx = this.pos.x + Math.cos(a) * 20;
                         const by = this.pos.y + Math.sin(a) * 20;
-                        bullets.push(new Bullet(bx, by, a, true, 1));
+                        GameContext.bullets.push(new Bullet(bx, by, a, true, 1));
                         spawnBarrelSmoke(bx, by, a);
                     }
                     this.shootTimer = 40;
                 } else {
                     const bx = this.pos.x + Math.cos(angle) * 20;
                     const by = this.pos.y + Math.sin(angle) * 20;
-                    bullets.push(new Bullet(bx, by, angle, true, 1));
+                    GameContext.bullets.push(new Bullet(bx, by, angle, true, 1));
                     spawnBarrelSmoke(bx, by, angle);
                     this.shootTimer = 40;
                 }
@@ -6589,8 +6472,8 @@ class Enemy extends Entity {
     }
 
     updateAIState() {
-        if (!player || player.dead) { this.aiState = 'IDLE'; this.aiTimer = 30; return; }
-        const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        if (!GameContext.player || GameContext.player.dead) { this.aiState = 'IDLE'; this.aiTimer = 30; return; }
+        const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
 
         // All roamers (elite/hunter included) should be actively seeking, not waiting
         if (this.circleStrafePreferred) {
@@ -6599,7 +6482,7 @@ class Enemy extends Entity {
         } else if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter') {
             // Check for bunching/crowding
             let neighbors = 0;
-            for (let e of enemies) {
+            for (let e of GameContext.enemies) {
                 if (e !== this && !e.dead && e.type === 'roamer') {
                     const dSq = (e.pos.x - this.pos.x) ** 2 + (e.pos.y - this.pos.y) ** 2;
                     if (dSq < 40000) neighbors++; // within 200px
@@ -6620,7 +6503,7 @@ class Enemy extends Entity {
             }
         } else if (this.type === 'defender') {
             if (this.assignedBase && !this.assignedBase.dead) {
-                const distBase = Math.hypot(player.pos.x - this.assignedBase.pos.x, player.pos.y - this.assignedBase.pos.y);
+                const distBase = Math.hypot(GameContext.player.pos.x - this.assignedBase.pos.x, GameContext.player.pos.y - this.assignedBase.pos.y);
                 if (distBase < 800) { this.aiState = 'ORBIT'; this.aiTimer = 90; }
                 else if (this.hp < 2) { this.aiState = 'RETREAT'; this.aiTimer = 120; }
                 else { this.aiState = 'SEEK'; this.aiTimer = 60; }
@@ -6633,7 +6516,7 @@ class Enemy extends Entity {
 
     calculateDodge() {
         const dodgeVec = new Vector(0, 0);
-        for (let b of bullets) {
+        for (let b of GameContext.bullets) {
             if (b.isEnemy) continue;
             const dist = Math.hypot(b.pos.x - this.pos.x, b.pos.y - this.pos.y);
             if (dist < 200) {
@@ -6924,7 +6807,7 @@ class Pinwheel extends Entity {
         this.pos.y = y;
         this.type = type;
         this.radius = 70;
-        this.hp = 10 + (difficultyTier - 1) * 5;
+        this.hp = 10 + (GameContext.difficultyTier - 1) * 5;
         this.shootTimer = 75; // 150 / 2
         this.angle = 0;
         this.turretAngle = 0;
@@ -6938,16 +6821,16 @@ class Pinwheel extends Entity {
         let innerCount = 0;
         let innerHp = 0;
 
-        if (difficultyTier === 1) { outerCount = 12; outerHp = 1; }
-        else if (difficultyTier === 2) { outerCount = 16; outerHp = 1; }
-        else if (difficultyTier === 3) { outerCount = 24; outerHp = 1; }
-        else if (difficultyTier === 4) { outerCount = 24; outerHp = 2; innerCount = 8; innerHp = 1; }
-        else if (difficultyTier === 5) { outerCount = 24; outerHp = 2; innerCount = 12; innerHp = 2; }
-        else if (difficultyTier >= 6) {
+        if (GameContext.difficultyTier === 1) { outerCount = 12; outerHp = 1; }
+        else if (GameContext.difficultyTier === 2) { outerCount = 16; outerHp = 1; }
+        else if (GameContext.difficultyTier === 3) { outerCount = 24; outerHp = 1; }
+        else if (GameContext.difficultyTier === 4) { outerCount = 24; outerHp = 2; innerCount = 8; innerHp = 1; }
+        else if (GameContext.difficultyTier === 5) { outerCount = 24; outerHp = 2; innerCount = 12; innerHp = 2; }
+        else if (GameContext.difficultyTier >= 6) {
             outerCount = 24;
-            outerHp = 3 + (difficultyTier - 6);
-            innerCount = 16 + (difficultyTier - 6);
-            innerHp = 2 + Math.floor((difficultyTier - 6) / 2);
+            outerHp = 3 + (GameContext.difficultyTier - 6);
+            innerCount = 16 + (GameContext.difficultyTier - 6);
+            innerHp = 2 + Math.floor((GameContext.difficultyTier - 6) / 2);
         }
 
         if (type === 'heavy') {
@@ -7000,12 +6883,12 @@ class Pinwheel extends Entity {
             this.vel.x = 0;
             this.vel.y = 0;
             // Skip logic when frozen
-        } else if (player.stats.slowField > 0) {
+        } else if (GameContext.player.stats.slowField > 0) {
             if (this.freezeCooldown > 0) this.freezeCooldown -= dtFactor;
 
-            const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-            if (dist < player.stats.slowField && this.freezeCooldown <= 0) {
-                this.freezeTimer = player.stats.slowFieldDuration;
+            const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+            if (dist < GameContext.player.stats.slowField && this.freezeCooldown <= 0) {
+                this.freezeTimer = GameContext.player.stats.slowFieldDuration;
                 this.freezeCooldown = this.freezeTimer + 120; // 2s immunity after freeze
                 spawnParticles(this.pos.x, this.pos.y, 10, '#0ff');
             }
@@ -7016,17 +6899,17 @@ class Pinwheel extends Entity {
             return;
         }
 
-        if (player && !player.dead) {
+        if (GameContext.player && !GameContext.player.dead) {
 
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
+            const dx = GameContext.player.pos.x - this.pos.x;
+            const dy = GameContext.player.pos.y - this.pos.y;
             const dist = Math.hypot(dx, dy);
 
             // Keep distance from active cruiser boss
             let dreadAvoidX = 0, dreadAvoidY = 0;
-            if (bossActive && boss && boss.isCruiser && !boss.dead) {
-                const bdx = boss.pos.x - this.pos.x;
-                const bdy = boss.pos.y - this.pos.y;
+            if (GameContext.bossActive && GameContext.boss && GameContext.boss.isCruiser && !GameContext.boss.dead) {
+                const bdx = GameContext.boss.pos.x - this.pos.x;
+                const bdy = GameContext.boss.pos.y - this.pos.y;
                 const bdist = Math.hypot(bdx, bdy);
                 if (bdist < 200) {
                     dreadAvoidX = -(bdx / (bdist || 1)) * 0.2;
@@ -7035,7 +6918,7 @@ class Pinwheel extends Entity {
             }
 
             // Avoid bunching with other bases
-            for (let b of pinwheels) {
+            for (let b of GameContext.pinwheels) {
                 if (b === this || b.dead) continue;
                 const bx = b.pos.x - this.pos.x;
                 const by = b.pos.y - this.pos.y;
@@ -7048,8 +6931,8 @@ class Pinwheel extends Entity {
             }
 
             // Aggression ramp: ease-in early, then match prior behavior.
-            let elapsed = Date.now() - gameStartTime - pausedAccumMs;
-            if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
+            let elapsed = Date.now() - GameContext.gameStartTime - GameContext.pausedAccumMs;
+            if (GameContext.pauseStartTime) elapsed = GameContext.pauseStartTime - GameContext.gameStartTime - GameContext.pausedAccumMs;
             if (elapsed < 0) elapsed = 0;
             const elapsedMinutes = elapsed / 60000;
             const rampT = Math.max(0, Math.min(1, elapsedMinutes / 10));
@@ -7079,17 +6962,17 @@ class Pinwheel extends Entity {
 
         if (this.hp <= 5 && Math.random() < 0.1) spawnSmoke(this.pos.x, this.pos.y, 1);
 
-        if (player && !player.dead) {
+        if (GameContext.player && !GameContext.player.dead) {
             // Start easier: bases ramp up aggression over the first minutes.
             const now = Date.now();
-            let elapsed = now - gameStartTime - pausedAccumMs;
-            if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
+            let elapsed = now - GameContext.gameStartTime - GameContext.pausedAccumMs;
+            if (GameContext.pauseStartTime) elapsed = GameContext.pauseStartTime - GameContext.gameStartTime - GameContext.pausedAccumMs;
             if (elapsed < 0) elapsed = 0;
             const elapsedMinutes = elapsed / 60000;
             const rampT = Math.max(0, Math.min(1, elapsedMinutes / 10));
             const cooldownMult = 1.35 - 0.35 * rampT; // slower early, normal later
 
-            let px = player.pos.x, py = player.pos.y;
+            let px = GameContext.player.pos.x, py = GameContext.player.pos.y;
             const dx = px - this.pos.x;
             const dy = py - this.pos.y;
             const dist = Math.hypot(dx, dy);
@@ -7107,7 +6990,7 @@ class Pinwheel extends Entity {
                             const a = shootAngle + i * 0.15;
                             const bx = this.pos.x + Math.cos(a) * 75;
                             const by = this.pos.y + Math.sin(a) * 75;
-                            bullets.push(new Bullet(bx, by, a, true, 3, 8, 8, '#fa0'));
+                            GameContext.bullets.push(new Bullet(bx, by, a, true, 3, 8, 8, '#fa0'));
                             spawnBarrelSmoke(bx, by, a);
                         }
                         playSound('heavy_shoot');
@@ -7117,7 +7000,7 @@ class Pinwheel extends Entity {
                         const a = shootAngle + spread;
                         const bx = this.pos.x + Math.cos(a) * 75;
                         const by = this.pos.y + Math.sin(a) * 75;
-                        bullets.push(new Bullet(bx, by, a, true, 1, 14, 3, '#0ff'));
+                        GameContext.bullets.push(new Bullet(bx, by, a, true, 1, 14, 3, '#0ff'));
                         spawnBarrelSmoke(bx, by, a);
                         playSound('rapid_shoot');
                         this.shootTimer = Math.round(15 * cooldownMult);
@@ -7128,11 +7011,11 @@ class Pinwheel extends Entity {
                             const a = this.angle + i * (Math.PI * 2 / 3);
                             const bx = this.pos.x + Math.cos(a) * 70;
                             const by = this.pos.y + Math.sin(a) * 70;
-                            bullets.push(new Bullet(bx, by, a, true, damage));
+                            GameContext.bullets.push(new Bullet(bx, by, a, true, damage));
                             spawnBarrelSmoke(bx, by, a);
                         }
                         playSound('shoot');
-                        this.shootTimer = Math.round((difficultyTier >= 2 ? 40 : 75) * cooldownMult);
+                        this.shootTimer = Math.round((GameContext.difficultyTier >= 2 ? 40 : 75) * cooldownMult);
                     }
                 }
             }
@@ -7320,7 +7203,7 @@ class Pinwheel extends Entity {
 
         // Drop coins
         for (let i = 0; i < 5; i++) {
-            nuggets.push(new SpaceNugget(
+            GameContext.nuggets.push(new SpaceNugget(
                 this.pos.x + (Math.random() - 0.5) * 120,
                 this.pos.y + (Math.random() - 0.5) * 120,
                 1
@@ -7339,18 +7222,18 @@ class WarpGate extends Entity {
         this.mode = 'entry';
     }
     update(deltaTime = SIM_STEP_MS) {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
         if (suppressWarpGateUntil && getGameNowMs() < suppressWarpGateUntil) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
-        const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        if (dist > this.radius + player.radius) return;
+        const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+        if (dist > this.radius + GameContext.player.radius) return;
 
-        if (warpCompletedOnce) {
+        if (GameContext.warpCompletedOnce) {
             showOverlayMessage("WARP ALREADY USED THIS SECTOR", '#f80', 1200, 2);
             return;
         }
-        if (warpZone && warpZone.active) return;
+        if (GameContext.warpZone && GameContext.warpZone.active) return;
         showOverlayMessage("WARP INITIATED", '#0ff', 1400, 3);
         playSound('contract');
         enterWarpMaze();
@@ -7421,17 +7304,17 @@ class Dungeon1Gate extends Entity {
         this.mode = 'entry';
     }
     update(deltaTime = SIM_STEP_MS) {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
-        const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        if (dist > this.radius + player.radius) return;
+        const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+        if (dist > this.radius + GameContext.player.radius) return;
 
-        if (dungeon1CompletedOnce) {
+        if (GameContext.dungeon1CompletedOnce) {
             showOverlayMessage("DUNGEON ALREADY CLEARED", '#f80', 1200, 2);
             return;
         }
-        if (dungeon1Zone && dungeon1Zone.active) return;
+        if (GameContext.dungeon1Zone && GameContext.dungeon1Zone.active) return;
         showOverlayMessage("ENTERING DUNGEON 1...", '#f80', 1400, 3);
         playSound('contract');
         _enterDungeon1Internal();
@@ -7495,19 +7378,19 @@ class Dungeon1Gate extends Entity {
 }
 
 function beginFlagshipFight(cx, cy, radius = 1875) {
-    if (bossActive || sectorTransitionActive) return;
+    if (GameContext.bossActive || GameContext.sectorTransitionActive) return;
 
     // Start the fight without wiping the whole world (regular asteroids + roaming enemies remain).
     boss = new Flagship({ x: cx, y: cy - 2200 });
-    bossActive = true;
-    bossArena.x = cx;
-    bossArena.y = cy;
-    bossArena.radius = radius;
-    bossArena.active = true;
-    bossArena.growing = false;
+    GameContext.bossActive = true;
+    GameContext.bossArena.x = cx;
+    GameContext.bossArena.y = cy;
+    GameContext.bossArena.radius = radius;
+    GameContext.bossArena.active = true;
+    GameContext.bossArena.growing = false;
 
     // Don't let the cruiser timer trigger during a flagship boss.
-    try { dreadManager.timerActive = false; dreadManager.timerAt = null; } catch (e) { }
+    try { GameContext.dreadManager.timerActive = false; GameContext.dreadManager.timerAt = null; } catch (e) { }
     stopArenaCountdown();
 
     showOverlayMessage("WARNING: FLAGSHIP ENGAGED - ARENA LOCKED", '#f0f', 4500, 2);
@@ -7528,7 +7411,7 @@ class CaveGuidedMissile extends Entity {
         this.speed = (opts.speed || 11.0);
         this.turnRate = opts.turnRate || 0.11;
         this.life = opts.life || 720;
-        this.angle = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
+        this.angle = (GameContext.player && !GameContext.player.dead) ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x) : 0;
 
         const off = (owner && owner.radius) ? (owner.radius * 0.85 + 14) : 60;
         this.pos.x += Math.cos(this.angle) * off;
@@ -7556,19 +7439,19 @@ class CaveGuidedMissile extends Entity {
     }
 
     applyDamageToPlayer(amount) {
-        if (!player || player.dead) return;
-        if (player.invulnerable > 0) return;
+        if (!GameContext.player || GameContext.player.dead) return;
+        if (GameContext.player.invulnerable > 0) return;
 
         // Second Wind - check if invulnerability is active
-        if (player.stats.secondWindActive > 0) {
+        if (GameContext.player.stats.secondWindActive > 0) {
             // Already in second wind, skip damage
-            spawnParticles(player.pos.x, player.pos.y, 5, '#80f');
+            spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 5, '#80f');
             return;
         }
 
         // Evasion Boost - chance to avoid damage entirely
-        if (player.stats.evasion > 0 && Math.random() < player.stats.evasion) {
-            spawnParticles(player.pos.x, player.pos.y, 8, '#0ff');
+        if (GameContext.player.stats.evasion > 0 && Math.random() < GameContext.player.stats.evasion) {
+            spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 8, '#0ff');
             playSound('shield_hit');
             // Reset combo on dodge (optional - can be removed if we want to keep combo on dodge)
             return;
@@ -7576,31 +7459,31 @@ class CaveGuidedMissile extends Entity {
 
         let remaining = Math.max(0, Math.ceil(amount));
 
-        if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
-            for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
-                if (player.outerShieldSegments[i] > 0) {
-                    const absorb = Math.min(remaining, player.outerShieldSegments[i]);
-                    player.outerShieldSegments[i] -= absorb;
+        if (GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.length > 0) {
+            for (let i = 0; i < GameContext.player.outerShieldSegments.length && remaining > 0; i++) {
+                if (GameContext.player.outerShieldSegments[i] > 0) {
+                    const absorb = Math.min(remaining, GameContext.player.outerShieldSegments[i]);
+                    GameContext.player.outerShieldSegments[i] -= absorb;
                     remaining -= absorb;
                 }
             }
         }
 
-        if (player.shieldSegments && player.shieldSegments.length > 0) {
-            for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
-                const absorb = Math.min(remaining, player.shieldSegments[i]);
-                player.shieldSegments[i] -= absorb;
+        if (GameContext.player.shieldSegments && GameContext.player.shieldSegments.length > 0) {
+            for (let i = 0; i < GameContext.player.shieldSegments.length && remaining > 0; i++) {
+                const absorb = Math.min(remaining, GameContext.player.shieldSegments[i]);
+                GameContext.player.shieldSegments[i] -= absorb;
                 remaining -= absorb;
             }
         }
 
         if (remaining > 0) {
-            player.hp -= remaining;
+            GameContext.player.hp -= remaining;
 
             // Thorn Armor - reflect damage back to attacker
-            if (player.stats.thornArmor > 0 && this.hp) {
-                const reflectDamage = Math.ceil(remaining * player.stats.thornArmor);
-                if (this === destroyer || (this.displayName && this.displayName.includes('DESTROYER'))) {
+            if (GameContext.player.stats.thornArmor > 0 && this.hp) {
+                const reflectDamage = Math.ceil(remaining * GameContext.player.stats.thornArmor);
+                if (this === GameContext.destroyer || (this.displayName && this.displayName.includes('DESTROYER'))) {
                     const hpBefore = this.hp;
                     this.hp -= reflectDamage;
                     console.log(`[DESTROYER DEBUG] THORN ARMOR REFLECT: ${reflectDamage} damage | HP: ${hpBefore} -> ${this.hp}`);
@@ -7614,26 +7497,26 @@ class CaveGuidedMissile extends Entity {
             }
 
             // Second Wind - grant invulnerability after taking damage
-            if (player.stats.secondWindFrames > 0) {
-                player.stats.secondWindActive = player.stats.secondWindFrames;
-                spawnParticles(player.pos.x, player.pos.y, 10, '#80f');
+            if (GameContext.player.stats.secondWindFrames > 0) {
+                GameContext.player.stats.secondWindActive = GameContext.player.stats.secondWindFrames;
+                spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#80f');
             }
 
             // Reset combo meter when taking damage
-            if (player.stats.comboMeter > 0) {
-                player.comboStacks = 0;
+            if (GameContext.player.stats.comboMeter > 0) {
+                GameContext.player.comboStacks = 0;
             }
-            player.lastDamageTakenTime = Date.now();
+            GameContext.player.lastDamageTakenTime = Date.now();
 
-            spawnParticles(player.pos.x, player.pos.y, 10, '#f00');
+            spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#f00');
             playSound('hit');
             updateHealthUI();
-            if (player.hp <= 0) killPlayer();
+            if (GameContext.player.hp <= 0) killPlayer();
         } else {
             playSound('shield_hit');
-            spawnParticles(player.pos.x, player.pos.y, 8, '#0ff');
+            spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 8, '#0ff');
         }
-        player.invulnerable = 20;
+        GameContext.player.invulnerable = 20;
     }
 
     update(deltaTime = SIM_STEP_MS) {
@@ -7643,9 +7526,9 @@ class CaveGuidedMissile extends Entity {
 
         this.life -= dtFactor;
         if (this.life <= 0) { this.explode(); return; }
-        if (!player || player.dead) { this.explode(); return; }
+        if (!GameContext.player || GameContext.player.dead) { this.explode(); return; }
 
-        const targetAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const targetAngle = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
         let angleDiff = targetAngle - this.angle;
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
@@ -7676,8 +7559,8 @@ class CaveGuidedMissile extends Entity {
             if (typeof this.maxDamage === 'number') dmg = Math.min(dmg, this.maxDamage);
             if (dmg <= 0) return;
             const splashR = 160;
-            for (let i = 0; i < enemies.length; i++) {
-                const e = enemies[i];
+            for (let i = 0; i < GameContext.enemies.length; i++) {
+                const e = GameContext.enemies[i];
                 if (!e || e.dead) continue;
                 const d = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
                 if (d < splashR + (e.radius || 0)) {
@@ -7690,7 +7573,7 @@ class CaveGuidedMissile extends Entity {
         };
 
         try {
-            const nearby = asteroidGrid ? asteroidGrid.query(this.pos.x, this.pos.y) : [];
+            const nearby = GameContext.asteroidGrid ? GameContext.asteroidGrid.query(this.pos.x, this.pos.y) : [];
             for (let i = 0; i < nearby.length; i++) {
                 const ast = nearby[i];
                 if (!ast || ast.dead) continue;
@@ -7704,8 +7587,8 @@ class CaveGuidedMissile extends Entity {
             }
         } catch (e) { }
 
-        for (let i = 0; i < enemies.length; i++) {
-            const e = enemies[i];
+        for (let i = 0; i < GameContext.enemies.length; i++) {
+            const e = GameContext.enemies[i];
             if (!e || e.dead) continue;
             const d = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
             if (d < (e.radius || 0) + this.radius) {
@@ -7715,20 +7598,20 @@ class CaveGuidedMissile extends Entity {
             }
         }
 
-        const dP = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        if (dP < player.radius + this.radius) {
+        const dP = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+        if (dP < GameContext.player.radius + this.radius) {
             let dmg = Math.max(0, Math.ceil(this.hp));
             if (typeof this.maxDamage === 'number') dmg = Math.min(dmg, this.maxDamage);
             this.explode('#fa0');
             this.applyDamageToPlayer(dmg);
-            shakeMagnitude = Math.max(shakeMagnitude, 8);
-            shakeTimer = Math.max(shakeTimer, 8);
+            GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 8);
+            GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 8);
         }
     }
 
     draw(ctx) {
         if (this.dead) return;
-        const z = currentZoom || ZOOM_LEVEL;
+        const z = GameContext.currentZoom || ZOOM_LEVEL;
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
         ctx.rotate(this.angle);
@@ -7803,9 +7686,9 @@ class CaveWallTurret extends Entity {
     }
 
     weakpointPos() {
-        if (!caveLevel || !caveLevel.active) return { x: this.pos.x, y: this.pos.y };
+        if (!GameContext.caveLevel || !GameContext.caveLevel.active) return { x: this.pos.x, y: this.pos.y };
         if (!this._weakOffset) {
-            const cx = caveLevel.centerXAt(this.pos.y);
+            const cx = GameContext.caveLevel.centerXAt(this.pos.y);
             const nx = (this.pos.x < cx) ? -1 : 1;
             this._weakOffset = { x: nx * (this.radius + 16), y: (Math.random() - 0.5) * 10 };
         }
@@ -7862,8 +7745,8 @@ class CaveWallTurret extends Entity {
     kill() {
         if (this.dead) return;
         this.dead = true;
-        if (caveMode && caveLevel && caveLevel.active) awardCoinsInstant(6);
-        else for (let i = 0; i < 3; i++) coins.push(new Coin(this.pos.x, this.pos.y, 2));
+        if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active) awardCoinsInstant(6);
+        else for (let i = 0; i < 3; i++) GameContext.coins.push(new Coin(this.pos.x, this.pos.y, 2));
         spawnParticles(this.pos.x, this.pos.y, 18, '#88f');
         playSound('explode');
     }
@@ -7872,26 +7755,26 @@ class CaveWallTurret extends Entity {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
-        if (!caveMode || !caveLevel || !caveLevel.active) return;
-        if (!player || player.dead) return;
+        if (!GameContext.caveMode || !GameContext.caveLevel || !GameContext.caveLevel.active) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
-        const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
         const engageRange = (this.mode === 'rapid') ? (5200 * 1.25) : 5200;
         if (dist > engageRange) return;
 
-        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const aim = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
         if (this.mode === 'tracker') {
             // Paint -> lock -> burst (fresh gameplay turret). 
             if (this.trackerBurst > 0) {
                 this.trackerBurstCd -= dtFactor;
                 if (this.trackerBurstCd <= 0) {
-                    const leadX = player.pos.x + player.vel.x * 10;
-                    const leadY = player.pos.y + player.vel.y * 10;
+                    const leadX = GameContext.player.pos.x + GameContext.player.vel.x * 10;
+                    const leadY = GameContext.player.pos.y + GameContext.player.vel.y * 10;
                     const a = Math.atan2(leadY - this.pos.y, leadX - this.pos.x);
                     const muzzleX = this.pos.x + Math.cos(a) * (this.radius + 6);
                     const muzzleY = this.pos.y + Math.sin(a) * (this.radius + 6);
-                    bullets.push(new Bullet(muzzleX, muzzleY, a, true, 1, 16, 4, '#0ff'));
+                    GameContext.bullets.push(new Bullet(muzzleX, muzzleY, a, true, 1, 16, 4, '#0ff'));
                     this.trackerBurst--;
                     this.trackerBurstCd = 6;
                     playSound('rapid_shoot');
@@ -7919,7 +7802,7 @@ class CaveWallTurret extends Entity {
         if (this.mode === 'missile') {
             this.reload -= dtFactor;
             if (this.reload <= 0) {
-                guidedMissiles.push(new CaveGuidedMissile(this, { hp: 5, maxDamage: 5, radius: 18, speed: 8.2, turnRate: 0.12 }));
+                GameContext.guidedMissiles.push(new CaveGuidedMissile(this, { hp: 5, maxDamage: 5, radius: 18, speed: 8.2, turnRate: 0.12 }));
                 spawnParticles(this.pos.x, this.pos.y, 8, '#fa0');
                 playSound('heavy_shoot');
                 // Slower missile turret cadence. 
@@ -7930,35 +7813,35 @@ class CaveWallTurret extends Entity {
 
         if (this.mode === 'beam') {
             const applyBeamDamageToPlayer = (amount) => {
-                if (!player || player.dead) return;
-                if (player.invulnerable > 0) return;
+                if (!GameContext.player || GameContext.player.dead) return;
+                if (GameContext.player.invulnerable > 0) return;
                 let remaining = Math.max(0, Math.ceil(amount));
-                if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
-                    for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
-                        if (player.outerShieldSegments[i] > 0) {
-                            player.outerShieldSegments[i] = 0;
+                if (GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.length > 0) {
+                    for (let i = 0; i < GameContext.player.outerShieldSegments.length && remaining > 0; i++) {
+                        if (GameContext.player.outerShieldSegments[i] > 0) {
+                            GameContext.player.outerShieldSegments[i] = 0;
                             remaining -= 1;
                         }
                     }
                 }
-                if (player.shieldSegments && player.shieldSegments.length > 0) {
-                    for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
-                        const absorb = Math.min(remaining, player.shieldSegments[i]);
-                        player.shieldSegments[i] -= absorb;
+                if (GameContext.player.shieldSegments && GameContext.player.shieldSegments.length > 0) {
+                    for (let i = 0; i < GameContext.player.shieldSegments.length && remaining > 0; i++) {
+                        const absorb = Math.min(remaining, GameContext.player.shieldSegments[i]);
+                        GameContext.player.shieldSegments[i] -= absorb;
                         remaining -= absorb;
                     }
                 }
                 if (remaining > 0) {
-                    player.hp -= remaining;
-                    spawnParticles(player.pos.x, player.pos.y, 10, '#f00');
+                    GameContext.player.hp -= remaining;
+                    spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#f00');
                     playSound('hit');
                     updateHealthUI();
-                    if (player.hp <= 0) killPlayer();
+                    if (GameContext.player.hp <= 0) killPlayer();
                 } else {
-                    spawnParticles(player.pos.x, player.pos.y, 8, '#ff0');
+                    spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 8, '#ff0');
                     playSound('shield_hit');
                 }
-                player.invulnerable = 20;
+                GameContext.player.invulnerable = 20;
             };
 
             if (this.beamFire > 0) {
@@ -7966,14 +7849,14 @@ class CaveWallTurret extends Entity {
                 if (!this.beamHitThisShot) {
                     const ex = this.pos.x + Math.cos(this.beamAngle) * this.beamLen;
                     const ey = this.pos.y + Math.sin(this.beamAngle) * this.beamLen;
-                    const cp = closestPointOnSegment(player.pos.x, player.pos.y, this.pos.x, this.pos.y, ex, ey);
-                    const d = Math.hypot(player.pos.x - cp.x, player.pos.y - cp.y);
-                    const hitDist = (this.beamWidth * 0.5) + (player.radius * 0.55);
+                    const cp = closestPointOnSegment(GameContext.player.pos.x, GameContext.player.pos.y, this.pos.x, this.pos.y, ex, ey);
+                    const d = Math.hypot(GameContext.player.pos.x - cp.x, GameContext.player.pos.y - cp.y);
+                    const hitDist = (this.beamWidth * 0.5) + (GameContext.player.radius * 0.55);
                     if (d <= hitDist) {
                         this.beamHitThisShot = true;
                         applyBeamDamageToPlayer(3);
-                        shakeMagnitude = Math.max(shakeMagnitude, 8);
-                        shakeTimer = Math.max(shakeTimer, 8);
+                        GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 8);
+                        GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 8);
                     }
                 }
             } else if (this.beamCharge > 0) {
@@ -8001,9 +7884,9 @@ class CaveWallTurret extends Entity {
         if (this.reload <= 0) {
             const muzzleX = this.pos.x + Math.cos(aim) * (this.radius + 6);
             const muzzleY = this.pos.y + Math.sin(aim) * (this.radius + 6);
-            bullets.push(new Bullet(muzzleX, muzzleY, aim, true, 1, 14, 4, '#8ff'));
-            if (Math.random() < 0.25) bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.08, true, 1, 14, 4, '#8ff'));
-            if (Math.random() < 0.25) bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.08, true, 1, 14, 4, '#8ff'));
+            GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim, true, 1, 14, 4, '#8ff'));
+            if (Math.random() < 0.25) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.08, true, 1, 14, 4, '#8ff'));
+            if (Math.random() < 0.25) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.08, true, 1, 14, 4, '#8ff'));
             this.reload = 26 + Math.floor(Math.random() * 18);
         }
     }
@@ -8014,15 +7897,15 @@ class CaveWallTurret extends Entity {
             return;
         }
 
-        const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
+        const aim = (GameContext.player && !GameContext.player.dead) ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x) : 0;
 
         // Pixi Rendering
-        if (caveLevel && caveLevel._pixiContainer) {
+        if (GameContext.caveLevel && GameContext.caveLevel._pixiContainer) {
             let container = this._pixiContainer;
             if (!container) {
                 container = new PIXI.Container();
                 this._pixiContainer = container;
-                caveLevel._pixiContainer.addChild(container);
+                GameContext.caveLevel._pixiContainer.addChild(container);
 
                 // Base Gfx (Staticish)
                 const g = new PIXI.Graphics();
@@ -8042,7 +7925,7 @@ class CaveWallTurret extends Entity {
             container.visible = true; // Managed by caller ideally, but ensure true if called
             container.position.set(this.pos.x, this.pos.y);
 
-            const z = currentZoom || ZOOM_LEVEL;
+            const z = GameContext.currentZoom || ZOOM_LEVEL;
             const g = this._pixiGfx;
             const overlay = this._pixiOverlay;
 
@@ -8200,7 +8083,7 @@ class CaveWallSwitch extends Entity {
             this.dead = true;
             pixiCleanupObject(this);
             for (let i = 0; i < this.doorIds.length; i++) {
-                try { if (caveLevel) caveLevel.toggleDoor(this.doorIds[i]); } catch (e) { }
+                try { if (GameContext.caveLevel) GameContext.caveLevel.toggleDoor(this.doorIds[i]); } catch (e) { }
             }
             showOverlayMessage("SWITCH ACTIVATED", '#0ff', 900, 1);
             playSound('powerup');
@@ -8214,12 +8097,12 @@ class CaveWallSwitch extends Entity {
             return;
         }
 
-        if (caveLevel && caveLevel._pixiContainer) {
+        if (GameContext.caveLevel && GameContext.caveLevel._pixiContainer) {
             let container = this._pixiContainer;
             if (!container) {
                 container = new PIXI.Container();
                 this._pixiContainer = container;
-                caveLevel._pixiContainer.addChild(container);
+                GameContext.caveLevel._pixiContainer.addChild(container);
 
                 const g = new PIXI.Graphics();
                 container.addChild(g);
@@ -8275,7 +8158,7 @@ class CavePowerRelay extends Entity {
             this.dead = true;
             spawnParticles(this.pos.x, this.pos.y, 40, '#ff0');
             playSound('explode');
-            try { if (caveLevel) caveLevel.onRelayDestroyed(this.gateIndex); } catch (e) { }
+            try { if (GameContext.caveLevel) GameContext.caveLevel.onRelayDestroyed(this.gateIndex); } catch (e) { }
         }
         return true;
     }
@@ -8286,12 +8169,12 @@ class CavePowerRelay extends Entity {
             return;
         }
 
-        if (caveLevel && caveLevel._pixiContainer) {
+        if (GameContext.caveLevel && GameContext.caveLevel._pixiContainer) {
             let container = this._pixiContainer;
             if (!container) {
                 container = new PIXI.Container();
                 this._pixiContainer = container;
-                caveLevel._pixiContainer.addChild(container);
+                GameContext.caveLevel._pixiContainer.addChild(container);
 
                 const g = new PIXI.Graphics();
                 container.addChild(g);
@@ -8336,12 +8219,12 @@ class CaveRewardPickup extends Entity {
             return;
         }
 
-        if (caveLevel && caveLevel._pixiContainer) {
+        if (GameContext.caveLevel && GameContext.caveLevel._pixiContainer) {
             let container = this._pixiContainer;
             if (!container) {
                 container = new PIXI.Container();
                 this._pixiContainer = container;
-                caveLevel._pixiContainer.addChild(container);
+                GameContext.caveLevel._pixiContainer.addChild(container);
 
                 const g = new PIXI.Graphics();
                 container.addChild(g);
@@ -8441,20 +8324,20 @@ class CaveGasVent extends Entity {
             else { this.state = 'off'; this.timer = 220 + Math.floor(Math.random() * 160); }
         }
         if (this.damageCd > 0) this.damageCd -= deltaTime / 16.67;
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
         if (this.state !== 'on') return;
-        const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        if (d > this.radius + player.radius) return;
+        const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+        if (d > this.radius + GameContext.player.radius) return;
         // Slow the ship and tick damage (forces movement). 
-        player.caveSlowFrames = Math.max(player.caveSlowFrames || 0, 18);
-        player.caveSlowMult = 0.62;
-        if (this.damageCd <= 0 && player.invulnerable <= 0) {
-            player.hp -= 1;
+        player.caveSlowFrames = Math.max(GameContext.player.caveSlowFrames || 0, 18);
+        GameContext.player.caveSlowMult = 0.62;
+        if (this.damageCd <= 0 && GameContext.player.invulnerable <= 0) {
+            GameContext.player.hp -= 1;
             this.damageCd = 40;
-            spawnParticles(player.pos.x, player.pos.y, 10, '#6f6');
+            spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#6f6');
             playSound('hit');
             updateHealthUI();
-            if (player.hp <= 0) killPlayer();
+            if (GameContext.player.hp <= 0) killPlayer();
         }
     }
     draw(ctx) {
@@ -8463,12 +8346,12 @@ class CaveGasVent extends Entity {
             return;
         }
 
-        if (caveLevel && caveLevel._pixiContainer) {
+        if (GameContext.caveLevel && GameContext.caveLevel._pixiContainer) {
             let container = this._pixiContainer;
             if (!container) {
                 container = new PIXI.Container();
                 this._pixiContainer = container;
-                caveLevel._pixiContainer.addChild(container);
+                GameContext.caveLevel._pixiContainer.addChild(container);
 
                 const g = new PIXI.Graphics();
                 container.addChild(g);
@@ -8520,8 +8403,8 @@ class CaveRockfall extends Entity {
         this.state = 'fallen';
         this.timer = 0;
         this.segments = [];
-        if (!caveLevel) return;
-        const b = caveLevel.boundsAt(this.pos.y);
+        if (!GameContext.caveLevel) return;
+        const b = GameContext.caveLevel.boundsAt(this.pos.y);
         const cx = (b.left + b.right) * 0.5;
         let left = b.left + 60;
         let right = b.right - 60;
@@ -8546,9 +8429,9 @@ class CaveRockfall extends Entity {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
         if (this.state === 'idle') {
-            const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+            const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
             if (d < 2200) this.trigger();
         } else if (this.state === 'warn') {
             this.timer -= dtFactor;
@@ -8565,12 +8448,12 @@ class CaveRockfall extends Entity {
             return;
         }
 
-        if (caveLevel && caveLevel._pixiContainer) {
+        if (GameContext.caveLevel && GameContext.caveLevel._pixiContainer) {
             let container = this._pixiContainer;
             if (!container) {
                 container = new PIXI.Container();
                 this._pixiContainer = container;
-                caveLevel._pixiContainer.addChild(container);
+                GameContext.caveLevel._pixiContainer.addChild(container);
 
                 const g = new PIXI.Graphics();
                 container.addChild(g);
@@ -8579,7 +8462,7 @@ class CaveRockfall extends Entity {
             container.visible = true;
             container.position.set(this.pos.x, this.pos.y);
 
-            const z = currentZoom || ZOOM_LEVEL;
+            const z = GameContext.currentZoom || ZOOM_LEVEL;
             const g = this._pixiGfx;
             g.clear();
 
@@ -8646,16 +8529,16 @@ class CaveDraftZone extends Entity {
             // Slight stabilization so it feels like a current. 
             e.vel.x *= 0.995;
         };
-        apply(player);
-        for (let i = 0; i < enemies.length; i++) apply(enemies[i]);
+        apply(GameContext.player);
+        for (let i = 0; i < GameContext.enemies.length; i++) apply(GameContext.enemies[i]);
     }
     draw(ctx) {
-        if (caveLevel && caveLevel._pixiContainer) {
+        if (GameContext.caveLevel && GameContext.caveLevel._pixiContainer) {
             let container = this._pixiContainer;
             if (!container) {
                 container = new PIXI.Container();
                 this._pixiContainer = container;
-                caveLevel._pixiContainer.addChild(container);
+                GameContext.caveLevel._pixiContainer.addChild(container);
 
                 const g = new PIXI.Graphics();
                 container.addChild(g);
@@ -8718,9 +8601,9 @@ class CaveCritter extends Entity {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
-        if (player && !player.dead) {
-            const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-            if (d < 520) this.scatter(player.pos.x, player.pos.y);
+        if (GameContext.player && !GameContext.player.dead) {
+            const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+            if (d < 520) this.scatter(GameContext.player.pos.x, GameContext.player.pos.y);
         }
         this.vel.x *= 0.98;
         this.vel.y *= 0.98;
@@ -8733,12 +8616,12 @@ class CaveCritter extends Entity {
             return;
         }
 
-        if (caveLevel && caveLevel._pixiContainer) {
+        if (GameContext.caveLevel && GameContext.caveLevel._pixiContainer) {
             let container = this._pixiContainer;
             if (!container) {
                 container = new PIXI.Container();
                 this._pixiContainer = container;
-                caveLevel._pixiContainer.addChild(container);
+                GameContext.caveLevel._pixiContainer.addChild(container);
 
                 const g = new PIXI.Graphics();
                 container.addChild(g);
@@ -8747,7 +8630,7 @@ class CaveCritter extends Entity {
             container.visible = true;
             container.position.set(this.pos.x, this.pos.y);
 
-            const z = currentZoom || ZOOM_LEVEL;
+            const z = GameContext.currentZoom || ZOOM_LEVEL;
             const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.35;
 
             const g = this._pixiGfx;
@@ -9057,12 +8940,12 @@ class CaveLevel {
         if (fire.minY !== undefined && fire.y < fire.minY) fire.y = fire.minY;
 
         // Damage player
-        if (player && !player.dead && player.pos.y >= fire.y) {
+        if (GameContext.player && !GameContext.player.dead && GameContext.player.pos.y >= fire.y) {
             fire.damageTimer += deltaTime;
             const ticks = Math.floor(fire.damageTimer / 1000);
             if (ticks > 0) {
                 const damage = fire.damagePerSecond * ticks;
-                player.takeHit(damage);
+                GameContext.player.takeHit(damage);
                 fire.damageTimer -= ticks * 1000;
             }
         } else {
@@ -9070,8 +8953,8 @@ class CaveLevel {
         }
 
         // Damage all enemies inside firewall
-        for (let i = 0; i < enemies.length; i++) {
-            const e = enemies[i];
+        for (let i = 0; i < GameContext.enemies.length; i++) {
+            const e = GameContext.enemies[i];
             if (e && !e.dead && e.pos.y >= fire.y && typeof e.takeHit === 'function') {
                 e.takeHit(fire.damagePerSecond * dtSec);
             }
@@ -9126,13 +9009,13 @@ class CaveLevel {
         if (!this._pixiReady) this.initPixi();
         this._pixiContainer.visible = true;
 
-        if (!player || !this._pixiBackGfx || !this._pixiFrontGfx || !this._pixiBlockerGfx) return;
+        if (!GameContext.player || !this._pixiBackGfx || !this._pixiFrontGfx || !this._pixiBlockerGfx) return;
 
-        const z = currentZoom || ZOOM_LEVEL;
+        const z = GameContext.currentZoom || ZOOM_LEVEL;
         const sh = canvas.height / z;
         // Determine visible range (slightly expanded to prevent popping)
-        const y0 = player.pos.y - (sh * 0.5) - 1500;
-        const y1 = player.pos.y + (sh * 0.5) + 1500;
+        const y0 = GameContext.player.pos.y - (sh * 0.5) - 1500;
+        const y1 = GameContext.player.pos.y + (sh * 0.5) + 1500;
 
         let i0 = this.bucketIndexForY(y1);
         let i1 = this.bucketIndexForY(y0);
@@ -9337,7 +9220,7 @@ class CaveLevel {
     applyWallCollisions(entity) {
         if (!this.active || !entity || entity.dead) return;
         const segs = this.segmentsNearY(entity.pos.y, 3);
-        const elasticity = (entity === player) ? 0.92 : 0.55;
+        const elasticity = (entity === GameContext.player) ? 0.92 : 0.55;
         for (let i = 0; i < segs.length; i++) {
             const s = segs[i];
             resolveCircleSegment(entity, s.x0, s.y0, s.x1, s.y1, elasticity);
@@ -9367,7 +9250,7 @@ class CaveLevel {
     clipInterior(ctx, camY, height, zoom) {
         // (Kept for future use) 
         if (!this.active) return;
-        const z = zoom || (currentZoom || ZOOM_LEVEL);
+        const z = zoom || (GameContext.currentZoom || ZOOM_LEVEL);
         const y0 = camY - 1400;
         const y1 = camY + (height / z) + 1400;
         const step = this.stepY;
@@ -9417,7 +9300,7 @@ class CaveLevel {
     }
 
     drawGridBackground(ctx, camX, camY, width, height, zoom) {
-        let z = zoom || (currentZoom || ZOOM_LEVEL);
+        let z = zoom || (GameContext.currentZoom || ZOOM_LEVEL);
         if (!isFinite(z) || z <= 0) z = ZOOM_LEVEL;
         const w = width / z;
         const h = height / z;
@@ -9465,7 +9348,7 @@ class CaveLevel {
 
     drawFireWall(ctx, camX, camY, width, height, zoom) {
         if (!this.fireWall) return;
-        const z = zoom || (currentZoom || ZOOM_LEVEL);
+        const z = zoom || (GameContext.currentZoom || ZOOM_LEVEL);
         if (!isFinite(z) || z <= 0) return;
         const viewTop = camY - 1200;
         const viewBottom = camY + (height / z) + 1200;
@@ -9496,7 +9379,7 @@ class CaveLevel {
 
     update(deltaTime = SIM_STEP_MS) {
         if (!this.active) return;
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
         this.updateFireWall(deltaTime);
 
@@ -9559,8 +9442,8 @@ class CaveLevel {
         for (let i = 0; i < this.rewards.length; i++) {
             const rw = this.rewards[i];
             if (!rw || rw.dead) continue;
-            const d = Math.hypot(player.pos.x - rw.pos.x, player.pos.y - rw.pos.y);
-            if (d < player.radius + rw.radius) {
+            const d = Math.hypot(GameContext.player.pos.x - rw.pos.x, GameContext.player.pos.y - rw.pos.y);
+            if (d < GameContext.player.radius + rw.radius) {
                 rw.dead = true;
                 if (rw.rewardType === 'coins') {
                     awardCoinsInstant(14 * 3, { noSound: false, sound: 'coin', color: '#ff0' });
@@ -9568,30 +9451,30 @@ class CaveLevel {
                 } else if (rw.rewardType === 'nugs') {
                     const count = 10 + Math.floor(Math.random() * 9);
                     for (let k = 0; k < count; k++) {
-                        nuggets.push(new SpaceNugget(rw.pos.x + (Math.random() - 0.5) * 180, rw.pos.y + (Math.random() - 0.5) * 180, 1));
+                        GameContext.nuggets.push(new SpaceNugget(rw.pos.x + (Math.random() - 0.5) * 180, rw.pos.y + (Math.random() - 0.5) * 180, 1));
                     }
                     showOverlayMessage(`NUGZ CACHE +${count}`, '#fa0', 1200, 2);
                     playSound('coin');
                 } else if (rw.rewardType === 'shield') {
-                    if (player.outerShieldSegments && player.outerShieldSegments.length) player.outerShieldSegments = player.outerShieldSegments.map(() => 1);
-                    if (player.shieldSegments && player.shieldSegments.length) player.shieldSegments = player.shieldSegments.map(() => 2);
+                    if (GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.length) GameContext.player.outerShieldSegments = GameContext.player.outerShieldSegments.map(() => 1);
+                    if (GameContext.player.shieldSegments && GameContext.player.shieldSegments.length) GameContext.player.shieldSegments = GameContext.player.shieldSegments.map(() => 2);
                     updateHealthUI();
                     showOverlayMessage("SHIELDS REFILLED", '#0ff', 1200, 2);
                     playSound('powerup');
                 } else if (rw.rewardType === 'upgrade') {
                     showOverlayMessage("UPGRADE CACHE", '#f0f', 1200, 3);
                     playSound('levelup');
-                    gameActive = false;
+                    GameContext.gameActive = false;
                     showLevelUpMenu();
                 } else if (rw.rewardType === 'fragment') {
-                    player.caveKeyFragments = (player.caveKeyFragments || 0) + 1;
-                    showOverlayMessage(`KEY FRAGMENT ${player.caveKeyFragments}/4`, '#ff0', 1200, 2);
+                    GameContext.player.caveKeyFragments = (GameContext.player.caveKeyFragments || 0) + 1;
+                    showOverlayMessage(`KEY FRAGMENT ${GameContext.player.caveKeyFragments}/4`, '#ff0', 1200, 2);
                     playSound('coin');
-                    if (player.caveKeyFragments >= 4) {
-                        player.caveKeyFragments = 0;
+                    if (GameContext.player.caveKeyFragments >= 4) {
+                        GameContext.player.caveKeyFragments = 0;
                         showOverlayMessage("FRAGMENTS COMPLETE: BONUS UPGRADE", '#ff0', 1600, 3);
                         playSound('levelup');
-                        gameActive = false;
+                        GameContext.gameActive = false;
                         showLevelUpMenu();
                     }
                 }
@@ -9602,7 +9485,7 @@ class CaveLevel {
         for (let i = 0; i < this.gates.length; i++) {
             const gate = this.gates[i];
             if (!gate || gate.open || gate.preSpawned) continue;
-            const dY = player.pos.y - gate.y;
+            const dY = GameContext.player.pos.y - gate.y;
             // Approaching from below (player y > gate y): spawn before reaching the barrier.
             if (dY < 9000 && dY > 3200) {
                 gate.preSpawned = true;
@@ -9614,7 +9497,7 @@ class CaveLevel {
                     const typeRoll = Math.random();
                     // Hunters should be rare in the cave; mostly defenders/roamers.
                     const type = typeRoll < 0.74 ? 'defender' : (typeRoll < 0.94 ? 'roamer' : 'hunter');
-                    enemies.push(new Enemy(type, { x: cx + (Math.random() - 0.5) * 900, y: spawnY + (Math.random() - 0.5) * 500 }, null));
+                    GameContext.enemies.push(new Enemy(type, { x: cx + (Math.random() - 0.5) * 900, y: spawnY + (Math.random() - 0.5) * 500 }, null));
                 }
                 showOverlayMessage("CAVE DEFENDERS AHEAD", '#f0f', 1400, 2);
             }
@@ -9624,7 +9507,7 @@ class CaveLevel {
         for (let i = 0; i < this.gates.length; i++) {
             const gate = this.gates[i];
             if (!gate || gate.open || gate.relaysCleared || !gate.relaysEnabled) continue;
-            const dY = player.pos.y - gate.y;
+            const dY = GameContext.player.pos.y - gate.y;
             if (!gate.relaysSpawned && dY < 12000 && dY > 4200) {
                 this.spawnGateRelays(i);
             }
@@ -9634,8 +9517,8 @@ class CaveLevel {
                     const spawnY = gate.y + 1700 + Math.random() * 800;
                     const b = this.boundsAt(spawnY);
                     const sx = (b.left + b.right) * 0.5 + (Math.random() - 0.5) * 900;
-                    enemies.push(new Enemy('defender', { x: sx, y: spawnY }, null));
-                    if (Math.random() < 0.35) enemies.push(new Enemy('roamer', { x: sx + (Math.random() - 0.5) * 260, y: spawnY + 80 }, null));
+                    GameContext.enemies.push(new Enemy('defender', { x: sx, y: spawnY }, null));
+                    if (Math.random() < 0.35) GameContext.enemies.push(new Enemy('roamer', { x: sx + (Math.random() - 0.5) * 260, y: spawnY + 80 }, null));
                     gate.defendCd = 140 + Math.floor(Math.random() * 120);
                 }
             }
@@ -9646,7 +9529,7 @@ class CaveLevel {
         for (let i = 0; i < caveBossYs.length; i++) {
             const bossY = caveBossYs[i];
             // Check if player has reached this boss area
-            const dY = player.pos.y - bossY;
+            const dY = GameContext.player.pos.y - bossY;
             // Spawn when player is within range of boss position
             if (dY < 4000 && dY > -3000) {
                 // Check if we haven't spawned this boss yet
@@ -9654,12 +9537,12 @@ class CaveLevel {
                     this[`boss${i}Spawned`] = true;
                     // Activate bossArena at this position
                     const cx = this.centerXAt(bossY);
-                    bossArena.x = cx;
-                    bossArena.y = bossY;
-                    bossArena.active = true;
+                    GameContext.bossArena.x = cx;
+                    GameContext.bossArena.y = bossY;
+                    GameContext.bossArena.active = true;
                     // Spawn the cave monster boss
-                    boss = createCaveMonsterBoss(cx, bossY, { gateIndex: i });
-                    bossActive = true;
+                    GameContext.boss = createCaveMonsterBoss(cx, bossY, { gateIndex: i });
+                    GameContext.bossActive = true;
                     showOverlayMessage(`CAVE MONSTER ${i + 1}/3 ENGAGED`, '#0f8', 2400, 2);
                     playSound('boss_spawn');
                     if (musicEnabled) setMusicMode('cruiser');
@@ -9669,20 +9552,20 @@ class CaveLevel {
         }
 
         // Spawn the final boss when player reaches the end of the cave walls
-        if (!this.finalSpawned && player.pos.y < this.endY + 4000) {
+        if (!this.finalSpawned && GameContext.player.pos.y < this.endY + 4000) {
             this.finalSpawned = true;
             const cx = this.centerXAt(this.endY - 400);
             const by = this.endY - 400;
             // Activate bossArena to trap player in arena with final boss
-            bossArena.x = cx;
-            bossArena.y = by;
-            bossArena.active = true;
+            GameContext.bossArena.x = cx;
+            GameContext.bossArena.y = by;
+            GameContext.bossArena.active = true;
             // Spawn Warp Sentinel Boss (25% tougher than warp version)
-            boss = new WarpSentinelBoss(cx, by, null);
-            bossActive = true;
+            GameContext.boss = new WarpSentinelBoss(cx, by, null);
+            GameContext.bossActive = true;
             // Increase toughness by 25% (HP only - shields use indestructible cave monster pattern)
-            boss.hp = Math.floor(boss.hp * 1.25);
-            boss.maxHp = boss.hp;
+            GameContext.boss.hp = Math.floor(GameContext.boss.hp * 1.25);
+            GameContext.boss.maxHp = GameContext.boss.hp;
             // Note: Shield segments use cave monster pattern (999 HP indestructible shards) - do not modify
             showOverlayMessage("WARP SENTINEL DETECTED", '#f80', 3500, 3);
             playSound('boss_spawn');
@@ -9702,26 +9585,26 @@ class CaveLevel {
         // Maintain ambient Level-1 enemies in the cave (no pinwheels/stations here). 
         this.enemySpawnCooldown--;
         if (this.enemySpawnCooldown <= 0) {
-            const living = enemies.filter(e => e && !e.dead && (e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter' || e.type === 'defender')).length;
-            const cap = (bossActive ? 10 : 14) + Math.min(6, this.bossesDefeated * 2);
+            const living = GameContext.enemies.filter(e => e && !e.dead && (e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter' || e.type === 'defender')).length;
+            const cap = (GameContext.bossActive ? 10 : 14) + Math.min(6, this.bossesDefeated * 2);
             if (living < cap) {
                 const toSpawn = Math.min(2, cap - living);
                 let gateLimitY = -Infinity;
                 for (let i = 0; i < this.gates.length; i++) {
                     const g = this.gates[i];
                     if (!g || g.open) continue;
-                    if (g.y < player.pos.y) gateLimitY = Math.max(gateLimitY, g.y);
+                    if (g.y < GameContext.player.pos.y) gateLimitY = Math.max(gateLimitY, g.y);
                 }
                 for (let i = 0; i < toSpawn; i++) {
-                    let y = player.pos.y - (1400 + Math.random() * 2800);
+                    let y = GameContext.player.pos.y - (1400 + Math.random() * 2800);
                     if (gateLimitY > -Infinity) y = Math.max(y, gateLimitY + 1100);
-                    y = Math.min(y, player.pos.y - 900);
+                    y = Math.min(y, GameContext.player.pos.y - 900);
                     const b = this.boundsAt(y);
                     const x = b.left + 260 + Math.random() * Math.max(200, (b.right - b.left - 520));
                     const r = Math.random();
                     // Hunters should be rare in the cave; keep variety with defenders + occasional elites. 
                     const type = r < 0.30 ? 'roamer' : (r < 0.78 ? 'defender' : (r < 0.93 ? 'elite_roamer' : 'hunter'));
-                    enemies.push(new Enemy(type, { x, y }, null));
+                    GameContext.enemies.push(new Enemy(type, { x, y }, null));
                 }
             }
             this.enemySpawnCooldown = 160 + Math.floor(Math.random() * 140);
@@ -9730,10 +9613,10 @@ class CaveLevel {
 
     drawEntities(ctx, camX, camY, height, zoom) {
         if (!this.active) return;
-        let z = zoom || (currentZoom || ZOOM_LEVEL);
+        let z = zoom || (GameContext.currentZoom || ZOOM_LEVEL);
         if (!isFinite(z) || z <= 0) z = ZOOM_LEVEL;
-        const safeCamX = (isFinite(camX) ? camX : (player ? player.pos.x - (canvas.width / (2 * z)) : 0));
-        const safeCamY = (isFinite(camY) ? camY : (player ? player.pos.y - (canvas.height / (2 * z)) : 0));
+        const safeCamX = (isFinite(camX) ? camX : (GameContext.player ? GameContext.player.pos.x - (canvas.width / (2 * z)) : 0));
+        const safeCamY = (isFinite(camY) ? camY : (GameContext.player ? GameContext.player.pos.y - (canvas.height / (2 * z)) : 0));
         const y0 = safeCamY - 1200;
         const y1 = safeCamY + (height / z) + 1200;
 
@@ -9855,11 +9738,11 @@ function createCaveCruiserBoss(x, y, opts = {}) {
 
         baseUpdate();
 
-        if (!bossActive || boss !== this) return;
-        if (!player || player.dead) return;
+        if (!GameContext.bossActive || GameContext.boss !== this) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
-        const dx = player.pos.x - this.pos.x;
-        const dy = player.pos.y - this.pos.y;
+        const dx = GameContext.player.pos.x - this.pos.x;
+        const dy = GameContext.player.pos.y - this.pos.y;
         const dist = Math.hypot(dx, dy) || 1;
         const pull = finalBoss ? 0.11 : 0.09;
         this.vel.x += (dx / dist) * pull;
@@ -9879,12 +9762,12 @@ function createCaveCruiserBoss(x, y, opts = {}) {
         pixiCleanupObject(this);
         playSound('base_explode');
         spawnParticles(this.pos.x, this.pos.y, finalBoss ? 140 : 110, '#f0f');
-        clearArrayWithPixiCleanup(bossBombs);
-        clearArrayWithPixiCleanup(guidedMissiles);
+        clearArrayWithPixiCleanup(GameContext.bossBombs);
+        clearArrayWithPixiCleanup(GameContext.guidedMissiles);
 
-        for (let i = 0; i < (finalBoss ? 28 : 18); i++) coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 10));  // was 22/14
-        for (let i = 0; i < (finalBoss ? 10 : 6); i++) nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 200, this.pos.y + (Math.random() - 0.5) * 200, 1));
-        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+        for (let i = 0; i < (finalBoss ? 28 : 18); i++) GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 10));  // was 22/14
+        for (let i = 0; i < (finalBoss ? 10 : 6); i++) GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 200, this.pos.y + (Math.random() - 0.5) * 200, 1));
+        GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
         if (gateIndex !== null) {
             // Gate system removed - boss defeated message only
@@ -9893,17 +9776,17 @@ function createCaveCruiserBoss(x, y, opts = {}) {
             showOverlayMessage("CAVE CRUISER DESTROYED - WARP CORE CHARGING", '#0ff', 3500, 3);
         }
 
-        bossActive = false;
-        bossArena.active = false;
-        bossArena.growing = false;
-        if (boss) pixiCleanupObject(boss);
-        boss = null;
+        GameContext.bossActive = false;
+        GameContext.bossArena.active = false;
+        GameContext.bossArena.growing = false;
+        if (GameContext.boss) pixiCleanupObject(GameContext.boss);
+        GameContext.boss = null;
 
         if (musicEnabled) setMusicMode('normal');
         if (finalBoss) {
-            try { if (caveLevel && caveLevel.active) caveLevel.exitUnlocked = true; } catch (e) { }
+            try { if (GameContext.caveLevel && GameContext.caveLevel.active) GameContext.caveLevel.exitUnlocked = true; } catch (e) { }
         }
-        if (finalBoss && !sectorTransitionActive) startSectorTransition();
+        if (finalBoss && !GameContext.sectorTransitionActive) startSectorTransition();
     };
 
     return c;
@@ -9947,50 +9830,50 @@ function createCaveMonsterBoss(x, y, opts = {}) {
 function startCaveSector2() {
     // Ensure no world-mode carryover. 
     resetWarpState();
-    caveMode = true;
-    caveLevel = new CaveLevel();
-    caveLevel.generate();
-    clearArrayWithPixiCleanup(coins);
+    GameContext.caveMode = true;
+    GameContext.caveLevel = new CaveLevel();
+    GameContext.caveLevel.generate();
+    clearArrayWithPixiCleanup(GameContext.coins);
 
     // Disable contracts/events for the cave run.
-    activeContract = null;
-    contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
-    nextContractAt = Date.now() + 999999999;
-    radiationStorm = null;
-    nextRadiationStormAt = null;
+    GameContext.activeContract = null;
+    GameContext.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+    GameContext.nextContractAt = Date.now() + 999999999;
+    GameContext.radiationStorm = null;
+    GameContext.nextRadiationStormAt = null;
     clearMiniEvent();
-    nextMiniEventAt = Date.now() + 999999999;
-    nextShootingStarTime = Date.now() + 999999999;
-    intensityBreakActive = false;
-    nextIntensityBreakAt = Date.now() + 999999999;
+    GameContext.nextMiniEventAt = Date.now() + 999999999;
+    GameContext.nextShootingStarTime = Date.now() + 999999999;
+    GameContext.intensityBreakActive = false;
+    GameContext.nextIntensityBreakAt = Date.now() + 999999999;
 
     // Keep bases in the cave (Sector 1 feel), but no stations/contracts. 
-    clearArrayWithPixiCleanup(pinwheels);
-    baseRespawnTimers = [];
-    roamerRespawnQueue = [];
-    maxRoamers = 0;
-    initialSpawnDone = true;
-    initialSpawnDelayAt = null;
-    pendingStations = 0;
-    if (spaceStation) pixiCleanupObject(spaceStation);
-    spaceStation = null;
-    stationHealthBarVisible = false;
-    nextSpaceStationTime = null;
+    clearArrayWithPixiCleanup(GameContext.pinwheels);
+    GameContext.baseRespawnTimers = [];
+    GameContext.roamerRespawnQueue = [];
+    GameContext.maxRoamers = 0;
+    GameContext.initialSpawnDone = true;
+    GameContext.initialSpawnDelayAt = null;
+    GameContext.pendingStations = 0;
+    if (GameContext.spaceStation) pixiCleanupObject(GameContext.spaceStation);
+    GameContext.spaceStation = null;
+    GameContext.stationHealthBarVisible = false;
+    GameContext.nextSpaceStationTime = null;
 
     // Ensure no destroyers in cave mode
-    if (destroyer) pixiCleanupObject(destroyer);
-    destroyer = null;
-    nextDestroyerSpawnTime = null;
+    if (GameContext.destroyer) pixiCleanupObject(GameContext.destroyer);
+    GameContext.destroyer = null;
+    GameContext.nextDestroyerSpawnTime = null;
 
     // Place player at the cave start (bottom), facing upward.
-    player.pos.x = caveLevel.startX;
-    player.pos.y = caveLevel.startY + 600;
-    player.vel.x = 0;
-    player.vel.y = 0;
-    player.angle = -Math.PI / 2;
-    player.turretAngle = -Math.PI / 2;
+    GameContext.player.pos.x = GameContext.caveLevel.startX;
+    GameContext.player.pos.y = GameContext.caveLevel.startY + 600;
+    GameContext.player.vel.x = 0;
+    GameContext.player.vel.y = 0;
+    GameContext.player.angle = -Math.PI / 2;
+    GameContext.player.turretAngle = -Math.PI / 2;
 
-    caveLevel.resetFireWall(player.pos.y);
+    GameContext.caveLevel.resetFireWall(GameContext.player.pos.y);
 
     // Seed a few pinwheels up the tunnel (they'll also respawn via the normal pinwheel timer loop).
     for (let i = 0; i < 3; i++) spawnNewPinwheelRelative(true);
@@ -10058,31 +9941,31 @@ class WarpTurret extends Entity {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
-        if (!warpZone || !warpZone.active) return;
-        if (!player || player.dead) return;
+        if (!GameContext.warpZone || !GameContext.warpZone.active) return;
+        if (!GameContext.player || GameContext.player.dead) return;
         // Keep maze turrets as "obstacles", not part of the boss arena phase.
-        if (warpZone.state === 'boss') return;
+        if (GameContext.warpZone.state === 'boss') return;
 
-        const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
         if (dist > 4200) return;
 
         this.reload -= dtFactor;
         if (this.reload > 0) return;
 
-        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const aim = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
         const muzzleX = this.pos.x + Math.cos(aim) * (this.radius + 6);
         const muzzleY = this.pos.y + Math.sin(aim) * (this.radius + 6);
-        bullets.push(new Bullet(muzzleX, muzzleY, aim, true, 1, 12, 4, '#0ff'));
-        if (Math.random() < 0.18) bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.10, true, 1, 12, 4, '#0ff'));
-        if (Math.random() < 0.18) bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.10, true, 1, 12, 4, '#0ff'));
+        GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim, true, 1, 12, 4, '#0ff'));
+        if (Math.random() < 0.18) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.10, true, 1, 12, 4, '#0ff'));
+        if (Math.random() < 0.18) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.10, true, 1, 12, 4, '#0ff'));
         this.reload = 48 + Math.floor(Math.random() * 35);
     }
     draw(ctx) {
         if (this.dead) return;
-        const z = currentZoom || ZOOM_LEVEL;
+        const z = GameContext.currentZoom || ZOOM_LEVEL;
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
-        const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
+        const aim = (GameContext.player && !GameContext.player.dead) ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x) : 0;
         ctx.rotate(aim);
 
         ctx.fillStyle = '#061018';
@@ -10115,8 +9998,8 @@ class WarpTurret extends Entity {
         if (this.dead) return;
         this.dead = true;
         // No coin drops in the cave; award instantly instead. 
-        if (caveMode && caveLevel && caveLevel.active) awardCoinsInstant(6);
-        else for (let i = 0; i < 3; i++) coins.push(new Coin(this.pos.x, this.pos.y, 2));
+        if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active) awardCoinsInstant(6);
+        else for (let i = 0; i < 3; i++) GameContext.coins.push(new Coin(this.pos.x, this.pos.y, 2));
         spawnParticles(this.pos.x, this.pos.y, 18, '#0ff');
         playSound('explode');
     }
@@ -10201,7 +10084,7 @@ class WarpMazeZone extends Entity {
             const y = this.pos.y + Math.sin(a) * rr;
             const e = new Enemy('roamer', { x, y });
             e.despawnImmune = true;
-            enemies.push(e);
+            GameContext.enemies.push(e);
         }
     }
 
@@ -10213,8 +10096,8 @@ class WarpMazeZone extends Entity {
 
         // Spawn roamers in waves as the player moves inward.
         if (this.mobSpawnCooldown > 0) this.mobSpawnCooldown -= dtFactor;
-        if (this.state === 'maze' && player && !player.dead) {
-            const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        if (this.state === 'maze' && GameContext.player && !GameContext.player.dead) {
+            const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
             const band =
                 dist > (this.arenaRadius + 2600) ? 0 :
                     dist > (this.arenaRadius + 1400) ? 1 :
@@ -10226,22 +10109,22 @@ class WarpMazeZone extends Entity {
             const movedInward = band > this.mobWaveBand;
             this.mobWaveBand = band;
 
-            const living = enemies.filter(e => e && !e.dead && (e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter' || e.type === 'defender')).length;
+            const living = GameContext.enemies.filter(e => e && !e.dead && (e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter' || e.type === 'defender')).length;
             const wantCap = this.mobCap;
             if ((movedInward || this.mobSpawnCooldown === 0) && living < wantCap) {
                 const spawnCount = movedInward ? 4 : 2;
-                for (let i = 0; i < spawnCount && enemies.length < 300; i++) {
+                for (let i = 0; i < spawnCount && GameContext.enemies.length < 300; i++) {
                     const a = Math.random() * Math.PI * 2;
                     const rr = Math.max(this.arenaRadius + 220, dist + 900 + Math.random() * 700);
                     const x = this.pos.x + Math.cos(a) * rr;
                     const y = this.pos.y + Math.sin(a) * rr;
-                    const distP = Math.hypot(x - player.pos.x, y - player.pos.y);
+                    const distP = Math.hypot(x - GameContext.player.pos.x, y - GameContext.player.pos.y);
                     if (distP < 650) continue;
                     const typeRoll = Math.random();
                     const type = (band >= 2 && typeRoll < 0.12) ? 'elite_roamer' : 'roamer';
                     const e = new Enemy(type, { x, y });
                     e.despawnImmune = true;
-                    enemies.push(e);
+                    GameContext.enemies.push(e);
                 }
                 this.mobSpawnCooldown = movedInward ? 120 : 180;
             }
@@ -10250,11 +10133,11 @@ class WarpMazeZone extends Entity {
 
 
         // Start boss when player reaches the core (inside the arena ring).
-        if (this.state === 'maze' && player && !player.dead) {
-            const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        if (this.state === 'maze' && GameContext.player && !GameContext.player.dead) {
+            const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
             if (dist < this.arenaRadius - 300) {
                 // Determine if this is the final battle based on game time
-                const gameDuration = (Date.now() - gameStartTime - (pausedAccumMs || 0));
+                const gameDuration = (Date.now() - GameContext.gameStartTime - (GameContext.pausedAccumMs || 0));
                 const isFinalRun = gameDuration > 30 * 60 * 1000; // 30 minutes
 
                 if (isFinalRun) {
@@ -10288,15 +10171,15 @@ class WarpMazeZone extends Entity {
                 if (el) el.style.display = 'none';
                 this.state = 'boss';
                 // Keep the boss arena readable by clearing asteroids near the core.
-                filterArrayWithPixiCleanup(environmentAsteroids, a => !a.dead && (Math.hypot(a.pos.x - this.pos.x, a.pos.y - this.pos.y) > this.arenaRadius + 260));
+                filterArrayWithPixiCleanup(GameContext.environmentAsteroids, a => !a.dead && (Math.hypot(a.pos.x - this.pos.x, a.pos.y - this.pos.y) > this.arenaRadius + 260));
                 showOverlayMessage("WARP SENTINEL ENGAGED", '#f0f', 2200, 3);
                 playSound('boss_spawn');
-                clearArrayWithPixiCleanup(enemies); // keep the fight clean
-                clearArrayWithPixiCleanup(pinwheels);
-                filterArrayWithPixiCleanup(bullets, b => !b.isEnemy);
-                clearArrayWithPixiCleanup(bossBombs);
-                boss = new WarpSentinelBoss(this.pos.x, this.pos.y, this);
-                bossActive = true;
+                clearArrayWithPixiCleanup(GameContext.enemies); // keep the fight clean
+                clearArrayWithPixiCleanup(GameContext.pinwheels);
+                filterArrayWithPixiCleanup(GameContext.bullets, b => !b.isEnemy);
+                clearArrayWithPixiCleanup(GameContext.bossBombs);
+                GameContext.boss = new WarpSentinelBoss(this.pos.x, this.pos.y, this);
+                GameContext.bossActive = true;
 
                 // Spawn cover asteroids in the arena
                 for (let i = 0; i < 10; i++) {
@@ -10304,8 +10187,8 @@ class WarpMazeZone extends Entity {
                     const rr = 800 + Math.random() * (this.arenaRadius - 1200);
                     const x = this.pos.x + Math.cos(a) * rr;
                     const y = this.pos.y + Math.sin(a) * rr;
-                    if (player && Math.hypot(x - player.pos.x, y - player.pos.y) < 500) continue;
-                    environmentAsteroids.push(new EnvironmentAsteroid(x, y, 40 + Math.random() * 50, 3, false));
+                    if (GameContext.player && Math.hypot(x - GameContext.player.pos.x, y - GameContext.player.pos.y) < 500) continue;
+                    GameContext.environmentAsteroids.push(new EnvironmentAsteroid(x, y, 40 + Math.random() * 50, 3, false));
                 }
             }
         }
@@ -10331,17 +10214,17 @@ class WarpMazeZone extends Entity {
                 this.state = 'final_boss';
 
                 // Keep the boss arena readable by clearing asteroids near the core.
-                filterArrayWithPixiCleanup(environmentAsteroids, a => !a.dead && (Math.hypot(a.pos.x - this.pos.x, a.pos.y - this.pos.y) > this.arenaRadius + 260));
+                filterArrayWithPixiCleanup(GameContext.environmentAsteroids, a => !a.dead && (Math.hypot(a.pos.x - this.pos.x, a.pos.y - this.pos.y) > this.arenaRadius + 260));
 
                 showOverlayMessage("FINAL BOSS ENGAGED", '#f00', 3000, 3);
                 playSound('boss_spawn');
-                clearArrayWithPixiCleanup(enemies); // keep the fight clean
-                clearArrayWithPixiCleanup(pinwheels);
-                filterArrayWithPixiCleanup(bullets, b => !b.isEnemy);
-                clearArrayWithPixiCleanup(bossBombs);
+                clearArrayWithPixiCleanup(GameContext.enemies); // keep the fight clean
+                clearArrayWithPixiCleanup(GameContext.pinwheels);
+                filterArrayWithPixiCleanup(GameContext.bullets, b => !b.isEnemy);
+                clearArrayWithPixiCleanup(GameContext.bossBombs);
 
-                boss = new FinalBoss(this.pos.x, this.pos.y, this);
-                bossActive = true;
+                GameContext.boss = new FinalBoss(this.pos.x, this.pos.y, this);
+                GameContext.bossActive = true;
 
                 // Spawn cover asteroids in the arena
                 for (let i = 0; i < 15; i++) {
@@ -10349,13 +10232,13 @@ class WarpMazeZone extends Entity {
                     const rr = 800 + Math.random() * (this.arenaRadius - 1200);
                     const x = this.pos.x + Math.cos(a) * rr;
                     const y = this.pos.y + Math.sin(a) * rr;
-                    if (player && Math.hypot(x - player.pos.x, y - player.pos.y) < 500) continue;
-                    environmentAsteroids.push(new EnvironmentAsteroid(x, y, 40 + Math.random() * 50, 3, false));
+                    if (GameContext.player && Math.hypot(x - GameContext.player.pos.x, y - GameContext.player.pos.y) < 500) continue;
+                    GameContext.environmentAsteroids.push(new EnvironmentAsteroid(x, y, 40 + Math.random() * 50, 3, false));
                 }
             }
         }
 
-        if ((this.state === 'boss' || this.state === 'final_boss') && (!bossActive || !boss || boss.dead)) {
+        if ((this.state === 'boss' || this.state === 'final_boss') && (!GameContext.bossActive || !GameContext.boss || GameContext.boss.dead)) {
             this.state = 'escape';
         }
     }
@@ -10410,12 +10293,12 @@ class Dungeon1Zone extends Entity {
         }
 
         // Check if cruiser is defeated
-        if (this.state === 'cruiser' && (!bossActive || !boss || boss.dead)) {
+        if (this.state === 'cruiser' && (!GameContext.bossActive || !GameContext.boss || GameContext.boss.dead)) {
             this.state = 'complete';
-            dungeon1Arena.active = false;
-            dungeon1Arena.growing = false;
+            GameContext.dungeon1Arena.active = false;
+            GameContext.dungeon1Arena.growing = false;
             showOverlayMessage("DUNGEON 1 CLEARED - BOUNDARY REMOVED", '#0f0', 3000, 2);
-            dungeon1CompletedOnce = true;
+            GameContext.dungeon1CompletedOnce = true;
         }
     }
 
@@ -10440,7 +10323,7 @@ class Dungeon1Zone extends Entity {
             gunboat.vel.x = Math.cos(angle) * speed;
             gunboat.vel.y = Math.sin(angle) * speed;
 
-            enemies.push(gunboat);
+            GameContext.enemies.push(gunboat);
             this.dungeonEnemies.push(gunboat);
         }
 
@@ -10461,7 +10344,7 @@ class Dungeon1Zone extends Entity {
             defender.vel.x = Math.cos(angle) * speed;
             defender.vel.y = Math.sin(angle) * speed;
 
-            enemies.push(defender);
+            GameContext.enemies.push(defender);
             this.dungeonEnemies.push(defender);
         }
 
@@ -10473,64 +10356,64 @@ class Dungeon1Zone extends Entity {
         this.state = 'cruiser';
 
         // Clear remaining enemies and projectiles
-        clearArrayWithPixiCleanup(enemies);
-        clearArrayWithPixiCleanup(pinwheels);
-        filterArrayWithPixiCleanup(bullets, b => !b.isEnemy);
-        clearArrayWithPixiCleanup(bossBombs);
-        clearArrayWithPixiCleanup(guidedMissiles);
-        clearArrayWithPixiCleanup(warpBioPods);
+        clearArrayWithPixiCleanup(GameContext.enemies);
+        clearArrayWithPixiCleanup(GameContext.pinwheels);
+        filterArrayWithPixiCleanup(GameContext.bullets, b => !b.isEnemy);
+        clearArrayWithPixiCleanup(GameContext.bossBombs);
+        clearArrayWithPixiCleanup(GameContext.guidedMissiles);
+        clearArrayWithPixiCleanup(GameContext.warpBioPods);
 
         this.dungeonEnemies = [];
 
         // Spawn random dungeon boss from the pool
-        const bossType = dungeonBossPool[Math.floor(Math.random() * dungeonBossPool.length)];
+        const bossType = GameContext.dungeonBossPool[Math.floor(Math.random() * GameContext.dungeonBossPool.length)];
         let newBoss;
 
         switch (bossType) {
             case 'NecroticHive':
                 newBoss = new NecroticHive(1);
-                necroticHive = newBoss;
+                GameContext.necroticHive = newBoss;
                 break;
             case 'CerebralPsion':
                 newBoss = new CerebralPsion(1);
-                cerebralPsion = newBoss;
+                GameContext.cerebralPsion = newBoss;
                 break;
             case 'Fleshforge':
                 newBoss = new Fleshforge(1);
-                fleshforge = newBoss;
+                GameContext.fleshforge = newBoss;
                 break;
             case 'VortexMatriarch':
                 newBoss = new VortexMatriarch(1);
-                vortexMatriarch = newBoss;
+                GameContext.vortexMatriarch = newBoss;
                 break;
             case 'ChitinusPrime':
                 newBoss = new ChitinusPrime(1);
-                chitinusPrime = newBoss;
+                GameContext.chitinusPrime = newBoss;
                 break;
             case 'PsyLich':
                 newBoss = new PsyLich(1);
-                psyLich = newBoss;
+                GameContext.psyLich = newBoss;
                 break;
             default:
                 // Fallback to Cruiser if something goes wrong
                 newBoss = new Cruiser(1);
         }
 
-        boss = newBoss;
-        bossActive = true;
+        GameContext.boss = newBoss;
+        GameContext.bossActive = true;
 
         // Position boss at top of dungeon arena
-        boss.pos.x = this.pos.x;
-        boss.pos.y = this.pos.y - this.boundaryRadius + 500;
-        boss.prevPos.x = boss.pos.x;
-        boss.prevPos.y = boss.pos.y;
+        GameContext.boss.pos.x = this.pos.x;
+        GameContext.boss.pos.y = this.pos.y - this.boundaryRadius + 500;
+        GameContext.boss.prevPos.x = GameContext.boss.pos.x;
+        GameContext.boss.prevPos.y = GameContext.boss.pos.y;
 
         // Activate boss arena for dungeon boss fight
-        bossArena.x = this.pos.x;
-        bossArena.y = this.pos.y;
-        bossArena.radius = 2500;
-        bossArena.active = true;
-        bossArena.growing = false;
+        GameContext.bossArena.x = this.pos.x;
+        GameContext.bossArena.y = this.pos.y;
+        GameContext.bossArena.radius = 2500;
+        GameContext.bossArena.active = true;
+        GameContext.bossArena.growing = false;
 
         showOverlayMessage(`DUNGEON BOSS: ${bossType.toUpperCase()}`, '#f00', 2200, 3);
         playSound('boss_spawn');
@@ -10561,7 +10444,7 @@ class Dungeon1Zone extends Entity {
 
                 // Check distance from other asteroids to avoid overlapping
                 let tooClose = false;
-                for (const ast of environmentAsteroids) {
+                for (const ast of GameContext.environmentAsteroids) {
                     const d = Math.hypot(x - ast.pos.x, y - ast.pos.y);
                     if (d < 200) { // Minimum 200 units apart
                         tooClose = true;
@@ -10584,7 +10467,7 @@ class Dungeon1Zone extends Entity {
                 // Mark as dungeon asteroid for cleanup tracking
                 asteroid.isDungeonAsteroid = true;
 
-                environmentAsteroids.push(asteroid);
+                GameContext.environmentAsteroids.push(asteroid);
             }
         }
     }
@@ -10624,7 +10507,7 @@ class RadiationStorm extends Entity {
         pixiCleanupObject(this);
     }
     update(deltaTime = SIM_STEP_MS) {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
         const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
@@ -10635,13 +10518,13 @@ class RadiationStorm extends Entity {
 
         // FIX: Ensure storm is nullified after kill to prevent drawing dead storm
         if (this.dead) {
-            if (radiationStorm === this) {
-                radiationStorm = null;
+            if (GameContext.radiationStorm === this) {
+                GameContext.radiationStorm = null;
             }
             return;
         }
 
-        const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
         const inside = d < this.radius;
         if (inside) {
             if (!this.wasInside) {
@@ -10650,24 +10533,24 @@ class RadiationStorm extends Entity {
             this.tick++;
             if (this.tick % 60 === 0) {
                 // Reward: XP + small gold drip
-                player.addXp(4);
-                coins.push(new Coin(player.pos.x + (Math.random() - 0.5) * 40, player.pos.y + (Math.random() - 0.5) * 40, 2));
+                GameContext.player.addXp(4);
+                GameContext.coins.push(new Coin(GameContext.player.pos.x + (Math.random() - 0.5) * 40, GameContext.player.pos.y + (Math.random() - 0.5) * 40, 2));
 
                 // Cost: drains shields (main shield first, then outer shield)
                 let drained = false;
-                const idx = player.shieldSegments.findIndex(s => s > 0);
+                const idx = GameContext.player.shieldSegments.findIndex(s => s > 0);
                 if (idx !== -1) {
-                    player.shieldSegments[idx] = Math.max(0, player.shieldSegments[idx] - 1);
+                    GameContext.player.shieldSegments[idx] = Math.max(0, GameContext.player.shieldSegments[idx] - 1);
                     drained = true;
-                } else if (player.outerShieldSegments && player.outerShieldSegments.some(s => s > 0)) {
-                    const o = player.outerShieldSegments.findIndex(s => s > 0);
+                } else if (GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.some(s => s > 0)) {
+                    const o = GameContext.player.outerShieldSegments.findIndex(s => s > 0);
                     if (o !== -1) {
-                        player.outerShieldSegments[o] = 0;
+                        GameContext.player.outerShieldSegments[o] = 0;
                         drained = true;
                     }
                 }
                 if (drained) {
-                    spawnParticles(player.pos.x, player.pos.y, 6, '#ff0');
+                    spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 6, '#ff0');
                     playSound('shield_hit');
                 }
             }
@@ -10695,7 +10578,7 @@ class RadiationStorm extends Entity {
             // Outer Ring
             const innerColor = 0xffdc00;
             const alpha = 0.35 + pulse;
-            const lineWidth = 6 / Math.max(0.5, currentZoom || ZOOM_LEVEL);
+            const lineWidth = 6 / Math.max(0.5, GameContext.currentZoom || ZOOM_LEVEL);
             this._pixiGfx.lineStyle(lineWidth, innerColor, alpha);
             this._pixiGfx.drawCircle(0, 0, this.radius);
 
@@ -10802,14 +10685,14 @@ class MiniEventDefendCache extends Entity {
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
 
-        if (!player || player.dead) { this.fail(); return; }
+        if (!GameContext.player || GameContext.player.dead) { this.fail(); return; }
         const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
         const dt = Math.min(120, Math.max(0, now - this.lastUpdateAt));
         this.lastUpdateAt = now;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
 
-        const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
         if (!this.activated && d < 900) {
             this.activated = true;
             showOverlayMessage("DEFEND THE CACHE - HOLD POSITION", '#ff0', 1500, 1);
@@ -10835,15 +10718,15 @@ class MiniEventDefendCache extends Entity {
     }
     spawnWave() {
         const cap = 22;
-        if (enemies.length >= cap) return;
+        if (GameContext.enemies.length >= cap) return;
         const count = 2 + Math.floor(Math.random() * 2);
         for (let i = 0; i < count; i++) {
-            if (enemies.length >= cap) break;
+            if (GameContext.enemies.length >= cap) break;
             const a = Math.random() * Math.PI * 2;
             const dist = 900 + Math.random() * 600;
             const sx = this.pos.x + Math.cos(a) * dist;
             const sy = this.pos.y + Math.sin(a) * dist;
-            enemies.push(new Enemy('roamer', { x: sx, y: sy }));
+            GameContext.enemies.push(new Enemy('roamer', { x: sx, y: sy }));
         }
     }
     success() {
@@ -10851,9 +10734,9 @@ class MiniEventDefendCache extends Entity {
         this.kill();
         showOverlayMessage("EVENT COMPLETE - CACHE SECURED", '#0f0', 2200, 1);
         playSound('powerup');
-        player.addXp(60);
+        GameContext.player.addXp(60);
         spawnParticles(this.pos.x, this.pos.y, 40, '#ff0');
-        for (let i = 0; i < 10; i++) coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 220, this.pos.y + (Math.random() - 0.5) * 220, 8));
+        for (let i = 0; i < 10; i++) GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 220, this.pos.y + (Math.random() - 0.5) * 220, 8));
     }
     fail() {
         if (this.dead) return;
@@ -10899,7 +10782,7 @@ class MiniEventDefendCache extends Entity {
 
             this._pixiGfx.clear();
             // boundary
-            this._pixiGfx.lineStyle(6 / (currentZoom || 1), 0xffdc00, 0.45);
+            this._pixiGfx.lineStyle(6 / (GameContext.currentZoom || 1), 0xffdc00, 0.45);
             this._pixiGfx.drawCircle(0, 0, this.radius);
 
             // central area
@@ -10909,7 +10792,7 @@ class MiniEventDefendCache extends Entity {
 
             // progress
             this._pixiProgressGfx.clear();
-            this._pixiProgressGfx.lineStyle(8 / (currentZoom || 1), 0x00ff00, 0.6);
+            this._pixiProgressGfx.lineStyle(8 / (GameContext.currentZoom || 1), 0x00ff00, 0.6);
             this._pixiProgressGfx.arc(0, 0, this.radius + 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
 
             this._pixiTimerText.text = `${(remain / 1000).toFixed(0)}s`;
@@ -10986,20 +10869,20 @@ class SectorPOI extends Entity {
         pixiCleanupObject(this);
     }
     canClaim() {
-        if (!player || player.dead) return false;
+        if (!GameContext.player || GameContext.player.dead) return false;
         if (this.claimed) return false;
-        const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        return d <= this.radius + player.radius;
+        const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+        return d <= this.radius + GameContext.player.radius;
     }
     claim() {
         if (this.claimed) return;
         this.claimed = true;
         showOverlayMessage(`POI CLEARED: ${this.name}`, '#0ff', 1600, 1);
         playSound('powerup');
-        if (player) player.addXp(this.rewardXp);
+        if (GameContext.player) GameContext.player.addXp(this.rewardXp);
         const coinsToSpawn = Math.max(1, Math.floor(this.rewardCoins / 8));
         for (let i = 0; i < coinsToSpawn; i++) {
-            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 220, this.pos.y + (Math.random() - 0.5) * 220, 8));
+            GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 220, this.pos.y + (Math.random() - 0.5) * 220, 8));
         }
         spawnParticles(this.pos.x, this.pos.y, 30, this.color);
         this.dead = true;
@@ -11046,11 +10929,11 @@ class SectorPOI extends Entity {
             const c = parseInt(this.color.replace('#', '0x'), 16) || 0x00ffff;
 
             // boundary
-            this._pixiGfx.lineStyle(5 / (currentZoom || 1), c, 0.35 + pulse * 0.15);
+            this._pixiGfx.lineStyle(5 / (GameContext.currentZoom || 1), c, 0.35 + pulse * 0.15);
             this._pixiGfx.drawCircle(0, 0, this.radius);
 
             // center diamond
-            this._pixiGfx.lineStyle(2 / (currentZoom || 1), 0xffffff, 1.0);
+            this._pixiGfx.lineStyle(2 / (GameContext.currentZoom || 1), 0xffffff, 1.0);
             this._pixiGfx.beginFill(c, 1.0);
             this._pixiGfx.moveTo(0, -18);
             this._pixiGfx.lineTo(16, 0);
@@ -11118,13 +11001,13 @@ class DebrisFieldPOI extends SectorPOI {
         if (this.dead || this.claimed) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
         const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
         const dt = Math.min(120, Math.max(0, now - (this.lastUpdateAt || now)));
         this.lastUpdateAt = now;
 
-        const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        const inside = d <= this.radius + player.radius;
+        const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+        const inside = d <= this.radius + GameContext.player.radius;
         if (inside) {
             if (!this.captureActive) {
                 this.captureActive = true;
@@ -11163,7 +11046,7 @@ class DebrisFieldPOI extends SectorPOI {
             if (pct > 0) {
                 this._pixiProgressGfx.visible = true;
                 this._pixiProgressGfx.position.set(this.pos.x, this.pos.y);
-                this._pixiProgressGfx.lineStyle(10 / (currentZoom || 1), 0x00ff00, 0.65);
+                this._pixiProgressGfx.lineStyle(10 / (GameContext.currentZoom || 1), 0x00ff00, 0.65);
                 this._pixiProgressGfx.arc(0, 0, 42, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
             } else {
                 this._pixiProgressGfx.visible = false;
@@ -11241,11 +11124,11 @@ class ExplorationCache extends Entity {
         pixiCleanupObject(this);
     }
     update(deltaTime = SIM_STEP_MS) {
-        if (!player || player.dead) return;
-        const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        if (dist < player.magnetRadius) this.magnetized = true;
+        if (!GameContext.player || GameContext.player.dead) return;
+        const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+        if (dist < GameContext.player.magnetRadius) this.magnetized = true;
         if (this.magnetized) {
-            const a = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+            const a = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
             const speed = 8 + (800 / Math.max(10, dist));
             this.vel.x = Math.cos(a) * speed;
             this.vel.y = Math.sin(a) * speed;
@@ -11416,8 +11299,8 @@ class Cruiser extends Enemy {
 
         const angle = Math.random() * Math.PI * 2;
         const dist = 3000;
-        this.pos.x = player.pos.x + Math.cos(angle) * dist;
-        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.pos.x = GameContext.player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = GameContext.player.pos.y + Math.sin(angle) * dist;
         // Sync prevPos to prevent ghosting on first render
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
@@ -11458,37 +11341,37 @@ class Cruiser extends Enemy {
 
         spawnParticles(this.pos.x, this.pos.y, 120, '#f00');
         playSound('base_explode');
-        shakeMagnitude = Math.max(shakeMagnitude, 22);
-        shakeTimer = Math.max(shakeTimer, 24);
-        clearArrayWithPixiCleanup(bossBombs);
+        GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 22);
+        GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 24);
+        clearArrayWithPixiCleanup(GameContext.bossBombs);
         for (let i = 0; i < 13; i++) {
-            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 100, this.pos.y + (Math.random() - 0.5) * 100, 10));
+            GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 100, this.pos.y + (Math.random() - 0.5) * 100, 10));
         }
         for (let i = 0; i < 5; i++) {
-            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 1));
+            GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 1));
         }
-        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
-        bossActive = false;
-        bossArena.active = false;
-        bossArena.growing = false;
-        if (cruiserEncounterCount === 2) {
-            pendingStations = 1;
-            nextSpaceStationTime = Date.now() + 30000;
+        GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+        GameContext.bossActive = false;
+        GameContext.bossArena.active = false;
+        GameContext.bossArena.growing = false;
+        if (GameContext.cruiserEncounterCount === 2) {
+            GameContext.pendingStations = 1;
+            GameContext.nextSpaceStationTime = Date.now() + 30000;
             showOverlayMessage("CRUISER DESTROYED - SPACE STATION IN 30s", '#f80', 4000);
         } else {
             showOverlayMessage("CRUISER DESTROYED - ARENA UNLOCKED", '#0f0', 3000);
         }
         if (musicEnabled) setMusicMode('normal');
         try {
-            const delay = dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
-            dreadManager.timerAt = Date.now() + delay;
-            dreadManager.timerActive = true;
-            dreadManager.firstSpawnDone = true;
+            const delay = GameContext.dreadManager.minDelayMs + Math.floor(Math.random() * (GameContext.dreadManager.maxDelayMs - GameContext.dreadManager.minDelayMs + 1));
+            GameContext.dreadManager.timerAt = Date.now() + delay;
+            GameContext.dreadManager.timerActive = true;
+            GameContext.dreadManager.firstSpawnDone = true;
         } catch (e) { console.warn('failed to start cruiser timer', e); }
-        if (boss) pixiCleanupObject(boss);
-        boss = null;
-        bossArena.active = false;
-        bossArena.growing = false;
+        if (GameContext.boss) pixiCleanupObject(GameContext.boss);
+        GameContext.boss = null;
+        GameContext.bossArena.active = false;
+        GameContext.bossArena.growing = false;
         stopArenaCountdown();
     }
 
@@ -11534,8 +11417,8 @@ class Cruiser extends Enemy {
             this.gunboatRange = this.baseGunboatRange + 350;
         } else {
             // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
+            const dx = GameContext.player.pos.x - this.pos.x;
+            const dy = GameContext.player.pos.y - this.pos.y;
             const dist = Math.hypot(dx, dy);
 
             if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
@@ -11601,12 +11484,12 @@ class Cruiser extends Enemy {
         // Helper calls (few small ships only)
         this.maybeCallHelpers();
 
-        if (this.guidedMissileEnabled && bossActive && boss === this) {
+        if (this.guidedMissileEnabled && GameContext.bossActive && GameContext.boss === this) {
             this.guidedMissileCd -= (deltaTime / 16.67);
             if (this.guidedMissileCd <= 0) {
-                const alive = guidedMissiles.filter(m => m && !m.dead).length;
+                const alive = GameContext.guidedMissiles.filter(m => m && !m.dead).length;
                 if (alive < this.guidedMissileCap) {
-                    guidedMissiles.push(new FlagshipGuidedMissile(this));
+                    GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
                     spawnParticles(this.pos.x, this.pos.y, 10, '#fa0');
                     playSound('heavy_shoot');
                 }
@@ -11616,12 +11499,12 @@ class Cruiser extends Enemy {
     }
 
     runPhaseAttacks() {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
         // Hardpoint cooldowns tick
         for (let i = 0; i < this.hardpoints.length; i++) this.hardpoints[i].cd--;
 
-        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const aim = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
         if (this.phaseName === 'SALVO') {
             if (this.phaseTick % 11 === 0) {
@@ -11670,7 +11553,7 @@ class Cruiser extends Enemy {
                 const a = baseAngle + t * spread;
                 const shot = new Bullet(p.x, p.y, a, true, dmg, speed, 4, color);
                 shot.life = Math.round(shot.life * this.cruiserWeaponRangeMult);
-                bullets.push(shot);
+                GameContext.bullets.push(shot);
                 spawnBarrelSmoke(p.x, p.y, a);
             }
         }
@@ -11688,7 +11571,7 @@ class Cruiser extends Enemy {
             const a = baseAngle + t * spread;
             const b = new Bullet(p.x, p.y, a, true, dmg, speed, 4, color);
             b.life = Math.round(60 * this.cruiserWeaponRangeMult);
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
         playSound('shoot');
     }
@@ -11699,7 +11582,7 @@ class Cruiser extends Enemy {
         const p = this.hardpointWorld(spr);
         const b = new Bullet(p.x, p.y, angle, true, dmg, speed, 4, color);
         b.life = Math.round(55 * this.cruiserWeaponRangeMult);
-        bullets.push(b);
+        GameContext.bullets.push(b);
     }
 
     dropMine(angle, speed, dmg, color) {
@@ -11708,7 +11591,7 @@ class Cruiser extends Enemy {
         const p = this.hardpointWorld(bay);
         const b = new Bullet(p.x, p.y, angle, true, dmg, speed, 11, color, 0, 'square');
         b.life = Math.round(110 * this.cruiserWeaponRangeMult);
-        bullets.push(b);
+        GameContext.bullets.push(b);
         playSound('heavy_shoot');
     }
 
@@ -11722,7 +11605,7 @@ class Cruiser extends Enemy {
         const dmg = Math.max(2, Math.round(this.cruiserBaseDamage));
         for (let i = 0; i < count; i++) {
             const a = base + (Math.PI * 2 / count) * i;
-            bossBombs.push(new CruiserMineBomb(this, a, maxTravel, dmg, blastRadius));
+            GameContext.bossBombs.push(new CruiserMineBomb(this, a, maxTravel, dmg, blastRadius));
         }
         playSound('heavy_shoot');
     }
@@ -11734,16 +11617,16 @@ class Cruiser extends Enemy {
             const a = (Math.PI * 2 / n) * i;
             const b = new Bullet(p.x, p.y, a, true, dmg, speed, 4, color);
             b.life = Math.round(113 * this.cruiserWeaponRangeMult);
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
         playSound('shotgun');
     }
 
     maybeCallHelpers() {
-        if (!bossActive) return;
-        if (!player || player.dead) return;
+        if (!GameContext.bossActive) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
-        const aliveHelpers = enemies.filter(e => e && !e.dead).length;
+        const aliveHelpers = GameContext.enemies.filter(e => e && !e.dead).length;
         const maxHelpers = this.helperMax;
 
         const hpPct = this.hp / this.maxHp;
@@ -11765,7 +11648,7 @@ class Cruiser extends Enemy {
     }
 
     spawnHelpers(count) {
-        const aliveHelpers = enemies.filter(e => e && !e.dead).length;
+        const aliveHelpers = GameContext.enemies.filter(e => e && !e.dead).length;
         const slots = Math.max(0, this.helperMax - aliveHelpers);
         if (slots <= 0) return;
         count = Math.min(count, slots);
@@ -11782,7 +11665,7 @@ class Cruiser extends Enemy {
                 const segMult = this.helperHpMult;
                 e.shieldSegments = e.shieldSegments.map(s => Math.max(0, Math.round(s * segMult)));
             }
-            enemies.push(e);
+            GameContext.enemies.push(e);
         }
         showOverlayMessage("BOSS CALLED REINFORCEMENTS", '#f00', 1100);
     }
@@ -11810,7 +11693,7 @@ class Cruiser extends Enemy {
     }
 
     drawBossHud(ctx) {
-        if (!bossActive || this.dead) return;
+        if (!GameContext.bossActive || this.dead) return;
         const w = canvas.width;
         const barW = Math.min(560, w - 40);
         const x = (w - barW) / 2;
@@ -11887,7 +11770,7 @@ class Cruiser extends Enemy {
 
 class Flagship extends Cruiser {
     constructor(spawnAt = null) {
-        super(Math.max(4, cruiserEncounterCount));
+        super(Math.max(4, GameContext.cruiserEncounterCount));
         this.type = 'flagship';
         this.isFlagship = true;
         this.despawnImmune = true;
@@ -11905,13 +11788,13 @@ class Flagship extends Cruiser {
         if (spawnAt && typeof spawnAt.x === 'number' && typeof spawnAt.y === 'number') {
             this.pos.x = spawnAt.x;
             this.pos.y = spawnAt.y;
-        } else if (player && !player.dead) {
+        } else if (GameContext.player && !GameContext.player.dead) {
             // Arcade "top of screen" vibe
-            this.pos.x = player.pos.x;
-            this.pos.y = player.pos.y - 2200;
+            this.pos.x = GameContext.player.pos.x;
+            this.pos.y = GameContext.player.pos.y - 2200;
         }
 
-        const bonus = Math.max(0, cruiserEncounterCount - 1);
+        const bonus = Math.max(0, GameContext.cruiserEncounterCount - 1);
         const baseHp = 260 + bonus * 35;
         this.hp = Math.round(baseHp * 1.25);
         this.maxHp = this.hp;
@@ -11951,21 +11834,21 @@ class Flagship extends Cruiser {
     update(deltaTime = SIM_STEP_MS) {
         super.update();
         if (this.dead) return;
-        if (!bossActive || boss !== this) return;
-        if (!player || player.dead) return;
+        if (!GameContext.bossActive || GameContext.boss !== this) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
         if (this.phaseName === 'INTRO') return;
 
         this.guidedMissileCd--;
         if (this.guidedMissileCd > 0) return;
 
-        const alive = guidedMissiles.filter(m => m && !m.dead).length;
+        const alive = GameContext.guidedMissiles.filter(m => m && !m.dead).length;
         if (alive >= this.guidedMissileCap) {
             this.guidedMissileCd = Math.max(30, Math.floor(this.guidedMissileInterval * 0.5));
             return;
         }
 
-        guidedMissiles.push(new FlagshipGuidedMissile(this));
+        GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
         spawnParticles(this.pos.x, this.pos.y, 10, '#fa0');
         playSound('heavy_shoot');
         this.guidedMissileCd = this.guidedMissileInterval;
@@ -11981,16 +11864,16 @@ class Flagship extends Cruiser {
         spawnLargeExplosion(this.pos.x, this.pos.y, 5.0);
 
         spawnParticles(this.pos.x, this.pos.y, 200, '#f0f');
-        clearArrayWithPixiCleanup(bossBombs);
-        clearArrayWithPixiCleanup(guidedMissiles);
+        clearArrayWithPixiCleanup(GameContext.bossBombs);
+        clearArrayWithPixiCleanup(GameContext.guidedMissiles);
 
-        for (let i = 0; i < 50; i++) coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 260, this.pos.y + (Math.random() - 0.5) * 260, 10));  // was 40
-        for (let i = 0; i < 16; i++) nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 320, this.pos.y + (Math.random() - 0.5) * 320, 1));
+        for (let i = 0; i < 50; i++) GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 260, this.pos.y + (Math.random() - 0.5) * 260, 10));  // was 40
+        for (let i = 0; i < 16; i++) GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 320, this.pos.y + (Math.random() - 0.5) * 320, 1));
 
-        bossActive = false;
-        bossArena.active = false;
-        bossArena.growing = false;
-        boss = null;
+        GameContext.bossActive = false;
+        GameContext.bossArena.active = false;
+        GameContext.bossArena.growing = false;
+        GameContext.boss = null;
 
         showOverlayMessage("FLAGSHIP DESTROYED - WARP CORE CHARGING", '#0ff', 3500, 2);
         // Keep world entities intact; just drop the arena lock on flagship kill.
@@ -12051,55 +11934,55 @@ class SuperFlagshipBoss extends Flagship {
     }
 
     applyDamageToPlayer(amount) {
-        if (!player || player.dead) return;
-        if (player.invulnerable > 0) return;
+        if (!GameContext.player || GameContext.player.dead) return;
+        if (GameContext.player.invulnerable > 0) return;
         let remaining = Math.max(0, Math.ceil(amount));
 
-        if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
-            for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
-                if (player.outerShieldSegments[i] > 0) {
-                    const absorb = Math.min(remaining, player.outerShieldSegments[i]);
-                    player.outerShieldSegments[i] -= absorb;
+        if (GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.length > 0) {
+            for (let i = 0; i < GameContext.player.outerShieldSegments.length && remaining > 0; i++) {
+                if (GameContext.player.outerShieldSegments[i] > 0) {
+                    const absorb = Math.min(remaining, GameContext.player.outerShieldSegments[i]);
+                    GameContext.player.outerShieldSegments[i] -= absorb;
                     remaining -= absorb;
                 }
             }
         }
 
-        if (player.shieldSegments && player.shieldSegments.length > 0) {
-            for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
-                const absorb = Math.min(remaining, player.shieldSegments[i]);
-                player.shieldSegments[i] -= absorb;
+        if (GameContext.player.shieldSegments && GameContext.player.shieldSegments.length > 0) {
+            for (let i = 0; i < GameContext.player.shieldSegments.length && remaining > 0; i++) {
+                const absorb = Math.min(remaining, GameContext.player.shieldSegments[i]);
+                GameContext.player.shieldSegments[i] -= absorb;
                 remaining -= absorb;
             }
         }
 
         if (remaining > 0) {
-            player.hp -= remaining;
-            spawnParticles(player.pos.x, player.pos.y, 14, '#f00');
+            GameContext.player.hp -= remaining;
+            spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 14, '#f00');
             playSound('hit');
             updateHealthUI();
-            if (player.hp <= 0) killPlayer();
+            if (GameContext.player.hp <= 0) killPlayer();
         } else {
             playSound('shield_hit');
-            spawnParticles(player.pos.x, player.pos.y, 10, '#0ff');
+            spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#0ff');
         }
-        player.invulnerable = 22;
+        GameContext.player.invulnerable = 22;
     }
 
     update(deltaTime = SIM_STEP_MS) {
         super.update();
         if (this.dead) return;
-        if (!bossActive || boss !== this) return;
-        if (!player || player.dead) return;
+        if (!GameContext.bossActive || GameContext.boss !== this) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
         const phase2 = this.cavePhase2();
-        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const aim = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
         // In the cave, bias movement toward the tunnel centerline.
-        if (caveMode && caveLevel && caveLevel.active) {
-            const bounds = caveLevel.boundsAt(this.pos.y);
+        if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active) {
+            const bounds = GameContext.caveLevel.boundsAt(this.pos.y);
             const pad = this.radius + 220;
-            const cx = Math.max(bounds.left + pad, Math.min(bounds.right - pad, caveLevel.centerXAt(this.pos.y)));
+            const cx = Math.max(bounds.left + pad, Math.min(bounds.right - pad, GameContext.caveLevel.centerXAt(this.pos.y)));
             this.vel.x += (cx - this.pos.x) * 0.0022;
             this.vel.x *= 0.96;
         }
@@ -12116,14 +11999,14 @@ class SuperFlagshipBoss extends Flagship {
                 if (this.caveLaserHitThisShot) return;
                 const ex = this.pos.x + Math.cos(angle) * this.caveLaserLen;
                 const ey = this.pos.y + Math.sin(angle) * this.caveLaserLen;
-                const cp = closestPointOnSegment(player.pos.x, player.pos.y, this.pos.x, this.pos.y, ex, ey);
-                const d = Math.hypot(player.pos.x - cp.x, player.pos.y - cp.y);
-                const hitDist = (this.caveLaserWidth * 0.5) + (player.radius * 0.55);
+                const cp = closestPointOnSegment(GameContext.player.pos.x, GameContext.player.pos.y, this.pos.x, this.pos.y, ex, ey);
+                const d = Math.hypot(GameContext.player.pos.x - cp.x, GameContext.player.pos.y - cp.y);
+                const hitDist = (this.caveLaserWidth * 0.5) + (GameContext.player.radius * 0.55);
                 if (d <= hitDist) {
                     this.caveLaserHitThisShot = true;
                     this.applyDamageToPlayer(damage);
-                    shakeMagnitude = Math.max(shakeMagnitude, 12);
-                    shakeTimer = Math.max(shakeTimer, 12);
+                    GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 12);
+                    GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 12);
                 }
             };
 
@@ -12158,7 +12041,7 @@ class SuperFlagshipBoss extends Flagship {
                 const a = Math.random() * Math.PI * 2;
                 const d = 420 + Math.random() * 520;
                 const type = (phase2 && Math.random() < 0.45) ? 'hunter' : 'defender';
-                enemies.push(new Enemy(type, { x: this.pos.x + Math.cos(a) * d, y: this.pos.y + Math.sin(a) * d }, null));
+                GameContext.enemies.push(new Enemy(type, { x: this.pos.x + Math.cos(a) * d, y: this.pos.y + Math.sin(a) * d }, null));
             }
             showOverlayMessage("SUPER FLAGSHIP DEPLOYED DEFENDERS", '#f0f', 1200, 2);
             this.caveSummonCooldown = (phase2 ? 240 : 340) + Math.floor(Math.random() * 260);
@@ -12166,7 +12049,7 @@ class SuperFlagshipBoss extends Flagship {
     }
 
     drawBossHud(ctx) {
-        if (!bossActive || this.dead) return;
+        if (!GameContext.bossActive || this.dead) return;
         const w = canvas.width;
         const barW = Math.min(560, w - 40);
         const x = (w - barW) / 2;
@@ -12200,25 +12083,25 @@ class SuperFlagshipBoss extends Flagship {
         spawnLargeExplosion(this.pos.x, this.pos.y, 6.0);
 
         spawnParticles(this.pos.x, this.pos.y, 260, '#0ff');
-        clearArrayWithPixiCleanup(bossBombs);
-        clearArrayWithPixiCleanup(guidedMissiles);
+        clearArrayWithPixiCleanup(GameContext.bossBombs);
+        clearArrayWithPixiCleanup(GameContext.guidedMissiles);
 
         awardCoinsInstant(80 * 10, { noSound: false, sound: 'coin', color: '#ff0' });
-        for (let i = 0; i < 24; i++) nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 360, this.pos.y + (Math.random() - 0.5) * 360, 1));
+        for (let i = 0; i < 24; i++) GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 360, this.pos.y + (Math.random() - 0.5) * 360, 1));
 
-        bossActive = false;
-        bossArena.active = false;
-        bossArena.growing = false;
-        if (boss) pixiCleanupObject(boss);
-        boss = null;
+        GameContext.bossActive = false;
+        GameContext.bossArena.active = false;
+        GameContext.bossArena.growing = false;
+        if (GameContext.boss) pixiCleanupObject(GameContext.boss);
+        GameContext.boss = null;
 
         showOverlayMessage("SUPER FLAGSHIP DESTROYED - MISSION COMPLETE", '#0f0', 5000, 5);
 
         let elapsed = 0;
         const now = Date.now();
-        if (gameStartTime) {
-            elapsed = now - gameStartTime - (pausedAccumMs || 0);
-            if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - (pausedAccumMs || 0);
+        if (GameContext.gameStartTime) {
+            elapsed = now - GameContext.gameStartTime - (GameContext.pausedAccumMs || 0);
+            if (GameContext.pauseStartTime) elapsed = GameContext.pauseStartTime - GameContext.gameStartTime - (GameContext.pausedAccumMs || 0);
             if (elapsed < 0) elapsed = 0;
         }
         endGame(elapsed);
@@ -12227,9 +12110,9 @@ class SuperFlagshipBoss extends Flagship {
     draw(ctx) {
         super.draw(ctx);
         if (this.dead) return;
-        const z = currentZoom || ZOOM_LEVEL;
+        const z = GameContext.currentZoom || ZOOM_LEVEL;
         if (this.caveLaserCharge > 0) {
-            const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
+            const aim = (GameContext.player && !GameContext.player.dead) ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x) : 0;
             ctx.save();
             ctx.translate(this.pos.x, this.pos.y);
             ctx.rotate(aim);
@@ -12282,7 +12165,7 @@ class WarpBioPod extends Entity {
             const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 3, 3, '#f0f');
             b.owner = this.owner;
             b.life = 180;
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
     }
     update(deltaTime = SIM_STEP_MS) {
@@ -12291,9 +12174,9 @@ class WarpBioPod extends Entity {
         const dtFactor = deltaTime / 16.67;
 
         // Homing Logic (Orbital Hazard)
-        if (player && !player.dead) {
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
+        if (GameContext.player && !GameContext.player.dead) {
+            const dx = GameContext.player.pos.x - this.pos.x;
+            const dy = GameContext.player.pos.y - this.pos.y;
             const distSq = dx * dx + dy * dy;
             const homingRange = 750;
 
@@ -12408,9 +12291,9 @@ class DungeonDrone extends Entity {
 
         // Fire at player
         this.fireCooldown -= dtFactor;
-        if (this.fireCooldown <= 0 && player && !player.dead) {
-            const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
-            bullets.push(new Bullet(this.pos.x, this.pos.y, aim, true, 1, 10, 3, '#f80'));
+        if (this.fireCooldown <= 0 && GameContext.player && !GameContext.player.dead) {
+            const aim = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
+            GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, aim, true, 1, 10, 3, '#f80'));
             playSound('shoot');
             this.fireCooldown = 50 + Math.floor(Math.random() * 30);
         }
@@ -12429,7 +12312,7 @@ class DungeonDrone extends Entity {
             }
             g.clear();
             g.position.set(rPos.x, rPos.y);
-            g.lineStyle(2 / (currentZoom || 1), 0xff8800, 0.9);
+            g.lineStyle(2 / (GameContext.currentZoom || 1), 0xff8800, 0.9);
             g.beginFill(0xff4400, 0.6);
             g.drawCircle(0, 0, this.radius);
             g.endFill();
@@ -12521,7 +12404,7 @@ class PsychicEcho extends Entity {
             }
             g.clear();
             g.position.set(rPos.x, rPos.y);
-            g.lineStyle(3 / (currentZoom || 1), 0xff00ff, 0.7 * alpha);
+            g.lineStyle(3 / (GameContext.currentZoom || 1), 0xff00ff, 0.7 * alpha);
             g.beginFill(0x8800ff, 0.3 * alpha);
             g.drawCircle(0, 0, this.radius);
             g.endFill();
@@ -12571,20 +12454,20 @@ class GravityWell extends Entity {
         this.t += dtFactor;
 
         // Pull player toward gravity well
-        if (player && !player.dead) {
-            const dx = this.pos.x - player.pos.x;
-            const dy = this.pos.y - player.pos.y;
+        if (GameContext.player && !GameContext.player.dead) {
+            const dx = this.pos.x - GameContext.player.pos.x;
+            const dy = this.pos.y - GameContext.player.pos.y;
             const dist = Math.hypot(dx, dy);
             if (dist < this.pullRadius && dist > 10) {
                 const force = this.strength * (1 - dist / this.pullRadius) * dtFactor;
-                player.vel.x += (dx / dist) * force;
-                player.vel.y += (dy / dist) * force;
+                GameContext.player.vel.x += (dx / dist) * force;
+                GameContext.player.vel.y += (dy / dist) * force;
             }
         }
 
         // Pull player bullets toward gravity well (curved trajectory)
-        for (let i = 0; i < bullets.length; i++) {
-            const b = bullets[i];
+        for (let i = 0; i < GameContext.bullets.length; i++) {
+            const b = GameContext.bullets[i];
             if (!b || b.dead || b.isEnemy) continue;
             const dx = this.pos.x - b.pos.x;
             const dy = this.pos.y - b.pos.y;
@@ -12618,11 +12501,11 @@ class GravityWell extends Entity {
             g.position.set(rPos.x, rPos.y);
 
             // Outer ring (pull radius indicator)
-            g.lineStyle(2 / (currentZoom || 1), 0x00aaff, 0.3 * pulse);
+            g.lineStyle(2 / (GameContext.currentZoom || 1), 0x00aaff, 0.3 * pulse);
             g.drawCircle(0, 0, this.pullRadius);
 
             // Inner core
-            g.lineStyle(3 / (currentZoom || 1), 0x00ffff, 0.8);
+            g.lineStyle(3 / (GameContext.currentZoom || 1), 0x00ffff, 0.8);
             g.beginFill(0x0044aa, 0.5 * pulse);
             g.drawCircle(0, 0, this.radius);
             g.endFill();
@@ -12688,9 +12571,9 @@ class SoulDrainTether extends Entity {
         this.pos.y = this.owner.pos.y;
 
         // Check if player in range
-        if (player && !player.dead) {
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
+        if (GameContext.player && !GameContext.player.dead) {
+            const dx = GameContext.player.pos.x - this.pos.x;
+            const dy = GameContext.player.pos.y - this.pos.y;
             const dist = Math.hypot(dx, dy);
 
             if (dist < this.range) {
@@ -12699,8 +12582,8 @@ class SoulDrainTether extends Entity {
                 const heal = (this.healPerSecond / 60) * dtFactor;
 
                 // Apply damage to player (bypass shields partially)
-                if (player.hp > 0) {
-                    player.hp = Math.max(0, player.hp - damage);
+                if (GameContext.player.hp > 0) {
+                    GameContext.player.hp = Math.max(0, GameContext.player.hp - damage);
                     // Heal owner
                     if (this.owner.hp < this.owner.maxHp) {
                         this.owner.hp = Math.min(this.owner.maxHp, this.owner.hp + heal);
@@ -12717,11 +12600,11 @@ class SoulDrainTether extends Entity {
 
     draw(ctx) {
         if (this.dead) return;
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
         const rPos = this.getRenderPos(renderAlpha);
-        const dx = player.pos.x - rPos.x;
-        const dy = player.pos.y - rPos.y;
+        const dx = GameContext.player.pos.x - rPos.x;
+        const dy = GameContext.player.pos.y - rPos.y;
         const dist = Math.hypot(dx, dy);
 
         // Only draw if in range
@@ -12738,8 +12621,8 @@ class SoulDrainTether extends Entity {
             }
             g.clear();
             g.moveTo(rPos.x, rPos.y);
-            g.lineTo(player.pos.x, player.pos.y);
-            g.lineStyle(4 / (currentZoom || 1), 0xff0088, pulse);
+            g.lineTo(GameContext.player.pos.x, GameContext.player.pos.y);
+            g.lineStyle(4 / (GameContext.currentZoom || 1), 0xff0088, pulse);
             return;
         }
 
@@ -12749,7 +12632,7 @@ class SoulDrainTether extends Entity {
         ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.moveTo(rPos.x, rPos.y);
-        ctx.lineTo(player.pos.x, player.pos.y);
+        ctx.lineTo(GameContext.player.pos.x, GameContext.player.pos.y);
         ctx.stroke();
         ctx.restore();
     }
@@ -12924,7 +12807,7 @@ class WarpSentinelBoss extends Entity {
 
         // PERFORMANCE MONITORING: Track boss death frame time
         const killStartTime = performance.now();
-        const bombCount = bossBombs.length;
+        const bombCount = GameContext.bossBombs.length;
         console.log(`[BOSS KILL] Starting death sequence with ${bombCount} bombs`);
 
         // PERFORMANCE FIX: Staggered particle spawning to prevent frame spikes
@@ -12939,16 +12822,16 @@ class WarpSentinelBoss extends Entity {
         scheduleStaggeredBombExplosions(this.pos.x, this.pos.y);
 
         // Start 15-second countdown to level 2
-        sectorTransitionActive = true;
-        warpCountdownAt = Date.now() + 15000; // 15 seconds
+        GameContext.sectorTransitionActive = true;
+        GameContext.warpCountdownAt = Date.now() + 15000; // 15 seconds
         showOverlayMessage("SENTINEL DOWN - LEVEL 2 IN 15s", '#ff0', 2600, 3);
-        bossActive = false;
-        bossArena.active = false;
-        bossArena.growing = false;
+        GameContext.bossActive = false;
+        GameContext.bossArena.active = false;
+        GameContext.bossArena.growing = false;
         playSound('warp_flame_stop');
-        clearArrayWithPixiCleanup(warpBioPods);
-        if (boss) pixiCleanupObject(boss);
-        boss = null;
+        clearArrayWithPixiCleanup(GameContext.warpBioPods);
+        if (GameContext.boss) pixiCleanupObject(GameContext.boss);
+        GameContext.boss = null;
 
         // PERFORMANCE MONITORING: Log completion time
         const killDuration = performance.now() - killStartTime;
@@ -12960,7 +12843,7 @@ class WarpSentinelBoss extends Entity {
 
     update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
         // Call Entity.update to properly save prevPos at the START of the frame
         // This ensures smooth rendering interpolation
@@ -13029,8 +12912,8 @@ class WarpSentinelBoss extends Entity {
         const orbitAng = this.orbitOffset + this.t * orbitSpeed;
         const targetX = cx + Math.cos(orbitAng) * orbitR;
         const targetY = cy + Math.sin(orbitAng) * orbitR;
-        const distToPlayer = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        const aimToPlayer = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const distToPlayer = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+        const aimToPlayer = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
         // Dash scheduling (telegraphed and blended).
         this.dashCooldown -= dtFactor;
@@ -13049,7 +12932,7 @@ class WarpSentinelBoss extends Entity {
 
             if (this.dashFrames <= 0) {
                 this.dashFrames = 0;
-                shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 2, 650, { damagePlayer: true, color: '#f0f', ignoreEntity: this }));
+                GameContext.shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 2, 650, { damagePlayer: true, color: '#f0f', ignoreEntity: this }));
                 playSound('explode');
             }
         } else if (this.dashCooldown <= 0 && distToPlayer > 650 && distToPlayer < 2800) {
@@ -13106,11 +12989,11 @@ class WarpSentinelBoss extends Entity {
             if (this.flameTickCooldown <= 0 && this.flameHitCount < 2) {
                 const angleDiff = Math.atan2(Math.sin(aimToPlayer - this.flameAngle), Math.cos(aimToPlayer - this.flameAngle));
                 if (distToPlayer <= this.flameRange && Math.abs(angleDiff) <= this.flameCone * 0.5) {
-                    player.takeHit(5);
+                    GameContext.player.takeHit(5);
                     const nx = Math.cos(aimToPlayer);
                     const ny = Math.sin(aimToPlayer);
-                    player.vel.x += nx * 6;
-                    player.vel.y += ny * 6;
+                    GameContext.player.vel.x += nx * 6;
+                    GameContext.player.vel.y += ny * 6;
                     this.flameHitCount++;
                 }
                 this.flameTickCooldown = 12;
@@ -13145,19 +13028,19 @@ class WarpSentinelBoss extends Entity {
                 const shot = new Bullet(bx, by, a, true, 1, 12, 4, '#f6f');
                 shot.owner = this;
                 shot.life = Math.round(shot.life * 1.875);
-                bullets.push(shot);
+                GameContext.bullets.push(shot);
             }
             playSound('warp_chitin');
             this.chitinCooldown = this.phase === 3 ? 90 : (this.phase === 2 ? 110 : 130);
         }
 
         if (this.screamCooldown <= 0 && distToPlayer < 2400) {
-            shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 0, 1600, { damageAsteroids: true, color: '#f0f', ignoreEntity: this }));
+            GameContext.shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 0, 1600, { damageAsteroids: true, color: '#f0f', ignoreEntity: this }));
             if (distToPlayer < 1200) {
                 const nx = Math.cos(aimToPlayer);
                 const ny = Math.sin(aimToPlayer);
-                player.vel.x += nx * 12;
-                player.vel.y += ny * 12;
+                GameContext.player.vel.x += nx * 12;
+                GameContext.player.vel.y += ny * 12;
             }
             playSound('warp_scream');
             this.screamCooldown = this.phase === 3 ? 210 : 260;
@@ -13167,7 +13050,7 @@ class WarpSentinelBoss extends Entity {
             const count = 2 + Math.floor(Math.random() * 3);
             for (let i = 0; i < count; i++) {
                 const a = Math.random() * Math.PI * 2;
-                warpBioPods.push(new WarpBioPod(this.pos.x, this.pos.y, a, this));
+                GameContext.warpBioPods.push(new WarpBioPod(this.pos.x, this.pos.y, a, this));
             }
             playSound('warp_pod');
             this.podCooldown = this.phase === 3 ? 200 : 260;
@@ -13179,33 +13062,33 @@ class WarpSentinelBoss extends Entity {
         // Contact damage only on true rams/dashes.
         const speed = Math.hypot(this.vel.x, this.vel.y);
         const isRamming = (this.dashFrames > 0) || (speed > 4);
-        if (isRamming && distToPlayer < this.radius + player.radius + 4) {
+        if (isRamming && distToPlayer < this.radius + GameContext.player.radius + 4) {
             this.ramInvulnerable = Math.max(this.ramInvulnerable, 12);
-            if (player.invulnerable <= 0) {
-                const idx = player.shieldSegments ? player.shieldSegments.findIndex(s => s > 0) : -1;
+            if (GameContext.player.invulnerable <= 0) {
+                const idx = GameContext.player.shieldSegments ? GameContext.player.shieldSegments.findIndex(s => s > 0) : -1;
                 if (idx !== -1) {
-                    player.shieldSegments[idx] = Math.max(0, player.shieldSegments[idx] - 1);
-                    player.shieldsDirty = true;
+                    GameContext.player.shieldSegments[idx] = Math.max(0, GameContext.player.shieldSegments[idx] - 1);
+                    GameContext.player.shieldsDirty = true;
                 } else {
-                    player.hp -= 2;
-                    spawnParticles(player.pos.x, player.pos.y, 10, '#f00');
+                    GameContext.player.hp -= 2;
+                    spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#f00');
                     playSound('hit');
                     updateHealthUI();
-                    if (player.hp <= 0) killPlayer();
+                    if (GameContext.player.hp <= 0) killPlayer();
                 }
-                player.invulnerable = 22;
+                GameContext.player.invulnerable = 22;
             }
         }
         // Note: super.update() at the start of this method handles prevPos saving and position update
     }
 
     maybeCallHelpers() {
-        if (!warpZone || !warpZone.active) return;
-        if (!bossActive) return;
-        if (!player || player.dead) return;
+        if (!GameContext.warpZone || !GameContext.warpZone.active) return;
+        if (!GameContext.bossActive) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
         const hpPct = this.maxHp > 0 ? this.hp / this.maxHp : 0;
-        const aliveHelpers = enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
+        const aliveHelpers = GameContext.enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
         const maxHelpers = this.helperMax;
 
         if (!this.called70 && hpPct <= 0.7) {
@@ -13226,7 +13109,7 @@ class WarpSentinelBoss extends Entity {
     }
 
     spawnHelpers(count) {
-        const aliveHelpers = enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
+        const aliveHelpers = GameContext.enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
         const slots = Math.max(0, this.helperMax - aliveHelpers);
         if (slots <= 0) return;
         count = Math.min(count, slots);
@@ -13246,12 +13129,12 @@ class WarpSentinelBoss extends Entity {
                 const d = 900 + Math.random() * 700;
                 const x = this.pos.x + Math.cos(a) * d;
                 const y = this.pos.y + Math.sin(a) * d;
-                const distP = Math.hypot(x - player.pos.x, y - player.pos.y);
+                const distP = Math.hypot(x - GameContext.player.pos.x, y - GameContext.player.pos.y);
                 if (distP < 650) continue;
                 const e = new Enemy(type, { x, y }, null);
                 e.despawnImmune = true;
                 e.isWarpReinforcement = true;
-                enemies.push(e);
+                GameContext.enemies.push(e);
                 spawnParticles(x, y, 10, '#f0f');
                 break;
             }
@@ -13260,7 +13143,7 @@ class WarpSentinelBoss extends Entity {
     }
 
     spawnDefenders(count) {
-        const aliveHelpers = enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
+        const aliveHelpers = GameContext.enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
         const slots = Math.max(0, this.helperMax - aliveHelpers);
         if (slots <= 0) return;
         count = Math.min(count, slots);
@@ -13271,12 +13154,12 @@ class WarpSentinelBoss extends Entity {
                 const d = 900 + Math.random() * 700;
                 const x = this.pos.x + Math.cos(a) * d;
                 const y = this.pos.y + Math.sin(a) * d;
-                const distP = Math.hypot(x - player.pos.x, y - player.pos.y);
+                const distP = Math.hypot(x - GameContext.player.pos.x, y - GameContext.player.pos.y);
                 if (distP < 650) continue;
                 const e = new Enemy('defender', { x, y }, null);
                 e.despawnImmune = true;
                 e.isWarpReinforcement = true;
-                enemies.push(e);
+                GameContext.enemies.push(e);
                 spawnParticles(x, y, 10, '#f0f');
                 break;
             }
@@ -13288,8 +13171,8 @@ class WarpSentinelBoss extends Entity {
         if (this.dead) return;
 
         const rPos = this.getRenderPos(renderAlpha);
-        const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
-        const z = currentZoom || ZOOM_LEVEL;
+        const aim = (GameContext.player && !GameContext.player.dead) ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x) : 0;
+        const z = GameContext.currentZoom || ZOOM_LEVEL;
 
         // Pixi sprite rendering (rotate to face player)
         if (pixiBossLayer && pixiTextures && pixiTextures.warp_boss) {
@@ -13386,7 +13269,7 @@ class WarpSentinelBoss extends Entity {
                     pixiVectorLayer.addChild(debugGfx);
                 }
 
-                if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
+                if (typeof GameContext.DEBUG_COLLISION !== 'undefined' && GameContext.DEBUG_COLLISION) {
                     debugGfx.visible = true;
                     debugGfx.clear();
                     debugGfx.position.set(rPos.x, rPos.y);
@@ -13483,7 +13366,7 @@ class WarpSentinelBoss extends Entity {
     // Spawn cave reinforcements (roamers, gunboats, pinwheels)
     spawnCaveReinforcements() {
         // Count existing gunboats before spawning
-        const existingGunboats = enemies.filter(e => e && e.isGunboat).length;
+        const existingGunboats = GameContext.enemies.filter(e => e && e.isGunboat).length;
         const maxGunboats = 3;
         const gunboatSlots = Math.max(0, maxGunboats - existingGunboats);
 
@@ -13509,7 +13392,7 @@ class WarpSentinelBoss extends Entity {
 
             // Spawn appropriate enemy type for cave level
             const enemy = new Enemy(type, { x: ex, y: ey }, null);
-            enemies.push(enemy);
+            GameContext.enemies.push(enemy);
         }
         playSound('powerup');
     }
@@ -13537,8 +13420,8 @@ class WarpSentinelBoss extends Entity {
                 const dtScale = deltaTime / 16.67;
                 this.t += 1 * dtScale;
 
-                if (player && !player.dead) {
-                    const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (GameContext.player && !GameContext.player.dead) {
+                    const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
                     if (dist < 100) {
                         this.dead = true;
                         spawnFieryExplosion(this.pos.x, this.pos.y, 2.0);
@@ -13569,7 +13452,7 @@ class WarpSentinelBoss extends Entity {
                 ctx.restore();
             };
 
-            enemies.push(mine);
+            GameContext.enemies.push(mine);
         }
         playSound('powerup');
     }
@@ -13732,7 +13615,7 @@ class FinalBoss extends Entity {
 
         // PERFORMANCE MONITORING: Track boss death frame time
         const killStartTime = performance.now();
-        const bombCount = bossBombs.length;
+        const bombCount = GameContext.bossBombs.length;
         console.log(`[BOSS KILL] Starting death sequence with ${bombCount} bombs`);
 
         // PERFORMANCE FIX: Staggered particle spawning to prevent frame spikes
@@ -13748,7 +13631,7 @@ class FinalBoss extends Entity {
 
         // END GAME: Show Victory Screen
         setTimeout(() => {
-            gameActive = false;
+            GameContext.gameActive = false;
             stopMusic();
             document.getElementById('start-screen').style.display = 'block';
             document.querySelector('#start-screen h1').innerText = "YOU WON THIS RUN";
@@ -13758,13 +13641,13 @@ class FinalBoss extends Entity {
         }, 5000);
 
         showOverlayMessage("FINAL BOSS DESTROYED - VICTORY!", '#0f0', 5000, 5);
-        bossActive = false;
-        bossArena.active = false;
-        bossArena.growing = false;
+        GameContext.bossActive = false;
+        GameContext.bossArena.active = false;
+        GameContext.bossArena.growing = false;
         playSound('warp_flame_stop');
-        clearArrayWithPixiCleanup(warpBioPods);
-        if (boss) pixiCleanupObject(boss);
-        boss = null;
+        clearArrayWithPixiCleanup(GameContext.warpBioPods);
+        if (GameContext.boss) pixiCleanupObject(GameContext.boss);
+        GameContext.boss = null;
 
         // PERFORMANCE MONITORING: Log completion time
         const killDuration = performance.now() - killStartTime;
@@ -13776,7 +13659,7 @@ class FinalBoss extends Entity {
 
     update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
         // Call Entity.update to properly save prevPos at the START of the frame
         // This ensures smooth rendering interpolation
@@ -13845,8 +13728,8 @@ class FinalBoss extends Entity {
         const orbitAng = this.orbitOffset + this.t * orbitSpeed;
         const targetX = cx + Math.cos(orbitAng) * orbitR;
         const targetY = cy + Math.sin(orbitAng) * orbitR;
-        const distToPlayer = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-        const aimToPlayer = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const distToPlayer = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+        const aimToPlayer = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
         // Dash scheduling (telegraphed and blended).
         this.dashCooldown -= dtFactor;
@@ -13865,7 +13748,7 @@ class FinalBoss extends Entity {
 
             if (this.dashFrames <= 0) {
                 this.dashFrames = 0;
-                shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 2, 650, { damagePlayer: true, color: '#f0f', ignoreEntity: this }));
+                GameContext.shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 2, 650, { damagePlayer: true, color: '#f0f', ignoreEntity: this }));
                 playSound('explode');
             }
         } else if (this.dashCooldown <= 0 && distToPlayer > 650 && distToPlayer < 2800) {
@@ -13922,11 +13805,11 @@ class FinalBoss extends Entity {
             if (this.flameTickCooldown <= 0 && this.flameHitCount < 2) {
                 const angleDiff = Math.atan2(Math.sin(aimToPlayer - this.flameAngle), Math.cos(aimToPlayer - this.flameAngle));
                 if (distToPlayer <= this.flameRange && Math.abs(angleDiff) <= this.flameCone * 0.5) {
-                    player.takeHit(5);
+                    GameContext.player.takeHit(5);
                     const nx = Math.cos(aimToPlayer);
                     const ny = Math.sin(aimToPlayer);
-                    player.vel.x += nx * 6;
-                    player.vel.y += ny * 6;
+                    GameContext.player.vel.x += nx * 6;
+                    GameContext.player.vel.y += ny * 6;
                     this.flameHitCount++;
                 }
                 this.flameTickCooldown = 12;
@@ -13961,19 +13844,19 @@ class FinalBoss extends Entity {
                 const shot = new Bullet(bx, by, a, true, 1, 12, 4, '#f6f');
                 shot.owner = this;
                 shot.life = Math.round(shot.life * 1.875);
-                bullets.push(shot);
+                GameContext.bullets.push(shot);
             }
             playSound('warp_chitin');
             this.chitinCooldown = this.phase === 3 ? 90 : (this.phase === 2 ? 110 : 130);
         }
 
         if (this.screamCooldown <= 0 && distToPlayer < 2400) {
-            shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 0, 1600, { damageAsteroids: true, color: '#f0f', ignoreEntity: this }));
+            GameContext.shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 0, 1600, { damageAsteroids: true, color: '#f0f', ignoreEntity: this }));
             if (distToPlayer < 1200) {
                 const nx = Math.cos(aimToPlayer);
                 const ny = Math.sin(aimToPlayer);
-                player.vel.x += nx * 12;
-                player.vel.y += ny * 12;
+                GameContext.player.vel.x += nx * 12;
+                GameContext.player.vel.y += ny * 12;
             }
             playSound('warp_scream');
             this.screamCooldown = this.phase === 3 ? 210 : 260;
@@ -13983,7 +13866,7 @@ class FinalBoss extends Entity {
             const count = 2 + Math.floor(Math.random() * 3);
             for (let i = 0; i < count; i++) {
                 const a = Math.random() * Math.PI * 2;
-                warpBioPods.push(new WarpBioPod(this.pos.x, this.pos.y, a, this));
+                GameContext.warpBioPods.push(new WarpBioPod(this.pos.x, this.pos.y, a, this));
             }
             playSound('warp_pod');
             this.podCooldown = this.phase === 3 ? 200 : 260;
@@ -13995,33 +13878,33 @@ class FinalBoss extends Entity {
         // Contact damage only on true rams/dashes.
         const speed = Math.hypot(this.vel.x, this.vel.y);
         const isRamming = (this.dashFrames > 0) || (speed > 4);
-        if (isRamming && distToPlayer < this.radius + player.radius + 4) {
+        if (isRamming && distToPlayer < this.radius + GameContext.player.radius + 4) {
             this.ramInvulnerable = Math.max(this.ramInvulnerable, 12);
-            if (player.invulnerable <= 0) {
-                const idx = player.shieldSegments ? player.shieldSegments.findIndex(s => s > 0) : -1;
+            if (GameContext.player.invulnerable <= 0) {
+                const idx = GameContext.player.shieldSegments ? GameContext.player.shieldSegments.findIndex(s => s > 0) : -1;
                 if (idx !== -1) {
-                    player.shieldSegments[idx] = Math.max(0, player.shieldSegments[idx] - 1);
-                    player.shieldsDirty = true;
+                    GameContext.player.shieldSegments[idx] = Math.max(0, GameContext.player.shieldSegments[idx] - 1);
+                    GameContext.player.shieldsDirty = true;
                 } else {
-                    player.hp -= 2;
-                    spawnParticles(player.pos.x, player.pos.y, 10, '#f00');
+                    GameContext.player.hp -= 2;
+                    spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#f00');
                     playSound('hit');
                     updateHealthUI();
-                    if (player.hp <= 0) killPlayer();
+                    if (GameContext.player.hp <= 0) killPlayer();
                 }
-                player.invulnerable = 22;
+                GameContext.player.invulnerable = 22;
             }
         }
         // Note: super.update() at the start of this method handles prevPos saving and position update
     }
 
     maybeCallHelpers() {
-        if (!warpZone || !warpZone.active) return;
-        if (!bossActive) return;
-        if (!player || player.dead) return;
+        if (!GameContext.warpZone || !GameContext.warpZone.active) return;
+        if (!GameContext.bossActive) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
         const hpPct = this.maxHp > 0 ? this.hp / this.maxHp : 0;
-        const aliveHelpers = enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
+        const aliveHelpers = GameContext.enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
         const maxHelpers = this.helperMax;
 
         if (!this.called70 && hpPct <= 0.7) {
@@ -14042,7 +13925,7 @@ class FinalBoss extends Entity {
     }
 
     spawnHelpers(count) {
-        const aliveHelpers = enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
+        const aliveHelpers = GameContext.enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
         const slots = Math.max(0, this.helperMax - aliveHelpers);
         if (slots <= 0) return;
         count = Math.min(count, slots);
@@ -14062,12 +13945,12 @@ class FinalBoss extends Entity {
                 const d = 900 + Math.random() * 700;
                 const x = this.pos.x + Math.cos(a) * d;
                 const y = this.pos.y + Math.sin(a) * d;
-                const distP = Math.hypot(x - player.pos.x, y - player.pos.y);
+                const distP = Math.hypot(x - GameContext.player.pos.x, y - GameContext.player.pos.y);
                 if (distP < 650) continue;
                 const e = new Enemy(type, { x, y }, null);
                 e.despawnImmune = true;
                 e.isWarpReinforcement = true;
-                enemies.push(e);
+                GameContext.enemies.push(e);
                 spawnParticles(x, y, 10, '#f0f');
                 break;
             }
@@ -14076,7 +13959,7 @@ class FinalBoss extends Entity {
     }
 
     spawnDefenders(count) {
-        const aliveHelpers = enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
+        const aliveHelpers = GameContext.enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
         const slots = Math.max(0, this.helperMax - aliveHelpers);
         if (slots <= 0) return;
         count = Math.min(count, slots);
@@ -14087,12 +13970,12 @@ class FinalBoss extends Entity {
                 const d = 900 + Math.random() * 700;
                 const x = this.pos.x + Math.cos(a) * d;
                 const y = this.pos.y + Math.sin(a) * d;
-                const distP = Math.hypot(x - player.pos.x, y - player.pos.y);
+                const distP = Math.hypot(x - GameContext.player.pos.x, y - GameContext.player.pos.y);
                 if (distP < 650) continue;
                 const e = new Enemy('defender', { x, y }, null);
                 e.despawnImmune = true;
                 e.isWarpReinforcement = true;
-                enemies.push(e);
+                GameContext.enemies.push(e);
                 spawnParticles(x, y, 10, '#f0f');
                 break;
             }
@@ -14104,8 +13987,8 @@ class FinalBoss extends Entity {
         if (this.dead) return;
 
         const rPos = this.getRenderPos(renderAlpha);
-        const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : 0;
-        const z = currentZoom || ZOOM_LEVEL;
+        const aim = (GameContext.player && !GameContext.player.dead) ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x) : 0;
+        const z = GameContext.currentZoom || ZOOM_LEVEL;
 
         // Pixi sprite rendering (rotate to face player)
         if (pixiBossLayer && pixiTextures && pixiTextures.final_boss) {
@@ -14202,7 +14085,7 @@ class FinalBoss extends Entity {
                     pixiVectorLayer.addChild(debugGfx);
                 }
 
-                if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
+                if (typeof GameContext.DEBUG_COLLISION !== 'undefined' && GameContext.DEBUG_COLLISION) {
                     debugGfx.visible = true;
                     debugGfx.clear();
                     debugGfx.position.set(rPos.x, rPos.y);
@@ -14299,7 +14182,7 @@ class FinalBoss extends Entity {
     // Spawn cave reinforcements (roamers, gunboats, pinwheels)
     spawnCaveReinforcements() {
         // Count existing gunboats before spawning
-        const existingGunboats = enemies.filter(e => e && e.isGunboat).length;
+        const existingGunboats = GameContext.enemies.filter(e => e && e.isGunboat).length;
         const maxGunboats = 3;
         const gunboatSlots = Math.max(0, maxGunboats - existingGunboats);
 
@@ -14325,7 +14208,7 @@ class FinalBoss extends Entity {
 
             // Spawn appropriate enemy type for cave level
             const enemy = new Enemy(type, { x: ex, y: ey }, null);
-            enemies.push(enemy);
+            GameContext.enemies.push(enemy);
         }
         playSound('powerup');
     }
@@ -14353,8 +14236,8 @@ class FinalBoss extends Entity {
                 const dtScale = deltaTime / 16.67;
                 this.t += 1 * dtScale;
 
-                if (player && !player.dead) {
-                    const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (GameContext.player && !GameContext.player.dead) {
+                    const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
                     if (dist < 100) {
                         this.dead = true;
                         spawnFieryExplosion(this.pos.x, this.pos.y, 2.0);
@@ -14385,7 +14268,7 @@ class FinalBoss extends Entity {
                 ctx.restore();
             };
 
-            enemies.push(mine);
+            GameContext.enemies.push(mine);
         }
         playSound('powerup');
     }
@@ -14460,8 +14343,8 @@ class NecroticHive extends Enemy {
 
         const angle = Math.random() * Math.PI * 2;
         const dist = 2800;
-        this.pos.x = player.pos.x + Math.cos(angle) * dist;
-        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.pos.x = GameContext.player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = GameContext.player.pos.y + Math.sin(angle) * dist;
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
 
@@ -14513,8 +14396,8 @@ class NecroticHive extends Enemy {
             this.gunboatRange = this.baseGunboatRange + 350;
         } else {
             // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
+            const dx = GameContext.player.pos.x - this.pos.x;
+            const dy = GameContext.player.pos.y - this.pos.y;
             const dist = Math.hypot(dx, dy);
 
             if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
@@ -14569,9 +14452,9 @@ class NecroticHive extends Enemy {
     }
 
     runPhaseAttacks() {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
-        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const aim = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
         if (this.phaseName === 'SWARM_SUMMON') {
             if (this.phaseTick % 20 === 0) {
@@ -14583,14 +14466,14 @@ class NecroticHive extends Enemy {
                     const a = aim - 0.8 + (i / 15) * 1.6;
                     const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 7, 4, '#f6f');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('shotgun');
             }
         } else if (this.phaseName === 'PROTECTIVE_RING') {
             if (this.phaseTick % 30 === 0) {
                 // Guided missiles
-                guidedMissiles.push(new FlagshipGuidedMissile(this));
+                GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
                 playSound('heavy_shoot');
             }
             if (this.phaseTick % 45 === 0) {
@@ -14599,7 +14482,7 @@ class NecroticHive extends Enemy {
                     const a = (Math.PI * 2 / 12) * i;
                     const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 9, 4, '#f80');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('shotgun');
             }
@@ -14608,7 +14491,7 @@ class NecroticHive extends Enemy {
                 // Bio-pods
                 for (let i = 0; i < 12; i++) {
                     const a = Math.random() * Math.PI * 2;
-                    warpBioPods.push(new WarpBioPod(this.pos.x, this.pos.y, a, this));
+                    GameContext.warpBioPods.push(new WarpBioPod(this.pos.x, this.pos.y, a, this));
                 }
                 playSound('warp_pod_pop');
             }
@@ -14624,7 +14507,7 @@ class NecroticHive extends Enemy {
                 for (let i = -1; i <= 1; i++) {
                     const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, true, 1, 12, 3, '#f44');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('rapid_shoot');
             }
@@ -14634,7 +14517,7 @@ class NecroticHive extends Enemy {
                     const a = (Math.PI * 2 / 16) * i;
                     const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 8, 4, '#f80');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('shotgun');
             }
@@ -14648,7 +14531,7 @@ class NecroticHive extends Enemy {
                 const a = aim + Math.sin(this.phaseTick * 0.1) * 0.5;
                 const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 14, 3, '#f6f');
                 b.owner = this;
-                bullets.push(b);
+                GameContext.bullets.push(b);
             }
             if (this.phaseTick === 60) {
                 // All drones return to heal
@@ -14662,7 +14545,7 @@ class NecroticHive extends Enemy {
         if (this.drones.length >= this.maxDrones) return;
         const drone = new DungeonDrone(this);
         this.drones.push(drone);
-        enemies.push(drone);
+        GameContext.enemies.push(drone);
     }
 
     updateDrones(dtFactor) {
@@ -14689,21 +14572,21 @@ class NecroticHive extends Enemy {
         spawnLargeExplosion(this.pos.x, this.pos.y, 3.5);
         spawnParticles(this.pos.x, this.pos.y, 120, '#f80');
         playSound('base_explode');
-        shakeMagnitude = Math.max(shakeMagnitude, 22);
-        shakeTimer = Math.max(shakeTimer, 24);
+        GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 22);
+        GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 24);
 
         // Rewards
         for (let i = 0; i < 16; i++) {
-            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
+            GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
         }
         for (let i = 0; i < 6; i++) {
-            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
+            GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
         }
-        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+        GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
-        bossActive = false;
-        if (necroticHive === this) necroticHive = null;
-        if (boss === this) boss = null;
+        GameContext.bossActive = false;
+        if (GameContext.necroticHive === this) GameContext.necroticHive = null;
+        if (GameContext.boss === this) GameContext.boss = null;
 
         showOverlayMessage("NECROTIC HIVE DESTROYED", '#f80', 3000);
         if (musicEnabled) setMusicMode('normal');
@@ -14783,8 +14666,8 @@ class CerebralPsion extends Enemy {
 
         const angle = Math.random() * Math.PI * 2;
         const dist = 2800;
-        this.pos.x = player.pos.x + Math.cos(angle) * dist;
-        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.pos.x = GameContext.player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = GameContext.player.pos.y + Math.sin(angle) * dist;
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
 
@@ -14837,8 +14720,8 @@ class CerebralPsion extends Enemy {
             this.gunboatRange = this.baseGunboatRange + 350;
         } else {
             // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
+            const dx = GameContext.player.pos.x - this.pos.x;
+            const dy = GameContext.player.pos.y - this.pos.y;
             const dist = Math.hypot(dx, dy);
 
             if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
@@ -14893,17 +14776,17 @@ class CerebralPsion extends Enemy {
     }
 
     runPhaseAttacks() {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
-        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const aim = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
         if (this.phaseName === 'TELEPORT_STRIKE') {
             if (this.phaseTick % 40 === 0) {
                 // Teleport near player
                 const teleportDist = 500;
                 const a = Math.random() * Math.PI * 2;
-                this.pos.x = player.pos.x + Math.cos(a) * teleportDist;
-                this.pos.y = player.pos.y + Math.sin(a) * teleportDist;
+                this.pos.x = GameContext.player.pos.x + Math.cos(a) * teleportDist;
+                this.pos.y = GameContext.player.pos.y + Math.sin(a) * teleportDist;
                 this.prevPos.x = this.pos.x;
                 this.prevPos.y = this.pos.y;
                 spawnParticles(this.pos.x, this.pos.y, 20, '#f0f');
@@ -14918,14 +14801,14 @@ class CerebralPsion extends Enemy {
                     const a = aim - 0.6 + (i / 11) * 1.2;
                     const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 8, 4, '#f6f');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('shotgun');
             }
         } else if (this.phaseName === 'PSYCHIC_FIELD') {
             if (this.phaseTick % 60 === 0) {
                 // Homing missiles
-                guidedMissiles.push(new FlagshipGuidedMissile(this));
+                GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
                 playSound('heavy_shoot');
             }
             // Psychic field - distorts player controls (visual only)
@@ -14941,7 +14824,7 @@ class CerebralPsion extends Enemy {
                 for (let i = -2; i <= 2; i++) {
                     const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, true, 1, 10, 3, '#f0f');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('rapid_shoot');
             }
@@ -14950,25 +14833,25 @@ class CerebralPsion extends Enemy {
                 // Radial shockwave
                 spawnParticles(this.pos.x, this.pos.y, 15, '#f0f');
                 // Push player away
-                if (player && !player.dead) {
-                    const dx = player.pos.x - this.pos.x;
-                    const dy = player.pos.y - this.pos.y;
+                if (GameContext.player && !GameContext.player.dead) {
+                    const dx = GameContext.player.pos.x - this.pos.x;
+                    const dy = GameContext.player.pos.y - this.pos.y;
                     const dist = Math.hypot(dx, dy);
                     if (dist < 800 && dist > 0) {
                         const pushForce = 15;
-                        player.vel.x += (dx / dist) * pushForce;
-                        player.vel.y += (dy / dist) * pushForce;
+                        GameContext.player.vel.x += (dx / dist) * pushForce;
+                        GameContext.player.vel.y += (dy / dist) * pushForce;
                     }
                 }
             }
             // Tractor beam effect (pull player in)
-            if (this.phaseTick % 5 === 0 && player && !player.dead) {
-                const dx = this.pos.x - player.pos.x;
-                const dy = this.pos.y - player.pos.y;
+            if (this.phaseTick % 5 === 0 && GameContext.player && !GameContext.player.dead) {
+                const dx = this.pos.x - GameContext.player.pos.x;
+                const dy = this.pos.y - GameContext.player.pos.y;
                 const dist = Math.hypot(dx, dy);
                 if (dist < 1000 && dist > 0) {
-                    player.vel.x += (dx / dist) * 0.5;
-                    player.vel.y += (dy / dist) * 0.5;
+                    GameContext.player.vel.x += (dx / dist) * 0.5;
+                    GameContext.player.vel.y += (dy / dist) * 0.5;
                 }
             }
         } else if (this.phaseName === 'PSIONIC_STORM') {
@@ -14976,8 +14859,8 @@ class CerebralPsion extends Enemy {
                 // Teleport randomly
                 const teleportDist = 600 + Math.random() * 400;
                 const a = Math.random() * Math.PI * 2;
-                this.pos.x = player.pos.x + Math.cos(a) * teleportDist;
-                this.pos.y = player.pos.y + Math.sin(a) * teleportDist;
+                this.pos.x = GameContext.player.pos.x + Math.cos(a) * teleportDist;
+                this.pos.y = GameContext.player.pos.y + Math.sin(a) * teleportDist;
                 this.prevPos.x = this.pos.x;
                 this.prevPos.y = this.pos.y;
             }
@@ -14985,7 +14868,7 @@ class CerebralPsion extends Enemy {
                 // All attacks rapid fire
                 const b = new Bullet(this.pos.x, this.pos.y, aim, true, 1, 12, 3, '#f0f');
                 b.owner = this;
-                bullets.push(b);
+                GameContext.bullets.push(b);
                 playSound('rapid_shoot');
             }
         }
@@ -15003,8 +14886,8 @@ class CerebralPsion extends Enemy {
     teleport() {
         const dist = 400 + Math.random() * 600;
         const angle = Math.random() * Math.PI * 2;
-        this.pos.x = player.pos.x + Math.cos(angle) * dist;
-        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.pos.x = GameContext.player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = GameContext.player.pos.y + Math.sin(angle) * dist;
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
         this.teleportCooldown = 90;
@@ -15037,20 +14920,20 @@ class CerebralPsion extends Enemy {
         spawnLargeExplosion(this.pos.x, this.pos.y, 3.5);
         spawnParticles(this.pos.x, this.pos.y, 120, '#f0f');
         playSound('base_explode');
-        shakeMagnitude = Math.max(shakeMagnitude, 22);
-        shakeTimer = Math.max(shakeTimer, 24);
+        GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 22);
+        GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 24);
 
         for (let i = 0; i < 16; i++) {
-            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
+            GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
         }
         for (let i = 0; i < 6; i++) {
-            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
+            GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
         }
-        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+        GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
-        bossActive = false;
-        if (cerebralPsion === this) cerebralPsion = null;
-        if (boss === this) boss = null;
+        GameContext.bossActive = false;
+        if (GameContext.cerebralPsion === this) GameContext.cerebralPsion = null;
+        if (GameContext.boss === this) GameContext.boss = null;
 
         showOverlayMessage("CEREBRAL PSION DESTROYED", '#f0f', 3000);
         if (musicEnabled) setMusicMode('normal');
@@ -15114,8 +14997,8 @@ class Fleshforge extends Enemy {
 
         const angle = Math.random() * Math.PI * 2;
         const dist = 2800;
-        this.pos.x = player.pos.x + Math.cos(angle) * dist;
-        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.pos.x = GameContext.player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = GameContext.player.pos.y + Math.sin(angle) * dist;
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
 
@@ -15169,8 +15052,8 @@ class Fleshforge extends Enemy {
             this.gunboatRange = this.baseGunboatRange + 350;
         } else {
             // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
+            const dx = GameContext.player.pos.x - this.pos.x;
+            const dy = GameContext.player.pos.y - this.pos.y;
             const dist = Math.hypot(dx, dy);
 
             if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
@@ -15232,9 +15115,9 @@ class Fleshforge extends Enemy {
     }
 
     runPhaseAttacks() {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
-        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const aim = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
         if (this.phaseName === 'FORGE_ACTIVATE') {
             if (this.phaseTick % 20 === 0) {
@@ -15246,7 +15129,7 @@ class Fleshforge extends Enemy {
                         const wy = this.pos.y + Math.sin(this.angle + chamber.angle) * chamber.dist * 7;
                         const b = new Bullet(wx, wy, aim, true, 2, 11, 4, '#0f0');
                         b.owner = this;
-                        bullets.push(b);
+                        GameContext.bullets.push(b);
                     }
                 }
                 playSound('shoot');
@@ -15262,7 +15145,7 @@ class Fleshforge extends Enemy {
                 // Cannon fire
                 const b = new Bullet(this.pos.x, this.pos.y, aim, true, 2, 12, 4, '#0f0');
                 b.owner = this;
-                bullets.push(b);
+                GameContext.bullets.push(b);
                 playSound('heavy_shoot');
             }
         } else if (this.phaseName === 'ASSEMBLY_LINE') {
@@ -15271,7 +15154,7 @@ class Fleshforge extends Enemy {
                 if (typeof ClusterBomb !== 'undefined') {
                     const bomb = new ClusterBomb(this.pos.x, this.pos.y, aim, this);
                     bomb.damage = 3;
-                    bullets.push(bomb);
+                    GameContext.bullets.push(bomb);
                 }
                 playSound('heavy_shoot');
             }
@@ -15280,7 +15163,7 @@ class Fleshforge extends Enemy {
                 for (let i = -3; i <= 3; i++) {
                     const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, true, 1, 9, 3, '#0f0');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('rapid_shoot');
             }
@@ -15289,7 +15172,7 @@ class Fleshforge extends Enemy {
                 // Rapid fire all weapons
                 const b = new Bullet(this.pos.x, this.pos.y, aim + (Math.random() - 0.5) * 0.3, true, 2, 14, 3, '#0f0');
                 b.owner = this;
-                bullets.push(b);
+                GameContext.bullets.push(b);
                 playSound('rapid_shoot');
             }
             if (this.phaseTick % 40 === 0) {
@@ -15298,7 +15181,7 @@ class Fleshforge extends Enemy {
                     const a = (Math.PI * 2 / 16) * i;
                     const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 9, 4, '#0f0');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('shotgun');
             }
@@ -15314,20 +15197,20 @@ class Fleshforge extends Enemy {
         spawnLargeExplosion(this.pos.x, this.pos.y, 4.0);
         spawnParticles(this.pos.x, this.pos.y, 140, '#0f0');
         playSound('base_explode');
-        shakeMagnitude = Math.max(shakeMagnitude, 24);
-        shakeTimer = Math.max(shakeTimer, 26);
+        GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 24);
+        GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 26);
 
         for (let i = 0; i < 18; i++) {
-            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
+            GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
         }
         for (let i = 0; i < 7; i++) {
-            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
+            GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
         }
-        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+        GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
-        bossActive = false;
-        if (fleshforge === this) fleshforge = null;
-        if (boss === this) boss = null;
+        GameContext.bossActive = false;
+        if (GameContext.fleshforge === this) GameContext.fleshforge = null;
+        if (GameContext.boss === this) GameContext.boss = null;
 
         showOverlayMessage("FLESHFORGE DESTROYED", '#0f0', 3000);
         if (musicEnabled) setMusicMode('normal');
@@ -15390,8 +15273,8 @@ class VortexMatriarch extends Enemy {
 
         const angle = Math.random() * Math.PI * 2;
         const dist = 2800;
-        this.pos.x = player.pos.x + Math.cos(angle) * dist;
-        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.pos.x = GameContext.player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = GameContext.player.pos.y + Math.sin(angle) * dist;
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
 
@@ -15437,8 +15320,8 @@ class VortexMatriarch extends Enemy {
             this.gunboatRange = this.baseGunboatRange + 350;
         } else {
             // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
+            const dx = GameContext.player.pos.x - this.pos.x;
+            const dy = GameContext.player.pos.y - this.pos.y;
             const dist = Math.hypot(dx, dy);
 
             if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
@@ -15493,9 +15376,9 @@ class VortexMatriarch extends Enemy {
     }
 
     runPhaseAttacks() {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
-        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const aim = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
         if (this.phaseName === 'GRAVITY_WELL') {
             if (this.phaseTick % 50 === 0 && this.gravityWellCooldown <= 0) {
@@ -15513,7 +15396,7 @@ class VortexMatriarch extends Enemy {
                     const a = (Math.PI * 2 / 14) * i;
                     const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 9, 4, '#0af');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('shotgun');
             }
@@ -15525,18 +15408,18 @@ class VortexMatriarch extends Enemy {
                     const d = 600 + Math.random() * 300;
                     const e = new Enemy('defender', { x: this.pos.x + Math.cos(a) * d, y: this.pos.y + Math.sin(a) * d });
                     e.despawnImmune = true;
-                    enemies.push(e);
+                    GameContext.enemies.push(e);
                 }
                 showOverlayMessage("DEFENDERS DEPLOYED", '#0af', 1200);
             }
             // Tractor beam pull
-            if (this.phaseTick % 5 === 0 && player && !player.dead) {
-                const dx = this.pos.x - player.pos.x;
-                const dy = this.pos.y - player.pos.y;
+            if (this.phaseTick % 5 === 0 && GameContext.player && !GameContext.player.dead) {
+                const dx = this.pos.x - GameContext.player.pos.x;
+                const dy = this.pos.y - GameContext.player.pos.y;
                 const dist = Math.hypot(dx, dy);
                 if (dist < 1200 && dist > 0) {
-                    player.vel.x += (dx / dist) * 0.6;
-                    player.vel.y += (dy / dist) * 0.6;
+                    GameContext.player.vel.x += (dx / dist) * 0.6;
+                    GameContext.player.vel.y += (dy / dist) * 0.6;
                 }
             }
         } else if (this.phaseName === 'REFLECTION') {
@@ -15551,14 +15434,14 @@ class VortexMatriarch extends Enemy {
                 // Minefield
                 for (let i = 0; i < 5; i++) {
                     const a = (Math.PI * 2 / 5) * i;
-                    bossBombs.push(new CruiserMineBomb(this, a, 700, 2, this.radius * 1.5));
+                    GameContext.bossBombs.push(new CruiserMineBomb(this, a, 700, 2, this.radius * 1.5));
                 }
                 playSound('heavy_shoot');
             }
         } else if (this.phaseName === 'ORBITAL_BOMBARDMENT') {
             if (this.phaseTick % 35 === 0) {
                 // Guided missiles
-                guidedMissiles.push(new FlagshipGuidedMissile(this));
+                GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
                 playSound('heavy_shoot');
             }
             if (this.phaseTick % 25 === 0) {
@@ -15566,20 +15449,20 @@ class VortexMatriarch extends Enemy {
                 for (let i = -2; i <= 2; i++) {
                     const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, true, 1, 11, 4, '#0af');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('shoot');
             }
         } else if (this.phaseName === 'SINGULARITY') {
             if (this.phaseTick % 15 === 0) {
                 // Massive gravity pull
-                if (player && !player.dead) {
-                    const dx = this.pos.x - player.pos.x;
-                    const dy = this.pos.y - player.pos.y;
+                if (GameContext.player && !GameContext.player.dead) {
+                    const dx = this.pos.x - GameContext.player.pos.x;
+                    const dy = this.pos.y - GameContext.player.pos.y;
                     const dist = Math.hypot(dx, dy);
                     if (dist < 1500 && dist > 0) {
-                        player.vel.x += (dx / dist) * 1.5;
-                        player.vel.y += (dy / dist) * 1.5;
+                        GameContext.player.vel.x += (dx / dist) * 1.5;
+                        GameContext.player.vel.y += (dy / dist) * 1.5;
                     }
                 }
                 spawnParticles(this.pos.x, this.pos.y, 8, '#0af');
@@ -15590,7 +15473,7 @@ class VortexMatriarch extends Enemy {
                     const a = (Math.PI * 2 / 20) * i;
                     const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 10, 4, '#0cf');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('shotgun');
             }
@@ -15610,10 +15493,10 @@ class VortexMatriarch extends Enemy {
         };
         // Apply damage after pull duration
         setTimeout(() => {
-            if (player && !player.dead) {
-                const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+            if (GameContext.player && !GameContext.player.dead) {
+                const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
                 if (dist < damageWell.pullRadius) {
-                    player.hp = Math.max(0, player.hp - damageWell.damage);
+                    GameContext.player.hp = Math.max(0, GameContext.player.hp - damageWell.damage);
                     showOverlayMessage("EVENT HORIZON DAMAGE!", '#f00', 1500);
                 }
             }
@@ -15633,20 +15516,20 @@ class VortexMatriarch extends Enemy {
         spawnLargeExplosion(this.pos.x, this.pos.y, 3.8);
         spawnParticles(this.pos.x, this.pos.y, 130, '#0af');
         playSound('base_explode');
-        shakeMagnitude = Math.max(shakeMagnitude, 23);
-        shakeTimer = Math.max(shakeTimer, 25);
+        GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 23);
+        GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 25);
 
         for (let i = 0; i < 17; i++) {
-            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
+            GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
         }
         for (let i = 0; i < 7; i++) {
-            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
+            GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
         }
-        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+        GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
-        bossActive = false;
-        if (vortexMatriarch === this) vortexMatriarch = null;
-        if (boss === this) boss = null;
+        GameContext.bossActive = false;
+        if (GameContext.vortexMatriarch === this) GameContext.vortexMatriarch = null;
+        if (GameContext.boss === this) GameContext.boss = null;
 
         showOverlayMessage("VORTEX MATRIARCH DESTROYED", '#0af', 3000);
         if (musicEnabled) setMusicMode('normal');
@@ -15708,8 +15591,8 @@ class ChitinusPrime extends Enemy {
 
         const angle = Math.random() * Math.PI * 2;
         const dist = 2800;
-        this.pos.x = player.pos.x + Math.cos(angle) * dist;
-        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.pos.x = GameContext.player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = GameContext.player.pos.y + Math.sin(angle) * dist;
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
 
@@ -15758,8 +15641,8 @@ class ChitinusPrime extends Enemy {
             this.gunboatRange = this.baseGunboatRange + 350;
         } else {
             // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
+            const dx = GameContext.player.pos.x - this.pos.x;
+            const dy = GameContext.player.pos.y - this.pos.y;
             const dist = Math.hypot(dx, dy);
 
             if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
@@ -15811,9 +15694,9 @@ class ChitinusPrime extends Enemy {
     }
 
     runPhaseAttacks() {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
-        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const aim = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
         if (this.phaseName === 'ARMED_ASSAULT') {
             if (this.phaseTick % 12 === 0) {
@@ -15821,7 +15704,7 @@ class ChitinusPrime extends Enemy {
                 for (let i = -1; i <= 1; i++) {
                     const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.12, true, 2, 13, 4, '#ff0');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('shoot');
             }
@@ -15831,7 +15714,7 @@ class ChitinusPrime extends Enemy {
                     const a = aim - 0.5 + (i / 7) * 1.0;
                     const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 15, 3, '#fc0');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('rapid_shoot');
             }
@@ -15843,7 +15726,7 @@ class ChitinusPrime extends Enemy {
                         const a = aim - 0.6 + (i / 4) * 1.2;
                         const bomb = new ClusterBomb(this.pos.x, this.pos.y, a, this);
                         bomb.damage = 2;
-                        bullets.push(bomb);
+                        GameContext.bullets.push(bomb);
                     }
                 }
                 playSound('heavy_shoot');
@@ -15852,7 +15735,7 @@ class ChitinusPrime extends Enemy {
                 // Minefield
                 for (let i = 0; i < 6; i++) {
                     const a = (Math.PI * 2 / 6) * i;
-                    bossBombs.push(new CruiserMineBomb(this, a, 650, 2, this.radius * 1.4));
+                    GameContext.bossBombs.push(new CruiserMineBomb(this, a, 650, 2, this.radius * 1.4));
                 }
                 playSound('heavy_shoot');
             }
@@ -15865,7 +15748,7 @@ class ChitinusPrime extends Enemy {
                     const a = aim - 1.0 + (i / 19) * 2.0;
                     const b = new Bullet(this.pos.x, this.pos.y, a, true, 1, 6, 4, '#ff0');
                     b.owner = this;
-                    bullets.push(b);
+                    GameContext.bullets.push(b);
                 }
                 playSound('shotgun');
             }
@@ -15874,7 +15757,7 @@ class ChitinusPrime extends Enemy {
                 // Rapid fire all weapons
                 const b = new Bullet(this.pos.x, this.pos.y, aim + (Math.random() - 0.5) * 0.2, true, 2, 14, 3, '#f80');
                 b.owner = this;
-                bullets.push(b);
+                GameContext.bullets.push(b);
                 playSound('rapid_shoot');
             }
             if (this.phaseTick % 60 === 0) {
@@ -15924,7 +15807,7 @@ class ChitinusPrime extends Enemy {
             const b = new Bullet(this.pos.x, this.pos.y, a, true, damagePerProjectile, 10, 4, '#f00');
             b.owner = this;
             b.life = 120;
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
         playSound('shotgun');
         this.absorbedDamage = 0;
@@ -15940,20 +15823,20 @@ class ChitinusPrime extends Enemy {
         spawnLargeExplosion(this.pos.x, this.pos.y, 4.5);
         spawnParticles(this.pos.x, this.pos.y, 150, '#ff0');
         playSound('base_explode');
-        shakeMagnitude = Math.max(shakeMagnitude, 25);
-        shakeTimer = Math.max(shakeTimer, 27);
+        GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 25);
+        GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 27);
 
         for (let i = 0; i < 20; i++) {
-            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
+            GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
         }
         for (let i = 0; i < 8; i++) {
-            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
+            GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
         }
-        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+        GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
-        bossActive = false;
-        if (chitinusPrime === this) chitinusPrime = null;
-        if (boss === this) boss = null;
+        GameContext.bossActive = false;
+        if (GameContext.chitinusPrime === this) GameContext.chitinusPrime = null;
+        if (GameContext.boss === this) GameContext.boss = null;
 
         showOverlayMessage("CHITINUS PRIME DESTROYED", '#ff0', 3000);
         if (musicEnabled) setMusicMode('normal');
@@ -16016,8 +15899,8 @@ class PsyLich extends Enemy {
 
         const angle = Math.random() * Math.PI * 2;
         const dist = 2800;
-        this.pos.x = player.pos.x + Math.cos(angle) * dist;
-        this.pos.y = player.pos.y + Math.sin(angle) * dist;
+        this.pos.x = GameContext.player.pos.x + Math.cos(angle) * dist;
+        this.pos.y = GameContext.player.pos.y + Math.sin(angle) * dist;
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
 
@@ -16065,8 +15948,8 @@ class PsyLich extends Enemy {
             this.gunboatRange = this.baseGunboatRange + 350;
         } else {
             // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
+            const dx = GameContext.player.pos.x - this.pos.x;
+            const dy = GameContext.player.pos.y - this.pos.y;
             const dist = Math.hypot(dx, dy);
 
             if (typeof this.moveModeTimer !== 'number') this.moveModeTimer = 0;
@@ -16124,9 +16007,9 @@ class PsyLich extends Enemy {
     }
 
     runPhaseAttacks() {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
-        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const aim = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
         if (this.phaseName === 'PHASE_IN') {
             if (this.phaseTick === 1) {
@@ -16137,7 +16020,7 @@ class PsyLich extends Enemy {
                 // Activate soul drain
                 if (!this.soulDrainActive) {
                     this.soulDrainTether = new SoulDrainTether(this);
-                    enemies.push(this.soulDrainTether);
+                    GameContext.enemies.push(this.soulDrainTether);
                     this.soulDrainActive = true;
                 }
             }
@@ -16151,8 +16034,8 @@ class PsyLich extends Enemy {
                 // Teleport around player
                 const dist = 300;
                 const a = Math.random() * Math.PI * 2;
-                this.pos.x = player.pos.x + Math.cos(a) * dist;
-                this.pos.y = player.pos.y + Math.sin(a) * dist;
+                this.pos.x = GameContext.player.pos.x + Math.cos(a) * dist;
+                this.pos.y = GameContext.player.pos.y + Math.sin(a) * dist;
                 this.prevPos.x = this.pos.x;
                 this.prevPos.y = this.pos.y;
                 spawnParticles(this.pos.x, this.pos.y, 15, '#a0f');
@@ -16161,13 +16044,13 @@ class PsyLich extends Enemy {
                 // Drop bio-pods while intangible
                 for (let i = 0; i < 6; i++) {
                     const a = Math.random() * Math.PI * 2;
-                    warpBioPods.push(new WarpBioPod(this.pos.x, this.pos.y, a, this));
+                    GameContext.warpBioPods.push(new WarpBioPod(this.pos.x, this.pos.y, a, this));
                 }
             }
         } else if (this.phaseName === 'PSYCHIC_ASSAULT') {
             if (this.phaseTick % 25 === 0) {
                 // Homing missiles
-                guidedMissiles.push(new FlagshipGuidedMissile(this));
+                GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
                 playSound('heavy_shoot');
             }
             if (this.phaseTick % 15 === 0) {
@@ -16179,7 +16062,7 @@ class PsyLich extends Enemy {
                 // Massive soul drain
                 if (!this.soulDrainActive) {
                     this.soulDrainTether = new SoulDrainTether(this);
-                    enemies.push(this.soulDrainTether);
+                    GameContext.enemies.push(this.soulDrainTether);
                     this.soulDrainActive = true;
                     // Extend duration for massive drain
                     if (this.soulDrainTether) {
@@ -16193,7 +16076,7 @@ class PsyLich extends Enemy {
                 // Rapid fire
                 const b = new Bullet(this.pos.x, this.pos.y, aim, true, 1, 12, 3, '#f0a');
                 b.owner = this;
-                bullets.push(b);
+                GameContext.bullets.push(b);
                 playSound('rapid_shoot');
             }
         } else if (this.phaseName === 'DEATH_THROES') {
@@ -16211,14 +16094,14 @@ class PsyLich extends Enemy {
     triggerDeathOrRespawn() {
         // Create shockwave
         spawnParticles(this.pos.x, this.pos.y, 30, '#a0f');
-        if (player && !player.dead) {
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
+        if (GameContext.player && !GameContext.player.dead) {
+            const dx = GameContext.player.pos.x - this.pos.x;
+            const dy = GameContext.player.pos.y - this.pos.y;
             const dist = Math.hypot(dx, dy);
             if (dist < 800 && dist > 0) {
                 const pushForce = 20;
-                player.vel.x += (dx / dist) * pushForce;
-                player.vel.y += (dy / dist) * pushForce;
+                GameContext.player.vel.x += (dx / dist) * pushForce;
+                GameContext.player.vel.y += (dy / dist) * pushForce;
             }
         }
 
@@ -16236,8 +16119,8 @@ class PsyLich extends Enemy {
             // Teleport to new position
             const dist = 2000 + Math.random() * 800;
             const angle = Math.random() * Math.PI * 2;
-            this.pos.x = player.pos.x + Math.cos(angle) * dist;
-            this.pos.y = player.pos.y + Math.sin(angle) * dist;
+            this.pos.x = GameContext.player.pos.x + Math.cos(angle) * dist;
+            this.pos.y = GameContext.player.pos.y + Math.sin(angle) * dist;
             this.prevPos.x = this.pos.x;
             this.prevPos.y = this.pos.y;
 
@@ -16311,20 +16194,20 @@ class PsyLich extends Enemy {
         spawnLargeExplosion(this.pos.x, this.pos.y, 4.0);
         spawnParticles(this.pos.x, this.pos.y, 150, '#a0f');
         playSound('base_explode');
-        shakeMagnitude = Math.max(shakeMagnitude, 26);
-        shakeTimer = Math.max(shakeTimer, 28);
+        GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 26);
+        GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 28);
 
         for (let i = 0; i < 22; i++) {
-            coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
+            GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
         }
         for (let i = 0; i < 10; i++) {
-            nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
+            GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
         }
-        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+        GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
-        bossActive = false;
-        if (psyLich === this) psyLich = null;
-        if (boss === this) boss = null;
+        GameContext.bossActive = false;
+        if (GameContext.psyLich === this) GameContext.psyLich = null;
+        if (GameContext.boss === this) GameContext.boss = null;
 
         showOverlayMessage("PSYLICH FOREVER VANQUISHED", '#a0f', 4000);
         if (musicEnabled) setMusicMode('normal');
@@ -16355,8 +16238,8 @@ class PsyLich extends Enemy {
             ctx.lineWidth = 4;
             ctx.beginPath();
             ctx.moveTo(this.pos.x, this.pos.y);
-            if (player && !player.dead) {
-                ctx.lineTo(player.pos.x, player.pos.y);
+            if (GameContext.player && !GameContext.player.dead) {
+                ctx.lineTo(GameContext.player.pos.x, GameContext.player.pos.y);
             }
             ctx.stroke();
             ctx.restore();
@@ -16370,7 +16253,7 @@ class SpaceStation extends Entity {
     constructor() {
         const angle = Math.random() * Math.PI * 2;
         const dist = 6000; // Spawn far away from player
-        super(player.pos.x + Math.cos(angle) * dist, player.pos.y + Math.sin(angle) * dist);
+        super(GameContext.player.pos.x + Math.cos(angle) * dist, GameContext.player.pos.y + Math.sin(angle) * dist);
         this.fixedPos = { x: this.pos.x, y: this.pos.y }; // Lock position forever
 
         const names = ["OMEGA", "NOVA", "TITAN", "ORION", "PHOENIX", "AURORA", "ASTRA", "ZEUS", "HELIOS", "HYPERION"];
@@ -16433,12 +16316,12 @@ class SpaceStation extends Entity {
         }
 
         // Arena lock activation
-        if (player && !player.dead && !stationArena.active) {
-            const pdx = player.pos.x - this.pos.x;
-            const pdy = player.pos.y - this.pos.y;
+        if (GameContext.player && !GameContext.player.dead && !GameContext.stationArena.active) {
+            const pdx = GameContext.player.pos.x - this.pos.x;
+            const pdy = GameContext.player.pos.y - this.pos.y;
             const pdist = Math.hypot(pdx, pdy);
-            if (pdist < stationArena.radius) {
-                stationArena.active = true;
+            if (pdist < GameContext.stationArena.radius) {
+                GameContext.stationArena.active = true;
                 showOverlayMessage("STATION DEFENSE FIELD - YOU ARE TRAPPED", '#f0f', 5000, 2);
                 playSound('boss_spawn');
                 if (typeof musicEnabled !== 'undefined' && musicEnabled) setMusicMode('cruiser');
@@ -16450,9 +16333,9 @@ class SpaceStation extends Entity {
         this.innerShieldRotation -= 0.009 * dtFactor;
 
         // Check if player is within range to engage
-        if (player && !player.dead) {
-            const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-            const aimToPlayer = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        if (GameContext.player && !GameContext.player.dead) {
+            const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
+            const aimToPlayer = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
             if (dist < 2800) { // Engagement range reduced by 20%
                 this.turretReload -= deltaTime; // deltaTime is in ms
@@ -16470,37 +16353,37 @@ class SpaceStation extends Entity {
 
                 // Telegraphed heavy laser (quick blast).
                 const applyBeamDamageToPlayer = (amount) => {
-                    if (!player || player.dead) return;
-                    if (player.invulnerable > 0) return;
+                    if (!GameContext.player || GameContext.player.dead) return;
+                    if (GameContext.player.invulnerable > 0) return;
                     let remaining = Math.max(0, Math.ceil(amount));
                     // Outer shield (if any): each segment is 0/1.
-                    if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
-                        for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
-                            if (player.outerShieldSegments[i] > 0) {
-                                player.outerShieldSegments[i] = 0;
+                    if (GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.length > 0) {
+                        for (let i = 0; i < GameContext.player.outerShieldSegments.length && remaining > 0; i++) {
+                            if (GameContext.player.outerShieldSegments[i] > 0) {
+                                GameContext.player.outerShieldSegments[i] = 0;
                                 remaining -= 1;
                             }
                         }
                     }
                     // Inner shield: each segment can be 0..2.
-                    if (player.shieldSegments && player.shieldSegments.length > 0) {
-                        for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
-                            const absorb = Math.min(remaining, player.shieldSegments[i]);
-                            player.shieldSegments[i] -= absorb;
+                    if (GameContext.player.shieldSegments && GameContext.player.shieldSegments.length > 0) {
+                        for (let i = 0; i < GameContext.player.shieldSegments.length && remaining > 0; i++) {
+                            const absorb = Math.min(remaining, GameContext.player.shieldSegments[i]);
+                            GameContext.player.shieldSegments[i] -= absorb;
                             remaining -= absorb;
                         }
                     }
                     if (remaining > 0) {
-                        player.hp -= remaining;
-                        spawnParticles(player.pos.x, player.pos.y, 14, '#f00');
+                        GameContext.player.hp -= remaining;
+                        spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 14, '#f00');
                         playSound('hit');
                         updateHealthUI();
-                        if (player.hp <= 0) killPlayer();
+                        if (GameContext.player.hp <= 0) killPlayer();
                     } else {
-                        spawnParticles(player.pos.x, player.pos.y, 10, '#ff0');
+                        spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#ff0');
                         playSound('shield_hit');
                     }
-                    player.invulnerable = 11;
+                    GameContext.player.invulnerable = 11;
                 };
 
                 if (this.laserFire > 0) {
@@ -16508,15 +16391,15 @@ class SpaceStation extends Entity {
                     if (!this.laserHitThisShot) {
                         const ex = this.pos.x + Math.cos(this.laserAngle) * this.laserLen;
                         const ey = this.pos.y + Math.sin(this.laserAngle) * this.laserLen;
-                        const cp = closestPointOnSegment(player.pos.x, player.pos.y, this.pos.x, this.pos.y, ex, ey);
-                        const d = Math.hypot(player.pos.x - cp.x, player.pos.y - cp.y);
-                        const hitDist = (this.laserWidth * 0.5) + (player.radius * 0.55);
+                        const cp = closestPointOnSegment(GameContext.player.pos.x, GameContext.player.pos.y, this.pos.x, this.pos.y, ex, ey);
+                        const d = Math.hypot(GameContext.player.pos.x - cp.x, GameContext.player.pos.y - cp.y);
+                        const hitDist = (this.laserWidth * 0.5) + (GameContext.player.radius * 0.55);
                         if (d <= hitDist) {
                             this.laserHitThisShot = true;
                             const dmg = 8;
                             applyBeamDamageToPlayer(dmg);
-                            shakeMagnitude = Math.max(shakeMagnitude, 14);
-                            shakeTimer = Math.max(shakeTimer, 14);
+                            GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 14);
+                            GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 14);
                         }
                     }
                 } else if (this.laserDelay > 0) {
@@ -16556,8 +16439,8 @@ class SpaceStation extends Entity {
 
     manageDefenders(deltaTime = 16.67) {
         let myDefenderCount = 0;
-        for (let i = 0; i < enemies.length; i++) {
-            const e = enemies[i];
+        for (let i = 0; i < GameContext.enemies.length; i++) {
+            const e = GameContext.enemies[i];
             if (e && !e.dead && e.assignedBase === this) myDefenderCount++;
         }
         if (myDefenderCount < 4) {
@@ -16566,7 +16449,7 @@ class SpaceStation extends Entity {
                 const d = this.radius + 70;
                 const sx = this.pos.x + Math.cos(angle) * d;
                 const sy = this.pos.y + Math.sin(angle) * d;
-                enemies.push(new Enemy('defender', { x: sx, y: sy }, this));
+                GameContext.enemies.push(new Enemy('defender', { x: sx, y: sy }, this));
                 spawnParticles(sx, sy, 15, '#0f0');
                 this.defenderSpawnTimer = 180; // Spawn every 3 seconds (60 FPS)
             } else {
@@ -16585,12 +16468,12 @@ class SpaceStation extends Entity {
             const ty = this.pos.y + Math.sin(angleOffset) * (this.radius * 0.75);
 
             // Aim at player
-            const angle = Math.atan2(player.pos.y - ty, player.pos.x - tx);
+            const angle = Math.atan2(GameContext.player.pos.y - ty, GameContext.player.pos.x - tx);
 
             // Single bullet per turret (radius 6 like gunboat bullets)
             const b = new Bullet(tx, ty, angle, true, 2, 14.96, 6, '#f80');
             b.owner = this;
-            bullets.push(b);
+            GameContext.bullets.push(b);
             spawnBarrelSmoke(tx, ty, angle);
         }
         playSound('rapid_shoot');
@@ -16608,7 +16491,7 @@ class SpaceStation extends Entity {
             const blastRadius = 350;
 
             const bomb = new CruiserMineBomb(this, angle, maxTravel, dmg, blastRadius);
-            bossBombs.push(bomb);
+            GameContext.bossBombs.push(bomb);
         }
         spawnParticles(this.pos.x, this.pos.y, 20, '#f00');
         playSound('boss_spawn');
@@ -16628,14 +16511,14 @@ class SpaceStation extends Entity {
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
         const arenaPulse = 0.5 + Math.sin(Date.now() * 0.008) * 0.3;
-        ctx.strokeStyle = stationArena.active ? `rgba(255,0,255,${0.5 + arenaPulse * 0.3})` : `rgba(255,255,0,${0.25 + arenaPulse * 0.15})`;
+        ctx.strokeStyle = GameContext.stationArena.active ? `rgba(255,0,255,${0.5 + arenaPulse * 0.3})` : `rgba(255,255,0,${0.25 + arenaPulse * 0.15})`;
         ctx.lineWidth = 12;
-        ctx.shadowBlur = stationArena.active ? 40 : 20;
-        ctx.shadowColor = stationArena.active ? '#f0f' : '#ff0';
+        ctx.shadowBlur = GameContext.stationArena.active ? 40 : 20;
+        ctx.shadowColor = GameContext.stationArena.active ? '#f0f' : '#ff0';
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.beginPath();
-        ctx.arc(0, 0, stationArena.radius, 0, Math.PI * 2);
+        ctx.arc(0, 0, GameContext.stationArena.radius, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
 
@@ -16650,7 +16533,7 @@ class SpaceStation extends Entity {
             const pct = charging ? (1 - (this.laserCharge / (this.laserChargeTotal || 1))) : 1;
             ctx.save();
             ctx.translate(this.pos.x, this.pos.y);
-            const z = currentZoom || ZOOM_LEVEL;
+            const z = GameContext.currentZoom || ZOOM_LEVEL;
             ctx.lineWidth = (this.laserWidth / z);
             if (charging || locking) {
                 ctx.setLineDash([12 / z, 10 / z]);
@@ -16702,7 +16585,7 @@ class SpaceStation extends Entity {
             const rPos = this.getRenderPos(renderAlpha);
             container.position.set(rPos.x, rPos.y);
 
-            const now = (typeof frameNow === 'number' && frameNow > 0) ? frameNow : Date.now();
+            const now = (typeof GameContext.frameNow === 'number' && GameContext.frameNow > 0) ? GameContext.frameNow : Date.now();
             const hullScale = (this.visualRadius && isFinite(this.visualRadius)) ? (this.visualRadius / 340) : 1;
             if (this._pixiHullSpr) this._pixiHullSpr.scale.set(hullScale);
 
@@ -16717,8 +16600,8 @@ class SpaceStation extends Entity {
                 const ty = Math.sin(angleOffset) * (this.radius * 0.75);
                 t.position.set(tx, ty);
                 let aim = angleOffset;
-                if (player && !player.dead) {
-                    aim = Math.atan2(player.pos.y - (this.pos.y + ty), player.pos.x - (this.pos.x + tx));
+                if (GameContext.player && !GameContext.player.dead) {
+                    aim = Math.atan2(GameContext.player.pos.y - (this.pos.y + ty), GameContext.player.pos.x - (this.pos.x + tx));
                 }
                 t.rotation = aim;
             }
@@ -16834,7 +16717,7 @@ class SpaceStation extends Entity {
 
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
-        const now = (typeof frameNow === 'number' && frameNow > 0) ? frameNow : Date.now();
+        const now = (typeof GameContext.frameNow === 'number' && GameContext.frameNow > 0) ? frameNow : Date.now();
 
         // --- 1. Rotating Outer Ring Structure ---
         ctx.save();
@@ -16932,8 +16815,8 @@ class SpaceStation extends Entity {
             ctx.save();
             ctx.translate(tx, ty);
             let aim = angleOffset;
-            if (player && !player.dead) {
-                aim = Math.atan2(player.pos.y - (this.pos.y + ty), player.pos.x - (this.pos.x + tx));
+            if (GameContext.player && !GameContext.player.dead) {
+                aim = Math.atan2(GameContext.player.pos.y - (this.pos.y + ty), GameContext.player.pos.x - (this.pos.x + tx));
             }
             ctx.rotate(aim);
 
@@ -17062,7 +16945,7 @@ class Destroyer extends Entity {
     constructor() {
         const angle = Math.random() * Math.PI * 2;
         const dist = 4000; // Spawn somewhat far from player
-        super(player.pos.x + Math.cos(angle) * dist, player.pos.y + Math.sin(angle) * dist);
+        super(GameContext.player.pos.x + Math.cos(angle) * dist, GameContext.player.pos.y + Math.sin(angle) * dist);
 
         this.displayName = "DESTROYER";
 
@@ -17195,10 +17078,10 @@ class Destroyer extends Entity {
         // Roaming movement - slowly move around the map, always moving forward
         this.roamTimer -= dtFactor;
 
-        const playerAlive = player && !player.dead;
-        const distToPlayer = playerAlive ? Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y) : 0;
+        const playerAlive = GameContext.player && !GameContext.player.dead;
+        const distToPlayer = playerAlive ? Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y) : 0;
         if (playerAlive && distToPlayer > this.chaseDistance) {
-            this.roamAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+            this.roamAngle = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
             this.turnSpeed = this.farTurnSpeed;
         } else {
             this.turnSpeed = this.baseTurnSpeed;
@@ -17285,7 +17168,7 @@ class Destroyer extends Entity {
                 if (phase >= 2) {
                     this.fireClusterBomb();
                 } else {
-                    guidedMissiles.push(new FlagshipGuidedMissile(this));
+                    GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
                 }
                 this.guidedMissileTimer = 2000;
             }
@@ -17302,24 +17185,24 @@ class Destroyer extends Entity {
         }
 
         if (this.tractorBeamActive && playerAlive) {
-            const dx = player.pos.x - this.pos.x;
-            const dy = player.pos.y - this.pos.y;
+            const dx = GameContext.player.pos.x - this.pos.x;
+            const dy = GameContext.player.pos.y - this.pos.y;
             const dist = Math.hypot(dx, dy);
 
             // If player is outside the beam radius, pull them back in
             if (dist > this.tractorBeamRadius) {
                 const angle = Math.atan2(dy, dx);
                 // Clamp position
-                player.pos.x = this.pos.x + Math.cos(angle) * (this.tractorBeamRadius - 5);
-                player.pos.y = this.pos.y + Math.sin(angle) * (this.tractorBeamRadius - 5);
+                GameContext.player.pos.x = this.pos.x + Math.cos(angle) * (this.tractorBeamRadius - 5);
+                GameContext.player.pos.y = this.pos.y + Math.sin(angle) * (this.tractorBeamRadius - 5);
 
                 // Kill outward velocity component to prevent glitchy movement against the wall
                 // Simple approach: dampen all velocity or just reflect? 
                 // Let's just dampen heavily if moving away
-                const dot = player.vel.x * Math.cos(angle) + player.vel.y * Math.sin(angle);
+                const dot = GameContext.player.vel.x * Math.cos(angle) + GameContext.player.vel.y * Math.sin(angle);
                 if (dot > 0) {
-                    player.vel.x *= 0.1;
-                    player.vel.y *= 0.1;
+                    GameContext.player.vel.x *= 0.1;
+                    GameContext.player.vel.y *= 0.1;
                 }
             }
         }
@@ -17330,7 +17213,7 @@ class Destroyer extends Entity {
     }
 
     fireTurrets() {
-        const baseAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const baseAngle = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
         const muzzle = this.visualRadius * 0.45;
         const tx = this.pos.x + Math.cos(baseAngle) * muzzle;
         const ty = this.pos.y + Math.sin(baseAngle) * muzzle;
@@ -17349,7 +17232,7 @@ class Destroyer extends Entity {
         for (const a of angles) {
             const b = new Bullet(tx, ty, a, true, 10, bulletSpeed, bulletRadius, '#f80');
             b.life = Math.round(b.life * 1.25);
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
         spawnBarrelSmoke(tx, ty, baseAngle);
         playSound('rapid_shoot');
@@ -17360,23 +17243,23 @@ class Destroyer extends Entity {
             const a = (Math.PI * 2 / n) * i;
             const b = new Bullet(this.pos.x, this.pos.y, a, true, dmg, speed, 6, color);
             b.life = 140;
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
         playSound('shotgun');
     }
 
     fireClusterBomb() {
-        const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const angle = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
         const bomb = new ClusterBomb(this.pos.x, this.pos.y, angle, this, 4, 350);
         // Add to bullets array for proper update/draw cycle
-        bullets.push(bomb);
+        GameContext.bullets.push(bomb);
         playSound('rapid_shoot');
     }
 
     spawnNapalmZone() {
         // Spawn napalm zone at player's current position
-        const zone = new NapalmZone(player.pos.x, player.pos.y, 180, 4500, 0.6);
-        napalmZones.push(zone);
+        const zone = new NapalmZone(GameContext.player.pos.x, GameContext.player.pos.y, 180, 4500, 0.6);
+        GameContext.napalmZones.push(zone);
     }
 
     takeHit(dmg = 1) {
@@ -17400,13 +17283,13 @@ class Destroyer extends Entity {
 
         // If tractor beam was active, delay the cruiser timer resume by 20s
         if (this.tractorBeamActive) {
-            cruiserTimerResumeAt = Date.now() + 20000;
+            GameContext.cruiserTimerResumeAt = Date.now() + 20000;
             showOverlayMessage("TRACTOR BEAM DOWN - SYSTEM REBOOTING (20s)", '#0ff', 4000);
         }
 
         // Drop 20 nuggets
         for (let i = 0; i < 20; i++) {
-            nuggets.push(new SpaceNugget(
+            GameContext.nuggets.push(new SpaceNugget(
                 this.pos.x + (Math.random() - 0.5) * 200,
                 this.pos.y + (Math.random() - 0.5) * 200,
                 1
@@ -17422,13 +17305,13 @@ class Destroyer extends Entity {
 
         spawnParticles(this.pos.x, this.pos.y, 80, '#0ff');
         playSound('base_explode');
-        shakeMagnitude = Math.max(shakeMagnitude, 18);
-        shakeTimer = Math.max(shakeTimer, 20);
+        GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 18);
+        GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 20);
         showOverlayMessage("DESTROYER DESTROYED - 20 NUGGETS DROPPED", '#ff0', 2000, 2);
 
         // Set respawn timer - spawn the OTHER destroyer type
-        currentDestroyerType = (currentDestroyerType === 1) ? 2 : 1;
-        nextDestroyerSpawnTime = Date.now() + 60000; // 1 minute
+        GameContext.currentDestroyerType = (GameContext.currentDestroyerType === 1) ? 2 : 1;
+        GameContext.nextDestroyerSpawnTime = Date.now() + 60000; // 1 minute
     }
 
     draw(ctx) {
@@ -17460,7 +17343,7 @@ class Destroyer extends Entity {
             container.position.set(rPos.x, rPos.y);
             container.rotation = this.angle || 0;
 
-            const now = (typeof frameNow === 'number' && frameNow > 0) ? frameNow : Date.now();
+            const now = (typeof GameContext.frameNow === 'number' && GameContext.frameNow > 0) ? GameContext.frameNow : Date.now();
             const hullScale = (this.visualRadius && isFinite(this.visualRadius)) ? (this.visualRadius / 340) : 1;
             if (this._pixiHullSpr) this._pixiHullSpr.scale.set(hullScale);
 
@@ -17663,7 +17546,7 @@ class Destroyer extends Entity {
                     pixiVectorLayer.addChild(debugGfx);
                 }
 
-                if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
+                if (typeof GameContext.DEBUG_COLLISION !== 'undefined' && GameContext.DEBUG_COLLISION) {
                     debugGfx.visible = true;
                     debugGfx.clear();
                     debugGfx.position.set(rPos.x, rPos.y);
@@ -17804,7 +17687,7 @@ class Destroyer2 extends Entity {
     constructor() {
         const angle = Math.random() * Math.PI * 2;
         const dist = 4000; // Spawn somewhat far from player
-        super(player.pos.x + Math.cos(angle) * dist, player.pos.y + Math.sin(angle) * dist);
+        super(GameContext.player.pos.x + Math.cos(angle) * dist, GameContext.player.pos.y + Math.sin(angle) * dist);
 
         this.displayName = "DESTROYER II";
 
@@ -17926,10 +17809,10 @@ class Destroyer2 extends Entity {
         // Roaming movement - slowly move around the map, always moving forward
         this.roamTimer -= dtFactor;
 
-        const playerAlive = player && !player.dead;
-        const distToPlayer = playerAlive ? Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y) : 0;
+        const playerAlive = GameContext.player && !GameContext.player.dead;
+        const distToPlayer = playerAlive ? Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y) : 0;
         if (playerAlive && distToPlayer > this.chaseDistance) {
-            this.roamAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+            this.roamAngle = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
             this.turnSpeed = this.farTurnSpeed;
         } else {
             this.turnSpeed = this.baseTurnSpeed;
@@ -18016,7 +17899,7 @@ class Destroyer2 extends Entity {
                 if (phase >= 2) {
                     this.fireClusterBomb();
                 } else {
-                    guidedMissiles.push(new Destroyer2GuidedMissile(this));
+                    GameContext.guidedMissiles.push(new Destroyer2GuidedMissile(this));
                 }
                 this.guidedMissileTimer = 2000;
             }
@@ -18031,12 +17914,12 @@ class Destroyer2 extends Entity {
         const tx = this.pos.x;
         const ty = this.pos.y;
         const bulletSpeed = 14.96;
-        const dx = player.pos.x - tx;
-        const dy = player.pos.y - ty;
+        const dx = GameContext.player.pos.x - tx;
+        const dy = GameContext.player.pos.y - ty;
         const dist = Math.hypot(dx, dy);
         const leadTime = Math.min(40, dist / bulletSpeed);
-        const leadX = player.pos.x + player.vel.x * leadTime;
-        const leadY = player.pos.y + player.vel.y * leadTime;
+        const leadX = GameContext.player.pos.x + GameContext.player.vel.x * leadTime;
+        const leadY = GameContext.player.pos.y + GameContext.player.vel.y * leadTime;
         const baseAngle = Math.atan2(leadY - ty, leadX - tx);
         const spread = 0.09;
         const angles = [baseAngle - spread, baseAngle, baseAngle + spread];
@@ -18046,7 +17929,7 @@ class Destroyer2 extends Entity {
             // Increase range by 25% (default life is ~60, so 1.25x range via life or direct property)
             // Assuming default Bullet life is roughly sufficient for screen range, we bump it up.
             b.life = Math.round(b.life * 1.25);
-            bullets.push(b);
+            GameContext.bullets.push(b);
             spawnBarrelSmoke(tx, ty, angle);
         }
         playSound('rapid_shoot');
@@ -18057,21 +17940,21 @@ class Destroyer2 extends Entity {
             const a = (Math.PI * 2 / n) * i;
             const b = new Bullet(this.pos.x, this.pos.y, a, true, dmg, speed, 6, color);
             b.life = 140;
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
         playSound('shotgun');
     }
 
     fireClusterBomb() {
-        const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const angle = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
         const bomb = new ClusterBomb(this.pos.x, this.pos.y, angle, this, 4, 350);
-        bullets.push(bomb);
+        GameContext.bullets.push(bomb);
         playSound('rapid_shoot');
     }
 
     spawnNapalmZone() {
-        const zone = new NapalmZone(player.pos.x, player.pos.y, 180, 4500, 0.6);
-        napalmZones.push(zone);
+        const zone = new NapalmZone(GameContext.player.pos.x, GameContext.player.pos.y, 180, 4500, 0.6);
+        GameContext.napalmZones.push(zone);
     }
 
     takeHit(dmg = 1) {
@@ -18095,7 +17978,7 @@ class Destroyer2 extends Entity {
 
         // Drop 20 nuggets
         for (let i = 0; i < 20; i++) {
-            nuggets.push(new SpaceNugget(
+            GameContext.nuggets.push(new SpaceNugget(
                 this.pos.x + (Math.random() - 0.5) * 200,
                 this.pos.y + (Math.random() - 0.5) * 200,
                 1
@@ -18107,13 +17990,13 @@ class Destroyer2 extends Entity {
         spawnLargeExplosion(this.pos.x, this.pos.y, 3.5);
         spawnParticles(this.pos.x, this.pos.y, 80, '#0ff');
         playSound('base_explode');
-        shakeMagnitude = Math.max(shakeMagnitude, 18);
-        shakeTimer = Math.max(shakeTimer, 20);
+        GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 18);
+        GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 20);
         showOverlayMessage("DESTROYER II DESTROYED - 20 NUGGETS DROPPED", '#ff0', 2000, 2);
 
         // Set respawn timer - spawn the OTHER destroyer type
-        currentDestroyerType = (currentDestroyerType === 1) ? 2 : 1;
-        nextDestroyerSpawnTime = Date.now() + 60000; // 1 minute
+        GameContext.currentDestroyerType = (GameContext.currentDestroyerType === 1) ? 2 : 1;
+        GameContext.nextDestroyerSpawnTime = Date.now() + 60000; // 1 minute
     }
 
     draw(ctx) {
@@ -18145,7 +18028,7 @@ class Destroyer2 extends Entity {
             container.position.set(rPos.x, rPos.y);
             container.rotation = this.angle || 0;
 
-            const now = (typeof frameNow === 'number' && frameNow > 0) ? frameNow : Date.now();
+            const now = (typeof GameContext.frameNow === 'number' && GameContext.frameNow > 0) ? frameNow : Date.now();
             const hullScale = (this.visualRadius && isFinite(this.visualRadius)) ? (this.visualRadius / 340) : 1;
             if (this._pixiHullSpr) this._pixiHullSpr.scale.set(hullScale);
 
@@ -18326,7 +18209,7 @@ class Destroyer2 extends Entity {
                     pixiVectorLayer.addChild(debugGfx);
                 }
 
-                if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
+                if (typeof GameContext.DEBUG_COLLISION !== 'undefined' && GameContext.DEBUG_COLLISION) {
                     debugGfx.visible = true;
                     debugGfx.clear();
                     debugGfx.position.set(rPos.x, rPos.y);
@@ -18685,8 +18568,8 @@ class CaveMonsterBase extends Entity {
         this.innerShieldRotation -= this.baseRingSpeed * ringMult * 1.2 * dtFactor;
 
         // Face player
-        if (player && !player.dead) {
-            const targetAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        if (GameContext.player && !GameContext.player.dead) {
+            const targetAngle = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
             let angleDiff = targetAngle - (this.angle || 0);
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
@@ -18697,8 +18580,8 @@ class CaveMonsterBase extends Entity {
                 // Circle strafe around player
                 this.strafeAngle += 0.008 * this.strafeDir * dtFactor;
                 const dist = 900;
-                const targetX = player.pos.x + Math.cos(this.strafeAngle) * dist;
-                const targetY = player.pos.y + Math.sin(this.strafeAngle) * dist;
+                const targetX = GameContext.player.pos.x + Math.cos(this.strafeAngle) * dist;
+                const targetY = GameContext.player.pos.y + Math.sin(this.strafeAngle) * dist;
                 const dx = targetX - this.pos.x;
                 const dy = targetY - this.pos.y;
                 this.vel.x = dx * 0.02;
@@ -18706,8 +18589,8 @@ class CaveMonsterBase extends Entity {
                 if (Math.random() < 0.005) this.strafeDir *= -1;
             } else if (this.moveMode === 'chase') {
                 // Aggressive chase
-                const dx = player.pos.x - this.pos.x;
-                const dy = player.pos.y - this.pos.y;
+                const dx = GameContext.player.pos.x - this.pos.x;
+                const dy = GameContext.player.pos.y - this.pos.y;
                 const dist = Math.hypot(dx, dy);
                 if (dist > 500) {
                     this.vel.x += (dx / dist) * 0.15 * dtFactor;
@@ -18720,8 +18603,8 @@ class CaveMonsterBase extends Entity {
                 }
             } else if (this.moveMode === 'artillery') {
                 // Slow movement, keeps distance
-                const dx = player.pos.x - this.pos.x;
-                const dy = player.pos.y - this.pos.y;
+                const dx = GameContext.player.pos.x - this.pos.x;
+                const dy = GameContext.player.pos.y - this.pos.y;
                 const dist = Math.hypot(dx, dy);
                 if (dist > 1400) {
                     this.vel.x += (dx / dist) * 0.05 * dtFactor;
@@ -18750,10 +18633,10 @@ class CaveMonsterBase extends Entity {
     }
 
     enforceExclusionZone() {
-        if (player && !player.dead) {
-            this.pushEntityOut(player);
+        if (GameContext.player && !GameContext.player.dead) {
+            this.pushEntityOut(GameContext.player);
         }
-        for (const e of enemies) {
+        for (const e of GameContext.enemies) {
             if (e !== this && !e.dead) {
                 this.pushEntityOut(e);
             }
@@ -18803,39 +18686,39 @@ class CaveMonsterBase extends Entity {
     }
 
     applyDamageToPlayer(amount) {
-        if (!player || player.dead) return;
-        if (player.invulnerable > 0) return;
+        if (!GameContext.player || GameContext.player.dead) return;
+        if (GameContext.player.invulnerable > 0) return;
         let remaining = Math.max(0, Math.ceil(amount));
 
-        if (player.outerShieldSegments && player.outerShieldSegments.length > 0) {
-            for (let i = 0; i < player.outerShieldSegments.length && remaining > 0; i++) {
-                if (player.outerShieldSegments[i] > 0) {
-                    const absorb = Math.min(remaining, player.outerShieldSegments[i]);
-                    player.outerShieldSegments[i] -= absorb;
+        if (GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.length > 0) {
+            for (let i = 0; i < GameContext.player.outerShieldSegments.length && remaining > 0; i++) {
+                if (GameContext.player.outerShieldSegments[i] > 0) {
+                    const absorb = Math.min(remaining, GameContext.player.outerShieldSegments[i]);
+                    GameContext.player.outerShieldSegments[i] -= absorb;
                     remaining -= absorb;
                 }
             }
         }
 
-        if (player.shieldSegments && player.shieldSegments.length > 0) {
-            for (let i = 0; i < player.shieldSegments.length && remaining > 0; i++) {
-                const absorb = Math.min(remaining, player.shieldSegments[i]);
-                player.shieldSegments[i] -= absorb;
+        if (GameContext.player.shieldSegments && GameContext.player.shieldSegments.length > 0) {
+            for (let i = 0; i < GameContext.player.shieldSegments.length && remaining > 0; i++) {
+                const absorb = Math.min(remaining, GameContext.player.shieldSegments[i]);
+                GameContext.player.shieldSegments[i] -= absorb;
                 remaining -= absorb;
             }
         }
 
         if (remaining > 0) {
-            player.hp -= remaining;
-            spawnParticles(player.pos.x, player.pos.y, 14, '#f00');
+            GameContext.player.hp -= remaining;
+            spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 14, '#f00');
             playSound('hit');
             updateHealthUI();
-            if (player.hp <= 0) killPlayer();
+            if (GameContext.player.hp <= 0) killPlayer();
         } else {
             playSound('shield_hit');
-            spawnParticles(player.pos.x, player.pos.y, 10, '#0ff');
+            spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#0ff');
         }
-        player.invulnerable = 22;
+        GameContext.player.invulnerable = 22;
     }
 
     kill() {
@@ -18847,32 +18730,32 @@ class CaveMonsterBase extends Entity {
         const coinCount = 18 + this.monsterType * 4;
         const nuggetCount = 5 + this.monsterType * 2;
         for (let i = 0; i < coinCount; i++) {
-            coins.push(new Coin(
+            GameContext.coins.push(new Coin(
                 this.pos.x + (Math.random() - 0.5) * 180,
                 this.pos.y + (Math.random() - 0.5) * 180,
                 10
             ));
         }
         for (let i = 0; i < nuggetCount; i++) {
-            nuggets.push(new SpaceNugget(
+            GameContext.nuggets.push(new SpaceNugget(
                 this.pos.x + (Math.random() - 0.5) * 240,
                 this.pos.y + (Math.random() - 0.5) * 240,
                 1
             ));
         }
-        powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+        GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
         spawnParticles(this.pos.x, this.pos.y, 120, '#0ff');
         spawnBossExplosion(this.pos.x, this.pos.y, 3.0, 20);
         playSound('base_explode');
-        shakeMagnitude = Math.max(shakeMagnitude, 15);
-        shakeTimer = Math.max(shakeTimer, 18);
+        GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 15);
+        GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 18);
         showOverlayMessage(`${this.displayName} DESTROYED`, '#0f0', 2800, 3);
 
-        bossActive = false;
-        bossArena.active = false;
-        if (boss) pixiCleanupObject(boss);
-        boss = null;
+        GameContext.bossActive = false;
+        GameContext.bossArena.active = false;
+        if (GameContext.boss) pixiCleanupObject(GameContext.boss);
+        GameContext.boss = null;
         if (musicEnabled) setMusicMode('normal');
     }
 
@@ -19001,7 +18884,7 @@ class CaveMonsterBase extends Entity {
                     pixiVectorLayer.addChild(debugGfx);
                 }
 
-                if (typeof DEBUG_COLLISION !== 'undefined' && DEBUG_COLLISION) {
+                if (typeof GameContext.DEBUG_COLLISION !== 'undefined' && GameContext.DEBUG_COLLISION) {
                     debugGfx.visible = true;
                     debugGfx.clear();
                     debugGfx.position.set(rPos.x, rPos.y);
@@ -19100,7 +18983,7 @@ class CaveMonsterBase extends Entity {
     }
 
     drawBossHud(ctx) {
-        if (!bossActive || this.dead) return;
+        if (!GameContext.bossActive || this.dead) return;
         const w = canvas.width;
         const barW = Math.min(560, w - 40);
         const x = (w - barW) / 2;
@@ -19168,8 +19051,8 @@ class CaveMonster1 extends CaveMonsterBase {
 
     bioMortars(phase) {
         const count = phase === 3 ? 8 : (phase === 2 ? 6 : 4);
-        const targetX = player ? player.pos.x : this.pos.x;
-        const targetY = player ? player.pos.y : this.pos.y;
+        const targetX = GameContext.player ? GameContext.player.pos.x : this.pos.x;
+        const targetY = GameContext.player ? GameContext.player.pos.y : this.pos.y;
 
         for (let i = 0; i < count; i++) {
             const offsetX = (Math.random() - 0.5) * 1200;
@@ -19182,7 +19065,7 @@ class CaveMonster1 extends CaveMonsterBase {
             b.explosionRadius = 150;
             b.explosionDamage = 10;
             b.useShockwave = true; // Use shockwave effect instead of rings
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
         playSound('shotgun');
     }
@@ -19218,8 +19101,8 @@ class CaveMonster1 extends CaveMonsterBase {
             mine.update = function () {
                 this.t += 1;
 
-                if (player && !player.dead) {
-                    const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (GameContext.player && !GameContext.player.dead) {
+                    const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
                     if (dist < 100) {
                         this.dead = true;
                         // Fiery explosion visual
@@ -19228,7 +19111,7 @@ class CaveMonster1 extends CaveMonsterBase {
 
                         // AOE damage - 200px radius, respects shield penetration
                         const explosionRadius = 200;
-                        if (Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y) < explosionRadius) {
+                        if (Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y) < explosionRadius) {
                             // Use AOE damage function that respects shield penetration (5 damage)
                             applyAOEDamageToPlayer(this.pos.x, this.pos.y, explosionRadius, 5);
                         }
@@ -19261,7 +19144,7 @@ class CaveMonster1 extends CaveMonsterBase {
                 ctx.restore();
             };
 
-            enemies.push(mine);
+            GameContext.enemies.push(mine);
         }
         playSound('powerup');
     }
@@ -19273,8 +19156,8 @@ class CaveMonster1 extends CaveMonsterBase {
         if (this.pulseActive) {
             this.pulseRadius += this.pulseExpansionSpeed * dtFactor;
 
-            if (player && !player.dead) {
-                const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+            if (GameContext.player && !GameContext.player.dead) {
+                const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
 
                 if (Math.abs(dist - this.pulseRadius) < 30 && !this.pulseHit) {
                     this.pulseHit = true;
@@ -19314,7 +19197,7 @@ class CaveMonster1 extends CaveMonsterBase {
 
             gfx.clear();
             gfx.position.set(rPos.x, rPos.y);
-            const z = currentZoom || ZOOM_LEVEL;
+            const z = GameContext.currentZoom || ZOOM_LEVEL;
             gfx.lineStyle(4 / z, 0xff0088, 0.8);
             gfx.drawCircle(0, 0, this.pulseRadius / z);
         } else if (this._pixiPulseGfx) {
@@ -19329,8 +19212,8 @@ class CaveMonster1 extends CaveMonsterBase {
             this._pixiPulseGfx = null;
         }
 
-        for (let i = enemies.length - 1; i >= 0; i--) {
-            const e = enemies[i];
+        for (let i = GameContext.enemies.length - 1; i >= 0; i--) {
+            const e = GameContext.enemies[i];
             if (e && !e.dead && e.owner === this) {
                 e.dead = true;
                 spawnParticles(e.pos.x, e.pos.y, 15, '#0f0');
@@ -19381,7 +19264,7 @@ class CaveMonster2 extends CaveMonsterBase {
         this.charging = true;
         this.chargeTimer = 45;
 
-        const baseAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const baseAngle = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
         const speed = phase === 3 ? 12 : (phase === 2 ? 10 : 8);
         this.vel.x = Math.cos(baseAngle) * speed;
         this.vel.y = Math.sin(baseAngle) * speed;
@@ -19407,13 +19290,13 @@ class CaveMonster2 extends CaveMonsterBase {
         // Wide crescent spread
         const count = phase === 3 ? 15 : (phase === 2 ? 12 : 9);
         const spread = Math.PI * 0.6;
-        const baseAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const baseAngle = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
         for (let i = 0; i < count; i++) {
             const a = baseAngle - spread / 2 + (spread / (count - 1)) * i;
             const b = new Bullet(this.pos.x, this.pos.y, a, true, 10, 11, 10, '#f00');
             b.life = 70;
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
         playSound('rapid_shoot');
     }
@@ -19426,15 +19309,15 @@ class CaveMonster2 extends CaveMonsterBase {
             const a = (Math.PI * 2 / 30) * i;
             const b = new Bullet(this.pos.x, this.pos.y, a, true, 5, 6, 5, '#f80');
             b.life = 400; // Travel 2000px (speed 5 × 400 = 2000)
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
     }
 
     bloodRain(phase) {
         // Localized falling shots
         const count = phase === 3 ? 20 : (phase === 2 ? 15 : 10);
-        const targetX = player ? player.pos.x : this.pos.x;
-        const targetY = player ? player.pos.y : this.pos.y;
+        const targetX = GameContext.player ? GameContext.player.pos.x : this.pos.x;
+        const targetY = GameContext.player ? GameContext.player.pos.y : this.pos.y;
 
         for (let i = 0; i < count; i++) {
             setTimeout(() => {
@@ -19447,7 +19330,7 @@ class CaveMonster2 extends CaveMonsterBase {
                 // Falling bullet
                 const b = new Bullet(x, y, Math.PI / 2, true, 12, 8, 8, '#f00');
                 b.life = 60;
-                bullets.push(b);
+                GameContext.bullets.push(b);
             }, i * 50);
         }
         playSound('rapid_shoot');
@@ -19513,7 +19396,7 @@ class CaveMonster3 extends CaveMonsterBase {
     spineSalvo(phase) {
         // Sequential hardpoint fire
         const count = phase === 3 ? 8 : (phase === 2 ? 6 : 4);
-        const baseAngle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const baseAngle = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
 
         for (let i = 0; i < count; i++) {
             setTimeout(() => {
@@ -19522,7 +19405,7 @@ class CaveMonster3 extends CaveMonsterBase {
                 const a = baseAngle + spread;
                 const b = new Bullet(this.pos.x, this.pos.y, a, true, 12, 14, 10, '#80f');
                 b.life = 90;
-                bullets.push(b);
+                GameContext.bullets.push(b);
                 playSound('rapid_shoot');
             }, i * 100);
         }
@@ -19531,8 +19414,8 @@ class CaveMonster3 extends CaveMonsterBase {
     plasmaMortar(phase) {
         // Lobbed explosive shells
         const count = phase === 3 ? 6 : (phase === 2 ? 4 : 3);
-        const targetX = player ? player.pos.x : this.pos.x;
-        const targetY = player ? player.pos.y : this.pos.y;
+        const targetX = GameContext.player ? GameContext.player.pos.x : this.pos.x;
+        const targetY = GameContext.player ? GameContext.player.pos.y : this.pos.y;
 
         for (let i = 0; i < count; i++) {
             const offsetX = (Math.random() - 0.5) * 500;
@@ -19546,13 +19429,13 @@ class CaveMonster3 extends CaveMonsterBase {
             b.explosionRadius = 250;
             b.explosionDamage = 6;
             b.directHitDamage = 15; // Ensure direct hit damage is applied
-            bullets.push(b);
+            GameContext.bullets.push(b);
         }
         playSound('shotgun');
     }
 
     beamCannon(phase) {
-        const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : this.angle;
+        const aim = (GameContext.player && !GameContext.player.dead) ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x) : this.angle;
         const arcSpread = Math.PI / 12; // 15 degrees in radians
         this.beamAngles = [
             aim - arcSpread,  // -15 degrees
@@ -19601,7 +19484,7 @@ class CaveMonster3 extends CaveMonsterBase {
                 this.pos.y = this.owner.pos.y + Math.sin(this.angle) * this.orbitDist;
 
                 // Block player bullets
-                for (const bullet of bullets) {
+                for (const bullet of GameContext.bullets) {
                     if (bullet.isEnemy) continue;
                     const r = this.radius || 40;
                     const dist = Math.hypot(bullet.pos.x - this.pos.x, bullet.pos.y - this.pos.y);
@@ -19665,8 +19548,8 @@ class CaveMonster3 extends CaveMonsterBase {
             mine.update = function () {
                 this.t += 1;
 
-                if (player && !player.dead) {
-                    const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+                if (GameContext.player && !GameContext.player.dead) {
+                    const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
                     if (dist < 100) {
                         this.dead = true;
                         // Fiery explosion visual
@@ -19675,7 +19558,7 @@ class CaveMonster3 extends CaveMonsterBase {
 
                         // AOE damage - 200px radius, respects shield penetration
                         const explosionRadius = 200;
-                        if (Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y) < explosionRadius) {
+                        if (Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y) < explosionRadius) {
                             // Use AOE damage function that respects shield penetration (15 damage)
                             applyAOEDamageToPlayer(this.pos.x, this.pos.y, explosionRadius, 15);
                         }
@@ -19708,7 +19591,7 @@ class CaveMonster3 extends CaveMonsterBase {
                 ctx.restore();
             };
 
-            enemies.push(mine);
+            GameContext.enemies.push(mine);
         }
         playSound('powerup');
     }
@@ -19720,20 +19603,20 @@ class CaveMonster3 extends CaveMonsterBase {
         if (this.beamFire > 0) {
             this.beamFire -= dtFactor;
             if (!this.beamHitThisShot && this.beamAngles.length > 0) {
-                if (player && !player.dead) {
+                if (GameContext.player && !GameContext.player.dead) {
                     // Check all 3 beams for collision
                     for (const beamAngle of this.beamAngles) {
                         const ex = this.pos.x + Math.cos(beamAngle) * this.beamLen;
                         const ey = this.pos.y + Math.sin(beamAngle) * this.beamLen;
-                        const cp = closestPointOnSegment(player.pos.x, player.pos.y, this.pos.x, this.pos.y, ex, ey);
-                        const d = Math.hypot(player.pos.x - cp.x, player.pos.y - cp.y);
-                        const hitDist = (this.beamWidth * 0.5) + (player.radius * 0.55);
+                        const cp = closestPointOnSegment(GameContext.player.pos.x, GameContext.player.pos.y, this.pos.x, this.pos.y, ex, ey);
+                        const d = Math.hypot(GameContext.player.pos.x - cp.x, GameContext.player.pos.y - cp.y);
+                        const hitDist = (this.beamWidth * 0.5) + (GameContext.player.radius * 0.55);
                         if (d <= hitDist) {
                             this.beamHitThisShot = true;
                             // Use AOE damage that respects shield penetration (wide AOE as requested)
-                            applyAOEDamageToPlayer(player.pos.x, player.pos.y, 100, 15);
-                            shakeMagnitude = Math.max(shakeMagnitude, 8);
-                            shakeTimer = Math.max(shakeTimer, 8);
+                            applyAOEDamageToPlayer(GameContext.player.pos.x, GameContext.player.pos.y, 100, 15);
+                            GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 8);
+                            GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 8);
                             break; // Only damage once per volley
                         }
                     }
@@ -19772,7 +19655,7 @@ class CaveMonster3 extends CaveMonsterBase {
 
                 gfx.clear();
                 gfx.position.set(rPos.x, rPos.y);
-                const z = currentZoom || ZOOM_LEVEL;
+                const z = GameContext.currentZoom || ZOOM_LEVEL;
                 const charging = (this.beamCharge > 0);
                 const firing = (this.beamFire > 0);
 
@@ -19818,118 +19701,14 @@ class CaveMonster3 extends CaveMonsterBase {
 
 
 // --- Game State ---
-let player;
-let bullets = [];
-let bossBombs = [];
-let warpBioPods = [];
-let staggeredBombExplosions = []; // Queue for staggered bomb explosions
-let staggeredParticleBursts = []; // Queue for staggered particle bursts
-let guidedMissiles = [];
-let napalmZones = [];
-let enemies = [];
-let pinwheels = [];
-let particles = [];
-let lightningArcs = [];
-let explosions = [];
-let floatingTexts = [];
-let coins = []; // New currency entity
-let nuggets = [];
-let spaceNuggets = 0;
-let powerups = [];
-let shootingStars = [];
-let drones = [];
-let caches = [];
-let radiationStorm = null;
-let nextRadiationStormAt = 0;
-let miniEvent = null;
-let nextMiniEventAt = 0;
-let pois = [];
-let warpGate = null;
-let warpZone = null;
-let warpGateUnlocked = false;
-// Per-sector limiter: only allow entering the warp maze once per sector.
-let warpCompletedOnce = false;
-let caveMode = false;
-let caveLevel = null;
-let nextShootingStarTime = 0;
-let nextIntensityBreakAt = 0;
-let intensityBreakActive = false;
+GameContext.gameEnded = false;
 const INTENSITY_BREAK_DURATION = 12000; // 12s
-let score = 0;
-let difficultyTier = 1;
-let pinwheelsDestroyed = 0;
-let pinwheelsDestroyedTotal = 0;
-let roamerRespawnQueue = [];
-let maxRoamers = 5;
-let boss = null;
-let bossActive = false;
-let spaceStation = null;
-let pendingStations = 0;
-let nextSpaceStationTime = null;
-let stationHealthBarVisible = false; // Track visibility state to avoid unnecessary DOM updates
-let destroyer = null; // Current active destroyer (either Destroyer or Destroyer2)
-let nextDestroyerSpawnTime = null; // Time for next destroyer to spawn
-let currentDestroyerType = 1; // Track which type to spawn (1 or 2)
-let stationArena = { x: 0, y: 0, radius: 2800, active: false };
-
-// --- Dungeon Bosses ---
-let necroticHive = null;     // Bio-mechanical Swarm Controller (dungeon4.png)
-let cerebralPsion = null;    // Psionic Mind Controller (dungeon5.png)
-let fleshforge = null;       // Living Bio-Factory (dungeon6.png)
-let vortexMatriarch = null;  // Gravity Manipulating Hive Mother (dungeon7.png)
-let chitinusPrime = null;    // Armored Bio-Tank (dungeon8.png)
-let psyLich = null;          // Undying Phase-Shifting Entity (dungeon9.png)
-let dungeonBossPool = ['NecroticHive', 'CerebralPsion', 'Fleshforge', 'VortexMatriarch', 'ChitinusPrime', 'PsyLich'];
-let sectorTransitionActive = false;
-let warpCountdownAt = null;
-let gameEnded = false;
-let bossArena = { x: 0, y: 0, radius: 2500, active: false, growing: false };
-
-// --- Dungeon1 System ---
-let dungeon1Zone = null;
-let dungeon1Active = false;
-let dungeon1CompletedOnce = false;
-let dungeon1Gate = null;
-let dungeon1GateUnlocked = false;
-let dungeon1Arena = { x: 0, y: 0, radius: 2500, active: false, growing: false };
-let dungeon1OriginalPos = null; // Store player's position before entering
-
 const GAME_DURATION_MS = 30 * 60 * 1000; // 30 minutes
-let minimapFrame = 0;
-let frameNow = 0;
-let pendingTransitionClear = false;
-let gunboatRespawnAt = null;
-let gunboatLevel2Unlocked = false;
-let cruiserEncounterCount = 0;
-let initialSpawnDelayAt = null;
-let initialSpawnDone = false;
-let metaProfile = { bank: 0, purchases: { startDamage: 0, passiveHp: 0, rerollTokens: 0, hullPlating: 0, shieldCore: 0, staticBlueprint: 0, missilePrimer: 0, magnetBooster: 0, nukeCapacitor: 0, speedTuning: 0, bankMultiplier: 0, shopDiscount: 0, extraLife: 0, droneFabricator: 0, piercingRounds: 0, explosiveRounds: 0, criticalStrike: 0, splitShot: 0, thornArmor: 0, lifesteal: 0, evasionBoost: 0, shieldRecharge: 0, dashCooldown: 0, dashDuration: 0, xpMagnetPlus: 0, autoReroll: 0, nuggetMagnet: 0, contractSpeed: 0, startingRerolls: 0, luckyDrop: 0, bountyHunter: 0, comboMeter: 0, startingWeapon: 0, secondWind: 0, batteryCapacitor: 0 } };
-let rerollTokens = 0;
-let metaExtraLifeCount = 0;
-let shownUpgradesThisRun = new Set(); // Track upgrades shown this run for weighted rerolls
-
-// --- Exploration Contracts ---
-let activeContract = null;
-let nextContractAt = 0;
-let contractSequence = 0;
-let contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
-
-// Cruiser spawn manager
-let dreadManager = {
-    upgradesChosen: 0,
-    firstSpawnDone: false,
-    timerActive: false,
-    timerAt: null,
-    minDelayMs: 120000, // 2 minutes
-    maxDelayMs: 300000 // 5 minutes
-};
-let cruiserTimerPausedAt = null;
-let cruiserTimerResumeAt = 0;
 
 // Game timer
-let gameStartTime = null;
-let pauseStartTime = null;
-let pausedAccumMs = 0; // total paused time to subtract
+GameContext.gameStartTime = null;
+GameContext.pauseStartTime = null;
+GameContext.pausedAccumMs = 0; // total paused time to subtract
 
 function compactArray(arr) {
     let alive = 0;
@@ -19955,12 +19734,12 @@ function compactArray(arr) {
 // Level 1 is deleted when entering warp zone
 
 function enterWarpMaze() {
-    if (warpZone && warpZone.active) return;
-    if (warpCompletedOnce) {
+    if (GameContext.warpZone && GameContext.warpZone.active) return;
+    if (GameContext.warpCompletedOnce) {
         showOverlayMessage("WARP ALREADY USED THIS SECTOR", '#f80', 1200, 2);
         return;
     }
-    warpCompletedOnce = true;
+    GameContext.warpCompletedOnce = true;
 
     // Clear world to make a controlled encounter space - NO SNAPSHOT, level 1 is deleted
     resetPixiOverlaySprites();
@@ -19968,97 +19747,97 @@ function enterWarpMaze() {
         if (!arr || arr.length === 0) return;
         for (let i = 0; i < arr.length; i++) pixiCleanupObject(arr[i]);
     };
-    detach(bullets);
-    detach(bossBombs);
-    detach(warpBioPods);
-    detach(guidedMissiles);
-    detach(enemies);
-    detach(pinwheels);
-    detach(particles);
-    detach(explosions);
-    detach(floatingTexts);
-    detach(coins);
-    detach(nuggets);
-    detach(powerups);
-    detach(shootingStars);
-    detach(drones);
-    detach(caches);
-    detach(pois);
-    detach(environmentAsteroids);
+    detach(GameContext.bullets);
+    detach(GameContext.bossBombs);
+    detach(GameContext.warpBioPods);
+    detach(GameContext.guidedMissiles);
+    detach(GameContext.enemies);
+    detach(GameContext.pinwheels);
+    detach(GameContext.particles);
+    detach(GameContext.explosions);
+    detach(GameContext.floatingTexts);
+    detach(GameContext.coins);
+    detach(GameContext.nuggets);
+    detach(GameContext.powerups);
+    detach(GameContext.shootingStars);
+    detach(GameContext.drones);
+    detach(GameContext.caches);
+    detach(GameContext.pois);
+    detach(GameContext.environmentAsteroids);
 
-    bullets = [];
-    bossBombs = [];
-    warpBioPods = [];
-    staggeredBombExplosions = [];
-    staggeredParticleBursts = [];
-    guidedMissiles = [];
-    enemies = [];
-    pinwheels = [];
-    particles = [];
-    explosions = [];
-    floatingTexts = [];
-    coins = [];
-    nuggets = [];
-    powerups = [];
-    shootingStars = [];
-    drones = [];
-    caches = [];
-    pois = [];
-    environmentAsteroids = [];
-    asteroidRespawnTimers = [];
-    baseRespawnTimers = [];
+    GameContext.bullets = [];
+    GameContext.bossBombs = [];
+    GameContext.warpBioPods = [];
+    GameContext.staggeredBombExplosions = [];
+    GameContext.staggeredParticleBursts = [];
+    GameContext.guidedMissiles = [];
+    GameContext.enemies = [];
+    GameContext.pinwheels = [];
+    GameContext.particles = [];
+    GameContext.explosions = [];
+    GameContext.floatingTexts = [];
+    GameContext.coins = [];
+    GameContext.nuggets = [];
+    GameContext.powerups = [];
+    GameContext.shootingStars = [];
+    GameContext.drones = [];
+    GameContext.caches = [];
+    GameContext.pois = [];
+    GameContext.environmentAsteroids = [];
+    GameContext.asteroidRespawnTimers = [];
+    GameContext.baseRespawnTimers = [];
 
-    radiationStorm = null;
+    GameContext.radiationStorm = null;
     clearMiniEvent();
 
     // Reset cave state so cave walls don't persist in warp level
     resetCaveState();
 
-    activeContract = null;
-    contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
-    nextContractAt = Date.now() + 999999999;
+    GameContext.activeContract = null;
+    GameContext.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+    GameContext.nextContractAt = Date.now() + 999999999;
 
-    if (destroyer) {
-        if (destroyer.pixiCleanupObject && typeof destroyer.pixiCleanupObject === 'function') {
-            destroyer.pixiCleanupObject();
+    if (GameContext.destroyer) {
+        if (GameContext.destroyer.pixiCleanupObject && typeof GameContext.destroyer.pixiCleanupObject === 'function') {
+            GameContext.destroyer.pixiCleanupObject();
         }
-        destroyer = null;
+        GameContext.destroyer = null;
     }
 
-    if (boss) pixiCleanupObject(boss);
-    boss = null;
-    bossActive = false;
-    bossArena.active = false;
-    bossArena.growing = false;
+    if (GameContext.boss) pixiCleanupObject(GameContext.boss);
+    GameContext.boss = null;
+    GameContext.bossActive = false;
+    GameContext.bossArena.active = false;
+    GameContext.bossArena.growing = false;
 
-    if (spaceStation) pixiCleanupObject(spaceStation);
-    spaceStation = null;
-    stationHealthBarVisible = false;
-    pendingStations = 0;
-    nextSpaceStationTime = null;
-    roamerRespawnQueue = [];
-    maxRoamers = 0;
-    gunboatRespawnAt = null;
+    if (GameContext.spaceStation) pixiCleanupObject(GameContext.spaceStation);
+    GameContext.spaceStation = null;
+    GameContext.stationHealthBarVisible = false;
+    GameContext.pendingStations = 0;
+    GameContext.nextSpaceStationTime = null;
+    GameContext.roamerRespawnQueue = [];
+    GameContext.maxRoamers = 0;
+    GameContext.gunboatRespawnAt = null;
 
     // Spawn warp zone at origin since we're deleting level 1 anyway
     const originX = 0;
     const originY = 0;
-    warpZone = new WarpMazeZone(originX, originY);
-    warpZone.generate();
-    warpZone.state = 'boss_intro';
-    warpZone.bossIntroAt = Date.now() + 10000;
-    warpZone.bossIntroLastSec = null;
+    GameContext.warpZone = new WarpMazeZone(originX, originY);
+    GameContext.warpZone.generate();
+    GameContext.warpZone.state = 'boss_intro';
+    GameContext.warpZone.bossIntroAt = Date.now() + 10000;
+    GameContext.warpZone.bossIntroLastSec = null;
 
 
     // Place the player at the entrance.
-    player.pos.x = warpZone.entrancePos.x;
-    player.pos.y = warpZone.entrancePos.y;
-    player.vel.x = 0;
-    player.vel.y = 0;
+    GameContext.player.pos.x = GameContext.warpZone.entrancePos.x;
+    GameContext.player.pos.y = GameContext.warpZone.entrancePos.y;
+    GameContext.player.vel.x = 0;
+    GameContext.player.vel.y = 0;
 
     // Seed warp asteroids to reduced density (and let runtime spawning maintain it). 
     let seedTries = 0;
-    while (environmentAsteroids.length < 50 && seedTries < 800) {
+    while (GameContext.environmentAsteroids.length < 50 && seedTries < 800) {
         spawnOneWarpAsteroidRelative(true);
         seedTries++;
     }
@@ -20067,41 +19846,41 @@ function enterWarpMaze() {
 
 function resetWarpState() {
     // Hard-reset all warp state so a fresh run can't inherit "in-warp" flags. 
-    try { if (warpZone) warpZone.active = false; } catch (e) { }
-    warpZone = null;
-    if (warpGate) pixiCleanupObject(warpGate);
-    warpGate = null;
+    try { if (GameContext.warpZone) GameContext.warpZone.active = false; } catch (e) { }
+    GameContext.warpZone = null;
+    if (GameContext.warpGate) pixiCleanupObject(GameContext.warpGate);
+    GameContext.warpGate = null;
 }
 
 function resetCaveState() {
     // Hard-reset all cave state so a fresh run can't inherit cave flags/walls/clipping. 
-    try { if (caveLevel) caveLevel.active = false; } catch (e) { }
-    caveMode = false;
-    caveLevel = null;
+    try { if (GameContext.caveLevel) GameContext.caveLevel.active = false; } catch (e) { }
+    GameContext.caveMode = false;
+    GameContext.caveLevel = null;
 }
 
 function exitWarpMaze() {
-    if (!warpZone || !warpZone.active) return;
-    const completedRun = !!(warpZone && warpZone.exitUnlocked);
-    if (warpZone && warpZone.active) warpZone.active = false;
+    if (!GameContext.warpZone || !GameContext.warpZone.active) return;
+    const completedRun = !!(GameContext.warpZone && GameContext.warpZone.exitUnlocked);
+    if (GameContext.warpZone && GameContext.warpZone.active) GameContext.warpZone.active = false;
 
     // CLEANUP FIX: Properly clean up all warp entities before restoring snapshot
     // This prevents frozen sprites appearing on screen after warp exit
     console.log('[WARP EXIT] Cleaning up warp entities before restoring snapshot...');
 
     // Clean up warp gate if it exists
-    if (warpGate) {
-        pixiCleanupObject(warpGate);
-        warpGate = null;
+    if (GameContext.warpGate) {
+        pixiCleanupObject(GameContext.warpGate);
+        GameContext.warpGate = null;
         console.log('[WARP EXIT] Cleaned warp gate');
     }
 
     // Clean up warp zone and its entities
-    if (warpZone) {
+    if (GameContext.warpZone) {
         // Clean up warp turrets
-        if (warpZone.turrets && warpZone.turrets.length > 0) {
-            for (let i = 0; i < warpZone.turrets.length; i++) {
-                const turret = warpZone.turrets[i];
+        if (GameContext.warpZone.turrets && GameContext.warpZone.turrets.length > 0) {
+            for (let i = 0; i < GameContext.warpZone.turrets.length; i++) {
+                const turret = GameContext.warpZone.turrets[i];
                 if (turret) {
                     try {
                         pixiCleanupObject(turret);
@@ -20110,21 +19889,21 @@ function exitWarpMaze() {
                     }
                 }
             }
-            warpZone.turrets = [];
+            GameContext.warpZone.turrets = [];
             console.log('[WARP EXIT] Cleaned warp turrets');
         }
 
         // Clean up warp zone graphics
-        if (warpZone._pixiGfx) {
-            try { warpZone._pixiGfx.destroy(true); } catch (e) { }
-            warpZone._pixiGfx = null;
+        if (GameContext.warpZone._pixiGfx) {
+            try { GameContext.warpZone._pixiGfx.destroy(true); } catch (e) { }
+            GameContext.warpZone._pixiGfx = null;
         }
     }
 
     // Clean up warp particles (separate array from regular particles)
-    if (warpParticles && warpParticles.length > 0) {
-        for (let i = 0; i < warpParticles.length; i++) {
-            const p = warpParticles[i];
+    if (GameContext.warpParticles && GameContext.warpParticles.length > 0) {
+        for (let i = 0; i < GameContext.warpParticles.length; i++) {
+            const p = GameContext.warpParticles[i];
             if (p && p.sprite) {
                 try {
                     releasePixiSprite(pixiParticleSpritePool, p.sprite);
@@ -20134,7 +19913,7 @@ function exitWarpMaze() {
                 }
             }
         }
-        warpParticles.length = 0;
+        GameContext.warpParticles.length = 0;
         console.log('[WARP EXIT] Cleaned warp particles');
     }
 
@@ -20158,57 +19937,57 @@ function exitWarpMaze() {
     };
 
     // Clean up all warp-specific entities
-    cleanupWarpArray(bullets, 'warp bullets');
-    cleanupWarpArray(bossBombs, 'warp boss bombs');
-    cleanupWarpArray(warpBioPods, 'warp bio pods');
-    cleanupWarpArray(staggeredBombExplosions, 'staggered bomb explosions');
-    cleanupWarpArray(staggeredParticleBursts, 'staggered particle bursts');
-    cleanupWarpArray(guidedMissiles, 'warp guided missiles');
-    cleanupWarpArray(enemies, 'warp enemies');
-    cleanupWarpArray(pinwheels, 'warp pinwheels');
-    cleanupWarpArray(particles, 'warp particles');
-    cleanupWarpArray(explosions, 'warp explosions');
-    cleanupWarpArray(floatingTexts, 'warp floating texts');
-    cleanupWarpArray(coins, 'warp coins');
-    cleanupWarpArray(nuggets, 'warp nuggets');
-    cleanupWarpArray(powerups, 'warp powerups');
-    cleanupWarpArray(shootingStars, 'warp shooting stars');
-    cleanupWarpArray(drones, 'warp drones');
-    cleanupWarpArray(caches, 'warp caches');
-    cleanupWarpArray(pois, 'warp POIs');
-    cleanupWarpArray(environmentAsteroids, 'warp asteroids');
-    if (boss && boss.isWarpBoss) {
+    cleanupWarpArray(GameContext.bullets, 'warp bullets');
+    cleanupWarpArray(GameContext.bossBombs, 'warp boss bombs');
+    cleanupWarpArray(GameContext.warpBioPods, 'warp bio pods');
+    cleanupWarpArray(GameContext.staggeredBombExplosions, 'staggered bomb explosions');
+    cleanupWarpArray(GameContext.staggeredParticleBursts, 'staggered particle bursts');
+    cleanupWarpArray(GameContext.guidedMissiles, 'warp guided missiles');
+    cleanupWarpArray(GameContext.enemies, 'warp enemies');
+    cleanupWarpArray(GameContext.pinwheels, 'warp pinwheels');
+    cleanupWarpArray(GameContext.particles, 'warp particles');
+    cleanupWarpArray(GameContext.explosions, 'warp explosions');
+    cleanupWarpArray(GameContext.floatingTexts, 'warp floating texts');
+    cleanupWarpArray(GameContext.coins, 'warp coins');
+    cleanupWarpArray(GameContext.nuggets, 'warp nuggets');
+    cleanupWarpArray(GameContext.powerups, 'warp powerups');
+    cleanupWarpArray(GameContext.shootingStars, 'warp shooting stars');
+    cleanupWarpArray(GameContext.drones, 'warp drones');
+    cleanupWarpArray(GameContext.caches, 'warp caches');
+    cleanupWarpArray(GameContext.pois, 'warp POIs');
+    cleanupWarpArray(GameContext.environmentAsteroids, 'warp asteroids');
+    if (GameContext.boss && GameContext.boss.isWarpBoss) {
         try {
-            boss.dead = true;
-            pixiCleanupObject(boss);
+            GameContext.boss.dead = true;
+            pixiCleanupObject(GameContext.boss);
         } catch (e) {
             console.warn('[WARP EXIT] Failed to clean warp boss:', e);
         }
-        boss = null;
-        bossActive = false;
+        GameContext.boss = null;
+        GameContext.bossActive = false;
     }
 
     // Clear the arrays
-    bullets.length = 0;
-    bossBombs.length = 0;
-    warpBioPods.length = 0;
-    staggeredBombExplosions.length = 0;
-    staggeredParticleBursts.length = 0;
-    guidedMissiles.length = 0;
-    napalmZones.length = 0;
-    enemies.length = 0;
-    pinwheels.length = 0;
-    particles.length = 0;
-    explosions.length = 0;
-    floatingTexts.length = 0;
-    coins.length = 0;
-    nuggets.length = 0;
-    powerups.length = 0;
-    shootingStars.length = 0;
-    drones.length = 0;
-    caches.length = 0;
-    pois.length = 0;
-    environmentAsteroids.length = 0;
+    GameContext.bullets.length = 0;
+    GameContext.bossBombs.length = 0;
+    GameContext.warpBioPods.length = 0;
+    GameContext.staggeredBombExplosions.length = 0;
+    GameContext.staggeredParticleBursts.length = 0;
+    GameContext.guidedMissiles.length = 0;
+    GameContext.napalmZones.length = 0;
+    GameContext.enemies.length = 0;
+    GameContext.pinwheels.length = 0;
+    GameContext.particles.length = 0;
+    GameContext.explosions.length = 0;
+    GameContext.floatingTexts.length = 0;
+    GameContext.coins.length = 0;
+    GameContext.nuggets.length = 0;
+    GameContext.powerups.length = 0;
+    GameContext.shootingStars.length = 0;
+    GameContext.drones.length = 0;
+    GameContext.caches.length = 0;
+    GameContext.pois.length = 0;
+    GameContext.environmentAsteroids.length = 0;
 
     // Clear Pixi overlay sprites (includes warp zone walls/gates)
     resetPixiOverlaySprites();
@@ -20218,19 +19997,19 @@ function exitWarpMaze() {
     // This entire function now just cleans up warp entities
     // The actual transition to level 2 is handled by sectorTransitionActive countdown in gameLoopLogic
 
-    warpZone = null;
-    warpGate = null;
+    GameContext.warpZone = null;
+    GameContext.warpGate = null;
 }
 
 function _enterDungeon1Internal() {
-    if (dungeon1Zone && dungeon1Zone.active) return;
-    if (dungeon1CompletedOnce) {
+    if (GameContext.dungeon1Zone && GameContext.dungeon1Zone.active) return;
+    if (GameContext.dungeon1CompletedOnce) {
         showOverlayMessage("DUNGEON ALREADY CLEARED", '#f80', 1200, 2);
         return;
     }
 
     // Store player's original position
-    dungeon1OriginalPos = { x: player.pos.x, y: player.pos.y };
+    GameContext.dungeon1OriginalPos = { x: GameContext.player.pos.x, y: GameContext.player.pos.y };
 
     // Clear world to make a controlled encounter space
     resetPixiOverlaySprites();
@@ -20238,120 +20017,120 @@ function _enterDungeon1Internal() {
         if (!arr || arr.length === 0) return;
         for (let i = 0; i < arr.length; i++) pixiCleanupObject(arr[i]);
     };
-    detach(bullets);
-    detach(bossBombs);
-    detach(warpBioPods);
-    detach(guidedMissiles);
-    detach(enemies);
-    detach(pinwheels);
-    detach(particles);
-    detach(explosions);
-    detach(floatingTexts);
-    detach(coins);
-    detach(nuggets);
-    detach(powerups);
-    detach(shootingStars);
-    detach(drones);
-    detach(caches);
-    detach(pois);
-    detach(environmentAsteroids);
+    detach(GameContext.bullets);
+    detach(GameContext.bossBombs);
+    detach(GameContext.warpBioPods);
+    detach(GameContext.guidedMissiles);
+    detach(GameContext.enemies);
+    detach(GameContext.pinwheels);
+    detach(GameContext.particles);
+    detach(GameContext.explosions);
+    detach(GameContext.floatingTexts);
+    detach(GameContext.coins);
+    detach(GameContext.nuggets);
+    detach(GameContext.powerups);
+    detach(GameContext.shootingStars);
+    detach(GameContext.drones);
+    detach(GameContext.caches);
+    detach(GameContext.pois);
+    detach(GameContext.environmentAsteroids);
 
-    bullets = [];
-    bossBombs = [];
-    warpBioPods = [];
-    staggeredBombExplosions = [];
-    staggeredParticleBursts = [];
-    guidedMissiles = [];
-    enemies = [];
-    pinwheels = [];
-    particles = [];
-    explosions = [];
-    floatingTexts = [];
-    coins = [];
-    nuggets = [];
-    powerups = [];
-    shootingStars = [];
-    drones = [];
-    caches = [];
-    pois = [];
-    environmentAsteroids = [];
-    asteroidRespawnTimers = [];
-    baseRespawnTimers = [];
+    GameContext.bullets = [];
+    GameContext.bossBombs = [];
+    GameContext.warpBioPods = [];
+    GameContext.staggeredBombExplosions = [];
+    GameContext.staggeredParticleBursts = [];
+    GameContext.guidedMissiles = [];
+    GameContext.enemies = [];
+    GameContext.pinwheels = [];
+    GameContext.particles = [];
+    GameContext.explosions = [];
+    GameContext.floatingTexts = [];
+    GameContext.coins = [];
+    GameContext.nuggets = [];
+    GameContext.powerups = [];
+    GameContext.shootingStars = [];
+    GameContext.drones = [];
+    GameContext.caches = [];
+    GameContext.pois = [];
+    GameContext.environmentAsteroids = [];
+    GameContext.asteroidRespawnTimers = [];
+    GameContext.baseRespawnTimers = [];
 
-    radiationStorm = null;
+    GameContext.radiationStorm = null;
     clearMiniEvent();
 
     // Reset cave state
     resetCaveState();
 
-    activeContract = null;
-    contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
-    nextContractAt = Date.now() + 999999999;
+    GameContext.activeContract = null;
+    GameContext.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+    GameContext.nextContractAt = Date.now() + 999999999;
 
-    if (destroyer) {
-        if (destroyer.pixiCleanupObject && typeof destroyer.pixiCleanupObject === 'function') {
-            destroyer.pixiCleanupObject();
+    if (GameContext.destroyer) {
+        if (GameContext.destroyer.pixiCleanupObject && typeof GameContext.destroyer.pixiCleanupObject === 'function') {
+            GameContext.destroyer.pixiCleanupObject();
         }
-        destroyer = null;
+        GameContext.destroyer = null;
     }
 
-    if (boss) pixiCleanupObject(boss);
-    boss = null;
-    bossActive = false;
-    bossArena.active = false;
-    bossArena.growing = false;
+    if (GameContext.boss) pixiCleanupObject(GameContext.boss);
+    GameContext.boss = null;
+    GameContext.bossActive = false;
+    GameContext.bossArena.active = false;
+    GameContext.bossArena.growing = false;
 
-    if (spaceStation) pixiCleanupObject(spaceStation);
-    spaceStation = null;
-    stationHealthBarVisible = false;
-    pendingStations = 0;
-    nextSpaceStationTime = null;
-    roamerRespawnQueue = [];
-    maxRoamers = 0;
-    gunboatRespawnAt = null;
+    if (GameContext.spaceStation) pixiCleanupObject(GameContext.spaceStation);
+    GameContext.spaceStation = null;
+    GameContext.stationHealthBarVisible = false;
+    GameContext.pendingStations = 0;
+    GameContext.nextSpaceStationTime = null;
+    GameContext.roamerRespawnQueue = [];
+    GameContext.maxRoamers = 0;
+    GameContext.gunboatRespawnAt = null;
 
     // Create dungeon zone at origin
     const originX = 0;
     const originY = 0;
-    dungeon1Zone = new Dungeon1Zone(originX, originY);
-    dungeon1Active = true;
+    GameContext.dungeon1Zone = new Dungeon1Zone(originX, originY);
+    GameContext.dungeon1Active = true;
 
     // Place the player at the bottom of the arena
-    player.pos.x = originX;
-    player.pos.y = originY + dungeon1Arena.radius - 300; // 300 units from bottom edge
-    player.vel.x = 0;
-    player.vel.y = 0;
+    GameContext.player.pos.x = originX;
+    GameContext.player.pos.y = originY + GameContext.dungeon1Arena.radius - 300; // 300 units from bottom edge
+    GameContext.player.vel.x = 0;
+    GameContext.player.vel.y = 0;
 
     // Activate dungeon arena
-    dungeon1Arena.x = originX;
-    dungeon1Arena.y = originY;
-    dungeon1Arena.radius = 2500;
-    dungeon1Arena.active = true;
-    dungeon1Arena.growing = false;
+    GameContext.dungeon1Arena.x = originX;
+    GameContext.dungeon1Arena.y = originY;
+    GameContext.dungeon1Arena.radius = 2500;
+    GameContext.dungeon1Arena.active = true;
+    GameContext.dungeon1Arena.growing = false;
 
     showOverlayMessage("ENTERED DUNGEON 1", '#f80', 2000, 2);
 }
 
 function exitDungeon1() {
-    if (!dungeon1Zone || !dungeon1Zone.active) return;
-    dungeon1Zone.active = false;
-    dungeon1Active = false;
+    if (!GameContext.dungeon1Zone || !GameContext.dungeon1Zone.active) return;
+    GameContext.dungeon1Zone.active = false;
+    GameContext.dungeon1Active = false;
 
     // Clean up dungeon gate
-    if (dungeon1Gate) {
-        pixiCleanupObject(dungeon1Gate);
-        dungeon1Gate = null;
+    if (GameContext.dungeon1Gate) {
+        pixiCleanupObject(GameContext.dungeon1Gate);
+        GameContext.dungeon1Gate = null;
     }
 
     // Clean up dungeon zone
-    if (dungeon1Zone) {
-        if (dungeon1Zone._pixiGfx) {
-            try { dungeon1Zone._pixiGfx.destroy(true); } catch (e) { }
-            dungeon1Zone._pixiGfx = null;
+    if (GameContext.dungeon1Zone) {
+        if (GameContext.dungeon1Zone._pixiGfx) {
+            try { GameContext.dungeon1Zone._pixiGfx.destroy(true); } catch (e) { }
+            GameContext.dungeon1Zone._pixiGfx = null;
         }
     }
 
-    dungeon1Zone = null;
+    GameContext.dungeon1Zone = null;
 }
 
 // Instead, we transition directly to level 2 via sectorTransitionActive
@@ -20366,7 +20145,7 @@ function emitParticle(x, y, vx, vy, color = '#fff', life = 30) {
     let p = particlePool.length > 0 ? particlePool.pop() : null;
     if (!p) p = new Particle(x, y, vx, vy, color, life);
     else p.reset(x, y, vx, vy, color, life);
-    particles.push(p);
+    GameContext.particles.push(p);
     return p;
 }
 
@@ -20374,7 +20153,7 @@ function emitSmokeParticle(x, y, vx, vy, color = '#aaa') {
     let p = smokeParticlePool.length > 0 ? smokeParticlePool.pop() : null;
     if (!p) p = new SmokeParticle(x, y, vx, vy, color);
     else p.reset(x, y, vx, vy, color);
-    particles.push(p);
+    GameContext.particles.push(p);
     return p;
 }
 
@@ -20393,8 +20172,8 @@ function forceExplosionCleanup() {
     if (!particleRes || !particleRes.pool) return;
 
     let forcedCount = 0;
-    for (let i = explosions.length - 1; i >= 0; i--) {
-        const ex = explosions[i];
+    for (let i = GameContext.explosions.length - 1; i >= 0; i--) {
+        const ex = GameContext.explosions[i];
         if (ex && ex.dead && !ex.cleaned) {
             try {
                 ex.cleanup(particleRes);
@@ -20426,7 +20205,7 @@ function spawnParticles(x, y, count = 10, color = '#fff') {
 function spawnLightningArc(x1, y1, x2, y2, color = '#0ff') {
     // Create LightningArc entity with 12-frame lifetime (200ms at 60fps, scales with dt)
     const arc = new LightningArc(x1, y1, x2, y2, color, 12);
-    lightningArcs.push(arc);
+    GameContext.lightningArcs.push(arc);
     return arc;
 }
 
@@ -20450,7 +20229,7 @@ function scheduleParticleBursts(x, y, totalCount, color, spreadFrames = 10) {
     const particlesPerFrame = Math.max(1, Math.floor(totalCount / spreadFrames));
 
     for (let frame = 0; frame < spreadFrames; frame++) {
-        staggeredParticleBursts.push({
+        GameContext.staggeredParticleBursts.push({
             x: x + (Math.random() - 0.5) * 100, // Add some position variation
             y: y + (Math.random() - 0.5) * 100,
             count: particlesPerFrame + (frame === spreadFrames - 1 ? totalCount % spreadFrames : 0),
@@ -20466,13 +20245,13 @@ function scheduleParticleBursts(x, y, totalCount, color, spreadFrames = 10) {
  * Call this every frame to handle queued particle spawning
  */
 function processStaggeredParticleBursts() {
-    if (staggeredParticleBursts.length === 0) return;
+    if (GameContext.staggeredParticleBursts.length === 0) return;
 
-    for (let i = staggeredParticleBursts.length - 1; i >= 0; i--) {
-        const burst = staggeredParticleBursts[i];
+    for (let i = GameContext.staggeredParticleBursts.length - 1; i >= 0; i--) {
+        const burst = GameContext.staggeredParticleBursts[i];
 
         if (burst.processed) {
-            staggeredParticleBursts.splice(i, 1);
+            GameContext.staggeredParticleBursts.splice(i, 1);
             continue;
         }
 
@@ -20492,17 +20271,17 @@ function processStaggeredParticleBursts() {
  * @param {number} sourceY - Y position to spawn effects at
  */
 function scheduleStaggeredBombExplosions(sourceX, sourceY) {
-    const bombCount = bossBombs.length;
+    const bombCount = GameContext.bossBombs.length;
     if (bombCount === 0) {
-        clearArrayWithPixiCleanup(bossBombs);
+        clearArrayWithPixiCleanup(GameContext.bossBombs);
         return;
     }
 
     console.log(`[BOSS KILL] Scheduling ${bombCount} bomb explosions over multiple frames`);
 
     // Clear the bombs array but keep the explosion queue
-    const bombsToExplode = [...bossBombs];
-    bossBombs.length = 0;
+    const bombsToExplode = [...GameContext.bossBombs];
+    GameContext.bossBombs.length = 0;
 
     // Schedule explosions spread across frames
     // Explode up to 3 bombs per frame to prevent sprite pool exhaustion
@@ -20513,7 +20292,7 @@ function scheduleStaggeredBombExplosions(sourceX, sourceY) {
         // Calculate delay in frames
         const delayFrames = Math.floor(i / bombsPerFrame);
 
-        staggeredBombExplosions.push({
+        GameContext.staggeredBombExplosions.push({
             bomb: bomb,
             pos: { x: bomb.pos.x, y: bomb.pos.y },
             delayFrames: delayFrames,
@@ -20527,16 +20306,16 @@ function scheduleStaggeredBombExplosions(sourceX, sourceY) {
  * Call this every frame to handle queued bomb explosions
  */
 function processStaggeredBombExplosions() {
-    if (staggeredBombExplosions.length === 0) return;
+    if (GameContext.staggeredBombExplosions.length === 0) return;
 
     const frameTime = performance.now();
     const explosionsThisFrame = [];
 
-    for (let i = staggeredBombExplosions.length - 1; i >= 0; i--) {
-        const queued = staggeredBombExplosions[i];
+    for (let i = GameContext.staggeredBombExplosions.length - 1; i >= 0; i--) {
+        const queued = GameContext.staggeredBombExplosions[i];
 
         if (queued.processed) {
-            staggeredBombExplosions.splice(i, 1);
+            GameContext.staggeredBombExplosions.splice(i, 1);
             continue;
         }
 
@@ -20561,7 +20340,7 @@ function processStaggeredBombExplosions() {
             pixiCleanupObject(bomb);
             playSound('explode');
             spawnParticles(bomb.pos.x, bomb.pos.y, 40, '#fa0');
-            shockwaves.push(new Shockwave(bomb.pos.x, bomb.pos.y, bomb.damage, bomb.blastRadius, {
+            GameContext.shockwaves.push(new Shockwave(bomb.pos.x, bomb.pos.y, bomb.damage, bomb.blastRadius, {
                 damagePlayer: true,
                 damageBases: true,
                 ignoreEntity: bomb.owner,
@@ -20578,7 +20357,7 @@ function processStaggeredBombExplosions() {
 function spawnLargeExplosion(x, y, scale = 2.0) {
     const s = scale;
     const spriteSize = 250 * (s / 2.0); // Base size 250 at scale 2.0
-    explosions.push(new Explosion(x, y, spriteSize));
+    GameContext.explosions.push(new Explosion(x, y, spriteSize));
 
     // Standard fiery particles (glowy)
     const count = Math.floor(25 * (s / 1.5));
@@ -20618,7 +20397,7 @@ function spawnLargeExplosion(x, y, scale = 2.0) {
 function spawnFieryExplosion(x, y, scale = 1) {
     const s = Math.max(0.6, Math.min(3, scale || 1));
     const spriteSize = Math.max(90, Math.round(140 * s));
-    explosions.push(new Explosion(x, y, spriteSize));
+    GameContext.explosions.push(new Explosion(x, y, spriteSize));
 
     const count = Math.max(10, Math.round(12 * s));
     const colors = ['#ff6', '#fa0', '#f80', '#f00'];
@@ -20707,15 +20486,15 @@ function spawnBarrelSmoke(x, y, angle) {
 function loadMetaProfile() {
     try {
         // Use profile-specific key for meta data
-        const profileKey = currentProfileName
-            ? `meta_profile_v1_${currentProfileName}`
+        const profileKey = GameContext.currentProfileName
+            ? `meta_profile_v1_${GameContext.currentProfileName}`
             : 'meta_profile_v1';
         let raw = localStorage.getItem(profileKey);
         console.log('[META LOAD] Loading meta profile from key:', profileKey, '| Found:', !!raw);
 
         // Migration: if no data found in profile-specific key, check the legacy key
         // This recovers data saved before the initialization order fix
-        if (!raw && currentProfileName) {
+        if (!raw && GameContext.currentProfileName) {
             const legacyKey = 'meta_profile_v1';
             const legacyRaw = localStorage.getItem(legacyKey);
             if (legacyRaw) {
@@ -20729,7 +20508,7 @@ function loadMetaProfile() {
         }
 
         // Always reset to defaults first, then load saved data
-        metaProfile = {
+        GameContext.metaProfile = {
             bank: 0,
             purchases: {}
         };
@@ -20738,16 +20517,16 @@ function loadMetaProfile() {
             try {
                 const saved = JSON.parse(raw);
                 // Merge saved data over defaults
-                if (typeof saved.bank === 'number') metaProfile.bank = saved.bank;
+                if (typeof saved.bank === 'number') GameContext.metaProfile.bank = saved.bank;
                 if (saved.purchases) {
-                    metaProfile.purchases = Object.assign(metaProfile.purchases, saved.purchases);
+                    GameContext.metaProfile.purchases = Object.assign(GameContext.metaProfile.purchases, saved.purchases);
                 }
             } catch (e) {
                 console.warn('Failed to parse meta profile, using defaults', e);
             }
         }
-        if (!metaProfile.purchases) metaProfile.purchases = {};
-        metaProfile.purchases = Object.assign({
+        if (!GameContext.metaProfile.purchases) GameContext.metaProfile.purchases = {};
+        GameContext.metaProfile.purchases = Object.assign({
             startDamage: 0,
             passiveHp: 0,
             rerollTokens: 0,
@@ -20784,33 +20563,33 @@ function loadMetaProfile() {
             startingWeapon: 0,
             secondWind: 0,
             batteryCapacitor: 0
-        }, metaProfile.purchases);
-        if (metaProfile.purchases.warpPrecharge) delete metaProfile.purchases.warpPrecharge;
-        if (typeof metaProfile.bank !== 'number') metaProfile.bank = 0;
+        }, GameContext.metaProfile.purchases);
+        if (GameContext.metaProfile.purchases.warpPrecharge) delete GameContext.metaProfile.purchases.warpPrecharge;
+        if (typeof GameContext.metaProfile.bank !== 'number') GameContext.metaProfile.bank = 0;
 
         // Migrate old boolean saves to counts
         for (const key of ['startDamage', 'passiveHp', 'hullPlating', 'shieldCore',
             'staticBlueprint', 'missilePrimer', 'magnetBooster',
             'nukeCapacitor', 'speedTuning', 'bankMultiplier',
             'shopDiscount', 'extraLife', 'droneFabricator']) {
-            if (metaProfile.purchases[key] === true) {
-                metaProfile.purchases[key] = 1;
-            } else if (metaProfile.purchases[key] === false) {
-                metaProfile.purchases[key] = 0;
+            if (GameContext.metaProfile.purchases[key] === true) {
+                GameContext.metaProfile.purchases[key] = 1;
+            } else if (GameContext.metaProfile.purchases[key] === false) {
+                GameContext.metaProfile.purchases[key] = 0;
             }
         }
 
         // Log loaded purchases for debugging
-        const purchasedItems = Object.entries(metaProfile.purchases || {})
+        const purchasedItems = Object.entries(GameContext.metaProfile.purchases || {})
             .filter(([k, v]) => v > 0)
             .map(([k, v]) => `${k}:${v}`);
-        console.log('[META LOAD] Loaded bank:', metaProfile.bank, '| Purchases:', purchasedItems.length > 0 ? purchasedItems.join(', ') : 'none');
+        console.log('[META LOAD] Loaded bank:', GameContext.metaProfile.bank, '| Purchases:', purchasedItems.length > 0 ? purchasedItems.join(', ') : 'none');
     } catch (e) {
         console.warn('failed to load meta profile', e);
     }
 }
 function resetMetaProfile() {
-    metaProfile = {
+    GameContext.metaProfile = {
         bank: 0, purchases: {
             startDamage: 0,
             passiveHp: 0,
@@ -20853,18 +20632,18 @@ function resetMetaProfile() {
 function saveMetaProfile() {
     try {
         // Use profile-specific key for meta data
-        const profileKey = currentProfileName
-            ? `meta_profile_v1_${currentProfileName}`
+        const profileKey = GameContext.currentProfileName
+            ? `meta_profile_v1_${GameContext.currentProfileName}`
             : 'meta_profile_v1';
-        metaProfile.lastSavedAt = Date.now();
-        const dataToSave = JSON.stringify(metaProfile);
+        GameContext.metaProfile.lastSavedAt = Date.now();
+        const dataToSave = JSON.stringify(GameContext.metaProfile);
         localStorage.setItem(profileKey, dataToSave);
-        console.log('[META SAVE] Saved meta profile to key:', profileKey, '| Purchases:', Object.keys(metaProfile.purchases || {}).length, 'items');
+        console.log('[META SAVE] Saved meta profile to key:', profileKey, '| Purchases:', Object.keys(GameContext.metaProfile.purchases || {}).length, 'items');
         updateMetaUI();
     } catch (e) { console.warn('failed to save meta profile', e); }
 }
 function depositMetaNuggets() {
-    const tier = metaProfile.purchases.bankMultiplier || 0;
+    const tier = GameContext.metaProfile.purchases.bankMultiplier || 0;
     // Base 10% per tier for first 3 tiers, then diminishing
     let bonus = 0.1 * Math.min(tier, 3);
     if (tier > 3) {
@@ -20872,216 +20651,216 @@ function depositMetaNuggets() {
         const extraValue = getDiminishingValue(tier, table, 0.99);
         bonus = extraValue - 1.0;
     }
-    metaProfile.bank += Math.round(spaceNuggets * (1 + bonus));
+    GameContext.metaProfile.bank += Math.round(GameContext.spaceNuggets * (1 + bonus));
     saveMetaProfile();
 }
 function updateMetaUI() {
     const bankEl = document.getElementById('meta-bank');
-    if (bankEl) bankEl.innerText = metaProfile.bank;
+    if (bankEl) bankEl.innerText = GameContext.metaProfile.bank;
     const startEl = document.getElementById('meta-start-dmg');
     if (startEl) {
-        const tier = metaProfile.purchases.startDamage || 0;
+        const tier = GameContext.metaProfile.purchases.startDamage || 0;
         const cost = getMetaUpgradeCost('startDamage', 10);
         startEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const passiveEl = document.getElementById('meta-passive-hp');
     if (passiveEl) {
-        const tier = metaProfile.purchases.passiveHp || 0;
+        const tier = GameContext.metaProfile.purchases.passiveHp || 0;
         const cost = getMetaUpgradeCost('passiveHp', 15);
         passiveEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const rerollEl = document.getElementById('meta-reroll-count');
-    if (rerollEl) rerollEl.innerText = metaProfile.purchases.rerollTokens || 0;
+    if (rerollEl) rerollEl.innerText = GameContext.metaProfile.purchases.rerollTokens || 0;
     const hullEl = document.getElementById('meta-hull');
     if (hullEl) {
-        const tier = metaProfile.purchases.hullPlating || 0;
+        const tier = GameContext.metaProfile.purchases.hullPlating || 0;
         const cost = getMetaUpgradeCost('hullPlating', 30);
         hullEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const shieldEl = document.getElementById('meta-shield-core');
     if (shieldEl) {
-        const tier = metaProfile.purchases.shieldCore || 0;
+        const tier = GameContext.metaProfile.purchases.shieldCore || 0;
         const cost = getMetaUpgradeCost('shieldCore', 30);
         shieldEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const staticEl = document.getElementById('meta-static');
     if (staticEl) {
-        const tier = metaProfile.purchases.staticBlueprint || 0;
+        const tier = GameContext.metaProfile.purchases.staticBlueprint || 0;
         const cost = getMetaUpgradeCost('staticBlueprint', 40);
         staticEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const missileEl = document.getElementById('meta-missile');
     if (missileEl) {
-        const tier = metaProfile.purchases.missilePrimer || 0;
+        const tier = GameContext.metaProfile.purchases.missilePrimer || 0;
         const cost = getMetaUpgradeCost('missilePrimer', 40);
         missileEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const magnetEl = document.getElementById('meta-magnet');
     if (magnetEl) {
-        const tier = metaProfile.purchases.magnetBooster || 0;
+        const tier = GameContext.metaProfile.purchases.magnetBooster || 0;
         const cost = getMetaUpgradeCost('magnetBooster', 25);
         magnetEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const nukeEl = document.getElementById('meta-nuke');
     if (nukeEl) {
-        const tier = metaProfile.purchases.nukeCapacitor || 0;
+        const tier = GameContext.metaProfile.purchases.nukeCapacitor || 0;
         const cost = getMetaUpgradeCost('nukeCapacitor', 35);
         nukeEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const speedEl = document.getElementById('meta-speed');
     if (speedEl) {
-        const tier = metaProfile.purchases.speedTuning || 0;
+        const tier = GameContext.metaProfile.purchases.speedTuning || 0;
         const cost = getMetaUpgradeCost('speedTuning', 25);
         speedEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const bankMultEl = document.getElementById('meta-bank-mult');
     if (bankMultEl) {
-        const tier = metaProfile.purchases.bankMultiplier || 0;
+        const tier = GameContext.metaProfile.purchases.bankMultiplier || 0;
         const cost = getMetaUpgradeCost('bankMultiplier', 50);
         bankMultEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const discountEl = document.getElementById('meta-discount');
     if (discountEl) {
-        const tier = metaProfile.purchases.shopDiscount || 0;
+        const tier = GameContext.metaProfile.purchases.shopDiscount || 0;
         const cost = getMetaUpgradeCost('shopDiscount', 50);
         discountEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const extraLifeEl = document.getElementById('meta-extra-life');
     if (extraLifeEl) {
-        const tier = metaProfile.purchases.extraLife || 0;
+        const tier = GameContext.metaProfile.purchases.extraLife || 0;
         const cost = getMetaUpgradeCost('extraLife', 60);
         extraLifeEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const droneEl = document.getElementById('meta-drone');
     if (droneEl) {
-        const tier = metaProfile.purchases.droneFabricator || 0;
+        const tier = GameContext.metaProfile.purchases.droneFabricator || 0;
         const cost = getMetaUpgradeCost('droneFabricator', 40);
         droneEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     // New upgrades
     const piercingEl = document.getElementById('meta-piercing');
     if (piercingEl) {
-        const tier = metaProfile.purchases.piercingRounds || 0;
+        const tier = GameContext.metaProfile.purchases.piercingRounds || 0;
         const cost = getMetaUpgradeCost('piercingRounds', 45);
         piercingEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const explosiveEl = document.getElementById('meta-explosive');
     if (explosiveEl) {
-        const tier = metaProfile.purchases.explosiveRounds || 0;
+        const tier = GameContext.metaProfile.purchases.explosiveRounds || 0;
         const cost = getMetaUpgradeCost('explosiveRounds', 55);
         explosiveEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const critEl = document.getElementById('meta-crit');
     if (critEl) {
-        const tier = metaProfile.purchases.criticalStrike || 0;
+        const tier = GameContext.metaProfile.purchases.criticalStrike || 0;
         const cost = getMetaUpgradeCost('criticalStrike', 50);
         critEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const splitEl = document.getElementById('meta-split');
     if (splitEl) {
-        const tier = metaProfile.purchases.splitShot || 0;
+        const tier = GameContext.metaProfile.purchases.splitShot || 0;
         const cost = getMetaUpgradeCost('splitShot', 60);
         splitEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const thornEl = document.getElementById('meta-thorn');
     if (thornEl) {
-        const tier = metaProfile.purchases.thornArmor || 0;
+        const tier = GameContext.metaProfile.purchases.thornArmor || 0;
         const cost = getMetaUpgradeCost('thornArmor', 35);
         thornEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const lifestealEl = document.getElementById('meta-lifesteal');
     if (lifestealEl) {
-        const tier = metaProfile.purchases.lifesteal || 0;
+        const tier = GameContext.metaProfile.purchases.lifesteal || 0;
         const cost = getMetaUpgradeCost('lifesteal', 40);
         lifestealEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const evasionEl = document.getElementById('meta-evasion');
     if (evasionEl) {
-        const tier = metaProfile.purchases.evasionBoost || 0;
+        const tier = GameContext.metaProfile.purchases.evasionBoost || 0;
         const cost = getMetaUpgradeCost('evasionBoost', 45);
         evasionEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const shieldRegenEl = document.getElementById('meta-shieldregen');
     if (shieldRegenEl) {
-        const tier = metaProfile.purchases.shieldRecharge || 0;
+        const tier = GameContext.metaProfile.purchases.shieldRecharge || 0;
         const cost = getMetaUpgradeCost('shieldRecharge', 30);
         shieldRegenEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const dashCdEl = document.getElementById('meta-dashcd');
     if (dashCdEl) {
-        const tier = metaProfile.purchases.dashCooldown || 0;
+        const tier = GameContext.metaProfile.purchases.dashCooldown || 0;
         const cost = getMetaUpgradeCost('dashCooldown', 35);
         dashCdEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const dashDurEl = document.getElementById('meta-dashdur');
     if (dashDurEl) {
-        const tier = metaProfile.purchases.dashDuration || 0;
+        const tier = GameContext.metaProfile.purchases.dashDuration || 0;
         const cost = getMetaUpgradeCost('dashDuration', 30);
         dashDurEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const xpMagEl = document.getElementById('meta-xpmag');
     if (xpMagEl) {
-        const tier = metaProfile.purchases.xpMagnetPlus || 0;
+        const tier = GameContext.metaProfile.purchases.xpMagnetPlus || 0;
         const cost = getMetaUpgradeCost('xpMagnetPlus', 25);
         xpMagEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const autoRerollEl = document.getElementById('meta-autoreroll');
     if (autoRerollEl) {
-        const tier = metaProfile.purchases.autoReroll || 0;
+        const tier = GameContext.metaProfile.purchases.autoReroll || 0;
         const cost = getMetaUpgradeCost('autoReroll', 50);
         autoRerollEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const nuggetMagEl = document.getElementById('meta-nuggetmag');
     if (nuggetMagEl) {
-        const tier = metaProfile.purchases.nuggetMagnet || 0;
+        const tier = GameContext.metaProfile.purchases.nuggetMagnet || 0;
         const cost = getMetaUpgradeCost('nuggetMagnet', 35);
         nuggetMagEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const contractSpeedEl = document.getElementById('meta-contractspeed');
     if (contractSpeedEl) {
-        const tier = metaProfile.purchases.contractSpeed || 0;
+        const tier = GameContext.metaProfile.purchases.contractSpeed || 0;
         const cost = getMetaUpgradeCost('contractSpeed', 40);
         contractSpeedEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const startRerollEl = document.getElementById('meta-startreroll');
     if (startRerollEl) {
-        const tier = metaProfile.purchases.startingRerolls || 0;
+        const tier = GameContext.metaProfile.purchases.startingRerolls || 0;
         const cost = getMetaUpgradeCost('startingRerolls', 30);
         startRerollEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const luckyEl = document.getElementById('meta-lucky');
     if (luckyEl) {
-        const tier = metaProfile.purchases.luckyDrop || 0;
+        const tier = GameContext.metaProfile.purchases.luckyDrop || 0;
         const cost = getMetaUpgradeCost('luckyDrop', 55);
         luckyEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const bountyEl = document.getElementById('meta-bounty');
     if (bountyEl) {
-        const tier = metaProfile.purchases.bountyHunter || 0;
+        const tier = GameContext.metaProfile.purchases.bountyHunter || 0;
         const cost = getMetaUpgradeCost('bountyHunter', 45);
         bountyEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const comboEl = document.getElementById('meta-combo');
     if (comboEl) {
-        const tier = metaProfile.purchases.comboMeter || 0;
+        const tier = GameContext.metaProfile.purchases.comboMeter || 0;
         const cost = getMetaUpgradeCost('comboMeter', 50);
         comboEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const startWeaponEl = document.getElementById('meta-startweapon');
     if (startWeaponEl) {
-        const tier = metaProfile.purchases.startingWeapon || 0;
+        const tier = GameContext.metaProfile.purchases.startingWeapon || 0;
         const cost = getMetaUpgradeCost('startingWeapon', 60);
         startWeaponEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const secondWindEl = document.getElementById('meta-secondwind');
     if (secondWindEl) {
-        const tier = metaProfile.purchases.secondWind || 0;
+        const tier = GameContext.metaProfile.purchases.secondWind || 0;
         const cost = getMetaUpgradeCost('secondWind', 70);
         secondWindEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const batteryEl = document.getElementById('meta-battery');
     if (batteryEl) {
-        const tier = metaProfile.purchases.batteryCapacitor || 0;
+        const tier = GameContext.metaProfile.purchases.batteryCapacitor || 0;
         const cost = getMetaUpgradeCost('batteryCapacitor', 45);
         batteryEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
@@ -21139,7 +20918,7 @@ function showUpgradeDescription(upgradeId) {
     const contentEl = document.getElementById('desc-panel-content');
     const tierInfoEl = document.getElementById('desc-panel-tier-info');
 
-    const currentTier = metaProfile.purchases[upgradeId] || 0;
+    const currentTier = GameContext.metaProfile.purchases[upgradeId] || 0;
 
     titleEl.textContent = data.name.toUpperCase();
 
@@ -21196,7 +20975,7 @@ function showMetaShopUpgradeModal(upgradeId, clickedButton) {
     }
 
     // Get current tier and calculate cost
-    const currentTier = metaProfile.purchases[upgradeId] || 0;
+    const currentTier = GameContext.metaProfile.purchases[upgradeId] || 0;
 
     // Get base cost from mapping (same mapping used in updateMetaUI)
     const baseCostMap = {
@@ -21215,7 +20994,7 @@ function showMetaShopUpgradeModal(upgradeId, clickedButton) {
 
     const baseCost = baseCostMap[upgradeId] || 50;
     const cost = getMetaUpgradeCost(upgradeId, baseCost);
-    const canAfford = metaProfile.bank >= cost;
+    const canAfford = GameContext.metaProfile.bank >= cost;
 
     // Populate modal content
     titleEl.textContent = data.name.toUpperCase();
@@ -21304,7 +21083,7 @@ function setupMetaShopModalHandlers(upgradeId, cost, currentTier) {
     buyBtn.parentNode.replaceChild(newBuyBtn, buyBtn);
 
     // Reset gamepad navigation for this modal
-    menuSelectionIndex = 0;
+    GameContext.menuSelectionIndex = 0;
     gpState.lastMenuElements = null;
 
     // Wait one frame to ensure DOM has updated, then setup navigation
@@ -21328,7 +21107,7 @@ function setupMetaShopModalHandlers(upgradeId, cost, currentTier) {
 
         // Set flag to preserve index when transitioning back to shop
         if (savedIndex !== null && savedIndex >= 0) {
-            menuSelectionIndex = savedIndex;
+            GameContext.menuSelectionIndex = savedIndex;
             returningFromModal = true;
         }
 
@@ -21341,10 +21120,10 @@ function setupMetaShopModalHandlers(upgradeId, cost, currentTier) {
 
     // Buy button - execute purchase
     newBuyBtn.addEventListener('click', () => {
-        if (metaProfile.bank >= cost) {
+        if (GameContext.metaProfile.bank >= cost) {
             // Execute purchase
-            metaProfile.bank -= cost;
-            metaProfile.purchases[upgradeId] = currentTier + 1;
+            GameContext.metaProfile.bank -= cost;
+            GameContext.metaProfile.purchases[upgradeId] = currentTier + 1;
             saveMetaProfile();
 
             // Show success message
@@ -21375,7 +21154,7 @@ function setupMetaShopModalHandlers(upgradeId, cost, currentTier) {
 
             // Set flag to preserve index when transitioning back to shop
             if (savedIndex !== null && savedIndex >= 0) {
-                menuSelectionIndex = savedIndex;
+                GameContext.menuSelectionIndex = savedIndex;
                 returningFromModal = true;
             }
 
@@ -21400,15 +21179,15 @@ class Drone extends Entity {
         this.lastHealTick = Date.now();
     }
     update(deltaTime = SIM_STEP_MS) {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
 
         this.prevPos.x = this.pos.x;
         this.prevPos.y = this.pos.y;
 
         const now = Date.now();
         this.orbitAngle += 0.04; // doubled for 60Hz
-        const baseX = player.pos.x + Math.cos(this.orbitAngle) * this.orbitRadius;
-        const baseY = player.pos.y + Math.sin(this.orbitAngle) * this.orbitRadius;
+        const baseX = GameContext.player.pos.x + Math.cos(this.orbitAngle) * this.orbitRadius;
+        const baseY = GameContext.player.pos.y + Math.sin(this.orbitAngle) * this.orbitRadius;
         this.pos.x = baseX;
         this.pos.y = baseY;
         this.timer++;
@@ -21416,8 +21195,8 @@ class Drone extends Entity {
         if (this.type === 'heal') {
             // 1 HP per 5 seconds
             if (now - this.lastHealTick >= 5000) {
-                if (player.hp < player.maxHp) {
-                    player.hp = Math.min(player.maxHp, player.hp + 1);
+                if (GameContext.player.hp < GameContext.player.maxHp) {
+                    GameContext.player.hp = Math.min(GameContext.player.maxHp, GameContext.player.hp + 1);
                     updateHealthUI();
                     spawnParticles(this.pos.x, this.pos.y, 6, '#0f0');
                 }
@@ -21426,22 +21205,22 @@ class Drone extends Entity {
         } else if (this.type === 'shield') {
             // Time-gated to 1 segment per ~3 seconds
             if (now - this.lastShieldTick >= 3000) {
-                const idx = player.shieldSegments.findIndex(s => s < 2);
+                const idx = GameContext.player.shieldSegments.findIndex(s => s < 2);
                 if (idx !== -1) {
-                    player.shieldSegments[idx] = 2;
+                    GameContext.player.shieldSegments[idx] = 2;
                     spawnParticles(this.pos.x, this.pos.y, 6, '#0ff');
                 }
                 this.lastShieldTick = now;
             }
         } else if (this.type === 'shooter' && this.timer % 25 === 0) { // halved interval for 60Hz
             // Shooter drone now fires where the player's turret aims
-            const aimAngle = player ? player.turretAngle : 0;
-            bullets.push(new Bullet(this.pos.x, this.pos.y, aimAngle, false, 1.5, 14, 4, '#ff0'));
+            const aimAngle = GameContext.player ? GameContext.player.turretAngle : 0;
+            GameContext.bullets.push(new Bullet(this.pos.x, this.pos.y, aimAngle, false, 1.5, 14, 4, '#ff0'));
             spawnBarrelSmoke(this.pos.x, this.pos.y, aimAngle);
         }
     }
     draw(ctx) {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
         const rPos = this.getRenderPos(renderAlpha);
         ctx.save();
         ctx.translate(rPos.x, rPos.y);
@@ -21467,81 +21246,64 @@ class Drone extends Entity {
 }
 
 function spawnDrone(type) {
-    drones.push(new Drone(type));
+    GameContext.drones.push(new Drone(type));
 }
 
 function updateContractUI() {
-    const el = document.getElementById('contract-display');
-    if (!el) return;
-    if (!activeContract) {
-        el.innerText = 'CONTRACT: NONE';
-        return;
-    }
-    let extra = '';
-    if (activeContract.type === 'scan_beacon') {
-        if (activeContract.state === 'active') extra = ` (SCANNING ${Math.floor((activeContract.progress || 0) * 100)}%)`;
-        else extra = ' (GO TO BEACON)';
-    } else if (activeContract.type === 'gate_run') {
-        const remain = Math.max(0, (activeContract.endsAt || 0) - Date.now());
-        extra = ` (GATE ${activeContract.gateIndex + 1}/${activeContract.gateCount} ${formatTime(remain)})`;
-    } else if (activeContract.type === 'anomaly') {
-        if (activeContract.coreCollected) extra = ' (ESCAPE ZONE)';
-        else extra = activeContract.state === 'inside' ? ' (FIND CORE)' : ' (ENTER ZONE)';
-    }
-    el.innerText = `CONTRACT: ${activeContract.title}${extra}`;
+    updateContractUIHelper(GameContext);
 }
 
 function updateMiniEventUI() {
     const el = document.getElementById('event-display');
     if (!el) return;
-    if (!miniEvent || miniEvent.dead) {
+    if (!GameContext.miniEvent || GameContext.miniEvent.dead) {
         el.style.display = 'none';
         el.innerText = 'EVENT: NONE';
         return;
     }
     el.style.display = 'block';
-    if (typeof miniEvent.getUiText === 'function') el.innerText = miniEvent.getUiText();
+    if (typeof GameContext.miniEvent.getUiText === 'function') el.innerText = GameContext.miniEvent.getUiText();
     else el.innerText = 'EVENT: ACTIVE';
 }
 
 function clearMiniEvent() {
-    if (!miniEvent) return;
-    if (typeof miniEvent.kill === 'function') {
-        miniEvent.kill();
+    if (!GameContext.miniEvent) return;
+    if (typeof GameContext.miniEvent.kill === 'function') {
+        GameContext.miniEvent.kill();
     } else {
-        miniEvent.dead = true;
+        GameContext.miniEvent.dead = true;
     }
-    pixiCleanupObject(miniEvent);
-    miniEvent = null;
+    pixiCleanupObject(GameContext.miniEvent);
+    GameContext.miniEvent = null;
 }
 
 function completeContract(success = true) {
-    if (!activeContract) return;
-    const contractId = activeContract.id;
+    if (!GameContext.activeContract) return;
+    const contractId = GameContext.activeContract.id;
     if (success) {
-        const rewardNugs = (activeContract.rewardNugs !== undefined) ? activeContract.rewardNugs : 4;
-        for (let i = 0; i < rewardNugs; i++) nuggets.push(new SpaceNugget(player.pos.x + (Math.random() - 0.5) * 120, player.pos.y + (Math.random() - 0.5) * 120, 1));
+        const rewardNugs = (GameContext.activeContract.rewardNugs !== undefined) ? GameContext.activeContract.rewardNugs : 4;
+        for (let i = 0; i < rewardNugs; i++) GameContext.nuggets.push(new SpaceNugget(GameContext.player.pos.x + (Math.random() - 0.5) * 120, GameContext.player.pos.y + (Math.random() - 0.5) * 120, 1));
         // Bonus gold (coins) for all contracts
-        coins.push(new Coin(player.pos.x + (Math.random() - 0.5) * 80, player.pos.y + (Math.random() - 0.5) * 80, 10));
-        const rewardScore = (activeContract.rewardScore !== undefined) ? activeContract.rewardScore : 5000;
-        score += rewardScore;
+        GameContext.coins.push(new Coin(GameContext.player.pos.x + (Math.random() - 0.5) * 80, GameContext.player.pos.y + (Math.random() - 0.5) * 80, 10));
+        const rewardScore = (GameContext.activeContract.rewardScore !== undefined) ? GameContext.activeContract.rewardScore : 5000;
+        GameContext.score += rewardScore;
         showOverlayMessage("CONTRACT COMPLETE", '#0f0', 1500);
     } else {
         showOverlayMessage("CONTRACT FAILED", '#f00', 1500);
     }
     // Cleanup entities
-    clearArrayWithPixiCleanup(contractEntities.beacons);
-    clearArrayWithPixiCleanup(contractEntities.gates);
-    clearArrayWithPixiCleanup(contractEntities.anomalies);
-    clearArrayWithPixiCleanup(contractEntities.fortresses);
-    clearArrayWithPixiCleanup(contractEntities.wallTurrets);
+    clearArrayWithPixiCleanup(GameContext.contractEntities.beacons);
+    clearArrayWithPixiCleanup(GameContext.contractEntities.gates);
+    clearArrayWithPixiCleanup(GameContext.contractEntities.anomalies);
+    clearArrayWithPixiCleanup(GameContext.contractEntities.fortresses);
+    clearArrayWithPixiCleanup(GameContext.contractEntities.wallTurrets);
     // Cleanup anomaly contract debris
     if (contractId) {
-        filterArrayWithPixiCleanup(environmentAsteroids, a => !a.contractId || a.contractId !== contractId);
-        filterArrayWithPixiCleanup(enemies, e => !e.contractId || e.contractId !== contractId);
+        filterArrayWithPixiCleanup(GameContext.environmentAsteroids, a => !a.contractId || a.contractId !== contractId);
+        filterArrayWithPixiCleanup(GameContext.enemies, e => !e.contractId || e.contractId !== contractId);
     }
-    activeContract = null;
-    nextContractAt = Date.now() + 45000 + Math.random() * 30000;
+    GameContext.activeContract = null;
+    GameContext.nextContractAt = Date.now() + 45000 + Math.random() * 30000;
     updateContractUI();
 }
 
@@ -21566,20 +21328,20 @@ class ContractBeacon extends Entity {
         pixiCleanupObject(this);
     }
     update(deltaTime = SIM_STEP_MS) {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
-        if (!activeContract || activeContract.type !== 'scan_beacon') return;
-        const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        if (!GameContext.activeContract || GameContext.activeContract.type !== 'scan_beacon') return;
+        const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
         if (d < this.radius) {
-            activeContract.state = 'active';
+            GameContext.activeContract.state = 'active';
             if (!this.scanStartAt) this.scanStartAt = Date.now();
-            activeContract.progress = Math.min(1, (Date.now() - this.scanStartAt) / this.scanMsRequired);
-            if (activeContract.progress >= 1) completeContract(true);
+            GameContext.activeContract.progress = Math.min(1, (Date.now() - this.scanStartAt) / this.scanMsRequired);
+            if (GameContext.activeContract.progress >= 1) completeContract(true);
         } else {
-            if (activeContract.state === 'active') activeContract.state = 'travel';
+            if (GameContext.activeContract.state === 'active') GameContext.activeContract.state = 'travel';
             this.scanStartAt = null;
-            activeContract.progress = 0;
+            GameContext.activeContract.progress = 0;
         }
     }
     draw(ctx) {
@@ -21626,10 +21388,10 @@ class ContractBeacon extends Entity {
             this._pixiLabelText.visible = true;
 
             // Progress
-            if (player && !player.dead && activeContract && activeContract.type === 'scan_beacon') {
-                const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+            if (GameContext.player && !GameContext.player.dead && GameContext.activeContract && GameContext.activeContract.type === 'scan_beacon') {
+                const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
                 if (d < this.radius) {
-                    const progress = Math.max(0, Math.min(1, activeContract.progress || 0));
+                    const progress = Math.max(0, Math.min(1, GameContext.activeContract.progress || 0));
 
                     if (!this._pixiProgressGfx) {
                         this._pixiProgressGfx = new PIXI.Graphics();
@@ -21702,10 +21464,10 @@ class ContractBeacon extends Entity {
         ctx.fillText(this.label, 0, -this.radius - 10);
 
         // contextual prompt + progress bar (works with keyboard + gamepad)
-        if (player && !player.dead && activeContract && activeContract.type === 'scan_beacon') {
-            const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        if (GameContext.player && !GameContext.player.dead && GameContext.activeContract && GameContext.activeContract.type === 'scan_beacon') {
+            const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
             if (d < this.radius) {
-                const progress = Math.max(0, Math.min(1, activeContract.progress || 0));
+                const progress = Math.max(0, Math.min(1, GameContext.activeContract.progress || 0));
                 const w = 140;
                 const h = 10;
                 const x = -w / 2;
@@ -21748,18 +21510,18 @@ class GateRing extends Entity {
         pixiCleanupObject(this);
     }
     update(deltaTime = SIM_STEP_MS) {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
-        if (!activeContract || activeContract.type !== 'gate_run') return;
-        if (activeContract.gateIndex !== this.index) return;
-        const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        if (!GameContext.activeContract || GameContext.activeContract.type !== 'gate_run') return;
+        if (GameContext.activeContract.gateIndex !== this.index) return;
+        const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
         if (d < this.radius) {
             // advance
-            activeContract.gateIndex++;
+            GameContext.activeContract.gateIndex++;
             playSound('powerup');
             showOverlayMessage(`GATE ${this.index + 1} CLEARED`, '#0f0', 700);
-            if (activeContract.gateIndex >= activeContract.gateCount) {
+            if (GameContext.activeContract.gateIndex >= GameContext.activeContract.gateCount) {
                 completeContract(true);
             }
         }
@@ -21767,7 +21529,7 @@ class GateRing extends Entity {
     draw(ctx) {
         if (this.dead) return;
 
-        const active = activeContract && activeContract.type === 'gate_run' && activeContract.gateIndex === this.index;
+        const active = GameContext.activeContract && GameContext.activeContract.type === 'gate_run' && GameContext.activeContract.gateIndex === this.index;
         const pulse = 0.45 + Math.abs(Math.sin(this.t * 0.08)) * 0.35;
 
         if (pixiVectorLayer) {
@@ -21901,11 +21663,11 @@ class AnomalyZone extends Entity {
 
                 // Static defensive turrets mounted on some inner walls (not on the entrance ring).
                 const allowTurretRing = (ringIndex === 1 || ringIndex === 2);
-                if (allowTurretRing && turretBudget > 0 && contractEntities && contractEntities.wallTurrets) {
+                if (allowTurretRing && turretBudget > 0 && GameContext.contractEntities && GameContext.contractEntities.wallTurrets) {
                     if (Math.random() < ring.turretChance && Math.abs(d) > (ring.width + 0.25)) {
                         const tx = x - Math.cos(a) * (ring.astR * 0.75 + 34);
                         const ty = y - Math.sin(a) * (ring.astR * 0.75 + 34);
-                        contractEntities.wallTurrets.push(new WallTurret(tx, ty, this.contractId, a));
+                        GameContext.contractEntities.wallTurrets.push(new WallTurret(tx, ty, this.contractId, a));
                         turretBudget--;
                     }
                 }
@@ -21913,7 +21675,7 @@ class AnomalyZone extends Entity {
         }
 
         // Reward cache in the core
-        caches.push(new ExplorationCache(this.pos.x, this.pos.y, this.contractId));
+        GameContext.caches.push(new ExplorationCache(this.pos.x, this.pos.y, this.contractId));
     }
 
     buildRing(r, gaps, width, step = 0.065) {
@@ -21964,12 +21726,12 @@ class AnomalyZone extends Entity {
     }
 
     update(deltaTime = SIM_STEP_MS) {
-        if (!player || player.dead) return;
+        if (!GameContext.player || GameContext.player.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
-        if (!activeContract || activeContract.type !== 'anomaly') return;
+        if (!GameContext.activeContract || GameContext.activeContract.type !== 'anomaly') return;
 
-        const d = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
 
         // Build the maze before the player hits the ring so it can be seen on approach.
         if (d < this.radius * 1.6) {
@@ -21979,9 +21741,9 @@ class AnomalyZone extends Entity {
             }
         }
 
-        const collected = !!activeContract.coreCollected;
+        const collected = !!GameContext.activeContract.coreCollected;
         if (d < this.radius) {
-            activeContract.state = collected ? 'escape' : 'inside';
+            GameContext.activeContract.state = collected ? 'escape' : 'inside';
 
             if (!this.defendersSpawned) {
                 this.defendersSpawned = true;
@@ -21993,11 +21755,11 @@ class AnomalyZone extends Entity {
                         const dd = 850 + Math.random() * 950;
                         const sx = this.pos.x + Math.cos(a) * dd;
                         const sy = this.pos.y + Math.sin(a) * dd;
-                        const distPlayer = player ? Math.hypot(player.pos.x - sx, player.pos.y - sy) : 99999;
+                        const distPlayer = GameContext.player ? Math.hypot(GameContext.player.pos.x - sx, GameContext.player.pos.y - sy) : 99999;
                         if (distPlayer < 500) continue;
                         const def = new Enemy('defender', { x: sx, y: sy }, null);
                         def.contractId = this.contractId;
-                        enemies.push(def);
+                        GameContext.enemies.push(def);
                         spawned = true;
                     }
                 }
@@ -22005,7 +21767,7 @@ class AnomalyZone extends Entity {
             }
         } else {
             // Outside the ring: if the cache was collected, escaping completes the contract.
-            activeContract.state = 'travel';
+            GameContext.activeContract.state = 'travel';
             if (collected) {
                 completeContract(true);
             }
@@ -22036,7 +21798,7 @@ class AnomalyZone extends Entity {
 
             // Rebuild Geometry if dirty
             if (this.shieldsDirty && this.segments && this.segments.length > 0) {
-                const z = currentZoom || ZOOM_LEVEL;
+                const z = GameContext.currentZoom || ZOOM_LEVEL;
 
                 // 1. Maze Segments
                 this._pixiGfx.clear();
@@ -22070,7 +21832,7 @@ class AnomalyZone extends Entity {
             if (pixiVectorLayer) {
                 let t = this._pixiCoreText;
                 if (!t) {
-                    const fontSize = Math.round(16 / (currentZoom || ZOOM_LEVEL));
+                    const fontSize = Math.round(16 / (GameContext.currentZoom || ZOOM_LEVEL));
                     t = new PIXI.Text('CORE', {
                         fontFamily: 'Courier New',
                         fontSize: fontSize,
@@ -22095,7 +21857,7 @@ class AnomalyZone extends Entity {
 
         // Maze rings (warp-maze style 1px line walls)
         if (this.segments && this.segments.length > 0) {
-            const z = currentZoom || ZOOM_LEVEL;
+            const z = GameContext.currentZoom || ZOOM_LEVEL;
             ctx.save();
             ctx.lineWidth = 1 / z;
             ctx.shadowBlur = 10;
@@ -22132,7 +21894,7 @@ class AnomalyZone extends Entity {
         ctx.stroke();
         ctx.shadowBlur = 0;
         ctx.fillStyle = '#fff';
-        ctx.font = `bold ${Math.round(16 / (currentZoom || ZOOM_LEVEL))}px Courier New`;
+        ctx.font = `bold ${Math.round(16 / (GameContext.currentZoom || ZOOM_LEVEL))}px Courier New`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('CORE', 0, 0);
@@ -22161,7 +21923,7 @@ class WallTurret extends Entity {
         this.dead = true;
         pixiCleanupObject(this);
         // Drop coins like a roamer ship.
-        for (let i = 0; i < 3; i++) coins.push(new Coin(this.pos.x, this.pos.y, 2));
+        for (let i = 0; i < 3; i++) GameContext.coins.push(new Coin(this.pos.x, this.pos.y, 2));
         spawnParticles(this.pos.x, this.pos.y, 18, '#ff6');
         playSound('explode');
     }
@@ -22170,22 +21932,22 @@ class WallTurret extends Entity {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
-        if (!player || player.dead) return;
-        if (!activeContract || activeContract.type !== 'anomaly' || activeContract.id !== this.contractId) return;
+        if (!GameContext.player || GameContext.player.dead) return;
+        if (!GameContext.activeContract || GameContext.activeContract.type !== 'anomaly' || GameContext.activeContract.id !== this.contractId) return;
 
-        const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
+        const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
         if (dist > 3600) return;
 
         this.reload -= dtFactor;
         if (this.reload > 0) return;
 
-        const aim = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
+        const aim = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
         const muzzleX = this.pos.x + Math.cos(aim) * (this.radius + 6);
         const muzzleY = this.pos.y + Math.sin(aim) * (this.radius + 6);
-        bullets.push(new Bullet(muzzleX, muzzleY, aim, true, 1, 12, 4, '#f80'));
+        GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim, true, 1, 12, 4, '#f80'));
         if (Math.random() < 0.25) {
-            bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.12, true, 1, 12, 4, '#f80'));
-            bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.12, true, 1, 12, 4, '#f80'));
+            GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.12, true, 1, 12, 4, '#f80'));
+            GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.12, true, 1, 12, 4, '#f80'));
         }
         this.reload = 55 + Math.floor(Math.random() * 30);
     }
@@ -22193,7 +21955,7 @@ class WallTurret extends Entity {
     draw(ctx) {
         if (this.dead) return;
 
-        const aim = (player && !player.dead) ? Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x) : this.baseAngle;
+        const aim = (GameContext.player && !GameContext.player.dead) ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x) : this.baseAngle;
 
         if (pixiVectorLayer) {
             if (!this._pixiGfx) {
@@ -22280,17 +22042,17 @@ class WallTurret extends Entity {
 }
 
 function scheduleNextShootingStar() {
-    if (sectorIndex >= 2) {
-        nextShootingStarTime = Date.now() + 60000; // every ~1 minute
+    if (GameContext.sectorIndex >= 2) {
+        GameContext.nextShootingStarTime = Date.now() + 60000; // every ~1 minute
     } else {
         // 3-5 minutes = 180000 to 300000 ms
-        nextShootingStarTime = Date.now() + 180000 + Math.random() * 120000;
+        GameContext.nextShootingStarTime = Date.now() + 180000 + Math.random() * 120000;
     }
 }
 
 function scheduleNextRadiationStorm(fromNow = Date.now()) {
-    nextRadiationStormAt = null;
-    radiationStorm = null;
+    GameContext.nextRadiationStormAt = null;
+    GameContext.radiationStorm = null;
 }
 
 function spawnRadiationStormRelative() {
@@ -22300,50 +22062,35 @@ function spawnRadiationStormRelative() {
 function scheduleNextMiniEvent(fromNow = Date.now()) {
     const min = 120000;  // 2m
     const max = 210000;  // 3.5m
-    nextMiniEventAt = fromNow + min + Math.floor(Math.random() * (max - min + 1));
+    GameContext.nextMiniEventAt = fromNow + min + Math.floor(Math.random() * (max - min + 1));
 }
 
 function spawnMiniEventRelative() {
-    if (!player) return;
+    if (!GameContext.player) return;
     const p = findSpawnPointRelative(true, 2400, 4400);
     // Always spawn the Defend Cache event
-    miniEvent = new MiniEventDefendCache(p.x, p.y);
+    GameContext.miniEvent = new MiniEventDefendCache(p.x, p.y);
     showOverlayMessage("MINI-EVENT: DEFEND THE CACHE", '#ff0', 2200, 1);
     playSound('contract');
 }
 
 function findSpawnPointRelative(random = false, min = 1500, max = 2500) {
-    if (!player) return { x: 0, y: 0 };
-    if (caveMode && caveLevel && caveLevel.active) {
-        const dist = min + Math.random() * (max - min);
-        // Bias spawns "up the tunnel" so progression stays pressured.
-        const y = player.pos.y - dist * (0.85 + Math.random() * 0.3);
-        const bounds = caveLevel.boundsAt(y);
-        const margin = 180;
-        const w = Math.max(200, (bounds.right - bounds.left) - margin * 2);
-        const x = bounds.left + margin + Math.random() * w;
-        return { x, y };
-    }
-    const angle = Math.random() * Math.PI * 2;
-    const dist = min + Math.random() * (max - min);
-    const x = player.pos.x + Math.cos(angle) * dist;
-    const y = player.pos.y + Math.sin(angle) * dist;
-    return { x, y };
+    return findSpawnPointRelativeHelper(GameContext, random, min, max);
 }
 
 function resolveEntityCollision() {
-    const allEntities = [player, ...enemies, ...pinwheels, ...(contractEntities.fortresses || [])].filter(e => e && !e.dead);
+    const allEntities = [GameContext.player, ...GameContext.enemies, ...GameContext.pinwheels, ...(GameContext.contractEntities.fortresses || [])].filter(e => e && !e.dead);
     // Don't include warp boss or space station in collision physics - they should push others but not be pushed
     // if (boss && !boss.dead) allEntities.push(boss);
     // Space station is completely immovable and should not be in collision physics
     // if (spaceStation) allEntities.push(spaceStation);
-    if (destroyer && !destroyer.dead) allEntities.push(destroyer);
+    if (GameContext.destroyer && !GameContext.destroyer.dead) allEntities.push(GameContext.destroyer);
 
-    const activeAnomalyZone = (activeContract && activeContract.type === 'anomaly' && contractEntities && contractEntities.anomalies)
-        ? contractEntities.anomalies.find(a => a && !a.dead && a.contractId === activeContract.id)
+    const activeAnomalyZone = (GameContext.activeContract && GameContext.activeContract.type === 'anomaly' && GameContext.contractEntities && GameContext.contractEntities.anomalies)
+        ? GameContext.contractEntities.anomalies.find(a => a && !a.dead && a.contractId === GameContext.activeContract.id)
         : null;
 
-    const activeCave = (caveMode && caveLevel && caveLevel.active) ? caveLevel : null;
+    const activeCave = (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active) ? GameContext.caveLevel : null;
 
     // Push physics
     for (let i = 0; i < allEntities.length; i++) {
@@ -22399,32 +22146,32 @@ function resolveEntityCollision() {
     }
 
     // Warp boss collision barrier: keep vehicles outside outer ring (bullets bypass).
-    if (bossActive && boss && boss.isWarpBoss && !boss.dead) {
+    if (GameContext.bossActive && GameContext.boss && GameContext.boss.isWarpBoss && !GameContext.boss.dead) {
         for (let i = 0; i < allEntities.length; i++) {
             const entity = allEntities[i];
-            if (!entity || entity.dead || entity === boss) continue;
-            const dx = entity.pos.x - boss.pos.x;
-            const dy = entity.pos.y - boss.pos.y;
+            if (!entity || entity.dead || entity === GameContext.boss) continue;
+            const dx = entity.pos.x - GameContext.boss.pos.x;
+            const dy = entity.pos.y - GameContext.boss.pos.y;
             const dist = Math.hypot(dx, dy) || 0.001;
-            const barrierRadius = boss.shieldRadius;
+            const barrierRadius = GameContext.boss.shieldRadius;
             const minDist = barrierRadius + entity.radius;
             if (dist < minDist) {
                 const angle = Math.atan2(dy, dx);
                 const nx = Math.cos(angle);
                 const ny = Math.sin(angle);
-                entity.pos.x = boss.pos.x + nx * minDist;
-                entity.pos.y = boss.pos.y + ny * minDist;
+                entity.pos.x = GameContext.boss.pos.x + nx * minDist;
+                entity.pos.y = GameContext.boss.pos.y + ny * minDist;
                 const dot = entity.vel.x * nx + entity.vel.y * ny;
                 if (dot < 0) {
                     entity.vel.x -= nx * dot * 1.2;
                     entity.vel.y -= ny * dot * 1.2;
                 }
-                if (entity === player) {
+                if (entity === GameContext.player) {
                     const now = Date.now();
-                    if (!player.lastWarpBossBlockAt || now - player.lastWarpBossBlockAt > 200) {
-                        spawnParticles((player.pos.x + boss.pos.x) / 2, (player.pos.y + boss.pos.y) / 2, 5, '#0ff');
+                    if (!GameContext.player.lastWarpBossBlockAt || now - GameContext.player.lastWarpBossBlockAt > 200) {
+                        spawnParticles((GameContext.player.pos.x + GameContext.boss.pos.x) / 2, (GameContext.player.pos.y + GameContext.boss.pos.y) / 2, 5, '#0ff');
                         playSound('shield_hit');
-                        player.lastWarpBossBlockAt = now;
+                        GameContext.player.lastWarpBossBlockAt = now;
                     }
                 }
             }
@@ -22432,13 +22179,13 @@ function resolveEntityCollision() {
     }
 
     // Collision & Damage
-    const damageable = [player, ...enemies, ...pinwheels, ...(contractEntities.fortresses || [])];
-    if (boss && bossActive && !boss.dead) damageable.push(boss);
-    if (destroyer && !destroyer.dead) damageable.push(destroyer);
+    const damageable = [GameContext.player, ...GameContext.enemies, ...GameContext.pinwheels, ...(GameContext.contractEntities.fortresses || [])];
+    if (GameContext.boss && GameContext.bossActive && !GameContext.boss.dead) damageable.push(GameContext.boss);
+    if (GameContext.destroyer && !GameContext.destroyer.dead) damageable.push(GameContext.destroyer);
 
     for (let entity of damageable) {
         if (entity.dead) continue;
-        const nearbyAsteroids = asteroidGrid.query(entity.pos.x, entity.pos.y);
+        const nearbyAsteroids = GameContext.asteroidGrid.query(entity.pos.x, entity.pos.y);
         for (let ast of nearbyAsteroids) {
             if (ast.dead) continue;
             const dx = entity.pos.x - ast.pos.x;
@@ -22487,45 +22234,45 @@ function resolveEntityCollision() {
                     entity.pos.x += nx * overlap;
                     entity.pos.y += ny * overlap;
 
-                    if (entity !== player) {
+                    if (entity !== GameContext.player) {
                         entity.vel.x += nx * 1;
                         entity.vel.y += ny * 1;
                     }
                 }
 
-                if (entity === player) {
+                if (entity === GameContext.player) {
                     // Bump response: bounce like a rubber wall + push away
-                    const vn = player.vel.x * nx + player.vel.y * ny;
+                    const vn = GameContext.player.vel.x * nx + GameContext.player.vel.y * ny;
                     if (vn < 0) {
                         const restitution = 1.0; // elastic bounce
-                        player.vel.x -= nx * vn * (1 + restitution);
-                        player.vel.y -= ny * vn * (1 + restitution);
+                        GameContext.player.vel.x -= nx * vn * (1 + restitution);
+                        GameContext.player.vel.y -= ny * vn * (1 + restitution);
                     }
                     // Indestructible walls should feel "tight" (no extra invisible buffer) vs regular asteroids.
                     const outwardKick = isIndestructibleWall ? Math.min(4, overlap * 0.08) : Math.min(10, 3 + overlap * 0.12);
-                    player.vel.x += nx * outwardKick;
-                    player.vel.y += ny * outwardKick;
-                    player.vel.mult(0.98);
-                    shakeMagnitude = Math.max(shakeMagnitude, isIndestructibleWall ? 3 : 6);
-                    shakeTimer = Math.max(shakeTimer, 10);
+                    GameContext.player.vel.x += nx * outwardKick;
+                    GameContext.player.vel.y += ny * outwardKick;
+                    GameContext.player.vel.mult(0.98);
+                    GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, isIndestructibleWall ? 3 : 6);
+                    GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 10);
 
-                    if (Date.now() - player.lastAsteroidHitTime > 1000) {
+                    if (Date.now() - GameContext.player.lastAsteroidHitTime > 1000) {
                         // Invincibility check from upgrade
-                        if (player.invincibilityOnHit > 0) {
+                        if (GameContext.player.invincibilityOnHit > 0) {
                             // Trigger invuln? For now simpler logic: Just standard shield hit
                         }
 
-                        if (Date.now() - player.lastAsteroidHitTime > 1000) {
-                            const asteroidDamage = sectorIndex >= 2 ? 2 : 1;
-                            player.takeHit(asteroidDamage);
-                            player.lastAsteroidHitTime = Date.now();
+                        if (Date.now() - GameContext.player.lastAsteroidHitTime > 1000) {
+                            const asteroidDamage = GameContext.sectorIndex >= 2 ? 2 : 1;
+                            GameContext.player.takeHit(asteroidDamage);
+                            GameContext.player.lastAsteroidHitTime = Date.now();
                             if (!isIndestructibleWall) {
                                 ast.break();
                                 spawnParticles(ast.pos.x, ast.pos.y, 8, '#aa8');
                                 playSound('hit');
                             } else {
                                 // Wall sparks (no breaking).
-                                spawnParticles(player.pos.x - nx * player.radius, player.pos.y - ny * player.radius, 6, '#08f');
+                                spawnParticles(GameContext.player.pos.x - nx * GameContext.player.radius, GameContext.player.pos.y - ny * GameContext.player.radius, 6, '#08f');
                                 playSound('hit');
                             }
                         }
@@ -22539,9 +22286,9 @@ function resolveEntityCollision() {
     //  via checkWallCollision(entity) within each entity's update method).
 
     // Coin Collection
-    if (player && !player.dead) {
+    if (GameContext.player && !GameContext.player.dead) {
         // Player rams into roamers/defenders: destroy them, take damage equal to remaining HP
-        for (let e of enemies) {
+        for (let e of GameContext.enemies) {
             if (e.dead) continue;
             // Ramming Logic
             const isRoamer = (e.type === 'roamer' || e.type === 'elite_roamer');
@@ -22549,23 +22296,23 @@ function resolveEntityCollision() {
             const isHunter = (e.type === 'hunter');
 
             if (isRoamer || isDefender || isHunter) {
-                const dist = Math.hypot(player.pos.x - e.pos.x, player.pos.y - e.pos.y);
-                if (dist < player.radius + e.radius) {
+                const dist = Math.hypot(GameContext.player.pos.x - e.pos.x, GameContext.player.pos.y - e.pos.y);
+                if (dist < GameContext.player.radius + e.radius) {
                     // Safe Bump for Roamers/Defenders
                     if (isRoamer || isDefender) {
-                        const angle = Math.atan2(player.pos.y - e.pos.y, player.pos.x - e.pos.x);
+                        const angle = Math.atan2(GameContext.player.pos.y - e.pos.y, GameContext.player.pos.x - e.pos.x);
                         const nx = Math.cos(angle);
                         const ny = Math.sin(angle);
 
                         // Push away physically (velocity)
                         const pushForce = 5;
-                        player.vel.x += nx * pushForce;
-                        player.vel.y += ny * pushForce;
+                        GameContext.player.vel.x += nx * pushForce;
+                        GameContext.player.vel.y += ny * pushForce;
                         e.vel.x -= nx * pushForce;
                         e.vel.y -= ny * pushForce;
 
                         // Visuals
-                        spawnParticles((player.pos.x + e.pos.x) / 2, (player.pos.y + e.pos.y) / 2, 5, '#fff');
+                        spawnParticles((GameContext.player.pos.x + e.pos.x) / 2, (GameContext.player.pos.y + e.pos.y) / 2, 5, '#fff');
                         // No damage, no death.
                         continue;
                     }
@@ -22579,81 +22326,81 @@ function resolveEntityCollision() {
                     e.kill();
                     playSound('hit');
 
-                    player.takeHit(ramDamage);
+                    GameContext.player.takeHit(ramDamage);
                 }
             }
 
             // Dungeon boss collision - player bounces off and takes damage
             if (e.isDungeonBoss) {
-                const dist = Math.hypot(player.pos.x - e.pos.x, player.pos.y - e.pos.y);
-                if (dist < player.radius + e.radius) {
-                    const angle = Math.atan2(player.pos.y - e.pos.y, player.pos.x - e.pos.x);
+                const dist = Math.hypot(GameContext.player.pos.x - e.pos.x, GameContext.player.pos.y - e.pos.y);
+                if (dist < GameContext.player.radius + e.radius) {
+                    const angle = Math.atan2(GameContext.player.pos.y - e.pos.y, GameContext.player.pos.x - e.pos.x);
                     const nx = Math.cos(angle);
                     const ny = Math.sin(angle);
 
                     // Strong pushback
                     const pushForce = 12;
-                    player.vel.x += nx * pushForce;
-                    player.vel.y += ny * pushForce;
+                    GameContext.player.vel.x += nx * pushForce;
+                    GameContext.player.vel.y += ny * pushForce;
                     e.vel.x -= nx * pushForce * 0.3;
                     e.vel.y -= ny * pushForce * 0.3;
 
                     // Ram damage based on boss tier (higher for later bosses)
-                    const ramDamage = 3 + Math.floor(sectorIndex * 0.5);
-                    player.takeHit(ramDamage);
+                    const ramDamage = 3 + Math.floor(GameContext.sectorIndex * 0.5);
+                    GameContext.player.takeHit(ramDamage);
 
                     // Visuals
-                    spawnParticles((player.pos.x + e.pos.x) / 2, (player.pos.y + e.pos.y) / 2, 12, '#f44');
+                    spawnParticles((GameContext.player.pos.x + e.pos.x) / 2, (GameContext.player.pos.y + e.pos.y) / 2, 12, '#f44');
                     playSound('hit');
                 }
             }
         }
 
-        for (let c of coins) {
+        for (let c of GameContext.coins) {
             if (c.dead) continue;
-            const dist = Math.hypot(player.pos.x - c.pos.x, player.pos.y - c.pos.y);
-            if (dist < player.radius + c.radius) {
+            const dist = Math.hypot(GameContext.player.pos.x - c.pos.x, GameContext.player.pos.y - c.pos.y);
+            if (dist < GameContext.player.radius + c.radius) {
                 // Collect - call kill() to properly release sprite
                 playSound('coin');
-                score += c.value;
-                player.addXp(c.value);
+                GameContext.score += c.value;
+                GameContext.player.addXp(c.value);
                 addPickupFloatingText('gold', c.value, '#ff0');
 
                 // Reactive Shield: restore shield segments on collect (50 coins per restore)
-                if (player.stats.reactiveShield && player.stats.reactiveShield > 0) {
+                if (GameContext.player.stats.reactiveShield && GameContext.player.stats.reactiveShield > 0) {
                     // Track coins toward next restore
-                    if (!player.reactiveShieldCoins) player.reactiveShieldCoins = 0;
-                    player.reactiveShieldCoins += c.value;
+                    if (!GameContext.player.reactiveShieldCoins) GameContext.player.reactiveShieldCoins = 0;
+                    GameContext.player.reactiveShieldCoins += c.value;
 
                     // Every 50 coins, restore segments
-                    while (player.reactiveShieldCoins >= 50) {
-                        player.reactiveShieldCoins -= 50;
-                        const restoreAmount = player.stats.reactiveShield;
+                    while (GameContext.player.reactiveShieldCoins >= 50) {
+                        GameContext.player.reactiveShieldCoins -= 50;
+                        const restoreAmount = GameContext.player.stats.reactiveShield;
                         // Tier 3 bonus: +25% shield HP (2 → 3)
-                        const innerShieldMaxHp = player.stats.reactiveShieldBonusHp ? 3 : 2;
+                        const innerShieldMaxHp = GameContext.player.stats.reactiveShieldBonusHp ? 3 : 2;
 
                         // Restore outer shield segments first
-                        for (let i = 0; i < restoreAmount && player.outerShieldSegments && player.outerShieldSegments.length > 0; i++) {
-                            const idx = player.outerShieldSegments.findIndex(s => s <= 0);
+                        for (let i = 0; i < restoreAmount && GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.length > 0; i++) {
+                            const idx = GameContext.player.outerShieldSegments.findIndex(s => s <= 0);
                             if (idx !== -1) {
-                                player.outerShieldSegments[idx] = 1;
-                                player.shieldsDirty = true;
+                                GameContext.player.outerShieldSegments[idx] = 1;
+                                GameContext.player.shieldsDirty = true;
                             } else {
                                 // Outer shields full, try inner shields
-                                const innerIdx = player.shieldSegments.findIndex(s => s < innerShieldMaxHp);
+                                const innerIdx = GameContext.player.shieldSegments.findIndex(s => s < innerShieldMaxHp);
                                 if (innerIdx !== -1) {
-                                    player.shieldSegments[innerIdx] = Math.min(innerShieldMaxHp, player.shieldSegments[innerIdx] + 1);
-                                    player.shieldsDirty = true;
+                                    GameContext.player.shieldSegments[innerIdx] = Math.min(innerShieldMaxHp, GameContext.player.shieldSegments[innerIdx] + 1);
+                                    GameContext.player.shieldsDirty = true;
                                 }
                             }
                         }
                         // If outer shields were full, restore remaining to inner shields
-                        if (restoreAmount > 0 && player.shieldSegments) {
+                        if (restoreAmount > 0 && GameContext.player.shieldSegments) {
                             for (let i = 0; i < restoreAmount; i++) {
-                                const innerIdx = player.shieldSegments.findIndex(s => s < innerShieldMaxHp);
+                                const innerIdx = GameContext.player.shieldSegments.findIndex(s => s < innerShieldMaxHp);
                                 if (innerIdx !== -1) {
-                                    player.shieldSegments[innerIdx] = Math.min(innerShieldMaxHp, player.shieldSegments[innerIdx] + 1);
-                                    player.shieldsDirty = true;
+                                    GameContext.player.shieldSegments[innerIdx] = Math.min(innerShieldMaxHp, GameContext.player.shieldSegments[innerIdx] + 1);
+                                    GameContext.player.shieldsDirty = true;
                                 }
                             }
                         }
@@ -22665,12 +22412,12 @@ function resolveEntityCollision() {
             }
         }
 
-        for (let n of nuggets) {
+        for (let n of GameContext.nuggets) {
             if (n.dead) continue;
-            const dist = Math.hypot(player.pos.x - n.pos.x, player.pos.y - n.pos.y);
-            if (dist < player.radius + n.radius) {
+            const dist = Math.hypot(GameContext.player.pos.x - n.pos.x, GameContext.player.pos.y - n.pos.y);
+            if (dist < GameContext.player.radius + n.radius) {
                 playSound('coin');
-                spaceNuggets += n.value;
+                GameContext.spaceNuggets += n.value;
                 updateNuggetUI();
                 addPickupFloatingText('nugs', n.value, '#ff0');
                 // Call kill() to properly release sprite
@@ -22679,12 +22426,12 @@ function resolveEntityCollision() {
             }
         }
 
-        for (let p of powerups) {
+        for (let p of GameContext.powerups) {
             if (p.dead) continue;
-            const dist = Math.hypot(player.pos.x - p.pos.x, player.pos.y - p.pos.y);
-            if (dist < player.radius + p.radius) {
+            const dist = Math.hypot(GameContext.player.pos.x - p.pos.x, GameContext.player.pos.y - p.pos.y);
+            if (dist < GameContext.player.radius + p.radius) {
                 playSound('powerup');
-                player.hp = Math.min(player.hp + 10, player.maxHp);
+                GameContext.player.hp = Math.min(GameContext.player.hp + 10, GameContext.player.maxHp);
                 updateHealthUI();
                 showOverlayMessage("HEALTH RESTORED", '#0f0', 1000);
                 // Call kill() to properly release sprite
@@ -22693,20 +22440,20 @@ function resolveEntityCollision() {
             }
         }
 
-        for (let c of caches) {
+        for (let c of GameContext.caches) {
             if (c.dead) continue;
-            const dist = Math.hypot(player.pos.x - c.pos.x, player.pos.y - c.pos.y);
-            if (dist < player.radius + c.radius) {
+            const dist = Math.hypot(GameContext.player.pos.x - c.pos.x, GameContext.player.pos.y - c.pos.y);
+            if (dist < GameContext.player.radius + c.radius) {
                 playSound('coin');
-                spaceNuggets += c.value;
+                GameContext.spaceNuggets += c.value;
                 updateNuggetUI();
                 addPickupFloatingText('nugs', c.value, '#ff0');
                 showOverlayMessage(`CACHE +${c.value} NUGS`, '#ff0', 800);
 
                 // Anomaly contract: picking up the cache is step 1; you must escape the ring to finish.
-                if (activeContract && activeContract.type === 'anomaly' && activeContract.id && c.contractId === activeContract.id) {
-                    if (!activeContract.coreCollected) {
-                        activeContract.coreCollected = true;
+                if (GameContext.activeContract && GameContext.activeContract.type === 'anomaly' && GameContext.activeContract.id && c.contractId === GameContext.activeContract.id) {
+                    if (!GameContext.activeContract.coreCollected) {
+                        GameContext.activeContract.coreCollected = true;
                         showOverlayMessage("CORE ACQUIRED - ESCAPE ANOMALY", '#0f0', 2000);
                         updateContractUI();
                     }
@@ -22718,27 +22465,27 @@ function resolveEntityCollision() {
         }
 
         // Shooting Star Collisions
-        for (let s of shootingStars) {
+        for (let s of GameContext.shootingStars) {
             if (s.dead) continue;
 
             // Vs Player
-            if (player && !player.dead && !player.invulnerable) {
-                const dist = Math.hypot(s.pos.x - player.pos.x, s.pos.y - player.pos.y);
-                if (dist < s.radius + player.radius) {
-                    player.takeHit(s.damage);
+            if (GameContext.player && !GameContext.player.dead && !GameContext.player.invulnerable) {
+                const dist = Math.hypot(s.pos.x - GameContext.player.pos.x, s.pos.y - GameContext.player.pos.y);
+                if (dist < s.radius + GameContext.player.radius) {
+                    GameContext.player.takeHit(s.damage);
                     updateHealthUI();
                     playSound('explode');
-                    spawnParticles(player.pos.x, player.pos.y, 20, '#f00');
+                    spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 20, '#f00');
                     showOverlayMessage("HIT BY SHOOTING STAR!", '#f00', 2000);
                     s.dead = true;
-                    if (player.hp <= 0) killPlayer();
+                    if (GameContext.player.hp <= 0) killPlayer();
                     continue;
                 }
             }
 
             // Vs Enemies / Bases / Boss / Station
             let hitEntity = false;
-            for (let e of enemies) {
+            for (let e of GameContext.enemies) {
                 if (!e || e.dead) continue;
                 const dist = Math.hypot(s.pos.x - e.pos.x, s.pos.y - e.pos.y);
                 if (dist < s.radius + e.radius) {
@@ -22751,7 +22498,7 @@ function resolveEntityCollision() {
                 }
             }
             if (!hitEntity) {
-                for (let b of pinwheels) {
+                for (let b of GameContext.pinwheels) {
                     if (!b || b.dead) continue;
                     const dist = Math.hypot(s.pos.x - b.pos.x, s.pos.y - b.pos.y);
                     if (dist < s.radius + b.radius) {
@@ -22763,43 +22510,43 @@ function resolveEntityCollision() {
                             b.dead = true;
                             playSound('base_explode');
                             spawnLargeExplosion(b.pos.x, b.pos.y, 2.0);
-                            for (let i = 0; i < 6; i++) coins.push(new Coin(b.pos.x + (Math.random() - 0.5) * 50, b.pos.y + (Math.random() - 0.5) * 50, 5));
-                            nuggets.push(new SpaceNugget(b.pos.x, b.pos.y, 1));
-                            pinwheelsDestroyed++;
-                            pinwheelsDestroyedTotal++;
-                            difficultyTier = 1 + Math.floor(pinwheelsDestroyedTotal / 6);
-                            score += 1000;
-                            document.getElementById('bases-display').innerText = `${pinwheelsDestroyedTotal}`;
-                            enemies.forEach(e => { if (e.assignedBase === b) e.type = 'roamer'; });
+                            for (let i = 0; i < 6; i++) GameContext.coins.push(new Coin(b.pos.x + (Math.random() - 0.5) * 50, b.pos.y + (Math.random() - 0.5) * 50, 5));
+                            GameContext.nuggets.push(new SpaceNugget(b.pos.x, b.pos.y, 1));
+                            GameContext.pinwheelsDestroyed++;
+                            GameContext.pinwheelsDestroyedTotal++;
+                            GameContext.difficultyTier = 1 + Math.floor(GameContext.pinwheelsDestroyedTotal / 6);
+                            GameContext.score += 1000;
+                            document.getElementById('bases-display').innerText = `${GameContext.pinwheelsDestroyedTotal}`;
+                            GameContext.enemies.forEach(e => { if (e.assignedBase === b) e.type = 'roamer'; });
                             const delay = 5000 + Math.random() * 5000;
-                            baseRespawnTimers.push(Date.now() + delay);
+                            GameContext.baseRespawnTimers.push(Date.now() + delay);
                         }
                         hitEntity = true;
                         break;
                     }
                 }
             }
-            if (!hitEntity && bossActive && boss && !boss.dead) {
-                if (typeof boss.hitTestCircle === 'function' && boss.hitTestCircle(s.pos.x, s.pos.y, s.radius)) {
-                    if (!(boss.isWarpBoss && boss.ramInvulnerable > 0)) {
-                        boss.hp -= s.damage;
-                        spawnParticles(boss.pos.x, boss.pos.y, 22, '#fa0');
+            if (!hitEntity && GameContext.bossActive && GameContext.boss && !GameContext.boss.dead) {
+                if (typeof GameContext.boss.hitTestCircle === 'function' && GameContext.boss.hitTestCircle(s.pos.x, s.pos.y, s.radius)) {
+                    if (!(GameContext.boss.isWarpBoss && GameContext.boss.ramInvulnerable > 0)) {
+                        GameContext.boss.hp -= s.damage;
+                        spawnParticles(GameContext.boss.pos.x, GameContext.boss.pos.y, 22, '#fa0');
                         playSound('explode');
-                        if (boss.hp <= 0) {
-                            boss.kill();
-                            score += 10000;
+                        if (GameContext.boss.hp <= 0) {
+                            GameContext.boss.kill();
+                            GameContext.score += 10000;
                         }
                     }
                     hitEntity = true;
                 }
             }
-            if (!hitEntity && spaceStation) {
-                const dist = Math.hypot(s.pos.x - spaceStation.pos.x, s.pos.y - spaceStation.pos.y);
-                if (dist < s.radius + spaceStation.radius) {
-                    spaceStation.hp -= s.damage;
-                    spawnParticles(spaceStation.pos.x, spaceStation.pos.y, 22, '#fa0');
+            if (!hitEntity && GameContext.spaceStation) {
+                const dist = Math.hypot(s.pos.x - GameContext.spaceStation.pos.x, s.pos.y - GameContext.spaceStation.pos.y);
+                if (dist < s.radius + GameContext.spaceStation.radius) {
+                    GameContext.spaceStation.hp -= s.damage;
+                    spawnParticles(GameContext.spaceStation.pos.x, GameContext.spaceStation.pos.y, 22, '#fa0');
                     playSound('explode');
-                    if (spaceStation.hp <= 0) handleSpaceStationDestroyed();
+                    if (GameContext.spaceStation.hp <= 0) handleSpaceStationDestroyed();
                     hitEntity = true;
                 }
             }
@@ -22809,7 +22556,7 @@ function resolveEntityCollision() {
             }
 
             // Vs Asteroids
-            const nearby = asteroidGrid.query(s.pos.x, s.pos.y);
+            const nearby = GameContext.asteroidGrid.query(s.pos.x, s.pos.y);
             for (let ast of nearby) {
                 if (ast.dead) continue;
                 const dist = Math.hypot(s.pos.x - ast.pos.x, s.pos.y - ast.pos.y);
@@ -22826,18 +22573,18 @@ function resolveEntityCollision() {
 
 function checkWallCollision(entity, elasticity = 0) {
     // 1. Cave Level Collisions
-    if (caveMode && caveLevel && caveLevel.active) {
-        caveLevel.applyWallCollisions(entity);
+    if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active) {
+        GameContext.caveLevel.applyWallCollisions(entity);
     }
 
     // 2. Warp Zone Collisions
-    if (warpZone && warpZone.active) {
-        warpZone.applyWallCollisions(entity);
+    if (GameContext.warpZone && GameContext.warpZone.active) {
+        GameContext.warpZone.applyWallCollisions(entity);
     }
 
     // 3. Anomaly Maze Collisions
-    const activeAnomalyZone = (activeContract && activeContract.type === 'anomaly' && contractEntities && contractEntities.anomalies)
-        ? contractEntities.anomalies.find(a => a && !a.dead && a.contractId === activeContract.id)
+    const activeAnomalyZone = (GameContext.activeContract && GameContext.activeContract.type === 'anomaly' && GameContext.contractEntities && GameContext.contractEntities.anomalies)
+        ? GameContext.contractEntities.anomalies.find(a => a && !a.dead && a.contractId === GameContext.activeContract.id)
         : null;
     if (activeAnomalyZone) {
         const dA = Math.hypot(entity.pos.x - activeAnomalyZone.pos.x, entity.pos.y - activeAnomalyZone.pos.y);
@@ -22845,31 +22592,31 @@ function checkWallCollision(entity, elasticity = 0) {
     }
 
     // Arena barriers only affect player/bullets (enemies exempt)
-    if (bossArena.active && entity instanceof Enemy) return;
-    if (bossArena.active) {
-        const dx = entity.pos.x - bossArena.x;
-        const dy = entity.pos.y - bossArena.y;
+    if (GameContext.bossArena.active && entity instanceof Enemy) return;
+    if (GameContext.bossArena.active) {
+        const dx = entity.pos.x - GameContext.bossArena.x;
+        const dy = entity.pos.y - GameContext.bossArena.y;
         const dist = Math.hypot(dx, dy);
-        if (dist > bossArena.radius) {
+        if (dist > GameContext.bossArena.radius) {
             // Player Damage Logic
-            if (entity === player) {
-                const warpBossActive = !!(boss && bossActive && boss.isWarpBoss && !boss.dead);
-                if (!warpBossActive && Date.now() - player.lastArenaDamageTime > 1000) {
-                    if (player.invulnerable <= 0) {
-                        player.hp -= 1;
+            if (entity === GameContext.player) {
+                const warpBossActive = !!(GameContext.boss && GameContext.bossActive && GameContext.boss.isWarpBoss && !GameContext.boss.dead);
+                if (!warpBossActive && Date.now() - GameContext.player.lastArenaDamageTime > 1000) {
+                    if (GameContext.player.invulnerable <= 0) {
+                        GameContext.player.hp -= 1;
                         playSound('hit');
                         updateHealthUI();
-                        spawnParticles(player.pos.x, player.pos.y, 5, '#f00');
+                        spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 5, '#f00');
                         showOverlayMessage("WARNING: ARENA WALL DAMAGE", '#f00', 1000);
-                        if (player.hp <= 0) killPlayer();
+                        if (GameContext.player.hp <= 0) killPlayer();
                     }
-                    player.lastArenaDamageTime = Date.now();
+                    GameContext.player.lastArenaDamageTime = Date.now();
                 }
             }
 
             const angle = Math.atan2(dy, dx);
-            entity.pos.x = bossArena.x + Math.cos(angle) * bossArena.radius;
-            entity.pos.y = bossArena.y + Math.sin(angle) * bossArena.radius;
+            entity.pos.x = GameContext.bossArena.x + Math.cos(angle) * GameContext.bossArena.radius;
+            entity.pos.y = GameContext.bossArena.y + Math.sin(angle) * GameContext.bossArena.radius;
 
             const nx = Math.cos(angle);
             const ny = Math.sin(angle);
@@ -22883,29 +22630,29 @@ function checkWallCollision(entity, elasticity = 0) {
     }
 
     // Station arena barrier
-    if (stationArena.active && entity instanceof Enemy) return;
-    if (stationArena.active) {
-        const dx = entity.pos.x - stationArena.x;
-        const dy = entity.pos.y - stationArena.y;
+    if (GameContext.stationArena.active && entity instanceof Enemy) return;
+    if (GameContext.stationArena.active) {
+        const dx = entity.pos.x - GameContext.stationArena.x;
+        const dy = entity.pos.y - GameContext.stationArena.y;
         const dist = Math.hypot(dx, dy);
-        if (dist > stationArena.radius) {
-            if (entity === player) {
-                if (Date.now() - player.lastArenaDamageTime > 1000) {
-                    if (player.invulnerable <= 0) {
-                        player.hp -= 1;
+        if (dist > GameContext.stationArena.radius) {
+            if (entity === GameContext.player) {
+                if (Date.now() - GameContext.player.lastArenaDamageTime > 1000) {
+                    if (GameContext.player.invulnerable <= 0) {
+                        GameContext.player.hp -= 1;
                         playSound('hit');
                         updateHealthUI();
-                        spawnParticles(player.pos.x, player.pos.y, 5, '#f00');
+                        spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 5, '#f00');
                         showOverlayMessage("STATION FIELD DAMAGE", '#f80', 1000);
-                        if (player.hp <= 0) killPlayer();
+                        if (GameContext.player.hp <= 0) killPlayer();
                     }
-                    player.lastArenaDamageTime = Date.now();
+                    GameContext.player.lastArenaDamageTime = Date.now();
                 }
             }
 
             const angle = Math.atan2(dy, dx);
-            entity.pos.x = stationArena.x + Math.cos(angle) * stationArena.radius;
-            entity.pos.y = stationArena.y + Math.sin(angle) * stationArena.radius;
+            entity.pos.x = GameContext.stationArena.x + Math.cos(angle) * GameContext.stationArena.radius;
+            entity.pos.y = GameContext.stationArena.y + Math.sin(angle) * GameContext.stationArena.radius;
 
             const nx = Math.cos(angle);
             const ny = Math.sin(angle);
@@ -22919,29 +22666,29 @@ function checkWallCollision(entity, elasticity = 0) {
     }
 
     // Dungeon1 arena barrier
-    if (dungeon1Arena.active && entity instanceof Enemy) return;
-    if (dungeon1Arena.active) {
-        const dx = entity.pos.x - dungeon1Arena.x;
-        const dy = entity.pos.y - dungeon1Arena.y;
+    if (GameContext.dungeon1Arena.active && entity instanceof Enemy) return;
+    if (GameContext.dungeon1Arena.active) {
+        const dx = entity.pos.x - GameContext.dungeon1Arena.x;
+        const dy = entity.pos.y - GameContext.dungeon1Arena.y;
         const dist = Math.hypot(dx, dy);
-        if (dist > dungeon1Arena.radius) {
-            if (entity === player) {
-                if (Date.now() - player.lastArenaDamageTime > 1000) {
-                    if (player.invulnerable <= 0) {
-                        player.hp -= 1;
+        if (dist > GameContext.dungeon1Arena.radius) {
+            if (entity === GameContext.player) {
+                if (Date.now() - GameContext.player.lastArenaDamageTime > 1000) {
+                    if (GameContext.player.invulnerable <= 0) {
+                        GameContext.player.hp -= 1;
                         playSound('hit');
                         updateHealthUI();
-                        spawnParticles(player.pos.x, player.pos.y, 5, '#f80');
+                        spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 5, '#f80');
                         showOverlayMessage("DUNGEON BOUNDARY", '#f80', 1000);
-                        if (player.hp <= 0) killPlayer();
+                        if (GameContext.player.hp <= 0) killPlayer();
                     }
-                    player.lastArenaDamageTime = Date.now();
+                    GameContext.player.lastArenaDamageTime = Date.now();
                 }
             }
 
             const angle = Math.atan2(dy, dx);
-            entity.pos.x = dungeon1Arena.x + Math.cos(angle) * dungeon1Arena.radius;
-            entity.pos.y = dungeon1Arena.y + Math.sin(angle) * dungeon1Arena.radius;
+            entity.pos.x = GameContext.dungeon1Arena.x + Math.cos(angle) * GameContext.dungeon1Arena.radius;
+            entity.pos.y = GameContext.dungeon1Arena.y + Math.sin(angle) * GameContext.dungeon1Arena.radius;
 
             const nx = Math.cos(angle);
             const ny = Math.sin(angle);
@@ -22957,22 +22704,22 @@ function checkWallCollision(entity, elasticity = 0) {
 
 function checkBulletWallCollision(bullet) {
     // Warp maze 1px line walls (blocks bullets).
-    if (warpZone && warpZone.active && typeof warpZone.bulletHitsWall === 'function') {
-        if (warpZone.bulletHitsWall(bullet)) return { kind: 'warp_wall', obj: null };
+    if (GameContext.warpZone && GameContext.warpZone.active && typeof GameContext.warpZone.bulletHitsWall === 'function') {
+        if (GameContext.warpZone.bulletHitsWall(bullet)) return { kind: 'warp_wall', obj: null };
     }
     // Cave 1px line walls.
-    if (caveMode && caveLevel && caveLevel.active && typeof caveLevel.bulletHitsWall === 'function') {
-        if (caveLevel.bulletHitsWall(bullet)) return { kind: 'cave_wall', obj: null };
+    if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active && typeof GameContext.caveLevel.bulletHitsWall === 'function') {
+        if (GameContext.caveLevel.bulletHitsWall(bullet)) return { kind: 'cave_wall', obj: null };
     }
     // Anomaly maze 1px line walls.
-    if (activeContract && activeContract.type === 'anomaly' && contractEntities && contractEntities.anomalies) {
-        const az = contractEntities.anomalies.find(a => a && !a.dead && a.contractId === activeContract.id && typeof a.bulletHitsWall === 'function');
+    if (GameContext.activeContract && GameContext.activeContract.type === 'anomaly' && GameContext.contractEntities && GameContext.contractEntities.anomalies) {
+        const az = GameContext.contractEntities.anomalies.find(a => a && !a.dead && a.contractId === GameContext.activeContract.id && typeof a.bulletHitsWall === 'function');
         if (az) {
             const dA = Math.hypot(bullet.pos.x - az.pos.x, bullet.pos.y - az.pos.y);
             if (dA < az.radius + 900 && az.bulletHitsWall(bullet)) return { kind: 'anomaly_wall', obj: null };
         }
     }
-    const nearby = asteroidGrid.query(bullet.pos.x, bullet.pos.y);
+    const nearby = GameContext.asteroidGrid.query(bullet.pos.x, bullet.pos.y);
     for (let ast of nearby) {
         if (ast.dead) continue;
         const dx = bullet.pos.x - ast.pos.x;
@@ -22987,118 +22734,103 @@ function checkBulletWallCollision(bullet) {
 }
 
 function updateHealthUI() {
-    if (!player) return;
-    const pct = (player.hp / player.maxHp) * 100;
-    healthFill.style.width = `${Math.max(0, pct)}%`;
-    if (pct < 30) healthFill.style.backgroundColor = '#f00';
-    else if (pct < 60) healthFill.style.backgroundColor = '#ff0';
-    else healthFill.style.backgroundColor = '#0f0';
-    const ht = document.getElementById('health-text');
-    if (ht) ht.innerText = `${Math.max(0, Math.floor(player.hp))} / ${player.maxHp}`;
+    updateHealthUIHelper(GameContext);
 }
 
 function updateXpUI() {
-    if (!player) return;
-    const pct = (player.xp / player.nextLevelXp) * 100;
-    xpFill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
-    document.getElementById('level-display').innerText = player.level;
-    document.getElementById('score').innerText = score;
+    updateXpUIHelper(GameContext);
 }
 
 function updateNuggetUI() {
     const el = document.getElementById('nugget-count');
-    if (el) el.innerText = (metaProfile.bank || 0) + spaceNuggets;
+    if (el) el.innerText = (GameContext.metaProfile.bank || 0) + GameContext.spaceNuggets;
 }
 
 // --- Profile Save / Load (player stats only) ---
 const SAVE_PREFIX = 'neon_space_profile_v1_';
 const SAVE_LAST_KEY = 'neon_space_profile_last';
 let pendingProfile = null;
-let currentProfileName = null;
 let selectedProfileName = null;
-let totalKills = 0;
-let highScore = 0;
-let totalPlayTimeMs = 0;
 let fromPauseMenu = false;
 
 function buildProfileData() {
-    if (!player) return null;
+    if (!GameContext.player) return null;
     return {
         version: 1,
         timestamp: Date.now(),
         lastSavedAt: Date.now(),
-        score: score,
-        sectorIndex: sectorIndex,
-        totalKills: totalKills,
-        highScore: highScore,
-        totalPlayTimeMs: totalPlayTimeMs,
+        score: GameContext.score,
+        sectorIndex: GameContext.sectorIndex,
+        totalKills: GameContext.totalKills,
+        highScore: GameContext.highScore,
+        totalPlayTimeMs: GameContext.totalPlayTimeMs,
         player: {
-            hp: player.hp,
-            maxHp: player.maxHp,
-            shieldSegments: [...player.shieldSegments],
-            maxShieldSegments: player.maxShieldSegments,
-            outerShieldSegments: [...(player.outerShieldSegments || [])],
-            maxOuterShieldSegments: player.maxOuterShieldSegments || 0,
-            stats: { ...player.stats },
-            inventory: { ...player.inventory },
-            level: player.level,
-            xp: player.xp,
-            nextLevelXp: player.nextLevelXp,
-            magnetRadius: player.magnetRadius,
-            nukeUnlocked: player.nukeUnlocked,
-            nukeCooldown: player.nukeCooldown,
-            nukeMaxCooldown: player.nukeMaxCooldown,
-            staticWeapons: [...player.staticWeapons],
-            shieldRotation: player.shieldRotation,
-            outerShieldRotation: player.outerShieldRotation,
-            outerShieldRadius: player.outerShieldRadius,
-            invincibilityCycle: { ...player.invincibilityCycle },
-            turboBoost: { ...player.turboBoost },
-            nukeDamage: player.nukeDamage,
-            nukeRange: player.nukeRange
+            hp: GameContext.player.hp,
+            maxHp: GameContext.player.maxHp,
+            shieldSegments: [...GameContext.player.shieldSegments],
+            maxShieldSegments: GameContext.player.maxShieldSegments,
+            outerShieldSegments: [...(GameContext.player.outerShieldSegments || [])],
+            maxOuterShieldSegments: GameContext.player.maxOuterShieldSegments || 0,
+            stats: { ...GameContext.player.stats },
+            inventory: { ...GameContext.player.inventory },
+            level: GameContext.player.level,
+            xp: GameContext.player.xp,
+            nextLevelXp: GameContext.player.nextLevelXp,
+            magnetRadius: GameContext.player.magnetRadius,
+            nukeUnlocked: GameContext.player.nukeUnlocked,
+            nukeCooldown: GameContext.player.nukeCooldown,
+            nukeMaxCooldown: GameContext.player.nukeMaxCooldown,
+            staticWeapons: [...GameContext.player.staticWeapons],
+            shieldRotation: GameContext.player.shieldRotation,
+            outerShieldRotation: GameContext.player.outerShieldRotation,
+            outerShieldRadius: GameContext.player.outerShieldRadius,
+            invincibilityCycle: { ...GameContext.player.invincibilityCycle },
+            turboBoost: { ...GameContext.player.turboBoost },
+            nukeDamage: GameContext.player.nukeDamage,
+            nukeRange: GameContext.player.nukeRange
         }
     };
 }
 
 function applyProfile(profile) {
-    if (!profile || !profile.player || !player) {
+    if (!profile || !profile.player || !GameContext.player) {
         pendingProfile = profile || null;
         return;
     }
     const src = profile.player;
-    player.maxHp = src.maxHp || player.maxHp;
-    player.hp = Math.min(src.hp || player.hp, player.maxHp);
-    if (src.shieldSegments) player.shieldSegments = [...src.shieldSegments];
-    player.maxShieldSegments = src.maxShieldSegments || player.shieldSegments.length;
-    if (typeof src.maxOuterShieldSegments === 'number') player.maxOuterShieldSegments = src.maxOuterShieldSegments;
-    if (src.outerShieldSegments) player.outerShieldSegments = [...src.outerShieldSegments];
-    player.stats = { ...player.stats, ...(src.stats || {}) };
-    player.inventory = { ...(src.inventory || {}) };
-    player.level = src.level || player.level;
-    player.xp = src.xp || 0;
-    player.nextLevelXp = src.nextLevelXp || player.nextLevelXp;
-    if (typeof src.magnetRadius === 'number') player.magnetRadius = src.magnetRadius;
-    player.nukeUnlocked = !!src.nukeUnlocked;
-    if (typeof src.nukeCooldown === 'number') player.nukeCooldown = src.nukeCooldown;
-    if (typeof src.nukeMaxCooldown === 'number') player.nukeMaxCooldown = src.nukeMaxCooldown;
-    if (typeof src.nukeDamage === 'number') player.nukeDamage = src.nukeDamage;
-    if (typeof src.nukeRange === 'number') player.nukeRange = src.nukeRange;
-    player.staticWeapons = src.staticWeapons ? [...src.staticWeapons] : player.staticWeapons;
-    if (typeof src.shieldRotation === 'number') player.shieldRotation = src.shieldRotation;
-    if (typeof src.outerShieldRotation === 'number') player.outerShieldRotation = src.outerShieldRotation;
-    if (typeof src.outerShieldRadius === 'number') player.outerShieldRadius = src.outerShieldRadius;
-    player.invincibilityCycle = { ...player.invincibilityCycle, ...(src.invincibilityCycle || {}) };
-    if (src.turboBoost) player.turboBoost = { ...player.turboBoost, ...(src.turboBoost || {}) };
+    GameContext.player.maxHp = src.maxHp || GameContext.player.maxHp;
+    GameContext.player.hp = Math.min(src.hp || GameContext.player.hp, GameContext.player.maxHp);
+    if (src.shieldSegments) GameContext.player.shieldSegments = [...src.shieldSegments];
+    GameContext.player.maxShieldSegments = src.maxShieldSegments || GameContext.player.shieldSegments.length;
+    if (typeof src.maxOuterShieldSegments === 'number') GameContext.player.maxOuterShieldSegments = src.maxOuterShieldSegments;
+    if (src.outerShieldSegments) GameContext.player.outerShieldSegments = [...src.outerShieldSegments];
+    GameContext.player.stats = { ...GameContext.player.stats, ...(src.stats || {}) };
+    GameContext.player.inventory = { ...(src.inventory || {}) };
+    GameContext.player.level = src.level || GameContext.player.level;
+    GameContext.player.xp = src.xp || 0;
+    GameContext.player.nextLevelXp = src.nextLevelXp || GameContext.player.nextLevelXp;
+    if (typeof src.magnetRadius === 'number') GameContext.player.magnetRadius = src.magnetRadius;
+    GameContext.player.nukeUnlocked = !!src.nukeUnlocked;
+    if (typeof src.nukeCooldown === 'number') GameContext.player.nukeCooldown = src.nukeCooldown;
+    if (typeof src.nukeMaxCooldown === 'number') GameContext.player.nukeMaxCooldown = src.nukeMaxCooldown;
+    if (typeof src.nukeDamage === 'number') GameContext.player.nukeDamage = src.nukeDamage;
+    if (typeof src.nukeRange === 'number') GameContext.player.nukeRange = src.nukeRange;
+    GameContext.player.staticWeapons = src.staticWeapons ? [...src.staticWeapons] : GameContext.player.staticWeapons;
+    if (typeof src.shieldRotation === 'number') GameContext.player.shieldRotation = src.shieldRotation;
+    if (typeof src.outerShieldRotation === 'number') GameContext.player.outerShieldRotation = src.outerShieldRotation;
+    if (typeof src.outerShieldRadius === 'number') GameContext.player.outerShieldRadius = src.outerShieldRadius;
+    GameContext.player.invincibilityCycle = { ...GameContext.player.invincibilityCycle, ...(src.invincibilityCycle || {}) };
+    if (src.turboBoost) GameContext.player.turboBoost = { ...GameContext.player.turboBoost, ...(src.turboBoost || {}) };
     // Stock ship always has a minimal turbo boost even on older saves.
-    player.turboBoost.unlocked = true;
-    player.turboBoost.durationFrames = Math.max(60, player.turboBoost.durationFrames || 0);
-    player.turboBoost.cooldownTotalFrames = 600;
-    player.turboBoost.speedMult = Math.max(1.25, player.turboBoost.speedMult || 0);
+    GameContext.player.turboBoost.unlocked = true;
+    GameContext.player.turboBoost.durationFrames = Math.max(60, GameContext.player.turboBoost.durationFrames || 0);
+    GameContext.player.turboBoost.cooldownTotalFrames = 600;
+    GameContext.player.turboBoost.speedMult = Math.max(1.25, GameContext.player.turboBoost.speedMult || 0);
 
     // Restore profile statistics
-    if (typeof profile.totalKills === 'number') totalKills = profile.totalKills;
-    if (typeof profile.highScore === 'number') highScore = profile.highScore;
-    if (typeof profile.totalPlayTimeMs === 'number') totalPlayTimeMs = profile.totalPlayTimeMs;
+    if (typeof profile.totalKills === 'number') GameContext.totalKills = profile.totalKills;
+    if (typeof profile.highScore === 'number') GameContext.highScore = profile.highScore;
+    if (typeof profile.totalPlayTimeMs === 'number') GameContext.totalPlayTimeMs = profile.totalPlayTimeMs;
 
     updateHealthUI();
     updateWarpUI();
@@ -23121,7 +22853,7 @@ function showAbortConfirmDialog() {
         modal.style.display = 'block';
 
         // Reset gamepad navigation for this modal
-        menuSelectionIndex = 0;
+        GameContext.menuSelectionIndex = 0;
         gpState.lastMenuElements = null;
 
         const cleanup = () => {
@@ -23183,7 +22915,7 @@ function showRenamePromptDialog(defaultName) {
         modal.style.display = 'block';
 
         // Reset gamepad navigation for this modal
-        menuSelectionIndex = 0;
+        GameContext.menuSelectionIndex = 0;
         gpState.lastMenuElements = null;
 
         const cleanup = () => {
@@ -23237,7 +22969,7 @@ function showRenamePromptDialog(defaultName) {
             const originalUpdateMenuVisuals = window.updateMenuVisuals;
             window.updateMenuVisuals = function (elements) {
                 elements.forEach((el, idx) => {
-                    if (idx === menuSelectionIndex) {
+                    if (idx === GameContext.menuSelectionIndex) {
                         el.classList.add('selected');
                         if (typeof el.focus === 'function') {
                             el.focus();
@@ -23347,7 +23079,7 @@ function formatPlayTime(ms) {
 function updateStartScreenDisplay() {
     const el = document.getElementById('current-profile-display');
     if (el) {
-        el.innerText = currentProfileName ? `Current: ${currentProfileName}` : 'Current: None';
+        el.innerText = GameContext.currentProfileName ? `Current: ${GameContext.currentProfileName}` : 'Current: None';
     }
 }
 
@@ -23365,11 +23097,11 @@ function selectProfile(name) {
     // Reset stats when switching profiles to prevent carryover
     resetProfileStats();
 
-    currentProfileName = name;
+    GameContext.currentProfileName = name;
     localStorage.setItem(SAVE_LAST_KEY, name);
 
     // Reload meta profile for the selected profile
-    metaProfile = { purchases: {}, bank: 0 };
+    GameContext.metaProfile = { purchases: {}, bank: 0 };
     loadMetaProfile();
 
     updateStartScreenDisplay();
@@ -23377,9 +23109,9 @@ function selectProfile(name) {
 }
 
 function resetProfileStats() {
-    totalKills = 0;
-    highScore = 0;
-    totalPlayTimeMs = 0;
+    GameContext.totalKills = 0;
+    GameContext.highScore = 0;
+    GameContext.totalPlayTimeMs = 0;
 }
 
 function createNewProfile() {
@@ -23500,8 +23232,8 @@ async function renameSelectedProfile() {
         localStorage.removeItem(`meta_profile_v1_${oldName}`);
 
         // Update references
-        if (currentProfileName === oldName) {
-            currentProfileName = newName;
+        if (GameContext.currentProfileName === oldName) {
+            GameContext.currentProfileName = newName;
             localStorage.setItem(SAVE_LAST_KEY, newName);
         }
         if (selectedProfileName === oldName) {
@@ -23534,8 +23266,8 @@ async function deleteSelectedProfile() {
 
     localStorage.removeItem(SAVE_PREFIX + selectedProfileName);
     localStorage.removeItem(`meta_profile_v1_${selectedProfileName}`);
-    if (currentProfileName === selectedProfileName) {
-        currentProfileName = null;
+    if (GameContext.currentProfileName === selectedProfileName) {
+        GameContext.currentProfileName = null;
         localStorage.removeItem(SAVE_LAST_KEY);
         resetProfileStats();
         resetMetaProfile(); // Clear in-memory upgrades
@@ -23543,7 +23275,7 @@ async function deleteSelectedProfile() {
         updateStartScreenDisplay();
     }
 
-    selectedProfileName = currentProfileName;
+    selectedProfileName = GameContext.currentProfileName;
     showSaveMenu();
     showOverlayMessage("PROFILE DELETED", '#ff0', 1200);
 }
@@ -23557,8 +23289,8 @@ function showSaveMenu() {
 
     // Auto-select a profile: current profile if it exists and is valid, otherwise first profile
     if (profiles.length > 0) {
-        const currentProfileExists = currentProfileName && profiles.some(p => p.name === currentProfileName);
-        selectedProfileName = currentProfileExists ? currentProfileName : profiles[0].name;
+        const currentProfileExists = GameContext.currentProfileName && profiles.some(p => p.name === GameContext.currentProfileName);
+        selectedProfileName = currentProfileExists ? GameContext.currentProfileName : profiles[0].name;
     } else {
         selectedProfileName = null;
     }
@@ -23610,7 +23342,7 @@ function showSaveMenu() {
     menu.style.display = 'block';
     updateProfileSelectionVisuals();
 
-    menuSelectionIndex = 0;
+    GameContext.menuSelectionIndex = 0;
     gpState.lastMenuElements = null;
 
     // Wait one frame to ensure DOM has updated, then setup gamepad navigation
@@ -23628,8 +23360,8 @@ function showSaveMenu() {
 }
 
 function autoSaveToCurrentProfile() {
-    if (!currentProfileName) return;
-    saveToSlot(currentProfileName, true);
+    if (!GameContext.currentProfileName) return;
+    saveToSlot(GameContext.currentProfileName, true);
 }
 
 function showCustomPrompt(message, defaultValue) {
@@ -23716,131 +23448,94 @@ function wipeProfiles() {
     localStorage.removeItem('meta_profile_v1');
     resetMetaProfile();
     pendingProfile = null;
-    rerollTokens = 0;
-    currentProfileName = null;
+    GameContext.rerollTokens = 0;
+    GameContext.currentProfileName = null;
     updateMetaUI();
     updateStartScreenDisplay();
     showOverlayMessage("PROFILE RESET - STARTING FRESH", '#0f0', 2000);
 }
 
-function formatTime(ms) {
-    const totalSec = Math.floor(ms / 1000);
-    const hh = Math.floor(totalSec / 3600);
-    const mm = Math.floor((totalSec % 3600) / 60);
-    const ss = totalSec % 60;
-    return hh > 0 ? `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}` : `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-}
-
 function updateWarpUI() {
-    if (!player) return;
-    if (!player.canWarp) {
-        warpStatus.style.display = 'none';
-    } else {
-        warpStatus.style.display = 'flex';
-        const pct = ((player.maxWarpCooldown - player.warpCooldown) / player.maxWarpCooldown) * 100;
-        warpFill.style.width = `${pct}%`;
-        warpFill.style.backgroundColor = player.warpCooldown > 0 ? '#333' : '#0ff';
-    }
+    updateWarpUIHelper(GameContext);
 }
 
 function updateTurboUI() {
-    if (!player || !turboStatus || !turboFill) return;
-    if (!player.turboBoost || !player.turboBoost.unlocked) {
-        turboStatus.style.display = 'none';
-        return;
-    }
-    turboStatus.style.display = 'flex';
-
-    const cooldownTotal = 600; // 10 seconds at 60fps
-    const cd = Math.max(0, player.turboBoost.cooldownFrames || 0);
-    const active = Math.max(0, player.turboBoost.activeFrames || 0);
-
-    if (active > 0) {
-        turboFill.style.width = `100%`;
-        turboFill.style.background = 'linear-gradient(90deg, #ff0, #f80, #f00)';
-    } else if (cd > 0) {
-        const pct = (1 - (cd / cooldownTotal)) * 100;
-        turboFill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
-        turboFill.style.background = 'linear-gradient(90deg, #f00, #ff0)';
-    } else {
-        turboFill.style.width = `100%`;
-        turboFill.style.background = 'linear-gradient(90deg, #0ff, #0f0)';
-    }
+    updateTurboUIHelper(GameContext);
 }
 
 function setupGameWorld() {
-    player.respawn();
+    GameContext.player.respawn();
     resetPixiOverlaySprites();
-    clearArrayWithPixiCleanup(bullets);
-    clearArrayWithPixiCleanup(bossBombs);
-    clearArrayWithPixiCleanup(guidedMissiles);
-    clearArrayWithPixiCleanup(enemies);
-    clearArrayWithPixiCleanup(pinwheels);
-    clearArrayWithPixiCleanup(particles);
-    clearArrayWithPixiCleanup(explosions);
-    clearArrayWithPixiCleanup(floatingTexts);
-    clearArrayWithPixiCleanup(coins);
-    clearArrayWithPixiCleanup(nuggets);
-    spaceNuggets = 0;
-    clearArrayWithPixiCleanup(powerups);
-    clearArrayWithPixiCleanup(shootingStars);
-    clearArrayWithPixiCleanup(drones);
-    clearArrayWithPixiCleanup(caches);
-    radiationStorm = null;
-    nextRadiationStormAt = null;
+    clearArrayWithPixiCleanup(GameContext.bullets);
+    clearArrayWithPixiCleanup(GameContext.bossBombs);
+    clearArrayWithPixiCleanup(GameContext.guidedMissiles);
+    clearArrayWithPixiCleanup(GameContext.enemies);
+    clearArrayWithPixiCleanup(GameContext.pinwheels);
+    clearArrayWithPixiCleanup(GameContext.particles);
+    clearArrayWithPixiCleanup(GameContext.explosions);
+    clearArrayWithPixiCleanup(GameContext.floatingTexts);
+    clearArrayWithPixiCleanup(GameContext.coins);
+    clearArrayWithPixiCleanup(GameContext.nuggets);
+    GameContext.spaceNuggets = 0;
+    clearArrayWithPixiCleanup(GameContext.powerups);
+    clearArrayWithPixiCleanup(GameContext.shootingStars);
+    clearArrayWithPixiCleanup(GameContext.drones);
+    clearArrayWithPixiCleanup(GameContext.caches);
+    GameContext.radiationStorm = null;
+    GameContext.nextRadiationStormAt = null;
     clearMiniEvent();
-    nextMiniEventAt = Date.now() + 120000;
-    clearArrayWithPixiCleanup(pois);
-    contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
-    activeContract = null;
-    nextContractAt = Date.now() + 30000; // first contract after ~30s
+    GameContext.nextMiniEventAt = Date.now() + 120000;
+    clearArrayWithPixiCleanup(GameContext.pois);
+    GameContext.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+    GameContext.activeContract = null;
+    GameContext.nextContractAt = Date.now() + 30000; // first contract after ~30s
     scheduleNextShootingStar();
     scheduleNextRadiationStorm();
     scheduleNextMiniEvent();
-    nextIntensityBreakAt = Date.now() + 120000; // first break at 2 minutes
-    intensityBreakActive = false;
-    warpParticles = [];
-    shockwaves = [];
-    roamerRespawnQueue = [];
-    baseRespawnTimers = [];
-    pinwheelsDestroyed = 0;
-    pinwheelsDestroyedTotal = 0;
-    if (boss) pixiCleanupObject(boss);
-    boss = null;
-    if (spaceStation) pixiCleanupObject(spaceStation);
-    spaceStation = null;
-    stationHealthBarVisible = false;
-    if (destroyer) {
-        pixiCleanupObject(destroyer);
-        destroyer = null;
+    GameContext.nextIntensityBreakAt = Date.now() + 120000; // first break at 2 minutes
+    GameContext.intensityBreakActive = false;
+    GameContext.warpParticles = [];
+    GameContext.shockwaves = [];
+    GameContext.roamerRespawnQueue = [];
+    GameContext.baseRespawnTimers = [];
+    GameContext.pinwheelsDestroyed = 0;
+    GameContext.pinwheelsDestroyedTotal = 0;
+    if (GameContext.boss) pixiCleanupObject(GameContext.boss);
+    GameContext.boss = null;
+    if (GameContext.spaceStation) pixiCleanupObject(GameContext.spaceStation);
+    GameContext.spaceStation = null;
+    GameContext.stationHealthBarVisible = false;
+    if (GameContext.destroyer) {
+        pixiCleanupObject(GameContext.destroyer);
+        GameContext.destroyer = null;
     }
-    nextDestroyerSpawnTime = null;
-    currentDestroyerType = 1;
-    bossActive = false;
-    bossArena.active = false;
-    stationArena.active = false;
-    pendingStations = 0;
-    sectorIndex = 1;
-    sectorTransitionActive = false;
-    warpCountdownAt = null;
-    warpGateUnlocked = false;
+    GameContext.nextDestroyerSpawnTime = null;
+    GameContext.currentDestroyerType = 1;
+    GameContext.bossActive = false;
+    GameContext.bossArena.active = false;
+    GameContext.stationArena.active = false;
+    GameContext.pendingStations = 0;
+    GameContext.sectorIndex = 1;
+    GameContext.sectorTransitionActive = false;
+    GameContext.warpCountdownAt = null;
+    GameContext.warpGateUnlocked = false;
     // nextSpaceStationTime = Date.now() + 180000; // disabled, after second cruiser
-    gunboatRespawnAt = null;
-    gunboatLevel2Unlocked = false;
-    initialSpawnDone = false;
-    gameStartTime = getGameNowMs();
-    pauseStartTime = null;
-    pausedAccumMs = 0;
+    GameContext.gunboatRespawnAt = null;
+    GameContext.gunboatLevel2Unlocked = false;
+    GameContext.initialSpawnDone = false;
+    GameContext.gameStartTime = getGameNowMs();
+    GameContext.pauseStartTime = null;
+    GameContext.pausedAccumMs = 0;
 
-    initialSpawnDelayAt = gameStartTime + 5000;
+    GameContext.initialSpawnDelayAt = GameContext.gameStartTime + 5000;
 
     generateMap();
     // Ensure the nebula palette matches Sector 1 when restarting after a Sector 2 cave run. 
     initStars();
 
-    maxRoamers = 3;
+    GameContext.maxRoamers = 3;
     document.getElementById('bases-display').innerText = `0`;
-    shakeMagnitude = 0;
+    GameContext.shakeMagnitude = 0;
     updateWarpUI();
     updateTurboUI();
     updateXpUI();
@@ -23849,27 +23544,27 @@ function setupGameWorld() {
 
 function showFloatingText(x, y, amount, color = '#ff0', key = null) {
     if (key) {
-        getOrCreateFloatingText(floatingTexts, key, x, y, amount, color, {
+        getOrCreateFloatingText(GameContext.floatingTexts, key, x, y, amount, color, {
             prefix: '+',
             life: 70
         });
     } else {
-        floatingTexts.push(new FloatingText(x, y, `+${amount}`, color, 70, { prefix: '+' }));
+        GameContext.floatingTexts.push(new FloatingText(x, y, `+${amount}`, color, 70, { prefix: '+' }));
     }
 }
 
 function addPickupFloatingText(key, amount, color = '#ff0') {
-    if (!player || player.dead) return;
-    const x = player.pos.x;
-    const y = player.pos.y - player.radius - 10;
+    if (!GameContext.player || GameContext.player.dead) return;
+    const x = GameContext.player.pos.x;
+    const y = GameContext.player.pos.y - GameContext.player.radius - 10;
     showFloatingText(x, y, amount, color, key);
 }
 
 function awardCoinsInstant(amount, opts = {}) {
     const v = Math.max(0, Math.floor(amount || 0));
     if (v <= 0) return;
-    score += v;
-    if (player && !player.dead && typeof player.addXp === 'function') player.addXp(v);
+    GameContext.score += v;
+    if (GameContext.player && !GameContext.player.dead && typeof GameContext.player.addXp === 'function') GameContext.player.addXp(v);
     if (!opts.noSound) playSound(opts.sound || 'coin');
     addPickupFloatingText('gold', v, opts.color || '#ff0');
 }
@@ -23877,49 +23572,49 @@ function awardCoinsInstant(amount, opts = {}) {
 function awardNugzInstant(amount, opts = {}) {
     const v = Math.max(0, Math.floor(amount || 0));
     if (v <= 0) return;
-    spaceNuggets += v;
+    GameContext.spaceNuggets += v;
     updateNuggetUI();
     if (!opts.noSound) playSound(opts.sound || 'coin');
     addPickupFloatingText('nugs', v, opts.color || '#ff0');
 }
 
 function spawnNewPinwheelRelative(initial = false) {
-    if (!player) return;
+    if (!GameContext.player) return;
     const availableTypes = ['standard'];
-    if (difficultyTier >= 2) availableTypes.push('rapid');
-    if (difficultyTier >= 3) availableTypes.push('heavy');
+    if (GameContext.difficultyTier >= 2) availableTypes.push('rapid');
+    if (GameContext.difficultyTier >= 3) availableTypes.push('heavy');
 
     const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
     let angle;
     if (initial) {
         angle = Math.random() * Math.PI * 2;
     } else {
-        let baseAngle = player.angle;
-        if (player.vel.mag() > 1) baseAngle = Math.atan2(player.vel.y, player.vel.x);
+        let baseAngle = GameContext.player.angle;
+        if (GameContext.player.vel.mag() > 1) baseAngle = Math.atan2(GameContext.player.vel.y, GameContext.player.vel.x);
         angle = baseAngle + (Math.random() - 0.5) * (Math.PI / 2);
     }
 
     const dist = initial ? (1000 + Math.random() * 2000) : (3500 + Math.random() * 1500);
     let bx, by;
-    if (caveMode && caveLevel && caveLevel.active) {
+    if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active) {
         // Spawn pinwheels "up the tunnel" and inside the cave bounds.
-        by = player.pos.y - dist * (0.85 + Math.random() * 0.3);
-        const bounds = caveLevel.boundsAt(by);
+        by = GameContext.player.pos.y - dist * (0.85 + Math.random() * 0.3);
+        const bounds = GameContext.caveLevel.boundsAt(by);
         const margin = 420;
         const w = Math.max(200, (bounds.right - bounds.left) - margin * 2);
         bx = bounds.left + margin + Math.random() * w;
     } else {
-        bx = player.pos.x + Math.cos(angle) * dist;
-        by = player.pos.y + Math.sin(angle) * dist;
+        bx = GameContext.player.pos.x + Math.cos(angle) * dist;
+        by = GameContext.player.pos.y + Math.sin(angle) * dist;
     }
 
     const b = new Pinwheel(bx, by, type);
-    pinwheels.push(b);
+    GameContext.pinwheels.push(b);
     // One guard per pinwheel
     const da = Math.random() * Math.PI * 2;
     const defX = b.pos.x + Math.cos(da) * 150;
     const defY = b.pos.y + Math.sin(da) * 150;
-    enemies.push(new Enemy('defender', { x: defX, y: defY }, b));
+    GameContext.enemies.push(new Enemy('defender', { x: defX, y: defY }, b));
 }
 
 // --- Upgrade Logic ---
@@ -23937,7 +23632,7 @@ function showLevelUpMenu() {
     // Count upgrades at each tier
     let tier2Count = 0;
     let tier4Count = 0;
-    Object.values(player.inventory).forEach(tier => {
+    Object.values(GameContext.player.inventory).forEach(tier => {
         if (tier === 2) tier2Count++;
         if (tier === 3) tier2Count++; // tier 3+ counts toward tier 2 requirement
         if (tier === 4) tier4Count++;
@@ -23946,7 +23641,7 @@ function showLevelUpMenu() {
 
     UPGRADE_DATA.categories.forEach(cat => {
         cat.upgrades.forEach(up => {
-            const currentTier = player.inventory[up.id] || 0;
+            const currentTier = GameContext.player.inventory[up.id] || 0;
             const nextTier = currentTier + 1;
 
             // Tier requirements:
@@ -23969,8 +23664,8 @@ function showLevelUpMenu() {
         showOverlayMessage("NO UPGRADES AVAILABLE!", '#f00', 2000);
 
         // Give bonus health as a reward for leveling up
-        if (player && !player.dead) {
-            player.hp = Math.min(player.hp + 3, player.maxHp);
+        if (GameContext.player && !GameContext.player.dead) {
+            GameContext.player.hp = Math.min(GameContext.player.hp + 3, GameContext.player.maxHp);
             updateHealthUI();
             playSound('powerup');
         }
@@ -23986,14 +23681,14 @@ function showLevelUpMenu() {
                         e.prevPos.y = e.pos.y;
                     }
                 };
-                if (player) resetEnt(player);
-                if (boss) resetEnt(boss);
-                if (spaceStation) resetEnt(spaceStation);
-                if (enemies) enemies.forEach(resetEnt);
-                if (pinwheels) pinwheels.forEach(resetEnt);
-                if (bullets) bullets.forEach(resetEnt);
-                if (particles) particles.forEach(resetEnt);
-                if (floatingTexts) floatingTexts.forEach(resetEnt);
+                if (GameContext.player) resetEnt(GameContext.player);
+                if (GameContext.boss) resetEnt(GameContext.boss);
+                if (GameContext.spaceStation) resetEnt(GameContext.spaceStation);
+                if (GameContext.enemies) GameContext.enemies.forEach(resetEnt);
+                if (GameContext.pinwheels) GameContext.pinwheels.forEach(resetEnt);
+                if (GameContext.bullets) GameContext.bullets.forEach(resetEnt);
+                if (GameContext.particles) GameContext.particles.forEach(resetEnt);
+                if (GameContext.floatingTexts) GameContext.floatingTexts.forEach(resetEnt);
 
                 // Reset simAccMs to zero to avoid catching up
                 simAccMs = 0;
@@ -24002,7 +23697,7 @@ function showLevelUpMenu() {
 
                 suppressWarpGateUntil = getGameNowMs() + 750;
                 suppressWarpInputUntil = suppressWarpGateUntil;
-                gameActive = true;
+                GameContext.gameActive = true;
                 if (musicEnabled) startMusic();
             }, 100);
         });
@@ -24016,7 +23711,7 @@ function showLevelUpMenu() {
     // Weight upgrades: unseen get 3x weight, already seen get 1x weight
     const weightedUpgrades = [];
     for (const upgrade of validUpgrades) {
-        const hasBeenShown = shownUpgradesThisRun.has(upgrade.id);
+        const hasBeenShown = GameContext.shownUpgradesThisRun.has(upgrade.id);
         const weight = hasBeenShown ? 1 : 3; // Unseen upgrades are 3x more likely
 
         // Add the upgrade multiple times based on weight to create weighted pool
@@ -24039,7 +23734,7 @@ function showLevelUpMenu() {
             pickedIds.add(choice.id);
 
             // Mark as shown for this run
-            shownUpgradesThisRun.add(choice.id);
+            GameContext.shownUpgradesThisRun.add(choice.id);
         }
 
         // Remove all instances of this upgrade from the pool to avoid duplicates
@@ -24061,29 +23756,29 @@ function showLevelUpMenu() {
     rerollBtn.style.cursor = 'pointer';
 
     const updateRerollButton = () => {
-        if (rerollTokens > 0) {
-            rerollBtn.textContent = `REROLL OPTIONS (TOKENS: ${rerollTokens})`;
+        if (GameContext.rerollTokens > 0) {
+            rerollBtn.textContent = `REROLL OPTIONS (TOKENS: ${GameContext.rerollTokens})`;
             rerollBtn.style.backgroundColor = '#4a2';
             rerollBtn.disabled = false;
         } else {
             rerollBtn.textContent = `REROLL (5 NUGGETS)`;
-            rerollBtn.style.backgroundColor = spaceNuggets >= 5 ? '#2a4' : '#333';
-            rerollBtn.disabled = spaceNuggets < 5;
+            rerollBtn.style.backgroundColor = GameContext.spaceNuggets >= 5 ? '#2a4' : '#333';
+            rerollBtn.disabled = GameContext.spaceNuggets < 5;
         }
     };
 
     updateRerollButton();
 
     rerollBtn.onclick = () => {
-        if (rerollTokens > 0) {
+        if (GameContext.rerollTokens > 0) {
             // Use purchased reroll token
-            rerollTokens--;
-            metaProfile.purchases.rerollTokens = rerollTokens;
+            GameContext.rerollTokens--;
+            GameContext.metaProfile.purchases.rerollTokens = GameContext.rerollTokens;
             saveMetaProfile();
             showLevelUpMenu();
-        } else if (spaceNuggets >= 5) {
+        } else if (GameContext.spaceNuggets >= 5) {
             // Spend 5 nuggets
-            spaceNuggets -= 5;
+            GameContext.spaceNuggets -= 5;
             updateNuggetUI();
             showLevelUpMenu();
         }
@@ -24093,7 +23788,7 @@ function showLevelUpMenu() {
 
     // 3. Create DOM
     choices.forEach((choice, index) => {
-        const currentTier = player.inventory[choice.id] || 0;
+        const currentTier = GameContext.player.inventory[choice.id] || 0;
         const nextTier = currentTier + 1;
         // Get tier description with fallback to previous tier if undefined
         let desc = choice[`tier${nextTier}`];
@@ -24121,14 +23816,14 @@ function showLevelUpMenu() {
             const active = getActiveMenuElements();
             const cardIndex = active.indexOf(card);
             if (cardIndex >= 0) {
-                menuSelectionIndex = cardIndex;
+                GameContext.menuSelectionIndex = cardIndex;
                 updateMenuVisuals(active);
             }
         };
 
         card.onmouseleave = () => {
             const active = getActiveMenuElements();
-            menuSelectionIndex = active.indexOf(document.getElementById('reroll-btn'));
+            GameContext.menuSelectionIndex = active.indexOf(document.getElementById('reroll-btn'));
             updateMenuVisuals(active);
         };
 
@@ -24157,14 +23852,14 @@ function showLevelUpMenu() {
                             e.prevPos.y = e.pos.y;
                         }
                     };
-                    if (player) resetEnt(player);
-                    if (boss) resetEnt(boss);
-                    if (spaceStation) resetEnt(spaceStation);
-                    if (enemies) enemies.forEach(resetEnt);
-                    if (pinwheels) pinwheels.forEach(resetEnt);
-                    if (bullets) bullets.forEach(resetEnt);
-                    if (particles) particles.forEach(resetEnt);
-                    if (floatingTexts) floatingTexts.forEach(resetEnt);
+                    if (GameContext.player) resetEnt(GameContext.player);
+                    if (GameContext.boss) resetEnt(GameContext.boss);
+                    if (GameContext.spaceStation) resetEnt(GameContext.spaceStation);
+                    if (GameContext.enemies) GameContext.enemies.forEach(resetEnt);
+                    if (GameContext.pinwheels) GameContext.pinwheels.forEach(resetEnt);
+                    if (GameContext.bullets) GameContext.bullets.forEach(resetEnt);
+                    if (GameContext.particles) GameContext.particles.forEach(resetEnt);
+                    if (GameContext.floatingTexts) GameContext.floatingTexts.forEach(resetEnt);
 
                     // Reset simAccMs to zero to avoid catching up
                     simAccMs = 0;
@@ -24173,7 +23868,7 @@ function showLevelUpMenu() {
 
                     suppressWarpGateUntil = getGameNowMs() + 750;
                     suppressWarpInputUntil = suppressWarpGateUntil;
-                    gameActive = true;
+                    GameContext.gameActive = true;
                     if (musicEnabled) startMusic();
                 }, 100); // Reduced from 200ms for snappier resume
             });
@@ -24186,15 +23881,15 @@ function showLevelUpMenu() {
 
     // Restore 3 HP whenever the upgrade/level-up menu appears
     try {
-        if (player && !player.dead) {
-            player.hp = Math.min(player.hp + 3, player.maxHp);
+        if (GameContext.player && !GameContext.player.dead) {
+            GameContext.player.hp = Math.min(GameContext.player.hp + 3, GameContext.player.maxHp);
             updateHealthUI();
             playSound('powerup');
         }
     } catch (e) { console.warn('heal on levelup failed', e); }
 
     // Reset selection for gamepad
-    menuSelectionIndex = 0;
+    GameContext.menuSelectionIndex = 0;
     const cards = getActiveMenuElements();
     if (cards.length > 0) updateMenuVisuals(cards);
 }
@@ -24226,9 +23921,9 @@ function getDiminishingValue(tier, baseTable, decayFactor = 0.99) {
  * Tier 1: base, Tier 2: *1.2, Tier 3: *1.44, etc.
  */
 function getMetaUpgradeCost(upgradeId, baseCost) {
-    const currentTier = metaProfile.purchases[upgradeId] || 0;
+    const currentTier = GameContext.metaProfile.purchases[upgradeId] || 0;
     // Tier-based shop discount: 10% per tier for first 3 tiers, then diminishing
-    const discountTier = metaProfile.purchases.shopDiscount || 0;
+    const discountTier = GameContext.metaProfile.purchases.shopDiscount || 0;
     let discount = 1.0;
     if (discountTier > 0) {
         const discountMultiplier = 0.1 * Math.min(discountTier, 3);
@@ -24245,17 +23940,17 @@ function getMetaUpgradeCost(upgradeId, baseCost) {
 }
 
 function applyUpgrade(id, tier) {
-    const prevTier = player.inventory[id] || 0;
-    player.inventory[id] = tier;
+    const prevTier = GameContext.player.inventory[id] || 0;
+    GameContext.player.inventory[id] = tier;
 
     // Track upgrades for cruiser first-spawn logic 
     try {
-        dreadManager.upgradesChosen = (dreadManager.upgradesChosen || 0) + 1;
+        GameContext.dreadManager.upgradesChosen = (GameContext.dreadManager.upgradesChosen || 0) + 1;
         // On the 3rd chosen upgrade, schedule the first cruiser to spawn after 10s
         // On the 3rd chosen upgrade, schedule the first cruiser to spawn after 10s
-        if (!dreadManager.firstSpawnDone && dreadManager.upgradesChosen >= 3 && !bossActive && !dreadManager.timerActive) {
-            dreadManager.timerAt = Date.now() + 10000; // 10 seconds (real time)
-            dreadManager.timerActive = true;
+        if (!GameContext.dreadManager.firstSpawnDone && GameContext.dreadManager.upgradesChosen >= 3 && !GameContext.bossActive && !GameContext.dreadManager.timerActive) {
+            GameContext.dreadManager.timerAt = Date.now() + 10000; // 10 seconds (real time)
+            GameContext.dreadManager.timerActive = true;
             // Countdown will automatically show 10 seconds before spawn
         }
     } catch (e) { console.warn('dreadManager upgrade increment failed', e); }
@@ -24268,7 +23963,7 @@ function applyUpgrade(id, tier) {
                 const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
                 const next = table[tier] || getDiminishingValue(tier, table, 0.99);
                 const ratio = (prev > 0) ? (next / prev) : 1.0;
-                player.stats.damageMult *= ratio;
+                GameContext.player.stats.damageMult *= ratio;
             }
             break;
         case 'turret_fire_rate':
@@ -24277,7 +23972,7 @@ function applyUpgrade(id, tier) {
                 const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
                 const next = table[tier] || getDiminishingValue(tier, table, 0.99);
                 const ratio = (prev > 0) ? (next / prev) : 1.0;
-                player.stats.fireRateMult *= ratio;
+                GameContext.player.stats.fireRateMult *= ratio;
             }
             break;
         case 'turret_range':
@@ -24286,22 +23981,22 @@ function applyUpgrade(id, tier) {
                 const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
                 const next = table[tier] || getDiminishingValue(tier, table, 0.99);
                 const ratio = (prev > 0) ? (next / prev) : 1.0;
-                player.stats.rangeMult *= ratio;
+                GameContext.player.stats.rangeMult *= ratio;
             }
             break;
         case 'multi_shot':
-            player.stats.multiShot = tier + 1; // 2, 3, 4
+            GameContext.player.stats.multiShot = tier + 1; // 2, 3, 4
             break;
         case 'static_weapons':
             {
                 // Remove old upgrade-sourced weapons to prevent duplicates when re-upgrading
-                player.staticWeapons = player.staticWeapons.filter(w => w.source !== 'upgrade');
+                GameContext.player.staticWeapons = GameContext.player.staticWeapons.filter(w => w.source !== 'upgrade');
 
                 const weaponTypes = ['forward', 'side', 'rear', 'dual_rear', 'dual_front'];
 
                 // Add weapons for current tier (with source tracking)
                 for (let i = 0; i < tier && i < weaponTypes.length; i++) {
-                    player.staticWeapons.push({ type: weaponTypes[i], source: 'upgrade' });
+                    GameContext.player.staticWeapons.push({ type: weaponTypes[i], source: 'upgrade' });
                 }
 
                 // Beyond defined types, add cycling duplicates with effectiveness penalty
@@ -24309,53 +24004,53 @@ function applyUpgrade(id, tier) {
                     for (let i = weaponTypes.length; i < tier; i++) {
                         const duplicateIndex = i - weaponTypes.length;
                         const effectiveness = Math.max(0.2, 1 - (duplicateIndex * 0.2)); // 80%, 60%, 40%, 20%
-                        player.staticWeapons.push({
+                        GameContext.player.staticWeapons.push({
                             type: weaponTypes[i % weaponTypes.length],
                             source: 'upgrade',
                             effectiveness: effectiveness
                         });
                     }
                 }
-                player.staticCannonCount = player.staticWeapons.length; // Vis only
+                GameContext.player.staticCannonCount = GameContext.player.staticWeapons.length; // Vis only
             }
             break;
         case 'homing_missiles':
-            player.stats.homingFromUpgrade = tier;
+            GameContext.player.stats.homingFromUpgrade = tier;
             // Update effective value (for backward compatibility with auto-fire check)
-            player.stats.homing = Math.max(player.stats.homingFromUpgrade, player.stats.homingFromMeta);
+            GameContext.player.stats.homing = Math.max(GameContext.player.stats.homingFromUpgrade, GameContext.player.stats.homingFromMeta);
             break;
         case 'segment_count':
-            if (tier === 1) player.shieldSegments.push(2, 2); // 8+2=10
-            if (tier === 2) player.shieldSegments.push(2, 2, 2, 2); // 10+4=14
-            if (tier === 3) player.shieldSegments.push(2, 2, 2, 2); // 14+4=18
-            if (tier === 4) player.shieldSegments.push(2, 2, 2, 2, 2, 2, 2, 2); // 18+8=26
-            if (tier === 5) player.shieldSegments.push(2, 2, 2, 2, 2, 2, 2, 2); // 26+8=30
-            player.maxShieldSegments = player.shieldSegments.length;
+            if (tier === 1) GameContext.player.shieldSegments.push(2, 2); // 8+2=10
+            if (tier === 2) GameContext.player.shieldSegments.push(2, 2, 2, 2); // 10+4=14
+            if (tier === 3) GameContext.player.shieldSegments.push(2, 2, 2, 2); // 14+4=18
+            if (tier === 4) GameContext.player.shieldSegments.push(2, 2, 2, 2, 2, 2, 2, 2); // 18+8=26
+            if (tier === 5) GameContext.player.shieldSegments.push(2, 2, 2, 2, 2, 2, 2, 2); // 26+8=30
+            GameContext.player.maxShieldSegments = GameContext.player.shieldSegments.length;
             break;
         case 'outer_shield':
-            if (tier === 1) player.maxOuterShieldSegments = 6;
-            if (tier === 2) player.maxOuterShieldSegments = 8;
-            if (tier === 3) player.maxOuterShieldSegments = 12;
-            if (tier === 4) player.maxOuterShieldSegments = 16;
-            if (tier === 5) player.maxOuterShieldSegments = 20;
-            player.outerShieldRadius = player.shieldRadius + (26 * PLAYER_SHIELD_RADIUS_SCALE);
-            player.outerShieldSegments = new Array(player.maxOuterShieldSegments).fill(1);
+            if (tier === 1) GameContext.player.maxOuterShieldSegments = 6;
+            if (tier === 2) GameContext.player.maxOuterShieldSegments = 8;
+            if (tier === 3) GameContext.player.maxOuterShieldSegments = 12;
+            if (tier === 4) GameContext.player.maxOuterShieldSegments = 16;
+            if (tier === 5) GameContext.player.maxOuterShieldSegments = 20;
+            GameContext.player.outerShieldRadius = GameContext.player.shieldRadius + (26 * PLAYER_SHIELD_RADIUS_SCALE);
+            GameContext.player.outerShieldSegments = new Array(GameContext.player.maxOuterShieldSegments).fill(1);
             break;
         case 'shield_regen':
-            if (tier === 1) player.stats.shieldRegenRate = 5;
-            if (tier === 2) player.stats.shieldRegenRate = 3;
-            if (tier === 3) player.stats.shieldRegenRate = 1;
-            if (tier === 4) player.stats.shieldRegenRate = 0.75;
-            if (tier === 5) player.stats.shieldRegenRate = 0.5;
+            if (tier === 1) GameContext.player.stats.shieldRegenRate = 5;
+            if (tier === 2) GameContext.player.stats.shieldRegenRate = 3;
+            if (tier === 3) GameContext.player.stats.shieldRegenRate = 1;
+            if (tier === 4) GameContext.player.stats.shieldRegenRate = 0.75;
+            if (tier === 5) GameContext.player.stats.shieldRegenRate = 0.5;
             break;
         case 'hp_regen':
-            player.stats.hpRegenAmount = tier; // 1/2/3 HP per tick
-            player.stats.hpRegenRate = 5; // fixed 5s tick
-            player.lastHpRegenTime = Date.now();
+            GameContext.player.stats.hpRegenAmount = tier; // 1/2/3 HP per tick
+            GameContext.player.stats.hpRegenRate = 5; // fixed 5s tick
+            GameContext.player.lastHpRegenTime = Date.now();
             break;
         case 'hull_strength':
-            player.maxHp += 25;
-            player.hp = Math.min(player.hp + 25, player.maxHp); // restore 25 HP on upgrade
+            GameContext.player.maxHp += 25;
+            GameContext.player.hp = Math.min(GameContext.player.hp + 25, GameContext.player.maxHp); // restore 25 HP on upgrade
             updateHealthUI();
             break;
         case 'speed':
@@ -24364,59 +24059,59 @@ function applyUpgrade(id, tier) {
                 const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
                 const next = table[tier] || getDiminishingValue(tier, table, 0.99);
                 const ratio = (prev > 0) ? (next / prev) : 1.0;
-                player.stats.speedMult *= ratio;
+                GameContext.player.stats.speedMult *= ratio;
             }
             break;
         case 'turbo_boost': {
-            player.turboBoost.unlocked = true;
-            if (tier === 1) player.turboBoost.durationFrames = 120; // 2.0s
-            if (tier === 2) player.turboBoost.durationFrames = 210; // 3.5s
-            if (tier === 3) player.turboBoost.durationFrames = 300; // 5.0s
-            if (tier === 4) player.turboBoost.durationFrames = 390; // 6.5s
-            if (tier === 5) player.turboBoost.durationFrames = 480; // 8.0s
-            player.turboBoost.cooldownTotalFrames = 600; // fixed 10s cooldown
-            player.turboBoost.speedMult = 1.5;
-            player.turboBoost.activeFrames = 0;
-            player.turboBoost.cooldownFrames = 0;
+            GameContext.player.turboBoost.unlocked = true;
+            if (tier === 1) GameContext.player.turboBoost.durationFrames = 120; // 2.0s
+            if (tier === 2) GameContext.player.turboBoost.durationFrames = 210; // 3.5s
+            if (tier === 3) GameContext.player.turboBoost.durationFrames = 300; // 5.0s
+            if (tier === 4) GameContext.player.turboBoost.durationFrames = 390; // 6.5s
+            if (tier === 5) GameContext.player.turboBoost.durationFrames = 480; // 8.0s
+            GameContext.player.turboBoost.cooldownTotalFrames = 600; // fixed 10s cooldown
+            GameContext.player.turboBoost.speedMult = 1.5;
+            GameContext.player.turboBoost.activeFrames = 0;
+            GameContext.player.turboBoost.cooldownFrames = 0;
             updateTurboUI();
             break;
         }
         case 'xp_magnet':
-            if (tier === 1) player.magnetRadius = 300;
-            if (tier === 2) player.magnetRadius = 600;
-            if (tier === 3) player.magnetRadius = 1200;
-            if (tier === 4) player.magnetRadius = 1800;
-            if (tier === 5) player.magnetRadius = 2400;
+            if (tier === 1) GameContext.player.magnetRadius = 300;
+            if (tier === 2) GameContext.player.magnetRadius = 600;
+            if (tier === 3) GameContext.player.magnetRadius = 1200;
+            if (tier === 4) GameContext.player.magnetRadius = 1800;
+            if (tier === 5) GameContext.player.magnetRadius = 2400;
             break;
         case 'area_nuke':
-            player.nukeUnlocked = true;
-            player.nukeMaxCooldown = 600; // 10s
-            if (tier === 1) { player.nukeDamage = 5; player.nukeRange = 600; }
-            if (tier === 2) { player.nukeDamage = 10; player.nukeRange = 700; }
-            if (tier === 3) { player.nukeDamage = 15; player.nukeRange = 900; }
-            if (tier === 4) { player.nukeDamage = 20; player.nukeRange = 1000; }
-            if (tier === 5) { player.nukeDamage = 25; player.nukeRange = 1200; }
+            GameContext.player.nukeUnlocked = true;
+            GameContext.player.nukeMaxCooldown = 600; // 10s
+            if (tier === 1) { GameContext.player.nukeDamage = 5; GameContext.player.nukeRange = 600; }
+            if (tier === 2) { GameContext.player.nukeDamage = 10; GameContext.player.nukeRange = 700; }
+            if (tier === 3) { GameContext.player.nukeDamage = 15; GameContext.player.nukeRange = 900; }
+            if (tier === 4) { GameContext.player.nukeDamage = 20; GameContext.player.nukeRange = 1000; }
+            if (tier === 5) { GameContext.player.nukeDamage = 25; GameContext.player.nukeRange = 1200; }
             break;
         case 'invincibility':
-            player.invincibilityCycle.unlocked = true;
-            if (tier === 1) player.invincibilityCycle.stats = { duration: 180, cooldown: 1200, regen: false }; // 3s / 20s
-            if (tier === 2) player.invincibilityCycle.stats = { duration: 300, cooldown: 900, regen: false }; // 5s / 15s
-            if (tier === 3) player.invincibilityCycle.stats = { duration: 420, cooldown: 600, regen: true }; // 7s / 10s
-            if (tier === 4) player.invincibilityCycle.stats = { duration: 540, cooldown: 480, regen: true }; // 9s / 8s
-            if (tier === 5) player.invincibilityCycle.stats = { duration: 720, cooldown: 360, regen: true }; // 12s / 6s
-            player.invincibilityCycle.state = 'ready';
-            player.invincibilityCycle.timer = 0;
+            GameContext.player.invincibilityCycle.unlocked = true;
+            if (tier === 1) GameContext.player.invincibilityCycle.stats = { duration: 180, cooldown: 1200, regen: false }; // 3s / 20s
+            if (tier === 2) GameContext.player.invincibilityCycle.stats = { duration: 300, cooldown: 900, regen: false }; // 5s / 15s
+            if (tier === 3) GameContext.player.invincibilityCycle.stats = { duration: 420, cooldown: 600, regen: true }; // 7s / 10s
+            if (tier === 4) GameContext.player.invincibilityCycle.stats = { duration: 540, cooldown: 480, regen: true }; // 9s / 8s
+            if (tier === 5) GameContext.player.invincibilityCycle.stats = { duration: 720, cooldown: 360, regen: true }; // 12s / 6s
+            GameContext.player.invincibilityCycle.state = 'ready';
+            GameContext.player.invincibilityCycle.timer = 0;
             break;
         case 'slow_field':
-            if (tier === 1) { player.stats.slowField = 250; player.stats.slowFieldDuration = 180; }
-            if (tier === 2) { player.stats.slowField = 312; player.stats.slowFieldDuration = 300; }
-            if (tier === 3) { player.stats.slowField = 390; player.stats.slowFieldDuration = 480; }
-            if (tier === 4) { player.stats.slowField = 390; player.stats.slowFieldDuration = 600; }
-            if (tier === 5) { player.stats.slowField = 487; player.stats.slowFieldDuration = 720; }
+            if (tier === 1) { GameContext.player.stats.slowField = 250; GameContext.player.stats.slowFieldDuration = 180; }
+            if (tier === 2) { GameContext.player.stats.slowField = 312; GameContext.player.stats.slowFieldDuration = 300; }
+            if (tier === 3) { GameContext.player.stats.slowField = 390; GameContext.player.stats.slowFieldDuration = 480; }
+            if (tier === 4) { GameContext.player.stats.slowField = 390; GameContext.player.stats.slowFieldDuration = 600; }
+            if (tier === 5) { GameContext.player.stats.slowField = 487; GameContext.player.stats.slowFieldDuration = 720; }
             break;
         case 'companion_drones': {
             const ensureDrone = (t) => {
-                if (!drones.find(d => d.type === t)) spawnDrone(t);
+                if (!GameContext.drones.find(d => d.type === t)) spawnDrone(t);
             };
             if (tier >= 1) ensureDrone('shooter');
             if (tier >= 2) ensureDrone('shield');
@@ -24426,91 +24121,91 @@ function applyUpgrade(id, tier) {
             break;
         }
         case 'volley_shot':
-            player.volleyShotUnlocked = true;
-            if (tier === 1) { player.volleyShotCount = 3; }
-            if (tier === 2) { player.volleyShotCount = 5; }
-            if (tier === 3) { player.volleyShotCount = 7; }
-            if (tier === 4) { player.volleyShotCount = 9; }
-            if (tier === 5) { player.volleyShotCount = 11; }
+            GameContext.player.volleyShotUnlocked = true;
+            if (tier === 1) { GameContext.player.volleyShotCount = 3; }
+            if (tier === 2) { GameContext.player.volleyShotCount = 5; }
+            if (tier === 3) { GameContext.player.volleyShotCount = 7; }
+            if (tier === 4) { GameContext.player.volleyShotCount = 9; }
+            if (tier === 5) { GameContext.player.volleyShotCount = 11; }
             break;
         case 'ciws':
             console.log('[CIWS] Applying CIWS upgrade, tier:', tier);
-            player.ciwsUnlocked = true;
+            GameContext.player.ciwsUnlocked = true;
             // Tier determines damage: 1, 2, 3, 4, 5
-            player.ciwsDamage = tier;
-            console.log('[CIWS] CIWS unlocked:', player.ciwsUnlocked, 'damage:', player.ciwsDamage);
+            GameContext.player.ciwsDamage = tier;
+            console.log('[CIWS] CIWS unlocked:', GameContext.player.ciwsUnlocked, 'damage:', GameContext.player.ciwsDamage);
             break;
         case 'chain_lightning':
-            if (tier === 1) { player.chainLightningCount = 1; player.chainLightningRange = 200; }
-            if (tier === 2) { player.chainLightningCount = 2; player.chainLightningRange = 250; }
-            if (tier === 3) { player.chainLightningCount = 3; player.chainLightningRange = 300; }
-            if (tier === 4) { player.chainLightningCount = 4; player.chainLightningRange = 350; }
-            if (tier === 5) { player.chainLightningCount = 5; player.chainLightningRange = 400; }
+            if (tier === 1) { GameContext.player.chainLightningCount = 1; GameContext.player.chainLightningRange = 200; }
+            if (tier === 2) { GameContext.player.chainLightningCount = 2; GameContext.player.chainLightningRange = 250; }
+            if (tier === 3) { GameContext.player.chainLightningCount = 3; GameContext.player.chainLightningRange = 300; }
+            if (tier === 4) { GameContext.player.chainLightningCount = 4; GameContext.player.chainLightningRange = 350; }
+            if (tier === 5) { GameContext.player.chainLightningCount = 5; GameContext.player.chainLightningRange = 400; }
             break;
         case 'backstabber':
-            if (tier === 1) player.stats.backstabberBonus = 1.5;
-            if (tier === 2) player.stats.backstabberBonus = 2.0;
-            if (tier === 3) { player.stats.backstabberBonus = 2.5; player.stats.backstabberSlow = 120; }
-            if (tier === 4) { player.stats.backstabberBonus = 3.0; player.stats.backstabberSlow = 180; }
-            if (tier === 5) { player.stats.backstabberBonus = 3.5; player.stats.backstabberSlow = 240; }
+            if (tier === 1) GameContext.player.stats.backstabberBonus = 1.5;
+            if (tier === 2) GameContext.player.stats.backstabberBonus = 2.0;
+            if (tier === 3) { GameContext.player.stats.backstabberBonus = 2.5; GameContext.player.stats.backstabberSlow = 120; }
+            if (tier === 4) { GameContext.player.stats.backstabberBonus = 3.0; GameContext.player.stats.backstabberSlow = 180; }
+            if (tier === 5) { GameContext.player.stats.backstabberBonus = 3.5; GameContext.player.stats.backstabberSlow = 240; }
             break;
         case 'reactive_shield':
-            if (tier === 1) player.stats.reactiveShield = 1;
-            if (tier === 2) player.stats.reactiveShield = 2;
+            if (tier === 1) GameContext.player.stats.reactiveShield = 1;
+            if (tier === 2) GameContext.player.stats.reactiveShield = 2;
             if (tier === 3) {
-                player.stats.reactiveShield = 3;
-                player.stats.reactiveShieldBonusHp = true;
+                GameContext.player.stats.reactiveShield = 3;
+                GameContext.player.stats.reactiveShieldBonusHp = true;
                 // Upgrade existing shield segments from 2 HP to 3 HP
-                if (player.shieldSegments) {
-                    for (let i = 0; i < player.shieldSegments.length; i++) {
-                        if (player.shieldSegments[i] === 2) player.shieldSegments[i] = 3;
+                if (GameContext.player.shieldSegments) {
+                    for (let i = 0; i < GameContext.player.shieldSegments.length; i++) {
+                        if (GameContext.player.shieldSegments[i] === 2) GameContext.player.shieldSegments[i] = 3;
                     }
-                    player.shieldsDirty = true;
+                    GameContext.player.shieldsDirty = true;
                 }
             }
             if (tier === 4) {
-                player.stats.reactiveShield = 4;
-                player.stats.reactiveShieldBonusHp = true;
+                GameContext.player.stats.reactiveShield = 4;
+                GameContext.player.stats.reactiveShieldBonusHp = true;
                 // Upgrade existing shield segments from 2/3 HP to 4 HP
-                if (player.shieldSegments) {
-                    for (let i = 0; i < player.shieldSegments.length; i++) {
-                        if (player.shieldSegments[i] < 4) player.shieldSegments[i] = 4;
+                if (GameContext.player.shieldSegments) {
+                    for (let i = 0; i < GameContext.player.shieldSegments.length; i++) {
+                        if (GameContext.player.shieldSegments[i] < 4) GameContext.player.shieldSegments[i] = 4;
                     }
-                    player.shieldsDirty = true;
+                    GameContext.player.shieldsDirty = true;
                 }
             }
             if (tier === 5) {
-                player.stats.reactiveShield = 5;
-                player.stats.reactiveShieldBonusHp = true;
+                GameContext.player.stats.reactiveShield = 5;
+                GameContext.player.stats.reactiveShieldBonusHp = true;
                 // Upgrade existing shield segments to 5 HP
-                if (player.shieldSegments) {
-                    for (let i = 0; i < player.shieldSegments.length; i++) {
-                        if (player.shieldSegments[i] < 5) player.shieldSegments[i] = 5;
+                if (GameContext.player.shieldSegments) {
+                    for (let i = 0; i < GameContext.player.shieldSegments.length; i++) {
+                        if (GameContext.player.shieldSegments[i] < 5) GameContext.player.shieldSegments[i] = 5;
                     }
-                    player.shieldsDirty = true;
+                    GameContext.player.shieldsDirty = true;
                 }
             }
             break;
         case 'damage_mitigation':
-            if (tier === 1) { player.stats.damageMitigation = 0.9; player.stats.speedBonusFromMit = 1.05; }
-            if (tier === 2) { player.stats.damageMitigation = 0.8; player.stats.speedBonusFromMit = 1.10; }
-            if (tier === 3) { player.stats.damageMitigation = 0.7; player.stats.speedBonusFromMit = 1.15; }
-            if (tier === 4) { player.stats.damageMitigation = 0.6; player.stats.speedBonusFromMit = 1.20; }
-            if (tier === 5) { player.stats.damageMitigation = 0.5; player.stats.speedBonusFromMit = 1.25; }
+            if (tier === 1) { GameContext.player.stats.damageMitigation = 0.9; GameContext.player.stats.speedBonusFromMit = 1.05; }
+            if (tier === 2) { GameContext.player.stats.damageMitigation = 0.8; GameContext.player.stats.speedBonusFromMit = 1.10; }
+            if (tier === 3) { GameContext.player.stats.damageMitigation = 0.7; GameContext.player.stats.speedBonusFromMit = 1.15; }
+            if (tier === 4) { GameContext.player.stats.damageMitigation = 0.6; GameContext.player.stats.speedBonusFromMit = 1.20; }
+            if (tier === 5) { GameContext.player.stats.damageMitigation = 0.5; GameContext.player.stats.speedBonusFromMit = 1.25; }
             break;
         case 'time_dilation':
-            if (tier === 1) { player.stats.timeDilation = 0.8; player.stats.timeDilationRange = 200; }
-            if (tier === 2) { player.stats.timeDilation = 0.6; player.stats.timeDilationRange = 300; }
-            if (tier === 3) { player.stats.timeDilation = 0.4; player.stats.timeDilationRange = 450; }
-            if (tier === 4) { player.stats.timeDilation = 0.2; player.stats.timeDilationRange = 600; }
-            if (tier === 5) { player.stats.timeDilation = 0.0; player.stats.timeDilationRange = 750; }
+            if (tier === 1) { GameContext.player.stats.timeDilation = 0.8; GameContext.player.stats.timeDilationRange = 200; }
+            if (tier === 2) { GameContext.player.stats.timeDilation = 0.6; GameContext.player.stats.timeDilationRange = 300; }
+            if (tier === 3) { GameContext.player.stats.timeDilation = 0.4; GameContext.player.stats.timeDilationRange = 450; }
+            if (tier === 4) { GameContext.player.stats.timeDilation = 0.2; GameContext.player.stats.timeDilationRange = 600; }
+            if (tier === 5) { GameContext.player.stats.timeDilation = 0.0; GameContext.player.stats.timeDilationRange = 750; }
             break;
         case 'momentum':
-            if (tier === 1) { player.stats.momentumFireRate = 1.10; player.stats.momentumDamage = 1.0; }
-            if (tier === 2) { player.stats.momentumFireRate = 1.20; player.stats.momentumDamage = 1.15; }
-            if (tier === 3) { player.stats.momentumFireRate = 1.30; player.stats.momentumDamage = 1.25; }
-            if (tier === 4) { player.stats.momentumFireRate = 1.40; player.stats.momentumDamage = 1.35; }
-            if (tier === 5) { player.stats.momentumFireRate = 1.50; player.stats.momentumDamage = 1.50; }
+            if (tier === 1) { GameContext.player.stats.momentumFireRate = 1.10; GameContext.player.stats.momentumDamage = 1.0; }
+            if (tier === 2) { GameContext.player.stats.momentumFireRate = 1.20; GameContext.player.stats.momentumDamage = 1.15; }
+            if (tier === 3) { GameContext.player.stats.momentumFireRate = 1.30; GameContext.player.stats.momentumDamage = 1.25; }
+            if (tier === 4) { GameContext.player.stats.momentumFireRate = 1.40; GameContext.player.stats.momentumDamage = 1.35; }
+            if (tier === 5) { GameContext.player.stats.momentumFireRate = 1.50; GameContext.player.stats.momentumDamage = 1.50; }
             break;
     }
 
@@ -24521,15 +24216,15 @@ function applyUpgrade(id, tier) {
 
 function updateGamepad() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    const gp = pads[gamepadIndex];
+    const gp = pads[GameContext.gamepadIndex];
     if (!gp) {
         for (let i = 0; i < pads.length; i++) {
-            if (pads[i]) { gamepadIndex = i; break; }
+            if (pads[i]) { GameContext.gamepadIndex = i; break; }
         }
         // If no pads are present, fall back to mouse/keyboard mode.
         if (!pads.some(p => p)) {
-            gamepadIndex = null;
-            lastGamepadInputAt = 0;
+            GameContext.gamepadIndex = null;
+            GameContext.lastGamepadInputAt = 0;
             updateInputMode(Date.now());
         }
         return;
@@ -24550,7 +24245,7 @@ function updateGamepad() {
     }
 
     if (gamepadInput) {
-        lastGamepadInputAt = Date.now();
+        GameContext.lastGamepadInputAt = Date.now();
     }
 
     gpState.move.x = applyDeadzone(gp.axes[0]);
@@ -24572,7 +24267,7 @@ function updateGamepad() {
     gpState.battery = gp.buttons[3].pressed || gp.buttons[7].pressed; // Button 3 (Y) or RT
 
     // Menu Navigation Support
-    if ((!gameActive || gamePaused) && now - menuDebounce > 150) {
+    if ((!GameContext.gameActive || GameContext.gamePaused) && now - menuDebounce > 150) {
         const activeElements = getActiveMenuElements();
         if (activeElements.length > 0) {
             // Check if menu has changed by comparing first element or length
@@ -24583,7 +24278,7 @@ function updateGamepad() {
             if (menuChanged) {
                 // Preserve index when returning from modal to shop
                 if (!returningFromModal) {
-                    menuSelectionIndex = 0;
+                    GameContext.menuSelectionIndex = 0;
                 }
                 gpState.lastMenuElements = activeElements;
                 updateMenuVisuals(activeElements);
@@ -24594,7 +24289,7 @@ function updateGamepad() {
                 returningFromModal = false;
             }
 
-            const selectedEl = activeElements[menuSelectionIndex];
+            const selectedEl = activeElements[GameContext.menuSelectionIndex];
             const isSlider = selectedEl && selectedEl.tagName === 'INPUT' && selectedEl.type === 'range';
             const isCheckbox = selectedEl && selectedEl.tagName === 'INPUT' && selectedEl.type === 'checkbox';
             const isSelect = selectedEl && selectedEl.tagName === 'SELECT';
@@ -24621,9 +24316,9 @@ function updateGamepad() {
                     if (gp.axes[1] > 0.5 || (gp.buttons[13] && gp.buttons[13].pressed)) change = 1;
 
                     if (change !== 0) {
-                        menuSelectionIndex += change;
-                        if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
-                        if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
+                        GameContext.menuSelectionIndex += change;
+                        if (GameContext.menuSelectionIndex < 0) GameContext.menuSelectionIndex = activeElements.length - 1;
+                        if (GameContext.menuSelectionIndex >= activeElements.length) GameContext.menuSelectionIndex = 0;
                         updateMenuVisuals(activeElements);
                         menuDebounce = now;
                     }
@@ -24642,9 +24337,9 @@ function updateGamepad() {
 
                 // Vertical input - always navigate
                 if (vertChange !== 0) {
-                    menuSelectionIndex += vertChange;
-                    if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
-                    if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
+                    GameContext.menuSelectionIndex += vertChange;
+                    if (GameContext.menuSelectionIndex < 0) GameContext.menuSelectionIndex = activeElements.length - 1;
+                    if (GameContext.menuSelectionIndex >= activeElements.length) GameContext.menuSelectionIndex = 0;
                     updateMenuVisuals(activeElements);
                     menuDebounce = now;
                 }
@@ -24659,9 +24354,9 @@ function updateGamepad() {
                 }
                 // Horizontal input on non-select - navigate
                 else if (horizChange !== 0) {
-                    menuSelectionIndex += horizChange;
-                    if (menuSelectionIndex < 0) menuSelectionIndex = activeElements.length - 1;
-                    if (menuSelectionIndex >= activeElements.length) menuSelectionIndex = 0;
+                    GameContext.menuSelectionIndex += horizChange;
+                    if (GameContext.menuSelectionIndex < 0) GameContext.menuSelectionIndex = activeElements.length - 1;
+                    if (GameContext.menuSelectionIndex >= activeElements.length) GameContext.menuSelectionIndex = 0;
                     updateMenuVisuals(activeElements);
                     menuDebounce = now;
                 }
@@ -24694,7 +24389,7 @@ function updateGamepad() {
                         modalSourceButtonIndex = null;
 
                         if (savedIndex !== null && savedIndex >= 0) {
-                            menuSelectionIndex = savedIndex;
+                            GameContext.menuSelectionIndex = savedIndex;
                             returningFromModal = true;
                         }
 
@@ -24930,7 +24625,7 @@ function getActiveMenuElements() {
 
 function updateMenuVisuals(elements) {
     elements.forEach((el, idx) => {
-        if (idx === menuSelectionIndex) {
+        if (idx === GameContext.menuSelectionIndex) {
             el.classList.add('selected');
             // Support focus for all interactive elements, not just buttons
             if (typeof el.focus === 'function') {
@@ -24974,25 +24669,25 @@ function updateMenuVisuals(elements) {
 }
 
 function killPlayer() {
-    player.dead = true;
-    if (metaExtraLifeCount > 0) {
-        metaExtraLifeCount--;
-        player.dead = false;
-        player.hp = Math.max(1, Math.floor(player.maxHp * 0.5));
-        player.invulnerable = 180;
-        spawnParticles(player.pos.x, player.pos.y, 20, '#0f0');
-        showOverlayMessage(`SECOND CHANCE! (${metaExtraLifeCount} remaining)`, '#0f0', 1500);
+    GameContext.player.dead = true;
+    if (GameContext.metaExtraLifeCount > 0) {
+        GameContext.metaExtraLifeCount--;
+        GameContext.player.dead = false;
+        GameContext.player.hp = Math.max(1, Math.floor(GameContext.player.maxHp * 0.5));
+        GameContext.player.invulnerable = 180;
+        spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 20, '#0f0');
+        showOverlayMessage(`SECOND CHANCE! (${GameContext.metaExtraLifeCount} remaining)`, '#0f0', 1500);
         updateHealthUI();
         return;
     }
     playSound('explode');
-    spawnParticles(player.pos.x, player.pos.y, 30, '#0ff');
+    spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 30, '#0ff');
     setTimeout(() => {
-        gameActive = false;
+        GameContext.gameActive = false;
         resetWarpState();
         stopMusic();
         try { depositMetaNuggets(); } catch (e) { console.warn('meta deposit failed', e); }
-        if (currentProfileName) {
+        if (GameContext.currentProfileName) {
             autoSaveToCurrentProfile(); // Saves game state
             saveMetaProfile();          // Saves meta shop upgrades
         }
@@ -25002,7 +24697,7 @@ function killPlayer() {
         document.getElementById('start-btn').innerText = "REBOOT SYSTEM";
         setTimeout(() => {
             document.getElementById('start-btn').focus();
-            menuSelectionIndex = 0; // Reset for start menu
+            GameContext.menuSelectionIndex = 0; // Reset for start menu
         }, 100);
     }, 2000);
 }
@@ -25014,7 +24709,7 @@ function mainLoop() {
     animationId = requestAnimationFrame(mainLoop);
     // FPS counter (render-only).
     if (fpsCounterEl) {
-        const shouldShow = !!gameActive;
+        const shouldShow = !!GameContext.gameActive;
         if (fpsUiVisible !== shouldShow) {
             fpsCounterEl.style.display = shouldShow ? 'block' : 'none';
             fpsUiVisible = shouldShow;
@@ -25032,7 +24727,7 @@ function mainLoop() {
         }
     }
     updateGamepad();
-    if (gameActive && !gamePaused) {
+    if (GameContext.gameActive && !GameContext.gamePaused) {
         // Variable timestep simulation; update and render at display refresh rate.
         const frameStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 
@@ -25096,7 +24791,7 @@ function triggerFinalBattle() {
 
     // Teleport to warp level after a short delay
     setTimeout(() => {
-        if (!gameActive || !player || player.dead) return;
+        if (!GameContext.gameActive || !GameContext.player || GameContext.player.dead) return;
         enterWarpMaze();
     }, 3000);
 }
@@ -25105,8 +24800,8 @@ function gameLoopLogic(opts = null) {
     globalProfiler.start('GameLoopLogic');
 
     // Safety: deactivate station arena if station gone
-    if (stationArena.active && (!spaceStation || spaceStation.dead)) {
-        stationArena.active = false;
+    if (GameContext.stationArena.active && (!GameContext.spaceStation || GameContext.spaceStation.dead)) {
+        GameContext.stationArena.active = false;
     }
     const doDraw = !(opts && opts.doDraw === false);
     const doUpdate = !(opts && opts.doUpdate === false);
@@ -25117,72 +24812,72 @@ function gameLoopLogic(opts = null) {
     } else {
         renderAlpha = 1.0;
     }
-    if (!player) return;
+    if (!GameContext.player) return;
 
     const now = Date.now();
-    frameNow = now;
-    const warpActive = !!(warpZone && warpZone.active);
+    GameContext.frameNow = now;
+    const warpActive = !!(GameContext.warpZone && GameContext.warpZone.active);
 
     if (doUpdate) {
         globalProfiler.start('Update');
         globalProfiler.start('GameLogic');
         // Safe clears after a station destruction to avoid mid-loop mutation
-        if (pendingTransitionClear) {
+        if (GameContext.pendingTransitionClear) {
             resetPixiOverlaySprites();
-            clearArrayWithPixiCleanup(enemies);
-            clearArrayWithPixiCleanup(pinwheels);
-            clearArrayWithPixiCleanup(bullets);
-            clearArrayWithPixiCleanup(bossBombs);
-            clearArrayWithPixiCleanup(floatingTexts);
-            bossActive = false;
-            if (boss) pixiCleanupObject(boss);
-            boss = null;
-            bossArena.active = false;
-            roamerRespawnQueue = [];
-            baseRespawnTimers = [];
-            pendingTransitionClear = false;
-            gunboatRespawnAt = null;
+            clearArrayWithPixiCleanup(GameContext.enemies);
+            clearArrayWithPixiCleanup(GameContext.pinwheels);
+            clearArrayWithPixiCleanup(GameContext.bullets);
+            clearArrayWithPixiCleanup(GameContext.bossBombs);
+            clearArrayWithPixiCleanup(GameContext.floatingTexts);
+            GameContext.bossActive = false;
+            if (GameContext.boss) pixiCleanupObject(GameContext.boss);
+            GameContext.boss = null;
+            GameContext.bossArena.active = false;
+            GameContext.roamerRespawnQueue = [];
+            GameContext.baseRespawnTimers = [];
+            GameContext.pendingTransitionClear = false;
+            GameContext.gunboatRespawnAt = null;
         }
         // Delay the first wave to give the player breathing room (not used in cave mode) 
-        if (!caveMode && !initialSpawnDone && initialSpawnDelayAt && now >= initialSpawnDelayAt) {
-            initialSpawnDone = true;
-            initialSpawnDelayAt = null;
+        if (!GameContext.caveMode && !GameContext.initialSpawnDone && GameContext.initialSpawnDelayAt && now >= GameContext.initialSpawnDelayAt) {
+            GameContext.initialSpawnDone = true;
+            GameContext.initialSpawnDelayAt = null;
             showOverlayMessage("ENEMIES DETECTED", '#f00', 2000);
-            maxRoamers = 3;
+            GameContext.maxRoamers = 3;
             for (let i = 0; i < 2; i++) {
                 const start = findSpawnPointRelative(true, 1200);
-                enemies.push(new Enemy('roamer', start));
+                GameContext.enemies.push(new Enemy('roamer', start));
             }
             for (let i = 0; i < 1; i++) spawnNewPinwheelRelative(true);
         }
         // Update HUD timer (exclude paused time)
         try {
             const tEl = document.getElementById('game-timer');
-            if (tEl && gameStartTime) {
-                let elapsed = now - gameStartTime - pausedAccumMs;
-                if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
+            if (tEl && GameContext.gameStartTime) {
+                let elapsed = now - GameContext.gameStartTime - GameContext.pausedAccumMs;
+                if (GameContext.pauseStartTime) elapsed = GameContext.pauseStartTime - GameContext.gameStartTime - GameContext.pausedAccumMs;
                 if (elapsed < 0) elapsed = 0;
                 tEl.innerText = formatTime(elapsed);
 
                 // Final battle teleport at 30 minutes (GAME_DURATION_MS)
-                if (!gameEnded && elapsed >= GAME_DURATION_MS && !warpActive && !bossActive && !sectorTransitionActive) {
+                if (!GameContext.gameEnded && elapsed >= GAME_DURATION_MS && !warpActive && !GameContext.bossActive && !GameContext.sectorTransitionActive) {
                     triggerFinalBattle();
                     return;
                 }
             }
         } catch (e) { console.warn('timer update failed', e); }
 
-        if (player && now >= posUiNextAt) {
+        if (GameContext.player && now >= posUiNextAt) {
             const posEl = document.getElementById('pos-debug');
             if (posEl) {
-                posEl.innerText = `POS: ${Math.round(player.pos.x)}, ${Math.round(player.pos.y)}`;
+                posEl.innerText = `POS: ${Math.round(GameContext.player.pos.x)}, ${Math.round(GameContext.player.pos.y)}`;
                 posUiNextAt = now + 100;
             }
         }
 
         // Sector transition countdown
-        if (sectorTransitionActive && warpCountdownAt) {
-            const remainingMs = Math.max(0, warpCountdownAt - now);
+        if (GameContext.sectorTransitionActive && GameContext.warpCountdownAt) {
+            const remainingMs = Math.max(0, GameContext.warpCountdownAt - now);
             overlayMessage.style.display = 'block';
             overlayMessage.innerText = `WARPING TO NEW SECTOR IN ${Math.ceil(remainingMs / 1000)}s`;
             overlayMessage.style.color = '#0ff';
@@ -25192,33 +24887,33 @@ function gameLoopLogic(opts = null) {
         }
 
         // World warp gate (appears after space station is destroyed, once per sector).
-        if (!warpActive && !dungeon1Active && !bossActive && !sectorTransitionActive && !warpCompletedOnce && !caveMode && !spaceStation && warpGateUnlocked) {
-            if (!warpGate || warpGate.mode !== 'entry') {
-                const gx = player.pos.x + 900;
-                const gy = player.pos.y;
-                warpGate = new WarpGate(gx, gy);
+        if (!warpActive && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && !GameContext.warpCompletedOnce && !GameContext.caveMode && !GameContext.spaceStation && GameContext.warpGateUnlocked) {
+            if (!GameContext.warpGate || GameContext.warpGate.mode !== 'entry') {
+                const gx = GameContext.player.pos.x + 900;
+                const gy = GameContext.player.pos.y;
+                GameContext.warpGate = new WarpGate(gx, gy);
                 showOverlayMessage("WARP GATE OPEN", '#f80', 1600);
             }
         } else {
-            if (warpGate && warpGate.mode === 'entry') {
-                pixiCleanupObject(warpGate);
-                warpGate = null;
+            if (GameContext.warpGate && GameContext.warpGate.mode === 'entry') {
+                pixiCleanupObject(GameContext.warpGate);
+                GameContext.warpGate = null;
             }
         }
 
         // Contracts: spawn and update (normal mode only, not during arena boss)
-        if (gameMode === 'normal' && gameActive && !gamePaused && !bossActive && !warpActive && !dungeon1Active && !caveMode) {
-            if (!activeContract && now >= nextContractAt) {
-                contractSequence++;
+        if (GameContext.gameMode === 'normal' && GameContext.gameActive && !GameContext.gamePaused && !GameContext.bossActive && !warpActive && !GameContext.dungeon1Active && !GameContext.caveMode) {
+            if (!GameContext.activeContract && now >= GameContext.nextContractAt) {
+                GameContext.contractSequence++;
                 const pick = Math.random();
                 const target = findSpawnPointRelative(true, 6000, 9000);
 
                 if (pick < 0.60) {
                     // Scan Beacon
                     const beacon = new ContractBeacon(target.x, target.y, "SCAN BEACON");
-                    contractEntities.beacons.push(beacon);
-                    activeContract = {
-                        id: `C${contractSequence}`,
+                    GameContext.contractEntities.beacons.push(beacon);
+                    GameContext.activeContract = {
+                        id: `C${GameContext.contractSequence}`,
                         type: 'scan_beacon',
                         state: 'travel',
                         title: 'SCAN BEACON',
@@ -25232,17 +24927,17 @@ function gameLoopLogic(opts = null) {
                 } else {
                     // Gate run puzzle
                     const gateCount = 5;
-                    contractEntities.gates = [];
+                    GameContext.contractEntities.gates = [];
                     const dir = Math.random() * Math.PI * 2;
                     for (let i = 0; i < gateCount; i++) {
                         const d = 1800 + i * 1500;
                         const a = dir + (Math.random() - 0.5) * 0.45;
-                        const gx = player.pos.x + Math.cos(a) * d;
-                        const gy = player.pos.y + Math.sin(a) * d;
-                        contractEntities.gates.push(new GateRing(gx, gy, i, gateCount));
+                        const gx = GameContext.player.pos.x + Math.cos(a) * d;
+                        const gy = GameContext.player.pos.y + Math.sin(a) * d;
+                        GameContext.contractEntities.gates.push(new GateRing(gx, gy, i, gateCount));
                     }
-                    activeContract = {
-                        id: `C${contractSequence}`,
+                    GameContext.activeContract = {
+                        id: `C${GameContext.contractSequence}`,
                         type: 'gate_run',
                         state: 'active',
                         title: 'GATE RUN',
@@ -25258,8 +24953,8 @@ function gameLoopLogic(opts = null) {
                 updateContractUI();
             }
 
-            if (activeContract && activeContract.type === 'gate_run') {
-                if (Date.now() > activeContract.endsAt) {
+            if (GameContext.activeContract && GameContext.activeContract.type === 'gate_run') {
+                if (Date.now() > GameContext.activeContract.endsAt) {
                     completeContract(false);
                 }
             }
@@ -25269,32 +24964,32 @@ function gameLoopLogic(opts = null) {
         // (Warp-zone pausing is handled via the warp snapshot so it doesn't count warp time.) 
         let inAnomaly = false;
         try {
-            if (activeContract && activeContract.type === 'anomaly' && activeContract.id && contractEntities && contractEntities.anomalies && player && !player.dead) {
-                const az = contractEntities.anomalies.find(a => a && !a.dead && a.contractId === activeContract.id);
+            if (GameContext.activeContract && GameContext.activeContract.type === 'anomaly' && GameContext.activeContract.id && GameContext.contractEntities && GameContext.contractEntities.anomalies && GameContext.player && !GameContext.player.dead) {
+                const az = GameContext.contractEntities.anomalies.find(a => a && !a.dead && a.contractId === GameContext.activeContract.id);
                 if (az) {
-                    const d = Math.hypot(player.pos.x - az.pos.x, player.pos.y - az.pos.y);
+                    const d = Math.hypot(GameContext.player.pos.x - az.pos.x, GameContext.player.pos.y - az.pos.y);
                     // Use the same "anomaly vicinity" threshold as collision/bullet-wall checks. 
                     inAnomaly = d < (az.radius + 900);
                 }
             }
         } catch (e) { }
-        const inStationFight = !!(stationArena.active && spaceStation && !spaceStation.dead);
-        const inTractorBeam = !!(destroyer && !destroyer.dead && destroyer.tractorBeamActive);
-        const waitingForResume = (cruiserTimerResumeAt > now);
+        const inStationFight = !!(GameContext.stationArena.active && GameContext.spaceStation && !GameContext.spaceStation.dead);
+        const inTractorBeam = !!(GameContext.destroyer && !GameContext.destroyer.dead && GameContext.destroyer.tractorBeamActive);
+        const waitingForResume = (GameContext.cruiserTimerResumeAt > now);
 
         if (inAnomaly || inStationFight || inTractorBeam || waitingForResume) {
-            if (cruiserTimerPausedAt === null) cruiserTimerPausedAt = now;
-        } else if (cruiserTimerPausedAt !== null) {
-            const dt = Math.max(0, now - cruiserTimerPausedAt);
-            if (dreadManager && dreadManager.timerActive && typeof dreadManager.timerAt === 'number') {
-                dreadManager.timerAt += dt;
+            if (GameContext.cruiserTimerPausedAt === null) GameContext.cruiserTimerPausedAt = now;
+        } else if (GameContext.cruiserTimerPausedAt !== null) {
+            const dt = Math.max(0, now - GameContext.cruiserTimerPausedAt);
+            if (GameContext.dreadManager && GameContext.dreadManager.timerActive && typeof GameContext.dreadManager.timerAt === 'number') {
+                GameContext.dreadManager.timerAt += dt;
             }
-            cruiserTimerPausedAt = null;
+            GameContext.cruiserTimerPausedAt = null;
         }
         // Arena countdown: start 10 seconds before cruiser spawns
         try {
-            if (!sectorTransitionActive && !warpActive && !caveMode && !inAnomaly && !inStationFight && !inTractorBeam && !waitingForResume && dreadManager.timerActive && !bossActive && dreadManager.timerAt) {
-                const remainingMs = dreadManager.timerAt - now;
+            if (!GameContext.sectorTransitionActive && !warpActive && !GameContext.caveMode && !inAnomaly && !inStationFight && !inTractorBeam && !waitingForResume && GameContext.dreadManager.timerActive && !GameContext.bossActive && GameContext.dreadManager.timerAt) {
+                const remainingMs = GameContext.dreadManager.timerAt - now;
                 if (remainingMs <= 10000 && remainingMs > 0) {
                     if (!arenaCountdownActive) {
                         startArenaCountdown();
@@ -25319,9 +25014,9 @@ function gameLoopLogic(opts = null) {
         } catch (e) { }
         // Cruiser timed spawn: if timer active and no boss present, spawn a cruiser 
         try {
-            if (!sectorTransitionActive && !warpActive && !caveMode && !inAnomaly && !inStationFight && !inTractorBeam && !waitingForResume && dreadManager.timerActive && !bossActive && dreadManager.timerAt && now >= dreadManager.timerAt) {
+            if (!GameContext.sectorTransitionActive && !warpActive && !GameContext.caveMode && !inAnomaly && !inStationFight && !inTractorBeam && !waitingForResume && GameContext.dreadManager.timerActive && !GameContext.bossActive && GameContext.dreadManager.timerAt && now >= GameContext.dreadManager.timerAt) {
                 // Cruisers can spawn even if a station exists
-                cruiserEncounterCount++;
+                GameContext.cruiserEncounterCount++;
                 // Arena boss fight: clear world threats; boss may call a few helpers.
                 // REMOVED: Enemy/Base/Bullet clearing logic to allow them inside arena
                 /*
@@ -25338,20 +25033,20 @@ function gameLoopLogic(opts = null) {
                 clearArrayWithPixiCleanup(bossBombs);
                 clearArrayWithPixiCleanup(guidedMissiles);
                 */
-                boss = new Cruiser(cruiserEncounterCount);
-                bossActive = true;
-                bossArena.x = (player.pos.x + boss.pos.x) / 2;
-                bossArena.y = (player.pos.y + boss.pos.y) / 2;
-                bossArena.radius = 2500;
-                bossArena.active = true;
-                bossArena.growing = false;
+                GameContext.boss = new Cruiser(GameContext.cruiserEncounterCount);
+                GameContext.bossActive = true;
+                GameContext.bossArena.x = (GameContext.player.pos.x + GameContext.boss.pos.x) / 2;
+                GameContext.bossArena.y = (GameContext.player.pos.y + GameContext.boss.pos.y) / 2;
+                GameContext.bossArena.radius = 2500;
+                GameContext.bossArena.active = true;
+                GameContext.bossArena.growing = false;
                 // Keep arena fights clean
-                radiationStorm = null;
+                GameContext.radiationStorm = null;
                 scheduleNextRadiationStorm(Date.now() + 60000);
                 clearMiniEvent();
                 scheduleNextMiniEvent(Date.now() + 90000);
-                dreadManager.timerActive = false;
-                dreadManager.firstSpawnDone = true;
+                GameContext.dreadManager.timerActive = false;
+                GameContext.dreadManager.firstSpawnDone = true;
                 showOverlayMessage("WARNING: CRUISER APPROACHING - ARENA LOCKED", '#f00', 4000);
                 playSound('boss_spawn');
                 if (musicEnabled) setMusicMode('cruiser');
@@ -25359,77 +25054,77 @@ function gameLoopLogic(opts = null) {
         } catch (e) { console.warn('cruiser spawn check failed', e); }
 
         // Space Station Spawn (timer-driven)
-        if (!sectorTransitionActive && !warpActive && !caveMode && !spaceStation && pendingStations > 0 && nextSpaceStationTime && now >= nextSpaceStationTime) {
-            spaceStation = new SpaceStation();
-            pendingStations--;
-            stationArena.x = spaceStation.pos.x;
-            stationArena.y = spaceStation.pos.y;
-            stationArena.radius = 2800;
-            stationArena.active = false;
+        if (!GameContext.sectorTransitionActive && !warpActive && !GameContext.caveMode && !GameContext.spaceStation && GameContext.pendingStations > 0 && GameContext.nextSpaceStationTime && now >= GameContext.nextSpaceStationTime) {
+            GameContext.spaceStation = new SpaceStation();
+            GameContext.pendingStations--;
+            GameContext.stationArena.x = GameContext.spaceStation.pos.x;
+            GameContext.stationArena.y = GameContext.spaceStation.pos.y;
+            GameContext.stationArena.radius = 2800;
+            GameContext.stationArena.active = false;
             showOverlayMessage("SPACE STATION SPAWNED - DESTROY THE BARRIER?", '#f80', 5000);
             playSound('station_spawn');
-            nextSpaceStationTime = null;
+            GameContext.nextSpaceStationTime = null;
         }
 
         // Gunboat respawn (one at a time)
-        if (!warpActive && !dungeon1Active && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
-            const gunboatAlive = enemies.some(e => e.isGunboat);
-            const level2Alive = enemies.some(e => e.isGunboat && e.gunboatLevel === 2);
-            const level1Alive = enemies.some(e => e.isGunboat && e.gunboatLevel === 1);
-            if (gunboatRespawnAt && now >= gunboatRespawnAt) {
+        if (!warpActive && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone) {
+            const gunboatAlive = GameContext.enemies.some(e => e.isGunboat);
+            const level2Alive = GameContext.enemies.some(e => e.isGunboat && e.gunboatLevel === 2);
+            const level1Alive = GameContext.enemies.some(e => e.isGunboat && e.gunboatLevel === 1);
+            if (GameContext.gunboatRespawnAt && now >= GameContext.gunboatRespawnAt) {
                 // Spawn rules: before warp, only level 1, one at a time. After warp, allow one level 1 and one level 2 simultaneously.
-                if (!gunboatLevel2Unlocked) {
-                    if (!level1Alive) enemies.push(new Enemy('gunboat', null, null, { gunboatLevel: 1 }));
-                    gunboatRespawnAt = null;
+                if (!GameContext.gunboatLevel2Unlocked) {
+                    if (!level1Alive) GameContext.enemies.push(new Enemy('gunboat', null, null, { gunboatLevel: 1 }));
+                    GameContext.gunboatRespawnAt = null;
                 } else {
                     if (!level1Alive) {
-                        enemies.push(new Enemy('gunboat', null, null, { gunboatLevel: 1 })); // level decided in constructor
+                        GameContext.enemies.push(new Enemy('gunboat', null, null, { gunboatLevel: 1 })); // level decided in constructor
                     } else if (!level2Alive) {
-                        enemies.push(new Enemy('gunboat', null, null, { gunboatLevel: 2 }));
+                        GameContext.enemies.push(new Enemy('gunboat', null, null, { gunboatLevel: 2 }));
                     }
-                    gunboatRespawnAt = null;
+                    GameContext.gunboatRespawnAt = null;
                 }
             }
-            if (!gunboatRespawnAt) {
+            if (!GameContext.gunboatRespawnAt) {
                 // Only set a timer if we need more according to rules
-                if (!gunboatLevel2Unlocked) {
-                    if (!level1Alive) gunboatRespawnAt = now + 20000;
+                if (!GameContext.gunboatLevel2Unlocked) {
+                    if (!level1Alive) GameContext.gunboatRespawnAt = now + 20000;
                 } else {
-                    if (!level1Alive || !level2Alive) gunboatRespawnAt = now + 20000;
+                    if (!level1Alive || !level2Alive) GameContext.gunboatRespawnAt = now + 20000;
                 }
             }
         }
 
         // Single destroyer system: only 1 destroyer at a time, alternates between type 1 and 2
         // Destroyers never spawn in sector 2 (cave mode) or in dungeon1
-        if (!warpActive && !caveMode && !dungeon1Active && sectorIndex !== 2 && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone && !warpCompletedOnce) {
-            const destroyerAlive = destroyer && !destroyer.dead;
+        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && GameContext.sectorIndex !== 2 && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone && !GameContext.warpCompletedOnce) {
+            const destroyerAlive = GameContext.destroyer && !GameContext.destroyer.dead;
 
             if (!destroyerAlive) {
-                if (destroyer && destroyer.dead && nextDestroyerSpawnTime && now >= nextDestroyerSpawnTime) {
+                if (GameContext.destroyer && GameContext.destroyer.dead && GameContext.nextDestroyerSpawnTime && now >= GameContext.nextDestroyerSpawnTime) {
                     // Spawn alternate destroyer type
-                    destroyer = (currentDestroyerType === 1) ? new Destroyer() : new Destroyer2();
-                    nextDestroyerSpawnTime = null;
-                    const typeName = (currentDestroyerType === 1) ? "DESTROYER" : "DESTROYER II";
+                    GameContext.destroyer = (GameContext.currentDestroyerType === 1) ? new Destroyer() : new Destroyer2();
+                    GameContext.nextDestroyerSpawnTime = null;
+                    const typeName = (GameContext.currentDestroyerType === 1) ? "DESTROYER" : "DESTROYER II";
                     showOverlayMessage(`NEW ${typeName} DETECTED`, '#f80', 3000);
                     playSound('boss_spawn');
-                } else if (!nextDestroyerSpawnTime && initialSpawnDone && now - gameStartTime - pausedAccumMs > 30000) {
+                } else if (!GameContext.nextDestroyerSpawnTime && GameContext.initialSpawnDone && now - GameContext.gameStartTime - GameContext.pausedAccumMs > 30000) {
                     // First spawn - start with Destroyer type 1
-                    currentDestroyerType = 1;
-                    destroyer = new Destroyer();
-                    nextDestroyerSpawnTime = null;
+                    GameContext.currentDestroyerType = 1;
+                    GameContext.destroyer = new Destroyer();
+                    GameContext.nextDestroyerSpawnTime = null;
                     showOverlayMessage("DESTROYER DETECTED", '#f80', 3000);
                     playSound('boss_spawn');
                 }
             }
         }
 
-        if (!warpActive && !caveMode && !dungeon1Active && !bossActive && Date.now() > nextShootingStarTime) {
+        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.bossActive && Date.now() > GameContext.nextShootingStarTime) {
             // Fire a meteor shower: 10 comets from different directions, 1s apart
             for (let i = 0; i < 10; i++) {
                 const delay = i * 1000;
                 setTimeout(() => {
-                    shootingStars.push(new ShootingStar());
+                    GameContext.shootingStars.push(new ShootingStar());
                 }, delay);
             }
             scheduleNextShootingStar();
@@ -25437,105 +25132,105 @@ function gameLoopLogic(opts = null) {
         }
 
         // Risk zones: Radiation Storms
-        if (!warpActive && !caveMode && !dungeon1Active && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
-            if (radiationStorm && radiationStorm.dead) radiationStorm = null;
-            if ((!radiationStorm || radiationStorm.dead) && nextRadiationStormAt && now >= nextRadiationStormAt) {
+        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone) {
+            if (GameContext.radiationStorm && GameContext.radiationStorm.dead) GameContext.radiationStorm = null;
+            if ((!GameContext.radiationStorm || GameContext.radiationStorm.dead) && GameContext.nextRadiationStormAt && now >= GameContext.nextRadiationStormAt) {
                 spawnRadiationStormRelative();
                 scheduleNextRadiationStorm(now);
             }
         }
 
         // Mini-events
-        if (!warpActive && !caveMode && !dungeon1Active && !bossActive && !sectorTransitionActive && gameActive && !gamePaused && initialSpawnDone) {
-            if (miniEvent && miniEvent.dead) clearMiniEvent();
-            if (!miniEvent && nextMiniEventAt && now >= nextMiniEventAt) {
+        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone) {
+            if (GameContext.miniEvent && GameContext.miniEvent.dead) clearMiniEvent();
+            if (!GameContext.miniEvent && GameContext.nextMiniEventAt && now >= GameContext.nextMiniEventAt) {
                 spawnMiniEventRelative();
                 scheduleNextMiniEvent(now);
             }
         }
 
         // Intensity breaks to let players collect/reposition
-        if (!warpActive && !sectorTransitionActive && !gamePaused && gameActive) {
-            if (!intensityBreakActive && now >= nextIntensityBreakAt) {
-                intensityBreakActive = true;
-                nextIntensityBreakAt = now + INTENSITY_BREAK_DURATION + 90000; // after break, schedule next in ~90s
+        if (!warpActive && !GameContext.sectorTransitionActive && !GameContext.gamePaused && GameContext.gameActive) {
+            if (!GameContext.intensityBreakActive && now >= GameContext.nextIntensityBreakAt) {
+                GameContext.intensityBreakActive = true;
+                GameContext.nextIntensityBreakAt = now + INTENSITY_BREAK_DURATION + 90000; // after break, schedule next in ~90s
             }
-            if (intensityBreakActive && now >= nextIntensityBreakAt - (INTENSITY_BREAK_DURATION)) {
+            if (GameContext.intensityBreakActive && now >= GameContext.nextIntensityBreakAt - (INTENSITY_BREAK_DURATION)) {
                 // during break, stop new roamer spawns
             }
-            if (intensityBreakActive && now >= nextIntensityBreakAt) {
-                intensityBreakActive = false;
+            if (GameContext.intensityBreakActive && now >= GameContext.nextIntensityBreakAt) {
+                GameContext.intensityBreakActive = false;
             }
         }
 
-        if (!warpActive && !caveMode && !dungeon1Active && !bossActive && !sectorTransitionActive && initialSpawnDone) {
+        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.initialSpawnDone) {
             // Time-based pacing for roamer count and strength 
-            let elapsed = now - gameStartTime - pausedAccumMs;
-            if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
+            let elapsed = now - GameContext.gameStartTime - GameContext.pausedAccumMs;
+            if (GameContext.pauseStartTime) elapsed = GameContext.pauseStartTime - GameContext.gameStartTime - GameContext.pausedAccumMs;
             if (elapsed < 0) elapsed = 0;
             const elapsedMinutes = elapsed / 60000;
 
             const baseRoamers = 6;
-            const maxRoamers = 15;
+            GameContext.maxRoamers = 15;
             const rampMinutes = 28; // slower ramp
             const rampT = Math.min(1, elapsedMinutes / rampMinutes);
-            const difficultyBonus = Math.max(0, (difficultyTier + player.level * 0.1) - 1) * 0.3;
+            const difficultyBonus = Math.max(0, (GameContext.difficultyTier + GameContext.player.level * 0.1) - 1) * 0.3;
             const earlyEnemyFactor = (elapsedMinutes < 4) ? 0.75 : 1.0;
-            const targetRoamers = Math.floor((baseRoamers + (maxRoamers - baseRoamers) * rampT + difficultyBonus) * earlyEnemyFactor);
+            const targetRoamers = Math.floor((baseRoamers + (GameContext.maxRoamers - baseRoamers) * rampT + difficultyBonus) * earlyEnemyFactor);
 
-            const currentRoamers = enemies.filter(e => e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter').length;
-            if (!intensityBreakActive && currentRoamers + roamerRespawnQueue.length < targetRoamers) {
+            const currentRoamers = GameContext.enemies.filter(e => e.type === 'roamer' || e.type === 'elite_roamer' || e.type === 'hunter').length;
+            if (!GameContext.intensityBreakActive && currentRoamers + GameContext.roamerRespawnQueue.length < targetRoamers) {
                 // 3000ms delay between new spawns to refill population slower
-                roamerRespawnQueue.push(3000);
+                GameContext.roamerRespawnQueue.push(3000);
             }
 
-            const eliteUnlocked = elapsedMinutes >= 5 || difficultyTier >= 3 || player.level >= 4;
-            const hunterUnlocked = elapsedMinutes >= 11 || difficultyTier >= 5 || player.level >= 7;
+            const eliteUnlocked = elapsedMinutes >= 5 || GameContext.difficultyTier >= 3 || GameContext.player.level >= 4;
+            const hunterUnlocked = elapsedMinutes >= 11 || GameContext.difficultyTier >= 5 || GameContext.player.level >= 7;
             // Keep elites/hunters rare and capped
             const eliteChance = eliteUnlocked ? Math.min(0.25, 0.08 + (elapsedMinutes / 25) * 0.2) : 0;
             const hunterChance = hunterUnlocked ? Math.min(0.15, 0.05 + (elapsedMinutes / 35) * 0.12) : 0;
             const eliteSoftCap = 3;
             const hunterSoftCap = 3;
 
-            for (let i = roamerRespawnQueue.length - 1; i >= 0; i--) {
-                roamerRespawnQueue[i] -= deltaTime;
-                if (roamerRespawnQueue[i] <= 0) {
-                    roamerRespawnQueue.splice(i, 1);
+            for (let i = GameContext.roamerRespawnQueue.length - 1; i >= 0; i--) {
+                GameContext.roamerRespawnQueue[i] -= deltaTime;
+                if (GameContext.roamerRespawnQueue[i] <= 0) {
+                    GameContext.roamerRespawnQueue.splice(i, 1);
                     let type = 'roamer';
-                    const currentElite = enemies.filter(e => e.type === 'elite_roamer').length;
-                    const currentHunter = enemies.filter(e => e.type === 'hunter').length;
+                    const currentElite = GameContext.enemies.filter(e => e.type === 'elite_roamer').length;
+                    const currentHunter = GameContext.enemies.filter(e => e.type === 'hunter').length;
                     if (eliteUnlocked && currentElite < eliteSoftCap && Math.random() < eliteChance) {
                         type = 'elite_roamer';
                         if (hunterUnlocked && currentHunter < hunterSoftCap && Math.random() < hunterChance) {
                             type = 'hunter';
                         }
                     }
-                    enemies.push(new Enemy(type));
+                    GameContext.enemies.push(new Enemy(type));
                 }
             }
         } else {
-            roamerRespawnQueue = [];
+            GameContext.roamerRespawnQueue = [];
         }
 
-        if (!warpActive && !caveMode && !dungeon1Active) {
-            while (environmentAsteroids.length < 100) spawnOneAsteroidRelative();
-        } else if (caveMode && caveLevel && caveLevel.active) {
+        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active) {
+            while (GameContext.environmentAsteroids.length < 100) spawnOneAsteroidRelative();
+        } else if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active) {
             // Keep asteroids present but not overwhelming inside the cave.
             let tries = 0;
-            while (environmentAsteroids.length < 75 && tries < 300) {
+            while (GameContext.environmentAsteroids.length < 75 && tries < 300) {
                 spawnOneAsteroidRelative(false);
                 tries++;
             }
-        } else if (warpZone && warpZone.active) {
+        } else if (GameContext.warpZone && GameContext.warpZone.active) {
             let tries = 0;
-            while (environmentAsteroids.length < 50 && tries < 300) {
+            while (GameContext.environmentAsteroids.length < 50 && tries < 300) {
                 if (!spawnOneWarpAsteroidRelative(false)) break;
                 tries++;
             }
-        } else if (dungeon1Active && dungeon1Zone && dungeon1Zone.active) {
+        } else if (GameContext.dungeon1Active && GameContext.dungeon1Zone && GameContext.dungeon1Zone.active) {
             // Spawn asteroids in dungeon1 for cover
             let tries = 0;
-            while (environmentAsteroids.length < 40 && tries < 300) {
+            while (GameContext.environmentAsteroids.length < 40 && tries < 300) {
                 spawnOneAsteroidRelative(false);
                 tries++;
             }
@@ -25544,59 +25239,59 @@ function gameLoopLogic(opts = null) {
         // Build Spatial Grid for this frame
         globalProfiler.end('GameLogic');
         globalProfiler.start('SpatialHash');
-        asteroidGrid.clear();
-        for (let i = 0; i < environmentAsteroids.length; i++) asteroidGrid.insert(environmentAsteroids[i]);
+        GameContext.asteroidGrid.clear();
+        for (let i = 0; i < GameContext.environmentAsteroids.length; i++) GameContext.asteroidGrid.insert(GameContext.environmentAsteroids[i]);
 
-        targetGrid.clear();
-        for (let i = 0; i < enemies.length; i++) targetGrid.insert(enemies[i]);
-        for (let i = 0; i < pinwheels.length; i++) targetGrid.insert(pinwheels[i]);
-        for (let i = 0; i < shootingStars.length; i++) targetGrid.insert(shootingStars[i]);
-        if (contractEntities) {
-            if (contractEntities.fortresses) {
-                for (let i = 0; i < contractEntities.fortresses.length; i++) targetGrid.insert(contractEntities.fortresses[i]);
+        GameContext.targetGrid.clear();
+        for (let i = 0; i < GameContext.enemies.length; i++) GameContext.targetGrid.insert(GameContext.enemies[i]);
+        for (let i = 0; i < GameContext.pinwheels.length; i++) GameContext.targetGrid.insert(GameContext.pinwheels[i]);
+        for (let i = 0; i < GameContext.shootingStars.length; i++) GameContext.targetGrid.insert(GameContext.shootingStars[i]);
+        if (GameContext.contractEntities) {
+            if (GameContext.contractEntities.fortresses) {
+                for (let i = 0; i < GameContext.contractEntities.fortresses.length; i++) GameContext.targetGrid.insert(GameContext.contractEntities.fortresses[i]);
             }
-            if (contractEntities.wallTurrets) {
-                for (let i = 0; i < contractEntities.wallTurrets.length; i++) targetGrid.insert(contractEntities.wallTurrets[i]);
+            if (GameContext.contractEntities.wallTurrets) {
+                for (let i = 0; i < GameContext.contractEntities.wallTurrets.length; i++) GameContext.targetGrid.insert(GameContext.contractEntities.wallTurrets[i]);
             }
         }
-        if (warpZone && warpZone.turrets) {
-            for (let i = 0; i < warpZone.turrets.length; i++) targetGrid.insert(warpZone.turrets[i]);
+        if (GameContext.warpZone && GameContext.warpZone.turrets) {
+            for (let i = 0; i < GameContext.warpZone.turrets.length; i++) GameContext.targetGrid.insert(GameContext.warpZone.turrets[i]);
         }
-        if (boss && !boss.dead) targetGrid.insert(boss);
-        if (destroyer && !destroyer.dead) targetGrid.insert(destroyer);
+        if (GameContext.boss && !GameContext.boss.dead) GameContext.targetGrid.insert(GameContext.boss);
+        if (GameContext.destroyer && !GameContext.destroyer.dead) GameContext.targetGrid.insert(GameContext.destroyer);
 
         // Build bullet spatial hash for efficient collision detection
-        rebuildBulletGrid(bullets);
+        rebuildBulletGrid(GameContext.bullets);
         globalProfiler.end('SpatialHash');
         globalProfiler.start('LevelLogic');
 
-        if (!warpActive && !dungeon1Active && !bossActive && !sectorTransitionActive && initialSpawnDone) {
+        if (!warpActive && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.initialSpawnDone) {
             // Ramp base count up over the first few minutes (start easier).
-            let elapsed = now - gameStartTime - pausedAccumMs;
-            if (pauseStartTime) elapsed = pauseStartTime - gameStartTime - pausedAccumMs;
+            let elapsed = now - GameContext.gameStartTime - GameContext.pausedAccumMs;
+            if (GameContext.pauseStartTime) elapsed = GameContext.pauseStartTime - GameContext.gameStartTime - GameContext.pausedAccumMs;
             if (elapsed < 0) elapsed = 0;
             const elapsedMinutes = elapsed / 60000;
 
-            let targetBases = caveMode ? 3 : 3;
-            if (!caveMode) {
+            let targetBases = GameContext.caveMode ? 3 : 3;
+            if (!GameContext.caveMode) {
                 if (elapsedMinutes < 2) targetBases = 1;
                 else if (elapsedMinutes < 5) targetBases = 2;
                 else if (elapsedMinutes < 10) targetBases = 3;
                 else targetBases = 4;
             }
 
-            if (pinwheels.length < targetBases) {
-                if (baseRespawnTimers.length === 0) spawnNewPinwheelRelative();
+            if (GameContext.pinwheels.length < targetBases) {
+                if (GameContext.baseRespawnTimers.length === 0) spawnNewPinwheelRelative();
             }
 
-            for (let i = baseRespawnTimers.length - 1; i >= 0; i--) {
-                if (now > baseRespawnTimers[i]) {
-                    if (pinwheels.length < targetBases) {
+            for (let i = GameContext.baseRespawnTimers.length - 1; i >= 0; i--) {
+                if (now > GameContext.baseRespawnTimers[i]) {
+                    if (GameContext.pinwheels.length < targetBases) {
                         spawnNewPinwheelRelative();
-                        baseRespawnTimers.splice(i, 1);
+                        GameContext.baseRespawnTimers.splice(i, 1);
                     } else {
                         // Delay respawns until the current target count needs them.
-                        baseRespawnTimers[i] = now + 8000;
+                        GameContext.baseRespawnTimers[i] = now + 8000;
                     }
                 }
             }
@@ -25607,23 +25302,23 @@ function gameLoopLogic(opts = null) {
 
     const targetZoom = ZOOM_LEVEL * 0.85;
     if (doUpdate) {
-        currentZoom += (targetZoom - currentZoom) * 0.08;
-        if (Math.abs(currentZoom - targetZoom) < 0.001) currentZoom = targetZoom;
+        GameContext.currentZoom += (targetZoom - GameContext.currentZoom) * 0.08;
+        if (Math.abs(GameContext.currentZoom - targetZoom) < 0.001) GameContext.currentZoom = targetZoom;
     }
-    const zoom = currentZoom;
+    const zoom = GameContext.currentZoom;
 
     const alpha = (opts && opts.alpha !== undefined) ? opts.alpha : 1.0;
     renderAlpha = alpha; // Set global for entity draw methods
-    const renderPos = player.getRenderPos(alpha);
+    const renderPos = GameContext.player.getRenderPos(alpha);
     // Camera always follows player - no arena locking
     let camX = renderPos.x - width / (2 * zoom);
     let camY = renderPos.y - height / (2 * zoom);
-    if (shakeTimer > 0) {
+    if (GameContext.shakeTimer > 0) {
         if (doUpdate) {
-            shakeTimer -= deltaTime / 16.67;
-            shakeOffsetX = (Math.random() - 0.5) * shakeMagnitude * 2;
-            shakeOffsetY = (Math.random() - 0.5) * shakeMagnitude * 2;
-            if (shakeTimer <= 0) { shakeOffsetX = 0; shakeOffsetY = 0; }
+            GameContext.shakeTimer -= deltaTime / 16.67;
+            shakeOffsetX = (Math.random() - 0.5) * GameContext.shakeMagnitude * 2;
+            shakeOffsetY = (Math.random() - 0.5) * GameContext.shakeMagnitude * 2;
+            if (GameContext.shakeTimer <= 0) { shakeOffsetX = 0; shakeOffsetY = 0; }
         }
         // camX += shakeOffsetX;
         // camY += shakeOffsetY;
@@ -25654,7 +25349,7 @@ function gameLoopLogic(opts = null) {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, width, height);
 
-        const caveActiveBg = (caveMode && caveLevel && caveLevel.active);
+        const caveActiveBg = (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active);
         if (pixiApp && pixiApp.renderer) {
             if (pixiApp.renderer.width !== width || pixiApp.renderer.height !== height) {
                 pixiApp.renderer.resize(width, height);
@@ -25683,7 +25378,7 @@ function gameLoopLogic(opts = null) {
         if (pixiScreenRoot && pixiStarLayer) {
             updatePixiBackground(camX, camY);
         } else {
-            for (let s of starfield) {
+            for (let s of GameContext.starfield) {
                 let x = (s.x - camX * s.parallax) % width;
                 let y = (s.y - camY * s.parallax) % height;
                 if (x < 0) x += width;
@@ -25717,18 +25412,18 @@ function gameLoopLogic(opts = null) {
     // One-time pool identity check
     const particleRes = window.cachedParticleRes;
 
-    const caveActive = (caveMode && caveLevel && caveLevel.active);
+    const caveActive = (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active);
     // Use local refs in case update() clears the global (prevents null deref on draw()).
-    const wz = warpZone;
+    const wz = GameContext.warpZone;
     if (wz && wz.active) { if (doUpdate) wz.update(deltaTime); if (doDraw) wz.draw(ctx); }
-    const wg = warpGate;
+    const wg = GameContext.warpGate;
     if (wg && !wg.dead) { if (doUpdate) wg.update(deltaTime); if (doDraw) wg.draw(ctx); }
-    if (caveActive) { if (doUpdate) caveLevel.update(deltaTime); }
+    if (caveActive) { if (doUpdate) GameContext.caveLevel.update(deltaTime); }
 
     // Dungeon1 zone and gate
-    const dz = dungeon1Zone;
+    const dz = GameContext.dungeon1Zone;
     if (dz && dz.active) { if (doUpdate) dz.update(deltaTime); if (doDraw) dz.draw(ctx); }
-    const dg = dungeon1Gate;
+    const dg = GameContext.dungeon1Gate;
     if (dg && !dg.dead) { if (doUpdate) dg.update(deltaTime); if (doDraw) dg.draw(ctx); }
 
     // Cave: full-screen grid background (no stars). 
@@ -25740,45 +25435,45 @@ function gameLoopLogic(opts = null) {
             caveLevel.drawGridBackground(ctx, camX, camY, width, height, zoom);
         }
         */
-        caveLevel.drawFireWall(ctx, camX, camY, width, height, zoom);
+        GameContext.caveLevel.drawFireWall(ctx, camX, camY, width, height, zoom);
     }
 
     if (doUpdate) globalProfiler.end('LevelLogic');
     // Asteroids should render behind everything else (drops, ships, UI).
     globalProfiler.start('Entities');
-    environmentAsteroids.forEach(a => { if (doUpdate) a.update(deltaTime); if (doDraw) a.draw(ctx); });
+    GameContext.environmentAsteroids.forEach(a => { if (doUpdate) a.update(deltaTime); if (doDraw) a.draw(ctx); });
 
-    coins.forEach(c => {
-        if (doUpdate) c.update(player, deltaTime);
+    GameContext.coins.forEach(c => {
+        if (doUpdate) c.update(GameContext.player, deltaTime);
         if (doDraw) {
             if (isInView(c.pos.x, c.pos.y, 50)) c.draw(ctx, pickupRes);
             else if (typeof c.cull === 'function') c.cull();
         }
     });
-    nuggets.forEach(n => {
-        if (doUpdate) n.update(player, deltaTime);
+    GameContext.nuggets.forEach(n => {
+        if (doUpdate) n.update(GameContext.player, deltaTime);
         if (doDraw) {
             if (isInView(n.pos.x, n.pos.y, 50)) n.draw(ctx, pickupRes);
             else if (typeof n.cull === 'function') n.cull();
         }
     });
-    powerups.forEach(p => {
-        if (doUpdate) p.update(player, deltaTime);
+    GameContext.powerups.forEach(p => {
+        if (doUpdate) p.update(GameContext.player, deltaTime);
         if (doDraw) {
             if (isInView(p.pos.x, p.pos.y, 60)) p.draw(ctx, pickupRes);
             else if (typeof p.cull === 'function') p.cull();
         }
     });
-    shootingStars.forEach(s => { if (doUpdate) s.update(deltaTime); if (doDraw) s.draw(ctx); });
-    caches.forEach(c => { if (doUpdate) c.update(deltaTime); if (doDraw) c.draw(ctx, pickupRes); });
-    pois.forEach(p => { if (doUpdate) p.update(deltaTime); if (doDraw) p.draw(ctx); });
-    if (radiationStorm && !radiationStorm.dead) { if (doUpdate) radiationStorm.update(deltaTime); if (doDraw) radiationStorm.draw(ctx); }
-    if (miniEvent && !miniEvent.dead) { if (doUpdate) miniEvent.update(deltaTime); if (doDraw) miniEvent.draw(ctx); }
-    contractEntities.beacons.forEach(b => { if (doUpdate) b.update(deltaTime); if (doDraw) b.draw(ctx); });
-    contractEntities.gates.forEach(g => { if (doUpdate) g.update(deltaTime); if (doDraw) g.draw(ctx); });
-    contractEntities.anomalies.forEach(a => { if (doUpdate) a.update(deltaTime); if (doDraw) a.draw(ctx); });
-    contractEntities.fortresses.forEach(f => { if (doUpdate) f.update(deltaTime); if (doDraw) f.draw(ctx); });
-    contractEntities.wallTurrets.forEach(t => { if (doUpdate) t.update(deltaTime); if (doDraw) t.draw(ctx); });
+    GameContext.shootingStars.forEach(s => { if (doUpdate) s.update(deltaTime); if (doDraw) s.draw(ctx); });
+    GameContext.caches.forEach(c => { if (doUpdate) c.update(deltaTime); if (doDraw) c.draw(ctx, pickupRes); });
+    GameContext.pois.forEach(p => { if (doUpdate) p.update(deltaTime); if (doDraw) p.draw(ctx); });
+    if (GameContext.radiationStorm && !GameContext.radiationStorm.dead) { if (doUpdate) GameContext.radiationStorm.update(deltaTime); if (doDraw) GameContext.radiationStorm.draw(ctx); }
+    if (GameContext.miniEvent && !GameContext.miniEvent.dead) { if (doUpdate) GameContext.miniEvent.update(deltaTime); if (doDraw) GameContext.miniEvent.draw(ctx); }
+    GameContext.contractEntities.beacons.forEach(b => { if (doUpdate) b.update(deltaTime); if (doDraw) b.draw(ctx); });
+    GameContext.contractEntities.gates.forEach(g => { if (doUpdate) g.update(deltaTime); if (doDraw) g.draw(ctx); });
+    GameContext.contractEntities.anomalies.forEach(a => { if (doUpdate) a.update(deltaTime); if (doDraw) a.draw(ctx); });
+    GameContext.contractEntities.fortresses.forEach(f => { if (doUpdate) f.update(deltaTime); if (doDraw) f.draw(ctx); });
+    GameContext.contractEntities.wallTurrets.forEach(t => { if (doUpdate) t.update(deltaTime); if (doDraw) t.draw(ctx); });
 
     // Monster shield drones (from CaveMonster3)
     if (window.monsterDrones && window.monsterDrones.length > 0) {
@@ -25795,18 +25490,18 @@ function gameLoopLogic(opts = null) {
 
     // NOTE: we intentionally do not clip in cave mode; walls indicate the bounds. 
 
-    if (doDraw && bossArena.active) {
+    if (doDraw && GameContext.bossArena.active) {
         ctx.save();
-        ctx.translate(bossArena.x, bossArena.y);
+        ctx.translate(GameContext.bossArena.x, GameContext.bossArena.y);
         const pulse = 0.5 + Math.sin(now * 0.005) * 0.2;
-        if (bossArena.growing) ctx.strokeStyle = `rgba(0, 255, 255, ${pulse})`;
+        if (GameContext.bossArena.growing) ctx.strokeStyle = `rgba(0, 255, 255, ${pulse})`;
         else ctx.strokeStyle = `rgba(255, 0, 0, ${pulse})`;
 
         ctx.lineWidth = 10;
         ctx.shadowBlur = 20;
         // ctx.shadowColor = bossArena.growing ? '#0ff' : '#f00';
         ctx.beginPath();
-        ctx.arc(0, 0, bossArena.radius, 0, Math.PI * 2);
+        ctx.arc(0, 0, GameContext.bossArena.radius, 0, Math.PI * 2);
         ctx.stroke();
         ctx.globalAlpha = 0.1;
         // ctx.fillStyle = bossArena.growing ? '#055' : '#500';
@@ -25814,83 +25509,83 @@ function gameLoopLogic(opts = null) {
         ctx.restore();
     }
 
-    if (doDraw && dungeon1Arena.active) {
+    if (doDraw && GameContext.dungeon1Arena.active) {
         ctx.save();
-        ctx.translate(dungeon1Arena.x, dungeon1Arena.y);
+        ctx.translate(GameContext.dungeon1Arena.x, GameContext.dungeon1Arena.y);
         const pulse = 0.5 + Math.sin(now * 0.005) * 0.2;
         ctx.strokeStyle = `rgba(255, 136, 0, ${pulse})`; // Orange/gold
 
         ctx.lineWidth = 10;
         ctx.shadowBlur = 20;
         ctx.beginPath();
-        ctx.arc(0, 0, dungeon1Arena.radius, 0, Math.PI * 2);
+        ctx.arc(0, 0, GameContext.dungeon1Arena.radius, 0, Math.PI * 2);
         ctx.stroke();
         ctx.globalAlpha = 0.1;
         ctx.restore();
     }
 
-    if (doUpdate) player.update(deltaTime);
+    if (doUpdate) GameContext.player.update(deltaTime);
     if (doDraw) {
-        player.drawLaser(ctx);
+        GameContext.player.drawLaser(ctx);
         const alpha = (opts && opts.alpha !== undefined) ? opts.alpha : 1.0;
-        player.draw(ctx, alpha);
+        GameContext.player.draw(ctx, alpha);
     }
 
     // FloatingTexts - always update, cull drawing by view
-    for (let i = 0, len = floatingTexts.length; i < len; i++) {
-        const t = floatingTexts[i];
+    for (let i = 0, len = GameContext.floatingTexts.length; i < len; i++) {
+        const t = GameContext.floatingTexts[i];
         if (doUpdate) t.update(deltaTime);
         if (doDraw && isInView(t.pos.x, t.pos.y)) t.draw(ctx, alpha);
     }
 
     // Drones - always close to player, no culling needed
-    for (let i = 0, len = drones.length; i < len; i++) {
-        const d = drones[i];
+    for (let i = 0, len = GameContext.drones.length; i < len; i++) {
+        const d = GameContext.drones[i];
         if (doUpdate) d.update(deltaTime);
         if (doDraw) d.draw(ctx);
     }
 
     // Pinwheels - always update (can fire), cull drawing
-    for (let i = 0, len = pinwheels.length; i < len; i++) {
-        const b = pinwheels[i];
+    for (let i = 0, len = GameContext.pinwheels.length; i < len; i++) {
+        const b = GameContext.pinwheels[i];
         if (doUpdate) b.update(deltaTime);
         if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
     }
 
     // Enemies - always update (AI), cull drawing
-    for (let i = 0, len = enemies.length; i < len; i++) {
-        const e = enemies[i];
+    for (let i = 0, len = GameContext.enemies.length; i < len; i++) {
+        const e = GameContext.enemies[i];
         if (doUpdate) e.update(deltaTime);
         if (doDraw && isInView(e.pos.x, e.pos.y)) e.draw(ctx);
     }
 
-    if (bossActive && boss) {
-        if (doUpdate) boss.update(deltaTime);
-        if (boss.isWarpBoss) {
-            bossArena.x = boss.pos.x;
-            bossArena.y = boss.pos.y;
-            bossArena.radius = 4000;
-            bossArena.active = true;
-            bossArena.growing = false;
+    if (GameContext.bossActive && GameContext.boss) {
+        if (doUpdate) GameContext.boss.update(deltaTime);
+        if (GameContext.boss.isWarpBoss) {
+            GameContext.bossArena.x = GameContext.boss.pos.x;
+            GameContext.bossArena.y = GameContext.boss.pos.y;
+            GameContext.bossArena.radius = 4000;
+            GameContext.bossArena.active = true;
+            GameContext.bossArena.growing = false;
         }
-        if (doDraw) boss.draw(ctx);
+        if (doDraw) GameContext.boss.draw(ctx);
     }
 
-    if (spaceStation) {
-        if (doUpdate) spaceStation.update(deltaTime);
-        if (doDraw) spaceStation.draw(ctx);
+    if (GameContext.spaceStation) {
+        if (doUpdate) GameContext.spaceStation.update(deltaTime);
+        if (doDraw) GameContext.spaceStation.draw(ctx);
 
         // Update Station Health Bar (only update display when state changes)
-        if (!stationHealthBarVisible) {
+        if (!GameContext.stationHealthBarVisible) {
             const sContainer = document.getElementById('station-health-container');
             if (sContainer) {
                 sContainer.style.display = 'flex';
-                stationHealthBarVisible = true;
+                GameContext.stationHealthBarVisible = true;
             }
         }
         const sFill = document.getElementById('station-health-fill');
         if (doDraw && sFill) {
-            const pct = Math.max(0, (spaceStation.hp / spaceStation.maxHp) * 100);
+            const pct = Math.max(0, (GameContext.spaceStation.hp / GameContext.spaceStation.maxHp) * 100);
             sFill.style.width = `${pct}%`;
         }
     } else {
@@ -25899,57 +25594,57 @@ function gameLoopLogic(opts = null) {
         if (sContainer) {
             sContainer.style.display = 'none';
         }
-        stationHealthBarVisible = false;
+        GameContext.stationHealthBarVisible = false;
     }
 
     // Destroyer update and draw
-    if (destroyer) {
-        if (doUpdate) destroyer.update(deltaTime);
-        if (doDraw && isInViewRadius(destroyer.pos.x, destroyer.pos.y, destroyer.visualRadius)) destroyer.draw(ctx);
+    if (GameContext.destroyer) {
+        if (doUpdate) GameContext.destroyer.update(deltaTime);
+        if (doDraw && isInViewRadius(GameContext.destroyer.pos.x, GameContext.destroyer.pos.y, GameContext.destroyer.visualRadius)) GameContext.destroyer.draw(ctx);
     }
 
     // Bullets - always update (movement), cull drawing
-    for (let i = 0, len = bullets.length; i < len; i++) {
-        const b = bullets[i];
+    for (let i = 0, len = GameContext.bullets.length; i < len; i++) {
+        const b = GameContext.bullets[i];
         if (doUpdate) b.update(deltaTime);
         if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
     }
 
     // Boss bombs - always update, cull drawing
-    for (let i = 0, len = bossBombs.length; i < len; i++) {
-        const b = bossBombs[i];
+    for (let i = 0, len = GameContext.bossBombs.length; i < len; i++) {
+        const b = GameContext.bossBombs[i];
         if (doUpdate) b.update(deltaTime);
         if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
     }
 
     // Warp bio-pods - always update, cull drawing
-    for (let i = 0, len = warpBioPods.length; i < len; i++) {
-        const p = warpBioPods[i];
+    for (let i = 0, len = GameContext.warpBioPods.length; i < len; i++) {
+        const p = GameContext.warpBioPods[i];
         if (doUpdate) p.update(deltaTime);
         if (doDraw && isInView(p.pos.x, p.pos.y)) p.draw(ctx);
     }
 
     // Guided missiles - always update (tracking), cull drawing
-    for (let i = 0, len = guidedMissiles.length; i < len; i++) {
-        const m = guidedMissiles[i];
+    for (let i = 0, len = GameContext.guidedMissiles.length; i < len; i++) {
+        const m = GameContext.guidedMissiles[i];
         if (doUpdate) m.update(deltaTime);
         if (doDraw && isInView(m.pos.x, m.pos.y)) m.draw(ctx);
     }
 
     // Napalm zones - persistent damage zones (always update, cull drawing)
-    for (let i = napalmZones.length - 1; i >= 0; i--) {
-        const z = napalmZones[i];
+    for (let i = GameContext.napalmZones.length - 1; i >= 0; i--) {
+        const z = GameContext.napalmZones[i];
         if (doUpdate) z.update(deltaTime);
         if (doDraw && isInView(z.pos.x, z.pos.y, z.radius + 50)) z.draw(ctx);
         if (z.dead) {
-            napalmZones.splice(i, 1);
+            GameContext.napalmZones.splice(i, 1);
         }
     }
 
     // Particles - always update, cull drawing (high volume)
     // Particles - always update, cull drawing (high volume)
-    for (let i = 0, len = particles.length; i < len; i++) {
-        const p = particles[i];
+    for (let i = 0, len = GameContext.particles.length; i < len; i++) {
+        const p = GameContext.particles[i];
         try {
             if (doUpdate) p.update(deltaTime);
             if (doDraw) {
@@ -25963,8 +25658,8 @@ function gameLoopLogic(opts = null) {
     }
 
     // Lightning Arcs - always update, cull drawing
-    for (let i = 0, len = lightningArcs.length; i < len; i++) {
-        const arc = lightningArcs[i];
+    for (let i = 0, len = GameContext.lightningArcs.length; i < len; i++) {
+        const arc = GameContext.lightningArcs[i];
         try {
             if (doUpdate) arc.update(deltaTime);
             if (doDraw) {
@@ -25993,8 +25688,8 @@ function gameLoopLogic(opts = null) {
 
     // Explosions - always update, cull drawing
     // Explosions are always updated and cleaned up even if off-screen
-    for (let i = 0, len = explosions.length; i < len; i++) {
-        const ex = explosions[i];
+    for (let i = 0, len = GameContext.explosions.length; i < len; i++) {
+        const ex = GameContext.explosions[i];
         try {
             if (doUpdate) ex.update();
             if (doDraw && isInView(ex.pos.x, ex.pos.y)) {
@@ -26013,15 +25708,15 @@ function gameLoopLogic(opts = null) {
         }
     }
 
-    for (let i = 0; i < warpParticles.length; i++) {
-        const p = warpParticles[i];
+    for (let i = 0; i < GameContext.warpParticles.length; i++) {
+        const p = GameContext.warpParticles[i];
         if (doUpdate) p.update();
         if (doDraw) p.draw(ctx, null, alpha);
     }
-    if (doUpdate) compactArray(warpParticles);
+    if (doUpdate) compactArray(GameContext.warpParticles);
 
-    for (let i = 0; i < shockwaves.length; i++) {
-        const s = shockwaves[i];
+    for (let i = 0; i < GameContext.shockwaves.length; i++) {
+        const s = GameContext.shockwaves[i];
         try {
             if (doUpdate) s.update();
             if (doDraw) s.draw(ctx);
@@ -26030,7 +25725,7 @@ function gameLoopLogic(opts = null) {
             s.dead = true; // Kill corrupted shockwave
         }
     }
-    if (doUpdate) compactArray(shockwaves);
+    if (doUpdate) compactArray(GameContext.shockwaves);
 
     globalProfiler.end('Entities');
 
@@ -26045,82 +25740,82 @@ function gameLoopLogic(opts = null) {
 
         // Use immediate cleanup for critical arrays that need per-frame compacting
         // Use staggered cleanup for large arrays that can wait
-        immediateCompactArray(bullets, (b) => {
+        immediateCompactArray(GameContext.bullets, (b) => {
             if (b._poolType === 'bullet' && b.sprite && pixiBulletSpritePool) destroyBulletSprite(b);
             else pixiCleanupObject(b);
         });
-        immediateCompactArray(bossBombs);
-        immediateCompactArray(warpBioPods, pixiCleanupObject);
-        immediateCompactArray(guidedMissiles, (m) => {
+        immediateCompactArray(GameContext.bossBombs);
+        immediateCompactArray(GameContext.warpBioPods, pixiCleanupObject);
+        immediateCompactArray(GameContext.guidedMissiles, (m) => {
             if (m && m.dead && typeof m.explode === 'function' && !m._exploded) {
                 m.explode('#ff0');
             }
             pixiCleanupObject(m);
         });
-        immediateCompactArray(enemies, pixiCleanupObject);
-        immediateCompactArray(pinwheels, pixiCleanupObject);
-        immediateCompactArray(environmentAsteroids, pixiCleanupObject);
+        immediateCompactArray(GameContext.enemies, pixiCleanupObject);
+        immediateCompactArray(GameContext.pinwheels, pixiCleanupObject);
+        immediateCompactArray(GameContext.environmentAsteroids, pixiCleanupObject);
 
         // Explosion cleanup with safety check for uncleaned sprites
-        for (let i = explosions.length - 1; i >= 0; i--) {
-            const ex = explosions[i];
+        for (let i = GameContext.explosions.length - 1; i >= 0; i--) {
+            const ex = GameContext.explosions[i];
             if (ex && ex.dead && !ex.cleaned && particleRes && particleRes.pool) {
                 // Force cleanup of dead explosions that weren't cleaned during draw
                 ex.cleanup(particleRes);
             }
         }
-        immediateCompactArray(explosions);
+        immediateCompactArray(GameContext.explosions);
 
-        immediateCompactArray(floatingTexts);
-        immediateCompactArray(coins);
+        immediateCompactArray(GameContext.floatingTexts);
+        immediateCompactArray(GameContext.coins);
 
         // Safety: Force cleanup of dead pickups that didn't clean themselves
-        for (let i = coins.length - 1; i >= 0; i--) {
-            const coin = coins[i];
+        for (let i = GameContext.coins.length - 1; i >= 0; i--) {
+            const coin = GameContext.coins[i];
             if (coin && coin.dead && coin.sprite) {
                 coin.kill();
             }
         }
 
-        immediateCompactArray(nuggets);
+        immediateCompactArray(GameContext.nuggets);
 
         // Safety: Force cleanup of dead nuggets that didn't clean themselves
-        for (let i = nuggets.length - 1; i >= 0; i--) {
-            const nugget = nuggets[i];
+        for (let i = GameContext.nuggets.length - 1; i >= 0; i--) {
+            const nugget = GameContext.nuggets[i];
             if (nugget && nugget.dead && nugget.sprite) {
                 nugget.kill();
             }
         }
 
-        immediateCompactArray(powerups);
+        immediateCompactArray(GameContext.powerups);
 
         // Safety: Force cleanup of dead pickups that didn't clean themselves
-        for (let i = powerups.length - 1; i >= 0; i--) {
-            const powerup = powerups[i];
+        for (let i = GameContext.powerups.length - 1; i >= 0; i--) {
+            const powerup = GameContext.powerups[i];
             if (powerup && powerup.dead && powerup.sprite) {
                 powerup.kill();
             }
         }
 
-        compactParticles(particles);
-        immediateCompactArray(lightningArcs, pixiCleanupObject);
-        immediateCompactArray(shootingStars, pixiCleanupObject);
-        immediateCompactArray(drones);
+        compactParticles(GameContext.particles);
+        immediateCompactArray(GameContext.lightningArcs, pixiCleanupObject);
+        immediateCompactArray(GameContext.shootingStars, pixiCleanupObject);
+        immediateCompactArray(GameContext.drones);
 
         // Safety: Force cleanup of dead caches that didn't clean themselves
-        for (let i = caches.length - 1; i >= 0; i--) {
-            const cache = caches[i];
+        for (let i = GameContext.caches.length - 1; i >= 0; i--) {
+            const cache = GameContext.caches[i];
             if (cache && cache.dead && cache.sprite) {
                 if (typeof cache.kill === 'function') cache.kill();
             }
         }
-        immediateCompactArray(caches);
-        immediateCompactArray(pois, (poi) => { if (typeof poi.kill === 'function') poi.kill(); });
-        immediateCompactArray(contractEntities.beacons);
-        immediateCompactArray(contractEntities.gates);
-        immediateCompactArray(contractEntities.anomalies);
-        immediateCompactArray(contractEntities.fortresses);
-        immediateCompactArray(contractEntities.wallTurrets);
+        immediateCompactArray(GameContext.caches);
+        immediateCompactArray(GameContext.pois, (poi) => { if (typeof poi.kill === 'function') poi.kill(); });
+        immediateCompactArray(GameContext.contractEntities.beacons);
+        immediateCompactArray(GameContext.contractEntities.gates);
+        immediateCompactArray(GameContext.contractEntities.anomalies);
+        immediateCompactArray(GameContext.contractEntities.fortresses);
+        immediateCompactArray(GameContext.contractEntities.wallTurrets);
 
         globalProfiler.end('Cleanup');
 
@@ -26132,8 +25827,8 @@ function gameLoopLogic(opts = null) {
         globalProfiler.start('BulletLogic');
         setProjectileImpactSoundContext(true);
         try {
-            for (let i = bullets.length - 1; i >= 0; i--) {
-                const b = bullets[i];
+            for (let i = GameContext.bullets.length - 1; i >= 0; i--) {
+                const b = GameContext.bullets[i];
                 let hit = false;
                 const astCol = checkBulletWallCollision(b);
                 if (astCol) {
@@ -26153,69 +25848,69 @@ function gameLoopLogic(opts = null) {
 
                 if (!hit) {
                     if (b.isEnemy) {
-                        if (!player.dead && player.invulnerable <= 0) {
-                            const dx = b.pos.x - player.pos.x;
-                            const dy = b.pos.y - player.pos.y;
+                        if (!GameContext.player.dead && GameContext.player.invulnerable <= 0) {
+                            const dx = b.pos.x - GameContext.player.pos.x;
+                            const dy = b.pos.y - GameContext.player.pos.y;
                             const distSq = dx * dx + dy * dy;
                             const dist = Math.sqrt(distSq); // Only calc sqrt if needed for specific range checks, but kept here for logic flow
 
-                            if (!hit && player.outerShieldSegments && player.outerShieldSegments.some(s => s > 0) &&
-                                dist < player.outerShieldRadius + b.radius * 1.5 && dist > player.outerShieldRadius - b.radius * 2) {
-                                let angle = Math.atan2(b.pos.y - player.pos.y, b.pos.x - player.pos.x) - player.outerShieldRotation;
+                            if (!hit && GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.some(s => s > 0) &&
+                                dist < GameContext.player.outerShieldRadius + b.radius * 1.5 && dist > GameContext.player.outerShieldRadius - b.radius * 2) {
+                                let angle = Math.atan2(b.pos.y - GameContext.player.pos.y, b.pos.x - GameContext.player.pos.x) - GameContext.player.outerShieldRotation;
                                 while (angle < 0) angle += Math.PI * 2;
-                                const count = player.outerShieldSegments.length;
+                                const count = GameContext.player.outerShieldSegments.length;
                                 const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                                if (player.outerShieldSegments[segIndex] > 0) {
-                                    const segmentHp = player.outerShieldSegments[segIndex];
+                                if (GameContext.player.outerShieldSegments[segIndex] > 0) {
+                                    const segmentHp = GameContext.player.outerShieldSegments[segIndex];
                                     if (b.damage > segmentHp) {
                                         // Penetrate: bullet breaks through with reduced damage
-                                        player.outerShieldSegments[segIndex] = 0;
-                                        player.shieldsDirty = true;
+                                        GameContext.player.outerShieldSegments[segIndex] = 0;
+                                        GameContext.player.shieldsDirty = true;
                                         b.damage -= segmentHp;
                                     } else {
                                         // Full absorb: shield stops bullet
-                                        player.outerShieldSegments[segIndex] -= b.damage;
-                                        player.shieldsDirty = true;
+                                        GameContext.player.outerShieldSegments[segIndex] -= b.damage;
+                                        GameContext.player.shieldsDirty = true;
                                         hit = true;
                                         playSound('shield_hit');
                                         spawnParticles(b.pos.x, b.pos.y, 7, '#b0f');
                                     }
                                 }
                             }
-                            if (!hit && dist < player.shieldRadius + b.radius * 1.5 && dist > player.shieldRadius - b.radius * 2) {
-                                let angle = Math.atan2(b.pos.y - player.pos.y, b.pos.x - player.pos.x) - player.shieldRotation;
+                            if (!hit && dist < GameContext.player.shieldRadius + b.radius * 1.5 && dist > GameContext.player.shieldRadius - b.radius * 2) {
+                                let angle = Math.atan2(b.pos.y - GameContext.player.pos.y, b.pos.x - GameContext.player.pos.x) - GameContext.player.shieldRotation;
                                 while (angle < 0) angle += Math.PI * 2;
-                                const count = player.shieldSegments.length;
+                                const count = GameContext.player.shieldSegments.length;
                                 const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                                if (player.shieldSegments[segIndex] > 0) {
-                                    const segmentHp = player.shieldSegments[segIndex];
+                                if (GameContext.player.shieldSegments[segIndex] > 0) {
+                                    const segmentHp = GameContext.player.shieldSegments[segIndex];
                                     if (b.damage > segmentHp) {
                                         // Penetrate: bullet breaks through with reduced damage
-                                        player.shieldSegments[segIndex] = 0;
-                                        player.shieldsDirty = true;
+                                        GameContext.player.shieldSegments[segIndex] = 0;
+                                        GameContext.player.shieldsDirty = true;
                                         b.damage -= segmentHp;
                                     } else {
                                         // Full absorb: shield stops bullet
-                                        player.shieldSegments[segIndex] -= b.damage;
-                                        player.shieldsDirty = true;
+                                        GameContext.player.shieldSegments[segIndex] -= b.damage;
+                                        GameContext.player.shieldsDirty = true;
                                         hit = true;
                                         playSound('shield_hit');
                                         spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
                                     }
                                 }
                             }
-                            const hitDist = player.radius * 1.5 + b.radius * 1.5;
+                            const hitDist = GameContext.player.radius * 1.5 + b.radius * 1.5;
                             if (!hit && distSq < hitDist * hitDist) {
                                 // Use directHitDamage if specified (for plasma mortar), otherwise use b.damage
                                 const damage = b.directHitDamage !== undefined ? b.directHitDamage : b.damage;
-                                player.takeHit(damage, true); // Use ignoreShields=true as they were checked above
+                                GameContext.player.takeHit(damage, true); // Use ignoreShields=true as they were checked above
                                 hit = true;
                             }
                         }
                     }
                     else {
-                        for (let mi = 0, mlen = guidedMissiles.length; mi < mlen; mi++) {
-                            const m = guidedMissiles[mi];
+                        for (let mi = 0, mlen = GameContext.guidedMissiles.length; mi < mlen; mi++) {
+                            const m = GameContext.guidedMissiles[mi];
                             if (!m || m.dead) continue;
                             const dx = b.pos.x - m.pos.x;
                             const dy = b.pos.y - m.pos.y;
@@ -26231,7 +25926,7 @@ function gameLoopLogic(opts = null) {
                         }
 
                         if (hit) continue;
-                        const nearby = targetGrid.query(b.pos.x, b.pos.y, 250);
+                        const nearby = GameContext.targetGrid.query(b.pos.x, b.pos.y, 250);
                         for (let e of nearby) {
                             if (e.dead) continue;
                             if (hit) break;
@@ -26254,7 +25949,7 @@ function gameLoopLogic(opts = null) {
                             // Enemy Logic
                             if (e instanceof Enemy) {
                                 // Skip boss entities - they have dedicated collision logic later
-                                if (bossActive && boss && e === boss) continue;
+                                if (GameContext.bossActive && GameContext.boss && e === GameContext.boss) continue;
 
                                 const dx = b.pos.x - e.pos.x;
                                 const dy = b.pos.y - e.pos.y;
@@ -26308,20 +26003,20 @@ function gameLoopLogic(opts = null) {
                                     spawnParticles(e.pos.x, e.pos.y, 3, '#fff');
 
                                     // Chain Lightning: arc to nearby enemies
-                                    if (player.chainLightningCount && player.chainLightningCount > 0 && player.chainLightningRange && !b.isEnemy) {
-                                        let chainCount = player.chainLightningCount;
+                                    if (GameContext.player.chainLightningCount && GameContext.player.chainLightningCount > 0 && GameContext.player.chainLightningRange && !b.isEnemy) {
+                                        let chainCount = GameContext.player.chainLightningCount;
                                         let chainSource = e;
                                         let chainTargets = new Set();
                                         chainTargets.add(e);
 
                                         for (let chain = 0; chain < chainCount; chain++) {
                                             let nearestTarget = null;
-                                            let nearestDist = player.chainLightningRange;
+                                            let nearestDist = GameContext.player.chainLightningRange;
 
                                             for (let other of nearby) {
                                                 if (other.dead) continue;
                                                 if (!(other instanceof Enemy) && !(other instanceof Pinwheel)) continue;
-                                                if (other === boss) continue; // Skip boss
+                                                if (other === GameContext.boss) continue; // Skip boss
                                                 if (chainTargets.has(other)) continue;
 
                                                 const d = Math.hypot(other.pos.x - chainSource.pos.x, other.pos.y - chainSource.pos.y);
@@ -26334,7 +26029,7 @@ function gameLoopLogic(opts = null) {
                                             if (nearestTarget) {
                                                 // Deal chain damage (reduced with each hop)
                                                 const chainDamage = b.damage * Math.pow(0.7, chain + 1);
-                                                if (nearestTarget === destroyer) {
+                                                if (nearestTarget === GameContext.destroyer) {
                                                     const hpBefore = nearestTarget.hp;
                                                     nearestTarget.hp -= chainDamage;
                                                     console.log(`[DESTROYER DEBUG] CHAIN LIGHTNING: ${chainDamage.toFixed(1)} damage | HP: ${hpBefore} -> ${nearestTarget.hp} | Chain: ${chain + 1}`);
@@ -26350,7 +26045,7 @@ function gameLoopLogic(opts = null) {
 
                                                 if (nearestTarget.hp <= 0) {
                                                     nearestTarget.kill();
-                                                    score += 100;
+                                                    GameContext.score += 100;
                                                 }
 
                                                 chainSource = nearestTarget;
@@ -26362,7 +26057,7 @@ function gameLoopLogic(opts = null) {
 
                                     if (e.hp <= 0) {
                                         e.kill();
-                                        score += 100;
+                                        GameContext.score += 100;
                                     }
                                     break;
                                 }
@@ -26462,20 +26157,20 @@ function gameLoopLogic(opts = null) {
                                     spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
 
                                     // Chain Lightning: arc to nearby enemies (same logic as for regular enemies)
-                                    if (player.chainLightningCount && player.chainLightningCount > 0 && player.chainLightningRange && !b.isEnemy) {
-                                        let chainCount = player.chainLightningCount;
+                                    if (GameContext.player.chainLightningCount && GameContext.player.chainLightningCount > 0 && GameContext.player.chainLightningRange && !b.isEnemy) {
+                                        let chainCount = GameContext.player.chainLightningCount;
                                         let chainSource = e;
                                         let chainTargets = new Set();
                                         chainTargets.add(e);
 
                                         for (let chain = 0; chain < chainCount; chain++) {
                                             let nearestTarget = null;
-                                            let nearestDist = player.chainLightningRange;
+                                            let nearestDist = GameContext.player.chainLightningRange;
 
                                             for (let other of nearby) {
                                                 if (other.dead) continue;
                                                 if (!(other instanceof Enemy) && !(other instanceof Pinwheel)) continue;
-                                                if (other === boss) continue; // Skip boss
+                                                if (other === GameContext.boss) continue; // Skip boss
                                                 if (chainTargets.has(other)) continue;
 
                                                 const d = Math.hypot(other.pos.x - chainSource.pos.x, other.pos.y - chainSource.pos.y);
@@ -26498,7 +26193,7 @@ function gameLoopLogic(opts = null) {
 
                                                 if (nearestTarget.hp <= 0) {
                                                     nearestTarget.kill();
-                                                    score += 100;
+                                                    GameContext.score += 100;
                                                 }
 
                                                 chainSource = nearestTarget;
@@ -26513,7 +26208,7 @@ function gameLoopLogic(opts = null) {
                                         spawnLargeExplosion(e.pos.x, e.pos.y, 2.0);
 
                                         // DROP COINS
-                                        const caveActive = (caveMode && caveLevel && caveLevel.active);
+                                        const caveActive = (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active);
                                         if (caveActive) {
                                             const gold = Math.floor((6 * 5) * 0.5);
                                             awardCoinsInstant(gold, { noSound: false, sound: 'coin', color: '#ff0' });
@@ -26522,22 +26217,22 @@ function gameLoopLogic(opts = null) {
                                             if (typeof awardNugzInstant === 'function') awardNugzInstant(nugCount, { noSound: false, sound: 'coin', color: '#fa0' });
                                         } else {
                                             for (let i = 0; i < 6; i++) {
-                                                coins.push(new Coin(e.pos.x + (Math.random() - 0.5) * 50, e.pos.y + (Math.random() - 0.5) * 50, 5));
+                                                GameContext.coins.push(new Coin(e.pos.x + (Math.random() - 0.5) * 50, e.pos.y + (Math.random() - 0.5) * 50, 5));
                                             }
-                                            nuggets.push(new SpaceNugget(e.pos.x, e.pos.y, 1));
+                                            GameContext.nuggets.push(new SpaceNugget(e.pos.x, e.pos.y, 1));
                                         }
 
-                                        pinwheelsDestroyed++;
-                                        pinwheelsDestroyedTotal++;
-                                        difficultyTier = 1 + Math.floor(pinwheelsDestroyedTotal / 6);
-                                        score += 1000;
+                                        GameContext.pinwheelsDestroyed++;
+                                        GameContext.pinwheelsDestroyedTotal++;
+                                        GameContext.difficultyTier = 1 + Math.floor(GameContext.pinwheelsDestroyedTotal / 6);
+                                        GameContext.score += 1000;
                                         const bdDisplay = document.getElementById('bases-display');
-                                        if (bdDisplay) bdDisplay.innerText = `${pinwheelsDestroyedTotal}`;
+                                        if (bdDisplay) bdDisplay.innerText = `${GameContext.pinwheelsDestroyedTotal}`;
 
-                                        enemies.forEach(en => { if (en.assignedBase === e) en.type = 'roamer'; });
+                                        GameContext.enemies.forEach(en => { if (en.assignedBase === e) en.type = 'roamer'; });
 
                                         const delay = 5000 + Math.random() * 5000;
-                                        baseRespawnTimers.push(Date.now() + delay);
+                                        GameContext.baseRespawnTimers.push(Date.now() + delay);
                                     }
                                     break;
                                 }
@@ -26550,8 +26245,8 @@ function gameLoopLogic(opts = null) {
 
 
                     // Only player bullets can hit cave wall turrets
-                    if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.wallTurrets && caveLevel.wallTurrets.length > 0) {
-                        for (let t of caveLevel.wallTurrets) {
+                    if (!hit && !b.isEnemy && GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active && GameContext.caveLevel.wallTurrets && GameContext.caveLevel.wallTurrets.length > 0) {
+                        for (let t of GameContext.caveLevel.wallTurrets) {
                             if (!t || t.dead) continue;
                             if (typeof t.hitByPlayerBullet === 'function') {
                                 if (t.hitByPlayerBullet(b)) { hit = true; break; }
@@ -26573,24 +26268,24 @@ function gameLoopLogic(opts = null) {
                     }
 
                     // Only player bullets can hit cave switches
-                    if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.switches && caveLevel.switches.length > 0) {
-                        for (let s of caveLevel.switches) {
+                    if (!hit && !b.isEnemy && GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active && GameContext.caveLevel.switches && GameContext.caveLevel.switches.length > 0) {
+                        for (let s of GameContext.caveLevel.switches) {
                             if (!s || s.dead) continue;
                             if (typeof s.hitByPlayerBullet === 'function' && s.hitByPlayerBullet(b)) { hit = true; break; }
                         }
                     }
 
                     // Only player bullets can hit cave relays
-                    if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.relays && caveLevel.relays.length > 0) {
-                        for (let r of caveLevel.relays) {
+                    if (!hit && !b.isEnemy && GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active && GameContext.caveLevel.relays && GameContext.caveLevel.relays.length > 0) {
+                        for (let r of GameContext.caveLevel.relays) {
                             if (!r || r.dead) continue;
                             if (typeof r.hitByPlayerBullet === 'function' && r.hitByPlayerBullet(b)) { hit = true; break; }
                         }
                     }
 
                     // Only player bullets can hit cave critters
-                    if (!hit && !b.isEnemy && caveMode && caveLevel && caveLevel.active && caveLevel.critters && caveLevel.critters.length > 0) {
-                        for (let c of caveLevel.critters) {
+                    if (!hit && !b.isEnemy && GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active && GameContext.caveLevel.critters && GameContext.caveLevel.critters.length > 0) {
+                        for (let c of GameContext.caveLevel.critters) {
                             if (!c || c.dead) continue;
                             const dist = Math.hypot(b.pos.x - c.pos.x, b.pos.y - c.pos.y);
                             if (dist < c.radius + b.radius) {
@@ -26599,8 +26294,8 @@ function gameLoopLogic(opts = null) {
                                 spawnParticles(c.pos.x, c.pos.y, 18, '#6f6');
                                 playSound('explode');
                                 // Disturbance: nearby turrets react. 
-                                if (caveLevel.wallTurrets && caveLevel.wallTurrets.length > 0) {
-                                    for (let t of caveLevel.wallTurrets) {
+                                if (GameContext.caveLevel.wallTurrets && GameContext.caveLevel.wallTurrets.length > 0) {
+                                    for (let t of GameContext.caveLevel.wallTurrets) {
                                         if (!t || t.dead) continue;
                                         const dt = Math.hypot(t.pos.x - c.pos.x, t.pos.y - c.pos.y);
                                         if (dt < 900) {
@@ -26616,8 +26311,8 @@ function gameLoopLogic(opts = null) {
                     }
 
                     // Only player bullets can hit warp bio-pods
-                    if (!hit && !b.isEnemy && warpBioPods && warpBioPods.length > 0) {
-                        for (let p of warpBioPods) {
+                    if (!hit && !b.isEnemy && GameContext.warpBioPods && GameContext.warpBioPods.length > 0) {
+                        for (let p of GameContext.warpBioPods) {
                             if (!p || p.dead) continue;
                             const dist = Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y);
                             if (dist < p.radius + b.radius) {
@@ -26629,159 +26324,159 @@ function gameLoopLogic(opts = null) {
                     }
 
                     // Only player bullets can hit the space station
-                    if (!hit && !b.isEnemy && spaceStation && !spaceStation.dead) {
-                        const dist = Math.hypot(b.pos.x - spaceStation.pos.x, b.pos.y - spaceStation.pos.y);
+                    if (!hit && !b.isEnemy && GameContext.spaceStation && !GameContext.spaceStation.dead) {
+                        const dist = Math.hypot(b.pos.x - GameContext.spaceStation.pos.x, b.pos.y - GameContext.spaceStation.pos.y);
 
                         // Check if outer shields have any segments up
-                        const outerShieldsUp = spaceStation.shieldSegments && spaceStation.shieldSegments.some(s => s > 0);
-                        const innerShieldsUp = spaceStation.innerShieldSegments && spaceStation.innerShieldSegments.some(s => s > 0);
+                        const outerShieldsUp = GameContext.spaceStation.shieldSegments && GameContext.spaceStation.shieldSegments.some(s => s > 0);
+                        const innerShieldsUp = GameContext.spaceStation.innerShieldSegments && GameContext.spaceStation.innerShieldSegments.some(s => s > 0);
 
                         // Outer shield collision - bullet is within or touching the outer shield radius
-                        if (!hit && !b.ignoreShields && outerShieldsUp && dist < spaceStation.shieldRadius + b.radius) {
-                            let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.shieldRotation;
+                        if (!hit && !b.ignoreShields && outerShieldsUp && dist < GameContext.spaceStation.shieldRadius + b.radius) {
+                            let angle = Math.atan2(b.pos.y - GameContext.spaceStation.pos.y, b.pos.x - GameContext.spaceStation.pos.x) - GameContext.spaceStation.shieldRotation;
                             while (angle < 0) angle += Math.PI * 2;
-                            const count = spaceStation.shieldSegments.length;
+                            const count = GameContext.spaceStation.shieldSegments.length;
                             const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                            if (spaceStation.shieldSegments[idx] > 0) {
-                                spaceStation.shieldSegments[idx]--;
-                                spaceStation.shieldsDirty = true;
+                            if (GameContext.spaceStation.shieldSegments[idx] > 0) {
+                                GameContext.spaceStation.shieldSegments[idx]--;
+                                GameContext.spaceStation.shieldsDirty = true;
                                 hit = true;
                                 playSound('shield_hit');
                                 spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
                             }
                         }
                         // Inner shield collision - bullet is within or touching the inner shield radius
-                        if (!hit && !b.ignoreShields && innerShieldsUp && dist < spaceStation.innerShieldRadius + b.radius) {
-                            let angle = Math.atan2(b.pos.y - spaceStation.pos.y, b.pos.x - spaceStation.pos.x) - spaceStation.innerShieldRotation;
+                        if (!hit && !b.ignoreShields && innerShieldsUp && dist < GameContext.spaceStation.innerShieldRadius + b.radius) {
+                            let angle = Math.atan2(b.pos.y - GameContext.spaceStation.pos.y, b.pos.x - GameContext.spaceStation.pos.x) - GameContext.spaceStation.innerShieldRotation;
                             while (angle < 0) angle += Math.PI * 2;
-                            const count = spaceStation.innerShieldSegments.length;
+                            const count = GameContext.spaceStation.innerShieldSegments.length;
                             const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                            if (spaceStation.innerShieldSegments[idx] > 0) {
-                                spaceStation.innerShieldSegments[idx]--;
-                                spaceStation.shieldsDirty = true;
+                            if (GameContext.spaceStation.innerShieldSegments[idx] > 0) {
+                                GameContext.spaceStation.innerShieldSegments[idx]--;
+                                GameContext.spaceStation.shieldsDirty = true;
                                 hit = true;
                                 playSound('shield_hit');
                                 spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
                             }
                         }
                         // Hull damage: allowed if shields are bypassed or down
-                        if (!hit && dist < spaceStation.radius + b.radius) {
-                            spaceStation.hp -= b.damage;
+                        if (!hit && dist < GameContext.spaceStation.radius + b.radius) {
+                            GameContext.spaceStation.hp -= b.damage;
                             hit = true;
                             playSound('hit');
                             spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
-                            if (spaceStation.hp <= 0) {
+                            if (GameContext.spaceStation.hp <= 0) {
                                 handleSpaceStationDestroyed();
                             }
                         }
                     }
 
                     // Only player bullets (!b.isEnemy) can hit destroyer
-                    if (!hit && !b.isEnemy && destroyer && !destroyer.dead) {
-                        const dist = Math.hypot(b.pos.x - destroyer.pos.x, b.pos.y - destroyer.pos.y);
+                    if (!hit && !b.isEnemy && GameContext.destroyer && !GameContext.destroyer.dead) {
+                        const dist = Math.hypot(b.pos.x - GameContext.destroyer.pos.x, b.pos.y - GameContext.destroyer.pos.y);
                         // Destroy bullet if it hits invulnerable destroyer's shield radius
-                        if (destroyer.invulnerable > 0 && dist < destroyer.shieldRadius + b.radius) {
+                        if (GameContext.destroyer.invulnerable > 0 && dist < GameContext.destroyer.shieldRadius + b.radius) {
                             hit = true;
                             playSound('shield_hit');
                             spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
                         }
-                        const outerUp = destroyer.shieldSegments && destroyer.shieldSegments.some(s => s > 0);
-                        const innerUp = destroyer.innerShieldSegments && destroyer.innerShieldSegments.some(s => s > 0);
-                        if (!hit && !b.ignoreShields && outerUp && dist < destroyer.shieldRadius + b.radius) {
-                            let angle = Math.atan2(b.pos.y - destroyer.pos.y, b.pos.x - destroyer.pos.x) - destroyer.shieldRotation;
+                        const outerUp = GameContext.destroyer.shieldSegments && GameContext.destroyer.shieldSegments.some(s => s > 0);
+                        const innerUp = GameContext.destroyer.innerShieldSegments && GameContext.destroyer.innerShieldSegments.some(s => s > 0);
+                        if (!hit && !b.ignoreShields && outerUp && dist < GameContext.destroyer.shieldRadius + b.radius) {
+                            let angle = Math.atan2(b.pos.y - GameContext.destroyer.pos.y, b.pos.x - GameContext.destroyer.pos.x) - GameContext.destroyer.shieldRotation;
                             while (angle < 0) angle += Math.PI * 2;
-                            const count = destroyer.shieldSegments.length;
+                            const count = GameContext.destroyer.shieldSegments.length;
                             const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                            if (destroyer.shieldSegments[idx] > 0) {
-                                const segmentHp = destroyer.shieldSegments[idx];
+                            if (GameContext.destroyer.shieldSegments[idx] > 0) {
+                                const segmentHp = GameContext.destroyer.shieldSegments[idx];
                                 if (b.damage > segmentHp) {
                                     // Penetrate: bullet breaks through with reduced damage
-                                    destroyer.shieldSegments[idx] = 0;
-                                    destroyer.shieldsDirty = true;
+                                    GameContext.destroyer.shieldSegments[idx] = 0;
+                                    GameContext.destroyer.shieldsDirty = true;
                                     b.damage -= segmentHp;
                                 } else {
                                     // Full absorb: shield stops bullet
-                                    destroyer.shieldSegments[idx] -= b.damage;
-                                    destroyer.shieldsDirty = true;
+                                    GameContext.destroyer.shieldSegments[idx] -= b.damage;
+                                    GameContext.destroyer.shieldsDirty = true;
                                     hit = true;
                                     playSound('shield_hit');
                                     spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
                                 }
                             }
                         }
-                        if (!hit && !b.ignoreShields && innerUp && dist < destroyer.innerShieldRadius + b.radius) {
-                            let angle = Math.atan2(b.pos.y - destroyer.pos.y, b.pos.x - destroyer.pos.x) - destroyer.innerShieldRotation;
+                        if (!hit && !b.ignoreShields && innerUp && dist < GameContext.destroyer.innerShieldRadius + b.radius) {
+                            let angle = Math.atan2(b.pos.y - GameContext.destroyer.pos.y, b.pos.x - GameContext.destroyer.pos.x) - GameContext.destroyer.innerShieldRotation;
                             while (angle < 0) angle += Math.PI * 2;
-                            const count = destroyer.innerShieldSegments.length;
+                            const count = GameContext.destroyer.innerShieldSegments.length;
                             const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                            if (destroyer.innerShieldSegments[idx] > 0) {
-                                const segmentHp = destroyer.innerShieldSegments[idx];
+                            if (GameContext.destroyer.innerShieldSegments[idx] > 0) {
+                                const segmentHp = GameContext.destroyer.innerShieldSegments[idx];
                                 if (b.damage > segmentHp) {
                                     // Penetrate: bullet breaks through with reduced damage
-                                    destroyer.innerShieldSegments[idx] = 0;
-                                    destroyer.shieldsDirty = true;
+                                    GameContext.destroyer.innerShieldSegments[idx] = 0;
+                                    GameContext.destroyer.shieldsDirty = true;
                                     b.damage -= segmentHp;
                                 } else {
                                     // Full absorb: shield stops bullet
-                                    destroyer.innerShieldSegments[idx] -= b.damage;
-                                    destroyer.shieldsDirty = true;
+                                    GameContext.destroyer.innerShieldSegments[idx] -= b.damage;
+                                    GameContext.destroyer.shieldsDirty = true;
                                     hit = true;
                                     playSound('shield_hit');
                                     spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
                                 }
                             }
                         }
-                        if (!hit && (typeof destroyer.hitTestCircle === 'function' ? destroyer.hitTestCircle(b.pos.x, b.pos.y, b.radius) : (dist < destroyer.radius + b.radius))) {
-                            const hpBefore = destroyer.hp;
-                            destroyer.hp -= b.damage;
-                            console.log(`[DESTROYER DEBUG] BULLET HIT: ${b.damage} dmg | HP: ${hpBefore} -> ${destroyer.hp} | isEnemy=${b.isEnemy} | color=${b.color} | owner=${b.owner?.displayName || b.owner?.constructor?.name || 'none'} | homing=${b.homing}`);
+                        if (!hit && (typeof GameContext.destroyer.hitTestCircle === 'function' ? GameContext.destroyer.hitTestCircle(b.pos.x, b.pos.y, b.radius) : (dist < GameContext.destroyer.radius + b.radius))) {
+                            const hpBefore = GameContext.destroyer.hp;
+                            GameContext.destroyer.hp -= b.damage;
+                            console.log(`[DESTROYER DEBUG] BULLET HIT: ${b.damage} dmg | HP: ${hpBefore} -> ${GameContext.destroyer.hp} | isEnemy=${b.isEnemy} | color=${b.color} | owner=${b.owner?.displayName || b.owner?.constructor?.name || 'none'} | homing=${b.homing}`);
                             hit = true;
                             playSound('hit');
                             spawnParticles(b.pos.x, b.pos.y, 5, '#ff0');
-                            if (destroyer.hp <= 0) {
-                                destroyer.kill();
+                            if (GameContext.destroyer.hp <= 0) {
+                                GameContext.destroyer.kill();
                             }
                         }
                     }
 
                     // Only player bullets (!b.isEnemy) can hit the boss
-                    if (!hit && !b.isEnemy && bossActive && boss && !boss.dead) {
-                        if (b.owner !== boss) {
-                            const dist = Math.hypot(b.pos.x - boss.pos.x, b.pos.y - boss.pos.y);
+                    if (!hit && !b.isEnemy && GameContext.bossActive && GameContext.boss && !GameContext.boss.dead) {
+                        if (b.owner !== GameContext.boss) {
+                            const dist = Math.hypot(b.pos.x - GameContext.boss.pos.x, b.pos.y - GameContext.boss.pos.y);
 
-                            if (boss.isWarpBoss && boss.ramInvulnerable > 0 && dist < boss.radius + b.radius + 6) {
+                            if (GameContext.boss.isWarpBoss && GameContext.boss.ramInvulnerable > 0 && dist < GameContext.boss.radius + b.radius + 6) {
                                 hit = true;
                                 playSound('shield_hit');
                                 spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
                             }
 
                             // Check if shields have any segments up
-                            const outerShieldsUp = boss.shieldSegments && boss.shieldSegments.some(s => s > 0);
-                            const innerShieldsUp = boss.innerShieldSegments && boss.innerShieldSegments.length > 0 && boss.innerShieldSegments.some(s => s > 0);
+                            const outerShieldsUp = GameContext.boss.shieldSegments && GameContext.boss.shieldSegments.some(s => s > 0);
+                            const innerShieldsUp = GameContext.boss.innerShieldSegments && GameContext.boss.innerShieldSegments.length > 0 && GameContext.boss.innerShieldSegments.some(s => s > 0);
 
                             // Outer shield collision - bullet is within the shield radius
-                            if (!hit && !b.ignoreShields && outerShieldsUp && dist < boss.shieldRadius + b.radius) {
-                                let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.shieldRotation;
+                            if (!hit && !b.ignoreShields && outerShieldsUp && dist < GameContext.boss.shieldRadius + b.radius) {
+                                let angle = Math.atan2(b.pos.y - GameContext.boss.pos.y, b.pos.x - GameContext.boss.pos.x) - GameContext.boss.shieldRotation;
                                 while (angle < 0) angle += Math.PI * 2;
-                                const segCount = boss.shieldSegments.length;
+                                const segCount = GameContext.boss.shieldSegments.length;
                                 const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
-                                if (boss.shieldSegments[segIndex] > 0) {
-                                    boss.shieldSegments[segIndex]--;
-                                    boss.shieldsDirty = true;
+                                if (GameContext.boss.shieldSegments[segIndex] > 0) {
+                                    GameContext.boss.shieldSegments[segIndex]--;
+                                    GameContext.boss.shieldsDirty = true;
                                     hit = true;
                                     playSound('shield_hit');
                                     spawnParticles(b.pos.x, b.pos.y, 3, '#0ff');
                                 }
                             }
                             // Inner shield collision - bullet is within the inner shield radius
-                            if (!hit && !b.ignoreShields && innerShieldsUp && dist < boss.innerShieldRadius + b.radius) {
-                                let angle = Math.atan2(b.pos.y - boss.pos.y, b.pos.x - boss.pos.x) - boss.innerShieldRotation;
+                            if (!hit && !b.ignoreShields && innerShieldsUp && dist < GameContext.boss.innerShieldRadius + b.radius) {
+                                let angle = Math.atan2(b.pos.y - GameContext.boss.pos.y, b.pos.x - GameContext.boss.pos.x) - GameContext.boss.innerShieldRotation;
                                 while (angle < 0) angle += Math.PI * 2;
-                                const count = boss.innerShieldSegments.length;
+                                const count = GameContext.boss.innerShieldSegments.length;
                                 const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
-                                if (boss.innerShieldSegments[segIndex] > 0) {
-                                    boss.innerShieldSegments[segIndex]--;
-                                    boss.shieldsDirty = true;
+                                if (GameContext.boss.innerShieldSegments[segIndex] > 0) {
+                                    GameContext.boss.innerShieldSegments[segIndex]--;
+                                    GameContext.boss.shieldsDirty = true;
                                     hit = true;
                                     playSound('shield_hit');
                                     spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
@@ -26791,27 +26486,27 @@ function gameLoopLogic(opts = null) {
                             // If shields are bypassed or down, allow hardpoints and hull damage
                             if (!hit) {
                                 // Hardpoints take damage when shields are down (or bypassed)
-                                if (typeof boss.applyPlayerBulletHit === 'function') {
-                                    if (boss.applyPlayerBulletHit(b)) {
+                                if (typeof GameContext.boss.applyPlayerBulletHit === 'function') {
+                                    if (GameContext.boss.applyPlayerBulletHit(b)) {
                                         hit = true;
                                     }
                                 }
 
                                 // Hull damage - use simplified 600px collision for cave monsters
                                 if (!hit) {
-                                    const hullRadius = (boss.hullCollisionRadius) ? boss.hullCollisionRadius :
-                                        (typeof boss.hitTestCircle === 'function' ? 0 : boss.radius);
-                                    const hitTest = (typeof boss.hitTestCircle === 'function' && !boss.hullCollisionRadius) ?
-                                        boss.hitTestCircle(b.pos.x, b.pos.y, b.radius) :
+                                    const hullRadius = (GameContext.boss.hullCollisionRadius) ? GameContext.boss.hullCollisionRadius :
+                                        (typeof GameContext.boss.hitTestCircle === 'function' ? 0 : GameContext.boss.radius);
+                                    const hitTest = (typeof GameContext.boss.hitTestCircle === 'function' && !GameContext.boss.hullCollisionRadius) ?
+                                        GameContext.boss.hitTestCircle(b.pos.x, b.pos.y, b.radius) :
                                         (dist < hullRadius + b.radius);
                                     if (hitTest) {
-                                        boss.hp -= b.damage;
+                                        GameContext.boss.hp -= b.damage;
                                         hit = true;
                                         playSound('hit');
                                         spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
-                                        if (boss.hp <= 0) {
-                                            boss.kill();
-                                            score += 5000;
+                                        if (GameContext.boss.hp <= 0) {
+                                            GameContext.boss.kill();
+                                            GameContext.score += 5000;
                                         }
                                     }
                                 }
@@ -26827,7 +26522,7 @@ function gameLoopLogic(opts = null) {
 
                 if (hit) {
                     destroyBulletSprite(b);
-                    bullets.splice(i, 1);
+                    GameContext.bullets.splice(i, 1);
                 }
             }
         } catch (e) {
@@ -26842,9 +26537,9 @@ function gameLoopLogic(opts = null) {
     if (doDraw) {
         globalProfiler.start('Draw');
         // Draw cave boundaries on top.
-        if (caveActive && caveLevel) {
-            caveLevel.updatePixi();
-            caveLevel.drawEntities(ctx, camX, camY, height, zoom);
+        if (caveActive && GameContext.caveLevel) {
+            GameContext.caveLevel.updatePixi();
+            GameContext.caveLevel.drawEntities(ctx, camX, camY, height, zoom);
         }
 
         ctx.restore();
@@ -26864,7 +26559,7 @@ function gameLoopLogic(opts = null) {
         drawContractIndicator();
         drawMiniEventIndicator();
         updateMiniEventUI();
-        if (bossActive && boss && typeof boss.drawBossHud === 'function') boss.drawBossHud(uiCtx);
+        if (GameContext.bossActive && GameContext.boss && typeof GameContext.boss.drawBossHud === 'function') GameContext.boss.drawBossHud(uiCtx);
 
         // Render Pixi overlay (MOVED from Update loop)
         if (pixiApp && pixiApp.renderer && pixiApp.stage) {
@@ -26907,26 +26602,26 @@ function clearPixiUiText() {
 }
 
 function drawStationIndicator() {
-    if (!spaceStation || !player || !pixiArrowsGraphics) return;
+    if (!GameContext.spaceStation || !GameContext.player || !pixiArrowsGraphics) return;
 
     const screenW = canvas.width;
     const screenH = canvas.height;
 
     // Check if on screen (approximate bounds)
-    const z = currentZoom || ZOOM_LEVEL;
-    const camX = player.pos.x - screenW / (2 * z);
-    const camY = player.pos.y - screenH / (2 * z);
+    const z = GameContext.currentZoom || ZOOM_LEVEL;
+    const camX = GameContext.player.pos.x - screenW / (2 * z);
+    const camY = GameContext.player.pos.y - screenH / (2 * z);
     const viewW = screenW / z;
     const viewH = screenH / z;
 
     // If center of station is within view (plus a bit of margin), don't draw arrow
-    if (spaceStation.pos.x > camX && spaceStation.pos.x < camX + viewW &&
-        spaceStation.pos.y > camY && spaceStation.pos.y < camY + viewH) {
+    if (GameContext.spaceStation.pos.x > camX && GameContext.spaceStation.pos.x < camX + viewW &&
+        GameContext.spaceStation.pos.y > camY && GameContext.spaceStation.pos.y < camY + viewH) {
         return;
     }
 
-    const dx = spaceStation.pos.x - player.pos.x;
-    const dy = spaceStation.pos.y - player.pos.y;
+    const dx = GameContext.spaceStation.pos.x - GameContext.player.pos.x;
+    const dy = GameContext.spaceStation.pos.y - GameContext.player.pos.y;
     const angle = Math.atan2(dy, dx);
 
     const margin = 60;
@@ -26977,26 +26672,26 @@ function drawStationIndicator() {
 }
 
 function drawDestroyerIndicator() {
-    if (!destroyer || !player || destroyer.dead || !pixiArrowsGraphics) return;
+    if (!GameContext.destroyer || !GameContext.player || GameContext.destroyer.dead || !pixiArrowsGraphics) return;
 
     const screenW = canvas.width;
     const screenH = canvas.height;
 
     // Check if on screen (approximate bounds)
-    const z = currentZoom || ZOOM_LEVEL;
-    const camX = player.pos.x - screenW / (2 * z);
-    const camY = player.pos.y - screenH / (2 * z);
+    const z = GameContext.currentZoom || ZOOM_LEVEL;
+    const camX = GameContext.player.pos.x - screenW / (2 * z);
+    const camY = GameContext.player.pos.y - screenH / (2 * z);
     const viewW = screenW / z;
     const viewH = screenH / z;
 
     // If center of destroyer is within view (plus a bit of margin), don't draw arrow
-    if (destroyer.pos.x > camX && destroyer.pos.x < camX + viewW &&
-        destroyer.pos.y > camY && destroyer.pos.y < camY + viewH) {
+    if (GameContext.destroyer.pos.x > camX && GameContext.destroyer.pos.x < camX + viewW &&
+        GameContext.destroyer.pos.y > camY && GameContext.destroyer.pos.y < camY + viewH) {
         return;
     }
 
-    const dx = destroyer.pos.x - player.pos.x;
-    const dy = destroyer.pos.y - player.pos.y;
+    const dx = GameContext.destroyer.pos.x - GameContext.player.pos.x;
+    const dy = GameContext.destroyer.pos.y - GameContext.player.pos.y;
     const angle = Math.atan2(dy, dx);
 
     const margin = 60;
@@ -27020,7 +26715,7 @@ function drawDestroyerIndicator() {
     const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
 
     // Color based on destroyer type
-    const isDestroyer2 = destroyer.displayName === "DESTROYER II";
+    const isDestroyer2 = GameContext.destroyer.displayName === "DESTROYER II";
     const indicatorColor = isDestroyer2 ? 0xff0000 : 0xff8000;
 
     // Draw arrow using PixiJS with manually transformed vertices
@@ -27052,24 +26747,24 @@ function drawDestroyerIndicator() {
 }
 
 function drawWarpGateIndicator() {
-    if (!warpGate || !player || player.dead || warpGate.dead || !pixiArrowsGraphics) return;
-    if (warpGate.mode !== 'entry') return;
+    if (!GameContext.warpGate || !GameContext.player || GameContext.player.dead || GameContext.warpGate.dead || !pixiArrowsGraphics) return;
+    if (GameContext.warpGate.mode !== 'entry') return;
 
     const screenW = canvas.width;
     const screenH = canvas.height;
-    const z = currentZoom || ZOOM_LEVEL;
-    const camX = player.pos.x - screenW / (2 * z);
-    const camY = player.pos.y - screenH / (2 * z);
+    const z = GameContext.currentZoom || ZOOM_LEVEL;
+    const camX = GameContext.player.pos.x - screenW / (2 * z);
+    const camY = GameContext.player.pos.y - screenH / (2 * z);
     const viewW = screenW / z;
     const viewH = screenH / z;
 
-    if (warpGate.pos.x > camX && warpGate.pos.x < camX + viewW &&
-        warpGate.pos.y > camY && warpGate.pos.y < camY + viewH) {
+    if (GameContext.warpGate.pos.x > camX && GameContext.warpGate.pos.x < camX + viewW &&
+        GameContext.warpGate.pos.y > camY && GameContext.warpGate.pos.y < camY + viewH) {
         return;
     }
 
-    const dx = warpGate.pos.x - player.pos.x;
-    const dy = warpGate.pos.y - player.pos.y;
+    const dx = GameContext.warpGate.pos.x - GameContext.player.pos.x;
+    const dy = GameContext.warpGate.pos.y - GameContext.player.pos.y;
     const angle = Math.atan2(dy, dx);
 
     const margin = 60;
@@ -27133,31 +26828,31 @@ function drawWarpGateIndicator() {
 
 // Flagship warp zone removed - no longer needed
 function drawContractIndicator() {
-    if (!activeContract || !player || player.dead || !pixiArrowsGraphics) return;
+    if (!GameContext.activeContract || !GameContext.player || GameContext.player.dead || !pixiArrowsGraphics) return;
     let tx = null, ty = null;
-    if (activeContract.type === 'gate_run' && contractEntities.gates.length > 0) {
-        const idx = activeContract.gateIndex || 0;
-        const g = contractEntities.gates[idx];
+    if (GameContext.activeContract.type === 'gate_run' && GameContext.contractEntities.gates.length > 0) {
+        const idx = GameContext.activeContract.gateIndex || 0;
+        const g = GameContext.contractEntities.gates[idx];
         if (g && !g.dead) { tx = g.pos.x; ty = g.pos.y; }
-    } else if (activeContract.target) {
-        tx = activeContract.target.x; ty = activeContract.target.y;
-    } else if (contractEntities.beacons.length > 0) {
-        tx = contractEntities.beacons[0].pos.x; ty = contractEntities.beacons[0].pos.y;
+    } else if (GameContext.activeContract.target) {
+        tx = GameContext.activeContract.target.x; ty = GameContext.activeContract.target.y;
+    } else if (GameContext.contractEntities.beacons.length > 0) {
+        tx = GameContext.contractEntities.beacons[0].pos.x; ty = GameContext.contractEntities.beacons[0].pos.y;
     }
     if (tx === null || ty === null) return;
 
     const screenW = canvas.width;
     const screenH = canvas.height;
-    const z = currentZoom || ZOOM_LEVEL;
-    const camX = player.pos.x - screenW / (2 * z);
-    const camY = player.pos.y - screenH / (2 * z);
+    const z = GameContext.currentZoom || ZOOM_LEVEL;
+    const camX = GameContext.player.pos.x - screenW / (2 * z);
+    const camY = GameContext.player.pos.y - screenH / (2 * z);
     const viewW = screenW / z;
     const viewH = screenH / z;
 
     if (tx > camX && tx < camX + viewW && ty > camY && ty < camY + viewH) return;
 
-    const dx = tx - player.pos.x;
-    const dy = ty - player.pos.y;
+    const dx = tx - GameContext.player.pos.x;
+    const dy = ty - GameContext.player.pos.y;
     const angle = Math.atan2(dy, dx);
 
     // Match the space-station indicator style/position (edge, pulsing, distance readout).
@@ -27206,23 +26901,23 @@ function drawContractIndicator() {
 }
 
 function drawMiniEventIndicator() {
-    if (!miniEvent || miniEvent.dead || !player || player.dead || !pixiArrowsGraphics) return;
+    if (!GameContext.miniEvent || GameContext.miniEvent.dead || !GameContext.player || GameContext.player.dead || !pixiArrowsGraphics) return;
 
-    let tx = miniEvent.pos.x;
-    let ty = miniEvent.pos.y;
+    let tx = GameContext.miniEvent.pos.x;
+    let ty = GameContext.miniEvent.pos.y;
 
     const screenW = canvas.width;
     const screenH = canvas.height;
-    const z = currentZoom || ZOOM_LEVEL;
-    const camX = player.pos.x - screenW / (2 * z);
-    const camY = player.pos.y - screenH / (2 * z);
+    const z = GameContext.currentZoom || ZOOM_LEVEL;
+    const camX = GameContext.player.pos.x - screenW / (2 * z);
+    const camY = GameContext.player.pos.y - screenH / (2 * z);
     const viewW = screenW / z;
     const viewH = screenH / z;
 
     if (tx > camX && tx < camX + viewW && ty > camY && ty < camY + viewH) return;
 
-    const dx = tx - player.pos.x;
-    const dy = ty - player.pos.y;
+    const dx = tx - GameContext.player.pos.x;
+    const dy = ty - GameContext.player.pos.y;
     const angle = Math.atan2(dy, dx);
 
     const margin = 60;
@@ -27273,17 +26968,17 @@ function drawMiniEventIndicator() {
 
 // Draw line from Slacker ship to mouse cursor
 function drawSlackerMouseLine() {
-    if (!player || player.shipType !== 'slacker' || usingGamepad || !pixiArrowsGraphics) return;
-    if (gamePaused || !gameActive) return;
+    if (!GameContext.player || GameContext.player.shipType !== 'slacker' || GameContext.usingGamepad || !pixiArrowsGraphics) return;
+    if (GameContext.gamePaused || !GameContext.gameActive) return;
 
     // Calculate screen positions
-    const z = currentZoom || ZOOM_LEVEL;
-    const camX = player.pos.x - width / (2 * z);
-    const camY = player.pos.y - height / (2 * z);
+    const z = GameContext.currentZoom || ZOOM_LEVEL;
+    const camX = GameContext.player.pos.x - width / (2 * z);
+    const camY = GameContext.player.pos.y - height / (2 * z);
 
     // Ship screen position (center of view, usually)
-    const screenShipX = (player.pos.x - camX) * z;
-    const screenShipY = (player.pos.y - camY) * z;
+    const screenShipX = (GameContext.player.pos.x - camX) * z;
+    const screenShipY = (GameContext.player.pos.y - camY) * z;
 
     // Mouse screen position (raw input)
     const screenMouseX = mouseScreen.x;
@@ -27294,7 +26989,7 @@ function drawSlackerMouseLine() {
 
     // Start point: 10 pixels beyond outer shield (scaled to screen)
     // outerShieldRadius is in world units, so scale by z
-    const startDistScreen = (player.outerShieldRadius + 10) * z;
+    const startDistScreen = (GameContext.player.outerShieldRadius + 10) * z;
     const screenStartX = screenShipX + Math.cos(angle) * startDistScreen;
     const screenStartY = screenShipY + Math.sin(angle) * startDistScreen;
 
@@ -27318,8 +27013,8 @@ const MINIMAP_OFFSET = 20;
 
 function drawMinimap() {
     if (!pixiMinimapGraphics) return;
-    minimapFrame++;
-    if (minimapFrame % 2 === 1) return; // throttle updates
+    GameContext.minimapFrame++;
+    if (GameContext.minimapFrame % 2 === 1) return; // throttle updates
 
     // Clear previous graphics
     pixiMinimapGraphics.clear();
@@ -27341,27 +27036,27 @@ function drawMinimap() {
     // Create a circular mask for clipping (reused each frame)
     // We'll manually clip by checking bounds for each element
 
-    const warpActive = !!(warpZone && warpZone.active);
-    const radarRange = warpActive ? ((warpZone.boundaryRadius || 6200) + 300) : 4000;
+    const warpActive = !!(GameContext.warpZone && GameContext.warpZone.active);
+    const radarRange = warpActive ? ((GameContext.warpZone.boundaryRadius || 6200) + 300) : 4000;
     const scale = MINIMAP_RADIUS / radarRange;
-    const refX = warpActive ? warpZone.pos.x : (player ? player.pos.x : 0);
-    const refY = warpActive ? warpZone.pos.y : (player ? player.pos.y : 0);
+    const refX = warpActive ? GameContext.warpZone.pos.x : (GameContext.player ? GameContext.player.pos.x : 0);
+    const refY = warpActive ? GameContext.warpZone.pos.y : (GameContext.player ? GameContext.player.pos.y : 0);
 
     // Helper to check if point is in circular bounds
     const inBounds = (x, y) => (x * x + y * y) <= (MINIMAP_RADIUS * MINIMAP_RADIUS);
 
     // Draw player
-    if (player && !player.dead) {
-        const px = warpActive ? ((player.pos.x - refX) * scale) : 0;
-        const py = warpActive ? ((player.pos.y - refY) * scale) : 0;
+    if (GameContext.player && !GameContext.player.dead) {
+        const px = warpActive ? ((GameContext.player.pos.x - refX) * scale) : 0;
+        const py = warpActive ? ((GameContext.player.pos.y - refY) * scale) : 0;
         pixiMinimapGraphics.beginFill(0x00ff00);
         pixiMinimapGraphics.drawCircle(centerX + px, centerY + py, 3);
         pixiMinimapGraphics.endFill();
     }
 
     // Warp maze walls + turrets
-    if (warpActive && warpZone) {
-        const segs = (typeof warpZone.allSegments === 'function') ? warpZone.allSegments() : [];
+    if (warpActive && GameContext.warpZone) {
+        const segs = (typeof GameContext.warpZone.allSegments === 'function') ? GameContext.warpZone.allSegments() : [];
         pixiMinimapGraphics.lineStyle(1, 0x00ffff, 0.65);
         for (let i = 0; i < segs.length; i++) {
             const s = segs[i];
@@ -27374,10 +27069,10 @@ function drawMinimap() {
             pixiMinimapGraphics.lineTo(centerX + x1, centerY + y1);
         }
 
-        if (warpZone.turrets && warpZone.turrets.length > 0) {
+        if (GameContext.warpZone.turrets && GameContext.warpZone.turrets.length > 0) {
             pixiMinimapGraphics.beginFill(0x00ffff);
-            for (let i = 0; i < warpZone.turrets.length; i++) {
-                const t = warpZone.turrets[i];
+            for (let i = 0; i < GameContext.warpZone.turrets.length; i++) {
+                const t = GameContext.warpZone.turrets[i];
                 if (!t || t.dead) continue;
                 const dx = (t.pos.x - refX) * scale;
                 const dy = (t.pos.y - refY) * scale;
@@ -27388,9 +27083,9 @@ function drawMinimap() {
             pixiMinimapGraphics.endFill();
         }
 
-        if (warpGate && !warpGate.dead) {
-            const dx = (warpGate.pos.x - refX) * scale;
-            const dy = (warpGate.pos.y - refY) * scale;
+        if (GameContext.warpGate && !GameContext.warpGate.dead) {
+            const dx = (GameContext.warpGate.pos.x - refX) * scale;
+            const dy = (GameContext.warpGate.pos.y - refY) * scale;
             pixiMinimapGraphics.lineStyle(2, 0xff8800, 0.9);
             pixiMinimapGraphics.drawCircle(centerX + dx, centerY + dy, 7);
         }
@@ -27398,8 +27093,8 @@ function drawMinimap() {
 
     // Environment asteroids
     pixiMinimapGraphics.lineStyle(1, 0x005500);
-    environmentAsteroids.forEach(a => {
-        if (player) {
+    GameContext.environmentAsteroids.forEach(a => {
+        if (GameContext.player) {
             const dx = (a.pos.x - refX) * scale;
             const dy = (a.pos.y - refY) * scale;
             if (inBounds(dx, dy)) {
@@ -27410,8 +27105,8 @@ function drawMinimap() {
 
     // Enemies
     pixiMinimapGraphics.beginFill(0xff0000);
-    enemies.forEach(e => {
-        if (player) {
+    GameContext.enemies.forEach(e => {
+        if (GameContext.player) {
             const dx = (e.pos.x - refX) * scale;
             const dy = (e.pos.y - refY) * scale;
             if (inBounds(dx, dy)) {
@@ -27423,8 +27118,8 @@ function drawMinimap() {
 
     // Bases
     pixiMinimapGraphics.beginFill(0xff00ff);
-    pinwheels.forEach(b => {
-        if (player) {
+    GameContext.pinwheels.forEach(b => {
+        if (GameContext.player) {
             const dx = (b.pos.x - refX) * scale;
             const dy = (b.pos.y - refY) * scale;
             if (inBounds(dx, dy)) {
@@ -27435,18 +27130,18 @@ function drawMinimap() {
     pixiMinimapGraphics.endFill();
 
     // Boss
-    if (bossActive && boss && !boss.dead && player) {
-        const dx = (boss.pos.x - refX) * scale;
-        const dy = (boss.pos.y - refY) * scale;
+    if (GameContext.bossActive && GameContext.boss && !GameContext.boss.dead && GameContext.player) {
+        const dx = (GameContext.boss.pos.x - refX) * scale;
+        const dy = (GameContext.boss.pos.y - refY) * scale;
         pixiMinimapGraphics.beginFill(0xff0000);
         pixiMinimapGraphics.drawCircle(centerX + dx, centerY + dy, 8);
         pixiMinimapGraphics.endFill();
     }
 
     // Radiation storm
-    if (!warpActive && radiationStorm && !radiationStorm.dead && player) {
-        const dx = radiationStorm.pos.x - player.pos.x;
-        const dy = radiationStorm.pos.y - player.pos.y;
+    if (!warpActive && GameContext.radiationStorm && !GameContext.radiationStorm.dead && GameContext.player) {
+        const dx = GameContext.radiationStorm.pos.x - GameContext.player.pos.x;
+        const dy = GameContext.radiationStorm.pos.y - GameContext.player.pos.y;
         const dist = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
         pixiMinimapGraphics.lineStyle(2, 0xffdc00, 0.7);
@@ -27457,16 +27152,16 @@ function drawMinimap() {
             drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
             pixiMinimapGraphics.endFill();
         } else {
-            pixiMinimapGraphics.drawCircle(centerX + dx * scale, centerY + dy * scale, Math.max(4, radiationStorm.radius * scale));
+            pixiMinimapGraphics.drawCircle(centerX + dx * scale, centerY + dy * scale, Math.max(4, GameContext.radiationStorm.radius * scale));
         }
     }
 
     // Coins
     pixiMinimapGraphics.beginFill(0xffff00);
-    coins.forEach(c => {
-        if (player) {
-            const dx = (c.pos.x - player.pos.x) * scale;
-            const dy = (c.pos.y - player.pos.y) * scale;
+    GameContext.coins.forEach(c => {
+        if (GameContext.player) {
+            const dx = (c.pos.x - GameContext.player.pos.x) * scale;
+            const dy = (c.pos.y - GameContext.player.pos.y) * scale;
             if (inBounds(dx, dy)) {
                 pixiMinimapGraphics.drawRect(centerX + dx, centerY + dy, 1, 1);
             }
@@ -27476,10 +27171,10 @@ function drawMinimap() {
 
     // Powerups
     pixiMinimapGraphics.beginFill(0x00ff00);
-    powerups.forEach(p => {
-        if (player) {
-            const dx = (p.pos.x - player.pos.x) * scale;
-            const dy = (p.pos.y - player.pos.y) * scale;
+    GameContext.powerups.forEach(p => {
+        if (GameContext.player) {
+            const dx = (p.pos.x - GameContext.player.pos.x) * scale;
+            const dy = (p.pos.y - GameContext.player.pos.y) * scale;
             if (inBounds(dx, dy)) {
                 pixiMinimapGraphics.drawRect(centerX + dx - 1, centerY + dy - 1, 3, 3);
             }
@@ -27488,11 +27183,11 @@ function drawMinimap() {
     pixiMinimapGraphics.endFill();
 
     // POIs
-    if (player && pois && pois.length > 0) {
-        for (const p of pois) {
+    if (GameContext.player && GameContext.pois && GameContext.pois.length > 0) {
+        for (const p of GameContext.pois) {
             if (!p || p.dead || p.claimed) continue;
-            const dx = p.pos.x - player.pos.x;
-            const dy = p.pos.y - player.pos.y;
+            const dx = p.pos.x - GameContext.player.pos.x;
+            const dy = p.pos.y - GameContext.player.pos.y;
             const dist = Math.hypot(dx, dy);
             const angle = Math.atan2(dy, dx);
             const inRange = (dist * scale <= 95);
@@ -27510,9 +27205,9 @@ function drawMinimap() {
     }
 
     // Space station
-    if (spaceStation && player) {
-        const dx = spaceStation.pos.x - player.pos.x;
-        const dy = spaceStation.pos.y - player.pos.y;
+    if (GameContext.spaceStation && GameContext.player) {
+        const dx = GameContext.spaceStation.pos.x - GameContext.player.pos.x;
+        const dy = GameContext.spaceStation.pos.y - GameContext.player.pos.y;
         const dist = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
 
@@ -27530,12 +27225,12 @@ function drawMinimap() {
     }
 
     // Destroyer indicator on minimap
-    if (!warpActive && player && destroyer && !destroyer.dead) {
-        const dx = destroyer.pos.x - player.pos.x;
-        const dy = destroyer.pos.y - player.pos.y;
+    if (!warpActive && GameContext.player && GameContext.destroyer && !GameContext.destroyer.dead) {
+        const dx = GameContext.destroyer.pos.x - GameContext.player.pos.x;
+        const dy = GameContext.destroyer.pos.y - GameContext.player.pos.y;
         const dist = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
-        const color = destroyer.displayName === "DESTROYER II" ? 0xffff00 : 0xff8800;
+        const color = GameContext.destroyer.displayName === "DESTROYER II" ? 0xffff00 : 0xff8800;
 
         const inRange = (dist * scale <= 95);
         const px = inRange ? (dx * scale) : (Math.cos(angle) * 90);
@@ -27547,21 +27242,21 @@ function drawMinimap() {
     }
 
     // Contract target indicator on minimap
-    if (!warpActive && player && activeContract) {
+    if (!warpActive && GameContext.player && GameContext.activeContract) {
         let tx = null, ty = null;
-        if (activeContract.type === 'gate_run' && contractEntities.gates.length > 0) {
-            const idx = activeContract.gateIndex || 0;
-            const g = contractEntities.gates[idx];
+        if (GameContext.activeContract.type === 'gate_run' && GameContext.contractEntities.gates.length > 0) {
+            const idx = GameContext.activeContract.gateIndex || 0;
+            const g = GameContext.contractEntities.gates[idx];
             if (g && !g.dead) { tx = g.pos.x; ty = g.pos.y; }
-        } else if (activeContract.target) {
-            tx = activeContract.target.x; ty = activeContract.target.y;
-        } else if (contractEntities.beacons.length > 0) {
-            tx = contractEntities.beacons[0].pos.x; ty = contractEntities.beacons[0].pos.y;
+        } else if (GameContext.activeContract.target) {
+            tx = GameContext.activeContract.target.x; ty = GameContext.activeContract.target.y;
+        } else if (GameContext.contractEntities.beacons.length > 0) {
+            tx = GameContext.contractEntities.beacons[0].pos.x; ty = GameContext.contractEntities.beacons[0].pos.y;
         }
 
         if (tx !== null && ty !== null) {
-            const dx = tx - player.pos.x;
-            const dy = ty - player.pos.y;
+            const dx = tx - GameContext.player.pos.x;
+            const dy = ty - GameContext.player.pos.y;
             const dist = Math.hypot(dx, dy);
             const angle = Math.atan2(dy, dx);
 
@@ -27576,10 +27271,10 @@ function drawMinimap() {
     }
 
     // Mini-event indicator on minimap
-    if (!warpActive && player && miniEvent && !miniEvent.dead) {
-        let tx = miniEvent.pos.x, ty = miniEvent.pos.y;
-        const dx = tx - player.pos.x;
-        const dy = ty - player.pos.y;
+    if (!warpActive && GameContext.player && GameContext.miniEvent && !GameContext.miniEvent.dead) {
+        let tx = GameContext.miniEvent.pos.x, ty = GameContext.miniEvent.pos.y;
+        const dx = tx - GameContext.player.pos.x;
+        const dy = ty - GameContext.player.pos.y;
         const dist = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
         const inRange = (dist * scale <= 95);
@@ -27623,7 +27318,7 @@ function startGame() {
     console.log('[DEBUG] startGame() called');
 
     // Auto-create profile if none exists (e.g. after deleting all profiles)
-    if (!currentProfileName) {
+    if (!GameContext.currentProfileName) {
         console.log('[START] No profile selected, checking for auto-create');
         const existing = listSaveSlots();
         if (existing.length === 0) {
@@ -27669,29 +27364,29 @@ function startGame() {
 
         resetWarpState();
         resetCaveState();
-        warpCompletedOnce = false;
+        GameContext.warpCompletedOnce = false;
         // Always reset audio state to normal before a new run
         setMusicMode('normal');
-        gameMode = 'normal';
+        GameContext.gameMode = 'normal';
         simNowMs = 0; // Reset simulation clock for new game logic
-        arcadeBoss = null;
-        arcadeWave = 0;
-        arcadeWaveNextAt = 0;
-        currentZoom = ZOOM_LEVEL;
+        GameContext.arcadeBoss = null;
+        GameContext.arcadeWave = 0;
+        GameContext.arcadeWaveNextAt = 0;
+        GameContext.currentZoom = ZOOM_LEVEL;
         stopMusic();
-        if (player) pixiCleanupObject(player);
-        player = new Spaceship(selectedShipType || 'standard');
+        if (GameContext.player) pixiCleanupObject(GameContext.player);
+        GameContext.player = new Spaceship(selectedShipType || 'standard');
 
         // Load current profile data if available
-        if (currentProfileName) {
-            const raw = localStorage.getItem(SAVE_PREFIX + currentProfileName);
+        if (GameContext.currentProfileName) {
+            const raw = localStorage.getItem(SAVE_PREFIX + GameContext.currentProfileName);
             if (raw) {
                 try {
                     const profile = JSON.parse(raw);
                     // Restore ONLY career statistics
-                    if (typeof profile.totalKills === 'number') totalKills = profile.totalKills;
-                    if (typeof profile.highScore === 'number') highScore = profile.highScore;
-                    if (typeof profile.totalPlayTimeMs === 'number') totalPlayTimeMs = profile.totalPlayTimeMs;
+                    if (typeof profile.totalKills === 'number') GameContext.totalKills = profile.totalKills;
+                    if (typeof profile.highScore === 'number') GameContext.highScore = profile.highScore;
+                    if (typeof profile.totalPlayTimeMs === 'number') GameContext.totalPlayTimeMs = profile.totalPlayTimeMs;
 
                     // FIXED: Do NOT restore player state (applyProfile) when starting a new game.
                     // This ensures in-game upgrades are reset while store upgrades are re-applied below.
@@ -27705,39 +27400,39 @@ function startGame() {
             resetProfileStats();
         }
 
-        score = 0;
-        difficultyTier = 1;
-        pinwheelsDestroyedTotal = 0;
-        bossActive = false;
-        if (boss) pixiCleanupObject(boss);
-        boss = null;
-        bossArena.active = false;
-        bossArena.growing = false;
+        GameContext.score = 0;
+        GameContext.difficultyTier = 1;
+        GameContext.pinwheelsDestroyedTotal = 0;
+        GameContext.bossActive = false;
+        if (GameContext.boss) pixiCleanupObject(GameContext.boss);
+        GameContext.boss = null;
+        GameContext.bossArena.active = false;
+        GameContext.bossArena.growing = false;
         stopArenaCountdown();
-        cruiserEncounterCount = 0;
-        cruiserTimerPausedAt = null;
-        dreadManager.upgradesChosen = 0;
-        dreadManager.firstSpawnDone = false;
-        dreadManager.timerActive = true;
-        dreadManager.timerAt = Date.now() + dreadManager.minDelayMs + Math.floor(Math.random() * (dreadManager.maxDelayMs - dreadManager.minDelayMs + 1));
-        rerollTokens = metaProfile.purchases.rerollTokens || 0;
-        metaExtraLifeCount = metaProfile.purchases.extraLife || 0;
+        GameContext.cruiserEncounterCount = 0;
+        GameContext.cruiserTimerPausedAt = null;
+        GameContext.dreadManager.upgradesChosen = 0;
+        GameContext.dreadManager.firstSpawnDone = false;
+        GameContext.dreadManager.timerActive = true;
+        GameContext.dreadManager.timerAt = Date.now() + GameContext.dreadManager.minDelayMs + Math.floor(Math.random() * (GameContext.dreadManager.maxDelayMs - GameContext.dreadManager.minDelayMs + 1));
+        GameContext.rerollTokens = GameContext.metaProfile.purchases.rerollTokens || 0;
+        GameContext.metaExtraLifeCount = GameContext.metaProfile.purchases.extraLife || 0;
 
         // Reset player stats/inventory
-        player.fireDelay = 24;
+        GameContext.player.fireDelay = 24;
 
-        player.turretLevel = 1;
-        player.canWarp = false;
-        player.shieldSegments = new Array(8).fill(2);
-        player.outerShieldSegments = new Array(12).fill(2);
-        player.hp = player.maxHp;
-        player.inventory = {};
-        player.reactiveShieldCoins = 0;
-        shownUpgradesThisRun = new Set(); // Reset upgrade tracking for new game
-        player.xp = 0;
-        player.level = 1;
-        player.nextLevelXp = 100;
-        player.stats = {
+        GameContext.player.turretLevel = 1;
+        GameContext.player.canWarp = false;
+        GameContext.player.shieldSegments = new Array(8).fill(2);
+        GameContext.player.outerShieldSegments = new Array(12).fill(2);
+        GameContext.player.hp = GameContext.player.maxHp;
+        GameContext.player.inventory = {};
+        GameContext.player.reactiveShieldCoins = 0;
+        GameContext.shownUpgradesThisRun = new Set(); // Reset upgrade tracking for new game
+        GameContext.player.xp = 0;
+        GameContext.player.level = 1;
+        GameContext.player.nextLevelXp = 100;
+        GameContext.player.stats = {
             damageMult: 1.0,
             fireRateMult: 1.0,
             shotgunFireRateMult: 1.0,
@@ -27768,46 +27463,46 @@ function startGame() {
             secondWindCooldown: 0,
             secondWindActive: 0
         };
-        player.comboStacks = 0;
-        player.comboMaxStacks = 100;
-        player.lastHitTime = Date.now();
-        player.lastDamageTakenTime = 0;
-        player.lastHpRegenTime = Date.now();
-        player.staticWeapons = [];
-        player.nukeMaxCooldown = 600;
-        player.magnetRadius = 150;
-        player.nukeUnlocked = false;
+        GameContext.player.comboStacks = 0;
+        GameContext.player.comboMaxStacks = 100;
+        GameContext.player.lastHitTime = Date.now();
+        GameContext.player.lastDamageTakenTime = 0;
+        GameContext.player.lastHpRegenTime = Date.now();
+        GameContext.player.staticWeapons = [];
+        GameContext.player.nukeMaxCooldown = 600;
+        GameContext.player.magnetRadius = 150;
+        GameContext.player.nukeUnlocked = false;
         // Volley shot initialization
-        player.volleyShotUnlocked = false;
-        player.volleyShotCount = 0;
-        player.volleyCooldown = 0;
-        player.lastF = false;
-        gameEnded = false;
+        GameContext.player.volleyShotUnlocked = false;
+        GameContext.player.volleyShotCount = 0;
+        GameContext.player.volleyCooldown = 0;
+        GameContext.player.lastF = false;
+        GameContext.gameEnded = false;
 
         // Setup game world (clear all entities)
         setupGameWorld();
 
         // Apply meta bonuses (tier-based with diminishing returns)
-        const startDamageTier = metaProfile.purchases.startDamage || 0;
+        const startDamageTier = GameContext.metaProfile.purchases.startDamage || 0;
         if (startDamageTier > 0) {
             // Infinite Scaling: +10% base damage per tier (linear)
-            player.stats.damageMult *= (1 + (0.1 * startDamageTier));
+            GameContext.player.stats.damageMult *= (1 + (0.1 * startDamageTier));
         }
 
-        const passiveHpTier = metaProfile.purchases.passiveHp || 0;
+        const passiveHpTier = GameContext.metaProfile.purchases.passiveHp || 0;
         if (passiveHpTier > 0) {
-            player.maxHp += 10 * passiveHpTier;
-            player.hp = player.maxHp;
+            GameContext.player.maxHp += 10 * passiveHpTier;
+            GameContext.player.hp = GameContext.player.maxHp;
             updateHealthUI();
         }
 
-        const hullPlatingTier = metaProfile.purchases.hullPlating || 0;
+        const hullPlatingTier = GameContext.metaProfile.purchases.hullPlating || 0;
         if (hullPlatingTier > 0) {
-            player.maxHp += 15 * hullPlatingTier;
-            player.hp = player.maxHp;
+            GameContext.player.maxHp += 15 * hullPlatingTier;
+            GameContext.player.hp = GameContext.player.maxHp;
         }
 
-        const shieldCoreTier = metaProfile.purchases.shieldCore || 0;
+        const shieldCoreTier = GameContext.metaProfile.purchases.shieldCore || 0;
         if (shieldCoreTier > 0) {
             const bonusSegments = Math.ceil(shieldCoreTier / 2);
             const bonusHp = Math.floor(shieldCoreTier / 2);
@@ -27815,16 +27510,16 @@ function startGame() {
             const totalHp = 2 + bonusHp;
 
             // Re-initialize shield array with updated counts and HP
-            player.shieldSegments = new Array(totalSegments).fill(totalHp);
-            player.maxShieldSegments = totalSegments;
+            GameContext.player.shieldSegments = new Array(totalSegments).fill(totalHp);
+            GameContext.player.maxShieldSegments = totalSegments;
         }
 
-        const staticBlueprintTier = metaProfile.purchases.staticBlueprint || 0;
+        const staticBlueprintTier = GameContext.metaProfile.purchases.staticBlueprint || 0;
         if (staticBlueprintTier > 0) {
             // Add forward lasers with effectiveness penalty for duplicates
             for (let i = 0; i < staticBlueprintTier; i++) {
                 const effectiveness = Math.max(0.2, 1 - (i * 0.2)); // 100%, 80%, 60%, 40%, 20%
-                player.staticWeapons.push({
+                GameContext.player.staticWeapons.push({
                     type: 'forward',
                     source: 'meta',
                     effectiveness: effectiveness
@@ -27832,43 +27527,43 @@ function startGame() {
             }
         }
 
-        const missilePrimerTier = metaProfile.purchases.missilePrimer || 0;
-        player.stats.homingFromMeta = missilePrimerTier;
+        const missilePrimerTier = GameContext.metaProfile.purchases.missilePrimer || 0;
+        GameContext.player.stats.homingFromMeta = missilePrimerTier;
         if (missilePrimerTier > 0) {
             // Update effective value (for backward compatibility with auto-fire check)
-            player.stats.homing = Math.max(player.stats.homingFromUpgrade, player.stats.homingFromMeta);
-            player.missileTimer = 0;
+            GameContext.player.stats.homing = Math.max(GameContext.player.stats.homingFromUpgrade, GameContext.player.stats.homingFromMeta);
+            GameContext.player.missileTimer = 0;
         }
 
-        const magnetBoosterTier = metaProfile.purchases.magnetBooster || 0;
+        const magnetBoosterTier = GameContext.metaProfile.purchases.magnetBooster || 0;
         if (magnetBoosterTier > 0) {
             // Base 300, then increasing with diminishing returns
             const baseRadius = 300;
             const extraRadius = magnetBoosterTier > 1 ? (magnetBoosterTier - 1) * 50 * Math.pow(0.9, magnetBoosterTier - 2) : 0;
-            player.magnetRadius = Math.max(player.magnetRadius, baseRadius + extraRadius);
+            GameContext.player.magnetRadius = Math.max(GameContext.player.magnetRadius, baseRadius + extraRadius);
         }
 
-        const nukeCapacitorTier = metaProfile.purchases.nukeCapacitor || 0;
+        const nukeCapacitorTier = GameContext.metaProfile.purchases.nukeCapacitor || 0;
         if (nukeCapacitorTier > 0) {
-            player.defenseRingTier = nukeCapacitorTier;
-            player.defenseOrbDamage = 5 + (nukeCapacitorTier - 1);
-            player.defenseOrbs = [];
+            GameContext.player.defenseRingTier = nukeCapacitorTier;
+            GameContext.player.defenseOrbDamage = 5 + (nukeCapacitorTier - 1);
+            GameContext.player.defenseOrbs = [];
             const count = nukeCapacitorTier; // 1 per tier
             for (let i = 0; i < count; i++) {
-                player.defenseOrbs.push({
+                GameContext.player.defenseOrbs.push({
                     angleOffset: (Math.PI * 2 * i) / count,
                     hitCooldowns: new WeakMap()
                 });
             }
         }
 
-        const speedTuningTier = metaProfile.purchases.speedTuning || 0;
+        const speedTuningTier = GameContext.metaProfile.purchases.speedTuning || 0;
         if (speedTuningTier > 0) {
             // Infinite Scaling: +5% speed per tier
-            player.stats.speedMult *= (1 + (0.05 * speedTuningTier));
+            GameContext.player.stats.speedMult *= (1 + (0.05 * speedTuningTier));
         }
 
-        const droneFabricatorTier = metaProfile.purchases.droneFabricator || 0;
+        const droneFabricatorTier = GameContext.metaProfile.purchases.droneFabricator || 0;
         if (droneFabricatorTier > 0) {
             // Spawn shooter drones (max 5 to prevent overcrowding)
             const droneCount = Math.min(droneFabricatorTier, 5);
@@ -27880,60 +27575,60 @@ function startGame() {
         // ========== NEW UPGRADES ==========
 
         // Piercing Rounds - Projectiles pierce through enemies
-        const piercingRoundsTier = metaProfile.purchases.piercingRounds || 0;
+        const piercingRoundsTier = GameContext.metaProfile.purchases.piercingRounds || 0;
         if (piercingRoundsTier > 0) {
             // Base: 1, 2, 3 pierce, then diminishing
             let pierceCount = Math.min(piercingRoundsTier, 3);
             if (piercingRoundsTier > 3) {
                 pierceCount += (piercingRoundsTier - 3) * 0.5;
             }
-            player.stats.pierceCount = (player.stats.pierceCount || 0) + pierceCount;
+            GameContext.player.stats.pierceCount = (GameContext.player.stats.pierceCount || 0) + pierceCount;
         }
 
         // Explosive Rounds - Chance for mini-explosions on impact
-        const explosiveRoundsTier = metaProfile.purchases.explosiveRounds || 0;
+        const explosiveRoundsTier = GameContext.metaProfile.purchases.explosiveRounds || 0;
         if (explosiveRoundsTier > 0) {
             let explosiveChance = 0.2 * Math.min(explosiveRoundsTier, 3);
             if (explosiveRoundsTier > 3) {
                 explosiveChance += 0.05 * (explosiveRoundsTier - 3);
             }
-            player.stats.explosiveChance = (player.stats.explosiveChance || 0) + Math.min(explosiveChance, 1.0);
-            player.stats.explosiveDamage = (player.stats.explosiveDamage || 0) + 30;
+            GameContext.player.stats.explosiveChance = (GameContext.player.stats.explosiveChance || 0) + Math.min(explosiveChance, 1.0);
+            GameContext.player.stats.explosiveDamage = (GameContext.player.stats.explosiveDamage || 0) + 30;
         }
 
         // Critical Strike - Chance to deal double damage
-        const criticalStrikeTier = metaProfile.purchases.criticalStrike || 0;
+        const criticalStrikeTier = GameContext.metaProfile.purchases.criticalStrike || 0;
         if (criticalStrikeTier > 0) {
             let critChance = 0.05 * Math.min(criticalStrikeTier, 3);
             if (criticalStrikeTier > 3) {
                 critChance += 0.02 * (criticalStrikeTier - 3);
             }
-            player.stats.critChance = (player.stats.critChance || 0) + Math.min(critChance, 0.30);
-            player.stats.critDamage = (player.stats.critDamage || 1.0) + 1.0; // 2x damage
+            GameContext.player.stats.critChance = (GameContext.player.stats.critChance || 0) + Math.min(critChance, 0.30);
+            GameContext.player.stats.critDamage = (GameContext.player.stats.critDamage || 1.0) + 1.0; // 2x damage
         }
 
         // Split Shot - Chance to fire additional projectile
-        const splitShotTier = metaProfile.purchases.splitShot || 0;
+        const splitShotTier = GameContext.metaProfile.purchases.splitShot || 0;
         if (splitShotTier > 0) {
             let splitChance = 0.1 * Math.min(splitShotTier, 3);
             if (splitShotTier > 3) {
                 splitChance += 0.03 * (splitShotTier - 3);
             }
-            player.stats.splitChance = (player.stats.splitChance || 0) + Math.min(splitChance, 0.50);
+            GameContext.player.stats.splitChance = (GameContext.player.stats.splitChance || 0) + Math.min(splitChance, 0.50);
         }
 
         // Thorn Armor - Reflect damage when hit
-        const thornArmorTier = metaProfile.purchases.thornArmor || 0;
+        const thornArmorTier = GameContext.metaProfile.purchases.thornArmor || 0;
         if (thornArmorTier > 0) {
             let thornPercent = 0.1 * Math.min(thornArmorTier, 3);
             if (thornArmorTier > 3) {
                 thornPercent += 0.02 * (thornArmorTier - 3);
             }
-            player.stats.thornReflect = Math.min(thornPercent, 0.35);
+            GameContext.player.stats.thornReflect = Math.min(thornPercent, 0.35);
         }
 
         // Lifesteal - Heal on dealing damage
-        const lifestealTier = metaProfile.purchases.lifesteal || 0;
+        const lifestealTier = GameContext.metaProfile.purchases.lifesteal || 0;
         if (lifestealTier > 0) {
             // Thresholds: 100, 75, 50, then diminishing
             const thresholds = [100, 75, 50];
@@ -27941,105 +27636,105 @@ function startGame() {
             if (lifestealTier > 3) {
                 threshold -= 5 * (lifestealTier - 3);
             }
-            player.stats.lifestealThreshold = Math.max(threshold, 25);
-            player.stats.lifestealTracking = 0; // Track damage dealt
+            GameContext.player.stats.lifestealThreshold = Math.max(threshold, 25);
+            GameContext.player.stats.lifestealTracking = 0; // Track damage dealt
         }
 
         // Evasion Boost - Chance to avoid damage entirely
-        const evasionBoostTier = metaProfile.purchases.evasionBoost || 0;
+        const evasionBoostTier = GameContext.metaProfile.purchases.evasionBoost || 0;
         if (evasionBoostTier > 0) {
             let evasionChance = 0.05 * Math.min(evasionBoostTier, 3);
             if (evasionBoostTier > 3) {
                 evasionChance += 0.02 * (evasionBoostTier - 3);
             }
-            player.stats.evasionChance = (player.stats.evasionChance || 0) + Math.min(evasionChance, 0.25);
+            GameContext.player.stats.evasionChance = (GameContext.player.stats.evasionChance || 0) + Math.min(evasionChance, 0.25);
         }
 
         // Shield Recharge - Shield segments regenerate during combat
-        const shieldRechargeTier = metaProfile.purchases.shieldRecharge || 0;
+        const shieldRechargeTier = GameContext.metaProfile.purchases.shieldRecharge || 0;
         if (shieldRechargeTier > 0) {
             const intervals = [30, 20, 15]; // seconds
             let interval = intervals[Math.min(shieldRechargeTier - 1, 2)];
             if (shieldRechargeTier > 3) {
                 interval = Math.max(interval - (shieldRechargeTier - 3), 5);
             }
-            player.stats.shieldRechargeInterval = interval * 60; // Convert to frames
-            player.stats.shieldRechargeTimer = 0;
-            player.stats.shieldRechargeLast = Date.now();
+            GameContext.player.stats.shieldRechargeInterval = interval * 60; // Convert to frames
+            GameContext.player.stats.shieldRechargeTimer = 0;
+            GameContext.player.stats.shieldRechargeLast = Date.now();
         }
 
         // Dash Cooldown - Reduce turbo boost cooldown
-        const dashCooldownTier = metaProfile.purchases.dashCooldown || 0;
+        const dashCooldownTier = GameContext.metaProfile.purchases.dashCooldown || 0;
         if (dashCooldownTier > 0) {
             let cooldownReduction = Math.min(dashCooldownTier, 3);
             if (dashCooldownTier > 3) {
                 cooldownReduction += 0.3 * (dashCooldownTier - 3);
             }
-            player.stats.turboCooldownReduction = cooldownReduction; // In seconds
+            GameContext.player.stats.turboCooldownReduction = cooldownReduction; // In seconds
         }
 
         // Dash Duration - Longer turbo boost duration
-        const dashDurationTier = metaProfile.purchases.dashDuration || 0;
+        const dashDurationTier = GameContext.metaProfile.purchases.dashDuration || 0;
         if (dashDurationTier > 0) {
             let durationBonus = 0.5 * Math.min(dashDurationTier, 3);
             if (dashDurationTier > 3) {
                 durationBonus += 0.2 * (dashDurationTier - 3);
             }
-            player.stats.turboDurationBonus = durationBonus * 60; // Convert to frames
+            GameContext.player.stats.turboDurationBonus = durationBonus * 60; // Convert to frames
         }
 
         // XP Magnet Range+ - Increases existing magnet booster effect
-        const xpMagnetPlusTier = metaProfile.purchases.xpMagnetPlus || 0;
+        const xpMagnetPlusTier = GameContext.metaProfile.purchases.xpMagnetPlus || 0;
         if (xpMagnetPlusTier > 0) {
             let magnetBonus = 0.2 * Math.min(xpMagnetPlusTier, 3);
             if (xpMagnetPlusTier > 3) {
                 magnetBonus += 0.1 * (xpMagnetPlusTier - 3);
             }
-            player.stats.magnetBonusMult = (player.stats.magnetBonusMult || 1.0) + magnetBonus;
+            GameContext.player.stats.magnetBonusMult = (GameContext.player.stats.magnetBonusMult || 1.0) + magnetBonus;
         }
 
         // Auto-Reroll - Chance for free reroll on level-up
-        const autoRerollTier = metaProfile.purchases.autoReroll || 0;
+        const autoRerollTier = GameContext.metaProfile.purchases.autoReroll || 0;
         if (autoRerollTier > 0) {
             let autoRerollChance = 0.1 * Math.min(autoRerollTier, 3);
             if (autoRerollTier > 3) {
                 autoRerollChance += 0.03 * (autoRerollTier - 3);
             }
-            player.stats.autoRerollChance = Math.min(autoRerollChance, 0.50);
+            GameContext.player.stats.autoRerollChance = Math.min(autoRerollChance, 0.50);
         }
 
         // Nugget Magnet - Increase magnet radius specifically for Space Nuggets
-        const nuggetMagnetTier = metaProfile.purchases.nuggetMagnet || 0;
+        const nuggetMagnetTier = GameContext.metaProfile.purchases.nuggetMagnet || 0;
         if (nuggetMagnetTier > 0) {
             let nuggetMagnetBonus = 0.5 * Math.min(nuggetMagnetTier, 3);
             if (nuggetMagnetTier > 3) {
                 nuggetMagnetBonus += 0.25 * (nuggetMagnetTier - 3);
             }
-            player.stats.nuggetMagnetBonus = (player.stats.nuggetMagnetBonus || 1.0) + nuggetMagnetBonus;
+            GameContext.player.stats.nuggetMagnetBonus = (GameContext.player.stats.nuggetMagnetBonus || 1.0) + nuggetMagnetBonus;
         }
 
         // Contract Speed - Contract objectives complete faster
-        const contractSpeedTier = metaProfile.purchases.contractSpeed || 0;
+        const contractSpeedTier = GameContext.metaProfile.purchases.contractSpeed || 0;
         if (contractSpeedTier > 0) {
             let contractSpeedBonus = 0.1 * Math.min(contractSpeedTier, 3);
             if (contractSpeedTier > 3) {
                 contractSpeedBonus += 0.05 * (contractSpeedTier - 3);
             }
-            player.stats.contractSpeedMult = (player.stats.contractSpeedMult || 1.0) + contractSpeedBonus;
+            GameContext.player.stats.contractSpeedMult = (GameContext.player.stats.contractSpeedMult || 1.0) + contractSpeedBonus;
         }
 
         // Starting Rerolls - Start each run with free reroll tokens
-        const startingRerollsTier = metaProfile.purchases.startingRerolls || 0;
+        const startingRerollsTier = GameContext.metaProfile.purchases.startingRerolls || 0;
         if (startingRerollsTier > 0) {
             let startingTokens = Math.min(startingRerollsTier, 3);
             if (startingRerollsTier > 3) {
                 startingTokens += 0.5 * (startingRerollsTier - 3);
             }
-            rerollTokens += Math.floor(startingTokens);
+            GameContext.rerollTokens += Math.floor(startingTokens);
         }
 
         // Lucky Drop - Increased chance for rare pickups
-        const luckyDropTier = metaProfile.purchases.luckyDrop || 0;
+        const luckyDropTier = GameContext.metaProfile.purchases.luckyDrop || 0;
         if (luckyDropTier > 0) {
             let healthDropBonus = 0.05 * Math.min(luckyDropTier, 3);
             let nuggetBonus = 0.02 * Math.min(luckyDropTier, 3);
@@ -28047,12 +27742,12 @@ function startGame() {
                 healthDropBonus += 0.02 * (luckyDropTier - 3);
                 nuggetBonus += 0.01 * (luckyDropTier - 3);
             }
-            player.stats.luckyHealthDrop = healthDropBonus;
-            player.stats.luckyNuggetDrop = nuggetBonus;
+            GameContext.player.stats.luckyHealthDrop = healthDropBonus;
+            GameContext.player.stats.luckyNuggetDrop = nuggetBonus;
         }
 
         // Bounty Hunter - Bonus nuggets for elite/boss kills
-        const bountyHunterTier = metaProfile.purchases.bountyHunter || 0;
+        const bountyHunterTier = GameContext.metaProfile.purchases.bountyHunter || 0;
         if (bountyHunterTier > 0) {
             let eliteBonus = 5 * Math.min(bountyHunterTier, 3);
             let bossBonus = 20 * Math.min(bountyHunterTier, 3);
@@ -28060,12 +27755,12 @@ function startGame() {
                 eliteBonus += 3 * (bountyHunterTier - 3);
                 bossBonus += 10 * (bountyHunterTier - 3);
             }
-            player.stats.bountyEliteBonus = eliteBonus;
-            player.stats.bountyBossBonus = bossBonus;
+            GameContext.player.stats.bountyEliteBonus = eliteBonus;
+            GameContext.player.stats.bountyBossBonus = bossBonus;
         }
 
         // Combo Meter - Damage increases with consecutive hits without taking damage
-        const comboMeterTier = metaProfile.purchases.comboMeter || 0;
+        const comboMeterTier = GameContext.metaProfile.purchases.comboMeter || 0;
         if (comboMeterTier > 0) {
             let comboDamagePer10 = 0.01 * Math.min(comboMeterTier, 3);
             let maxComboDamage = 0.10 * Math.min(comboMeterTier, 3);
@@ -28073,25 +27768,25 @@ function startGame() {
                 comboDamagePer10 += 0.003 * (comboMeterTier - 3);
                 maxComboDamage += 0.05 * (comboMeterTier - 3);
             }
-            player.stats.comboDamagePer10 = comboDamagePer10;
-            player.stats.maxComboDamage = maxComboDamage;
-            player.stats.comboStacks = 0;
-            player.stats.comboLastHitTime = 0;
+            GameContext.player.stats.comboDamagePer10 = comboDamagePer10;
+            GameContext.player.stats.maxComboDamage = maxComboDamage;
+            GameContext.player.stats.comboStacks = 0;
+            GameContext.player.stats.comboLastHitTime = 0;
         }
 
         // Starting Weapon - Start with shotgun unlocked
-        const startingWeaponTier = metaProfile.purchases.startingWeapon || 0;
+        const startingWeaponTier = GameContext.metaProfile.purchases.startingWeapon || 0;
         if (startingWeaponTier > 0) {
-            player.inventory['shotgun'] = Math.min(startingWeaponTier, 3);
+            GameContext.player.inventory['shotgun'] = Math.min(startingWeaponTier, 3);
             if (startingWeaponTier > 3) {
                 // Damage boost for tier 4+
                 let damageBonus = 0.05 * (startingWeaponTier - 3);
-                player.stats.startingShotgunDamageMult = 1.0 + damageBonus;
+                GameContext.player.stats.startingShotgunDamageMult = 1.0 + damageBonus;
             }
         }
 
         // Second Wind - Short invulnerability after taking damage
-        const secondWindTier = metaProfile.purchases.secondWind || 0;
+        const secondWindTier = GameContext.metaProfile.purchases.secondWind || 0;
         if (secondWindTier > 0) {
             const durations = [0.5, 1.0, 1.5]; // seconds
             const cooldowns = [10, 8, 6]; // seconds
@@ -28101,20 +27796,20 @@ function startGame() {
                 duration += 0.2 * (secondWindTier - 3);
                 cooldown = Math.max(cooldown - 0.5 * (secondWindTier - 3), 3);
             }
-            player.stats.secondWindDuration = duration * 60; // frames
-            player.stats.secondWindCooldown = cooldown * 60; // frames
-            player.stats.secondWindTimer = 0;
-            player.stats.secondWindReady = true;
+            GameContext.player.stats.secondWindDuration = duration * 60; // frames
+            GameContext.player.stats.secondWindCooldown = cooldown * 60; // frames
+            GameContext.player.stats.secondWindTimer = 0;
+            GameContext.player.stats.secondWindReady = true;
         }
 
         // Battery Capacitor - Manual discharge AOE ability
-        const batteryTier = metaProfile.purchases.batteryCapacitor || 0;
+        const batteryTier = GameContext.metaProfile.purchases.batteryCapacitor || 0;
         if (batteryTier > 0) {
-            player.batteryUnlocked = true;
-            player.batteryDamage = batteryTier * 100;
-            if (batteryTier === 1) { player.batteryRange = 800; }
-            if (batteryTier === 2) { player.batteryRange = 900; }
-            if (batteryTier === 3) { player.batteryRange = 1000; }
+            GameContext.player.batteryUnlocked = true;
+            GameContext.player.batteryDamage = batteryTier * 100;
+            if (batteryTier === 1) { GameContext.player.batteryRange = 800; }
+            if (batteryTier === 2) { GameContext.player.batteryRange = 900; }
+            if (batteryTier === 3) { GameContext.player.batteryRange = 1000; }
         }
 
         if (pendingProfile) {
@@ -28122,14 +27817,14 @@ function startGame() {
         }
         updateHealthUI();
 
-        document.getElementById('score').innerText = score;
+        document.getElementById('score').innerText = GameContext.score;
         document.getElementById('start-screen').style.display = 'none';
         const endScreen = document.getElementById('end-screen');
         if (endScreen) endScreen.style.display = 'none';
         document.getElementById('pause-menu').style.display = 'none';
-        gameActive = true;
-        gamePaused = false;
-        canResumeGame = false; // New game - can't resume yet
+        GameContext.gameActive = true;
+        GameContext.gamePaused = false;
+        GameContext.canResumeGame = false; // New game - can't resume yet
 
         // Update resume button state
         if (window.updateResumeButtonState) {
@@ -28159,35 +27854,35 @@ function shiftPausedTimers(pauseMs) {
         return arr;
     };
 
-    warpCountdownAt = shiftIfNumber(warpCountdownAt);
-    nextContractAt = shiftIfNumber(nextContractAt);
-    nextSpaceStationTime = shiftIfNumber(nextSpaceStationTime);
-    gunboatRespawnAt = shiftIfNumber(gunboatRespawnAt);
-    nextShootingStarTime = shiftIfNumber(nextShootingStarTime);
-    nextRadiationStormAt = shiftIfNumber(nextRadiationStormAt);
-    nextMiniEventAt = shiftIfNumber(nextMiniEventAt);
-    nextIntensityBreakAt = shiftIfNumber(nextIntensityBreakAt);
-    initialSpawnDelayAt = shiftIfNumber(initialSpawnDelayAt);
+    GameContext.warpCountdownAt = shiftIfNumber(GameContext.warpCountdownAt);
+    GameContext.nextContractAt = shiftIfNumber(GameContext.nextContractAt);
+    GameContext.nextSpaceStationTime = shiftIfNumber(GameContext.nextSpaceStationTime);
+    GameContext.gunboatRespawnAt = shiftIfNumber(GameContext.gunboatRespawnAt);
+    GameContext.nextShootingStarTime = shiftIfNumber(GameContext.nextShootingStarTime);
+    GameContext.nextRadiationStormAt = shiftIfNumber(GameContext.nextRadiationStormAt);
+    GameContext.nextMiniEventAt = shiftIfNumber(GameContext.nextMiniEventAt);
+    GameContext.nextIntensityBreakAt = shiftIfNumber(GameContext.nextIntensityBreakAt);
+    GameContext.initialSpawnDelayAt = shiftIfNumber(GameContext.initialSpawnDelayAt);
 
-    asteroidRespawnTimers = shiftArrayNumbers(asteroidRespawnTimers);
-    baseRespawnTimers = shiftArrayNumbers(baseRespawnTimers);
+    GameContext.asteroidRespawnTimers = shiftArrayNumbers(GameContext.asteroidRespawnTimers);
+    GameContext.baseRespawnTimers = shiftArrayNumbers(GameContext.baseRespawnTimers);
 
-    if (dreadManager && dreadManager.timerActive && typeof dreadManager.timerAt === 'number') {
-        dreadManager.timerAt += pauseMs;
+    if (GameContext.dreadManager && GameContext.dreadManager.timerActive && typeof GameContext.dreadManager.timerAt === 'number') {
+        GameContext.dreadManager.timerAt += pauseMs;
     }
-    if (cruiserTimerPausedAt !== null && typeof cruiserTimerPausedAt === 'number') {
-        cruiserTimerPausedAt += pauseMs;
+    if (GameContext.cruiserTimerPausedAt !== null && typeof GameContext.cruiserTimerPausedAt === 'number') {
+        GameContext.cruiserTimerPausedAt += pauseMs;
     }
-    if (radiationStorm && typeof radiationStorm.endsAt === 'number') {
-        radiationStorm.endsAt += pauseMs;
+    if (GameContext.radiationStorm && typeof GameContext.radiationStorm.endsAt === 'number') {
+        GameContext.radiationStorm.endsAt += pauseMs;
     }
-    if (miniEvent) {
-        if (typeof miniEvent.expiresAt === 'number') miniEvent.expiresAt += pauseMs;
-        if (typeof miniEvent.nextWaveAt === 'number') miniEvent.nextWaveAt += pauseMs;
-        if (typeof miniEvent.lastUpdateAt === 'number') miniEvent.lastUpdateAt += pauseMs;
+    if (GameContext.miniEvent) {
+        if (typeof GameContext.miniEvent.expiresAt === 'number') GameContext.miniEvent.expiresAt += pauseMs;
+        if (typeof GameContext.miniEvent.nextWaveAt === 'number') GameContext.miniEvent.nextWaveAt += pauseMs;
+        if (typeof GameContext.miniEvent.lastUpdateAt === 'number') GameContext.miniEvent.lastUpdateAt += pauseMs;
     }
-    if (activeContract && typeof activeContract.endsAt === 'number') {
-        activeContract.endsAt += pauseMs;
+    if (GameContext.activeContract && typeof GameContext.activeContract.endsAt === 'number') {
+        GameContext.activeContract.endsAt += pauseMs;
     }
 }
 
@@ -28196,7 +27891,7 @@ function shiftPausedTimers(pauseMs) {
 const updateResumeButtonState = () => {
     const resumeBtn = document.getElementById('resume-btn-start');
     if (resumeBtn) {
-        if (canResumeGame) {
+        if (GameContext.canResumeGame) {
             resumeBtn.disabled = false;
             resumeBtn.style.opacity = '1';
             resumeBtn.style.cursor = 'pointer';
@@ -28212,7 +27907,7 @@ const updateResumeButtonState = () => {
 window.updateResumeButtonState = updateResumeButtonState;
 
 function togglePause() {
-    if (!gameActive) return;
+    if (!GameContext.gameActive) return;
 
     // If debug menu is open, close it first
     if (document.getElementById('debug-menu').style.display === 'block') {
@@ -28221,34 +27916,34 @@ function togglePause() {
     }
 
     // Return to pause menu from start screen
-    if (fromPauseMenu && gamePaused && document.getElementById('start-screen').style.display === 'block') {
+    if (fromPauseMenu && GameContext.gamePaused && document.getElementById('start-screen').style.display === 'block') {
         document.getElementById('start-screen').style.display = 'none';
         document.getElementById('pause-menu').style.display = 'block';
         fromPauseMenu = false;
         return;
     }
 
-    const wasPaused = gamePaused;
-    gamePaused = !gamePaused;
-    document.getElementById('pause-menu').style.display = gamePaused ? 'block' : 'none';
+    const wasPaused = GameContext.gamePaused;
+    GameContext.gamePaused = !GameContext.gamePaused;
+    document.getElementById('pause-menu').style.display = GameContext.gamePaused ? 'block' : 'none';
     // Pause timer bookkeeping
-    if (gamePaused) {
-        pauseStartTime = getGameNowMs();
+    if (GameContext.gamePaused) {
+        GameContext.pauseStartTime = getGameNowMs();
         if (arenaCountdownActive) stopArenaCountdown();
     } else {
-        if (pauseStartTime) {
-            const pauseMs = Math.max(0, getGameNowMs() - pauseStartTime);
+        if (GameContext.pauseStartTime) {
+            const pauseMs = Math.max(0, getGameNowMs() - GameContext.pauseStartTime);
             if (pauseMs > 0) {
-                pausedAccumMs += pauseMs;
+                GameContext.pausedAccumMs += pauseMs;
                 shiftPausedTimers(pauseMs);
             }
-            pauseStartTime = null;
+            GameContext.pauseStartTime = null;
         }
     }
-    if (gamePaused) {
+    if (GameContext.gamePaused) {
         setTimeout(() => {
             document.getElementById('resume-btn').focus();
-            menuSelectionIndex = 0;
+            GameContext.menuSelectionIndex = 0;
         }, 100);
     }
     else if (musicEnabled) startMusic();
@@ -28261,7 +27956,7 @@ function quitGame() {
     } catch (e) { console.warn('meta deposit failed on abort', e); }
 
     // Save game state and meta profile
-    if (currentProfileName) {
+    if (GameContext.currentProfileName) {
         try {
             autoSaveToCurrentProfile();
             saveMetaProfile();
@@ -28269,13 +27964,13 @@ function quitGame() {
     }
 
     // End the game properly
-    gameActive = false;
-    gameEnded = true;
+    GameContext.gameActive = false;
+    GameContext.gameEnded = true;
     stopArenaCountdown();
     stopMusic();
 
     // Reset sector index so new game starts at level 1
-    sectorIndex = 1;
+    GameContext.sectorIndex = 1;
 
     // Show start screen with ABORTED message
     document.getElementById('pause-menu').style.display = 'none';
@@ -28285,10 +27980,10 @@ function quitGame() {
     document.querySelector('#start-screen h1').innerText = "ABORTED";
     document.getElementById('start-btn').innerText = "INITIATE LAUNCH";
     setTimeout(() => document.getElementById('resume-btn-start').focus(), 100);
-    menuSelectionIndex = 0;
+    GameContext.menuSelectionIndex = 0;
 
     // Cannot resume an aborted run
-    canResumeGame = false;
+    GameContext.canResumeGame = false;
 
     // Update resume button state
     const updateResumeButtonState = () => {
@@ -28328,27 +28023,27 @@ window.addEventListener('keydown', e => {
     if (e.ctrlKey && e.shiftKey && (e.code === 'Digit2' || e.code === 'Numpad2')) {
         e.preventDefault();
         const doJump = () => {
-            if (!gameActive || !player || player.dead) return;
+            if (!GameContext.gameActive || !GameContext.player || GameContext.player.dead) return;
             // Force a sector warp completion into sector 2. 
-            sectorTransitionActive = false;
-            warpCountdownAt = null;
-            sectorIndex = 1;
+            GameContext.sectorTransitionActive = false;
+            GameContext.warpCountdownAt = null;
+            GameContext.sectorIndex = 1;
             showOverlayMessage("DEBUG: ENTERING SECTOR 2 CAVE", '#0ff', 1200, 5);
             completeSectorWarp();
         };
-        if (!gameActive) {
+        if (!GameContext.gameActive) {
             startGame();
             setTimeout(doJump, 60);
         } else {
-            if (gamePaused) togglePause();
+            if (GameContext.gamePaused) togglePause();
             doJump();
         }
     }
     // Debug: jump directly into the warp maze (Ctrl+Shift+W)
     if (e.ctrlKey && e.shiftKey && (e.key === 'w' || e.key === 'W')) {
         e.preventDefault();
-        if (!gameActive || gamePaused || !player || player.dead) return;
-        if (warpZone && warpZone.active) {
+        if (!GameContext.gameActive || GameContext.gamePaused || !GameContext.player || GameContext.player.dead) return;
+        if (GameContext.warpZone && GameContext.warpZone.active) {
             showOverlayMessage("ALREADY IN WARP", '#ff0', 900);
         } else {
             enterWarpMaze();
@@ -28357,7 +28052,7 @@ window.addEventListener('keydown', e => {
     // Debug: force-exit warp maze back to world (Ctrl+Shift+Q)
     if (e.ctrlKey && e.shiftKey && (e.key === 'q' || e.key === 'Q')) {
         e.preventDefault();
-        if (!gameActive || !player) return;
+        if (!GameContext.gameActive || !GameContext.player) return;
     }
 });
 
@@ -28403,7 +28098,7 @@ window.addEventListener('mousemove', e => {
     const dy = Math.abs(scaledY - (mouseScreen.y || 0));
 
     // Ignore tiny pointer jitter so it doesn't steal aim from the gamepad.
-    if (dx + dy >= 10 || document.pointerLockElement === canvas) lastMouseInputAt = now;
+    if (dx + dy >= 10 || document.pointerLockElement === canvas) GameContext.lastMouseInputAt = now;
 
     updateInputMode(now);
 
@@ -28411,10 +28106,10 @@ window.addEventListener('mousemove', e => {
         mouseScreen.x = scaledX;
         mouseScreen.y = scaledY;
     }
-    if (player) {
-        const z = currentZoom || ZOOM_LEVEL;
-        const camX = player.pos.x - width / (2 * z);
-        const camY = player.pos.y - height / (2 * z);
+    if (GameContext.player) {
+        const z = GameContext.currentZoom || ZOOM_LEVEL;
+        const camX = GameContext.player.pos.x - width / (2 * z);
+        const camY = GameContext.player.pos.y - height / (2 * z);
         mouseWorld.x = (scaledX / z) + camX;
         mouseWorld.y = (scaledY / z) + camY;
 
@@ -28440,7 +28135,7 @@ window.addEventListener('mousemove', e => {
 
 // Request Pointer Lock on click when game is active
 canvas.addEventListener('click', () => {
-    if (gameActive && !gamePaused && !document.pointerLockElement) {
+    if (GameContext.gameActive && !GameContext.gamePaused && !document.pointerLockElement) {
         try {
             canvas.requestPointerLock();
         } catch (e) {
@@ -28452,7 +28147,7 @@ canvas.addEventListener('click', () => {
 // Release Pointer Lock when game ends or is paused
 // (This is handled by the browser on Escape, but we can force it on menu open)
 function checkPointerLockState() {
-    if ((!gameActive || gamePaused) && document.pointerLockElement === canvas) {
+    if ((!GameContext.gameActive || GameContext.gamePaused) && document.pointerLockElement === canvas) {
         document.exitPointerLock();
     }
 }
@@ -28474,13 +28169,13 @@ window.addEventListener('mouseup', (e) => {
 
 window.addEventListener("gamepadconnected", (e) => {
     console.log("Gamepad connected");
-    gamepadIndex = e.gamepad.index;
+    GameContext.gamepadIndex = e.gamepad.index;
     initAudio();
 });
 
 window.addEventListener("gamepaddisconnected", (e) => {
-    if (gamepadIndex === e.gamepad.index) gamepadIndex = null;
-    lastGamepadInputAt = 0;
+    if (GameContext.gamepadIndex === e.gamepad.index) GameContext.gamepadIndex = null;
+    GameContext.lastGamepadInputAt = 0;
     updateInputMode(Date.now());
 });
 
@@ -28531,21 +28226,21 @@ if (resumeStartBtn) {
         document.getElementById('start-screen').style.display = 'none';
 
         // Unpause the game (same logic as togglePause)
-        if (gamePaused && pauseStartTime) {
-            const pauseMs = Math.max(0, getGameNowMs() - pauseStartTime);
+        if (GameContext.gamePaused && GameContext.pauseStartTime) {
+            const pauseMs = Math.max(0, getGameNowMs() - GameContext.pauseStartTime);
             if (pauseMs > 0) {
-                pausedAccumMs += pauseMs;
+                GameContext.pausedAccumMs += pauseMs;
                 shiftPausedTimers(pauseMs);
             }
-            pauseStartTime = null;
+            GameContext.pauseStartTime = null;
         }
-        gamePaused = false;
+        GameContext.gamePaused = false;
 
         if (musicEnabled) startMusic();
         showOverlayMessage("RESUMED", '#0f0', 1500);
 
         // Once resumed, can't resume again until quitting to menu
-        canResumeGame = false;
+        GameContext.canResumeGame = false;
 
         // Update resume button state
         if (window.updateResumeButtonState) {
@@ -28595,7 +28290,7 @@ if (upgradesBackBtn) {
 
         // Wait one frame then setup start screen navigation
         requestAnimationFrame(() => {
-            menuSelectionIndex = 0;
+            GameContext.menuSelectionIndex = 0;
             const active = getActiveMenuElements();
             if (active.length > 0) {
                 updateMenuVisuals(active);
@@ -28632,7 +28327,7 @@ function showUpgradesMenu() {
     // Update meta UI to show current values
     updateMetaUI();
 
-    menuSelectionIndex = 0;
+    GameContext.menuSelectionIndex = 0;
     menuDebounce = Date.now() + 300;
 
     // Wait one frame to ensure DOM has updated, then setup navigation
@@ -28647,7 +28342,7 @@ function showUpgradesMenu() {
 }
 
 function showRunUpgrades() {
-    if (!player || !player.inventory) {
+    if (!GameContext.player || !GameContext.player.inventory) {
         console.warn('[RUN UPGRADES] Player not initialized');
         return;
     }
@@ -28658,14 +28353,14 @@ function showRunUpgrades() {
     container.innerHTML = '';
 
     // Get all collected upgrades
-    const collectedUpgrades = Object.entries(player.inventory).filter(([id, tier]) => tier > 0);
+    const collectedUpgrades = Object.entries(GameContext.player.inventory).filter(([id, tier]) => tier > 0);
 
     if (collectedUpgrades.length === 0) {
         container.innerHTML = '<div class="run-upgrades-empty">No upgrades collected yet</div>';
     } else {
         // Group by category
         UPGRADE_DATA.categories.forEach(category => {
-            const categoryUpgrades = category.upgrades.filter(u => player.inventory[u.id] > 0);
+            const categoryUpgrades = category.upgrades.filter(u => GameContext.player.inventory[u.id] > 0);
             if (categoryUpgrades.length === 0) return;
 
             const categoryDiv = document.createElement('div');
@@ -28677,7 +28372,7 @@ function showRunUpgrades() {
             categoryDiv.appendChild(categoryTitle);
 
             categoryUpgrades.forEach(upgrade => {
-                const tier = player.inventory[upgrade.id];
+                const tier = GameContext.player.inventory[upgrade.id];
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'run-upgrade-item';
 
@@ -28730,7 +28425,7 @@ function toggleDebugButton() {
 }
 
 function showDebugMenu() {
-    if (!player || !player.inventory) {
+    if (!GameContext.player || !GameContext.player.inventory) {
         console.warn('[DEBUG] Player not initialized');
         return;
     }
@@ -28751,7 +28446,7 @@ function showDebugMenu() {
             categoryDiv.appendChild(categoryTitle);
 
             category.upgrades.forEach(upgrade => {
-                const currentTier = player.inventory[upgrade.id] || 0;
+                const currentTier = GameContext.player.inventory[upgrade.id] || 0;
                 const maxTier = upgrade.tier5 ? 5 : (upgrade.tier4 ? 4 : 3);
 
                 const itemDiv = document.createElement('div');
@@ -28828,12 +28523,12 @@ function hideDebugMenu() {
 }
 
 function grantDebugUpgrade(upgradeId, tier, upgradeName) {
-    if (!player) {
+    if (!GameContext.player) {
         console.warn('[DEBUG] No player to grant upgrade to');
         return;
     }
 
-    const prevTier = player.inventory[upgradeId] || 0;
+    const prevTier = GameContext.player.inventory[upgradeId] || 0;
 
     applyUpgrade(upgradeId, tier);
 
@@ -28874,7 +28569,7 @@ document.getElementById('quit-btn').addEventListener('click', async () => {
 });
 document.getElementById('music-btn').addEventListener('click', toggleMusic);
 
-// Pause menu hover handlers - update menuSelectionIndex when hovering
+// Pause menu hover handlers - update GameContext.menuSelectionIndex when hovering
 const pauseMenuButtons = [
     'resume-btn',
     'pause-upgrades-btn',
@@ -28893,7 +28588,7 @@ pauseMenuButtons.forEach(btnId => {
             const active = getActiveMenuElements();
             const index = active.indexOf(btn);
             if (index >= 0) {
-                menuSelectionIndex = index;
+                GameContext.menuSelectionIndex = index;
                 updateMenuVisuals(active);
             }
         });
@@ -28901,7 +28596,7 @@ pauseMenuButtons.forEach(btnId => {
         btn.addEventListener('mouseleave', () => {
             const active = getActiveMenuElements();
             // Default back to resume button (index 0)
-            menuSelectionIndex = 0;
+            GameContext.menuSelectionIndex = 0;
             updateMenuVisuals(active);
         });
     }
@@ -29065,7 +28760,7 @@ async function openSettingsMenu() {
 
     // Disable pointer-events on pause menu when settings is open to prevent click-through
     const pauseMenu = document.getElementById('pause-menu');
-    if (pauseMenu && gamePaused) {
+    if (pauseMenu && GameContext.gamePaused) {
         pauseMenu.style.pointerEvents = 'none';
     }
 }
@@ -29096,7 +28791,7 @@ if (settingsCloseBtn) {
     settingsCloseBtn.addEventListener('click', () => {
         settingsMenu.style.display = 'none';
         // If we were paused when opening settings, return to pause menu
-        if (gamePaused) {
+        if (GameContext.gamePaused) {
             const pauseMenu = document.getElementById('pause-menu');
             pauseMenu.style.display = 'block';
             pauseMenu.style.pointerEvents = 'auto';
@@ -29151,7 +28846,7 @@ if (settingsApplyBtn && isElectron) {
         } else {
             showOverlayMessage("SETTINGS SAVED", '#0f0', 1500);
             settingsMenu.style.display = 'none';
-            if (gamePaused) {
+            if (GameContext.gamePaused) {
                 const pauseMenu = document.getElementById('pause-menu');
                 pauseMenu.style.display = 'block';
                 pauseMenu.style.pointerEvents = 'auto';
@@ -29190,7 +28885,7 @@ allMenuElements.forEach(el => {
 });
 
 requestAnimationFrame(() => {
-    menuSelectionIndex = 0;
+    GameContext.menuSelectionIndex = 0;
     const initialActiveElements = getActiveMenuElements();
     if (initialActiveElements.length > 0) {
         updateMenuVisuals(initialActiveElements);
@@ -29199,10 +28894,10 @@ requestAnimationFrame(() => {
 });
 
 // Initialize profile system BEFORE loading meta profile
-currentProfileName = localStorage.getItem(SAVE_LAST_KEY) || null;
+GameContext.currentProfileName = localStorage.getItem(SAVE_LAST_KEY) || null;
 
 let autoCreated = false;
-if (!currentProfileName) {
+if (!GameContext.currentProfileName) {
     const existing = listSaveSlots();
     if (existing.length === 0) {
         console.log('[PROFILE] Auto-creating default profile');
@@ -29253,7 +28948,7 @@ updateStartScreenDisplay();
 
 // Save on app close (beforeunload event)
 window.addEventListener('beforeunload', () => {
-    if (currentProfileName) {
+    if (GameContext.currentProfileName) {
         try {
             autoSaveToCurrentProfile(); // Saves game state
             saveMetaProfile();          // Saves meta shop upgrades
@@ -29267,7 +28962,7 @@ window.addEventListener('beforeunload', () => {
 if (window.SpacebrosApp && window.SpacebrosApp.ipcRenderer) {
     window.SpacebrosApp.ipcRenderer.on('app-before-quit', () => {
         console.log('[SAVE] App quit detected, saving profiles...');
-        if (currentProfileName) {
+        if (GameContext.currentProfileName) {
             try {
                 autoSaveToCurrentProfile(); // Saves game state
                 console.log('[SAVE] Game profile saved');

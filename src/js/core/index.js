@@ -7,3 +7,4 @@ export * from './constants.js';
 export * from './math.js';
 export * from './state.js';
 export * from './performance.js';
+export * from './game-context.js';
