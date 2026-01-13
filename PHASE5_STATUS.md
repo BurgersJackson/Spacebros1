@@ -30,8 +30,8 @@ Phase 5 focuses on extracting remaining system logic out of `main.js` into `src/
 
 ### 4. Game Loop ✅ (Partial)
 - **File:** `src/js/systems/game-loop.js`
-- **Status:** `mainLoop` extracted and initialized from `src/js/main.js`.
-- **Notes:** `gameLoopLogic` still lives in `src/js/main.js`.
+- **Status:** `mainLoop` and `gameLoopLogic` extracted and initialized from `src/js/main.js`.
+- **Notes:** Logic now lives in the systems module with dependency registration.
 
 ---
 
@@ -41,7 +41,7 @@ Phase 5 focuses on extracting remaining system logic out of `main.js` into `src/
 - Verify collision manager against in-game edge cases (warp maze, cave, anomaly walls).
 
 ### 2. Game Loop
-- Extract `gameLoopLogic` into `src/js/systems/game-loop.js`.
+- Validate `gameLoopLogic` after extraction (timers, spawns, UI, Pixi render).
 - Provide dependency injection for render hooks and state transitions.
 - Keep `main.js` as a bootstrap coordinator.
 
