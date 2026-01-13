@@ -12,14 +12,21 @@
     "start:smoke": "node scripts/start-electron.js --smoke",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win --x64",
-    "dist:linux": "electron-builder --linux"
+    "dist:linux": "electron-builder --linux",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
   },
   "dependencies": {
     "phaser": "^3.90.0"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.17",
+    "@vitest/ui": "^4.0.17",
     "electron": "^35.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "vitest": "^4.0.17"
   },
   "build": {
     "appId": "com.spacebros.neonspacecave",

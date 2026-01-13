@@ -120,7 +120,6 @@ import {
     spawnNewPinwheelRelative,
     spawnOneAsteroidRelative,
     spawnOneWarpAsteroidRelative,
-    spawnRadiationStormRelative,
     spawnSectorPOIs,
     registerInputDependencies,
     initInputListeners,
