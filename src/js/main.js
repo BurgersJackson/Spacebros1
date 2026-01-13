@@ -120,6 +120,12 @@ import {
     setupGameWorld
 } from './systems/world-setup.js';
 import {
+    registerMiniEventDependencies,
+    updateMiniEventUI,
+    clearMiniEvent,
+    completeContract
+} from './systems/mini-event-manager.js';
+import {
     SAVE_PREFIX,
     SAVE_LAST_KEY,
     applyPendingProfile as applyPendingProfileSystem,
@@ -886,34 +892,6 @@ function compactArray(arr) {
 
 
 
-function updateMiniEventUI() {
-    const el = document.getElementById('event-display');
-    if (!el) return;
-    if (!GameContext.miniEvent || GameContext.miniEvent.dead) {
-        el.style.display = 'none';
-        el.innerText = 'EVENT: NONE';
-        return;
-    }
-    el.style.display = 'block';
-    if (typeof GameContext.miniEvent.getUiText === 'function') el.innerText = GameContext.miniEvent.getUiText();
-    else el.innerText = 'EVENT: ACTIVE';
-}
-
-function clearMiniEvent() {
-    if (!GameContext.miniEvent) return;
-    if (typeof GameContext.miniEvent.kill === 'function') {
-        GameContext.miniEvent.kill();
-    } else {
-        GameContext.miniEvent.dead = true;
-    }
-    pixiCleanupObject(GameContext.miniEvent);
-    GameContext.miniEvent = null;
-}
-
-function completeContract(success = true) {
-    completeContractSystem(success);
-}
-
 registerContractHandlers({
     findSpawnPointRelative,
     ContractBeacon,
@@ -987,6 +965,12 @@ registerWorldSetupDependencies({
     updateWarpUI,
     updateXpUI
 });
+
+registerMiniEventDependencies({
+    completeContractSystem,
+    pixiCleanupObject
+});
+
 function showFloatingText(x, y, amount, color = '#ff0', key = null) {
     if (key) {
         getOrCreateFloatingText(GameContext.floatingTexts, key, x, y, amount, color, {

@@ -1,6 +1,6 @@
 # Phase 7: Final Reduction to ~1,000 Lines - Status Report
 
-**Last Updated:** 2026-01-12T23:56:35-08:00
+**Last Updated:** 2026-01-12T23:58:24-08:00
 **Status:** IN PROGRESS
 
 ---
@@ -9,9 +9,9 @@
 Reduce `src/js/main.js` from 6,411 lines to under 1,000 lines by extracting remaining initialization and asset setup logic into dedicated modules.
 
 ## Current Metrics
-- **Current lines:** 1,546
+- **Current lines:** 1,530
 - **Target lines:** < 1,000
-- **Remaining to remove:** 546 lines
+- **Remaining to remove:** 530 lines
 
 ## Planned Work
 
@@ -61,6 +61,11 @@ Reduce `src/js/main.js` from 6,411 lines to under 1,000 lines by extracting rema
 - **New module:** `src/js/systems/world-setup.js`
 - **Expected removal:** ~50-80 lines
 
+### 10) Extract Mini Event Helpers
+- **Target:** mini event UI, clear handler, contract wrapper
+- **New module:** `src/js/systems/mini-event-manager.js`
+- **Expected removal:** ~10-20 lines
+
 ## Testing Plan
 Run after each extraction step:
 - `npm run start:dev` and verify:
@@ -79,5 +84,6 @@ Run after each extraction step:
 - [x] World helpers extracted
 - [x] Sector flow extracted
 - [x] World setup extracted
+- [x] Mini event helpers extracted
 - [ ] Main.js trimmed to < 1,000 lines
 - [ ] Final smoke test completed

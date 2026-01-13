@@ -5,10 +5,10 @@
 ## Current Progress
 
 **Starting lines**: 6,411
-**Current lines**: 1,546
-**Lines removed**: 4,865 (75.9%)
+**Current lines**: 1,530
+**Lines removed**: 4,881 (76.1%)
 **Target**: Under 1,000 lines
-**Remaining to remove**: 546 lines
+**Remaining to remove**: 530 lines
 
 ---
 
@@ -162,6 +162,11 @@
   - Created: `src/js/systems/world-setup.js`
   - Extracted: setupGameWorld reset logic
 
+### Phase 19: Mini Event Helpers
+- [x] **Mini event helpers** (~15 lines)
+  - Created: `src/js/systems/mini-event-manager.js`
+  - Extracted: UI updater, clear handler, contract wrapper
+
 ### Phase 1: Simple Entity Classes
 - [x] **WarpGate class** (~80 lines)
   - Removed duplicate class from `src/js/main.js`
@@ -217,3 +222,4 @@
 - [x] Smoke test after Phase 16 (World helpers) - PASSED
 - [x] Smoke test after Phase 17 (Sector flow) - PASSED
 - [x] Smoke test after Phase 18 (World setup) - PASSED
+- [x] Smoke test after Phase 19 (Mini event helpers) - PASSED
