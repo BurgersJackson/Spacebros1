@@ -1,5 +1,5 @@
 import { GameContext } from '../core/game-context.js';
-import { updateContractUI as updateContractUIHelper } from '../utils/ui-helpers.js';
+import { updateContractUI as updateContractUIHud } from '../ui/hud.js';
 
 let findSpawnPointRelativeFn = null;
 let ContractBeaconCtor = null;
@@ -24,7 +24,7 @@ export function registerContractHandlers(handlers) {
 }
 
 export function updateContractUI() {
-    updateContractUIHelper(GameContext);
+    updateContractUIHud(GameContext);
 }
 
 export function clearContractEntities() {

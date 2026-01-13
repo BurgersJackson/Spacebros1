@@ -1,5 +1,5 @@
 import { GameContext } from '../core/game-context.js';
-import { updateHealthUI, updateTurboUI, updateWarpUI, updateXpUI } from '../utils/ui-helpers.js';
+import { updateHealthUI, updateTurboUI, updateWarpUI, updateXpUI } from '../ui/hud.js';
 
 export const SAVE_PREFIX = 'neon_space_profile_v1_';
 export const SAVE_LAST_KEY = 'neon_space_profile_last';

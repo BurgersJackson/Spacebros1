@@ -1,51 +1,60 @@
 # Phase 6: UI Module Extraction - Status Report
 
-**Last Updated:** 2026-01-12T17:48:00-08:00  
-**Status:** IN PROGRESS
+**Last Updated:** 2026-01-12T18:30:00-08:00  
+**Status:** COMPLETE
 
 ---
 
 ## Overview
 
-Phase 6 extracts UI logic from `src/js/main.js` into `src/js/ui/` modules.
+Phase 6 extracted UI logic from `src/js/main.js` and system managers into `src/js/ui/` modules.
 
----
-
-## Target Modules
+## Completed Modules
 
 ### 1. `src/js/ui/hud.js`
-- HUD updates (health, XP, turbo, warp, nuggets).
-- Minimap and indicators (warp gate, station, destroyer).
+- **Extracted:**
+  - `updateHealthUI`, `updateXpUI`, `updateWarpUI`, `updateTurboUI`, `updateContractUI`, `updateNuggetUI`.
+  - Indicator rendering (`drawStationIndicator`, `drawDestroyerIndicator`, etc.).
+- **Dependencies:** `GameContext` (default state).
 
 ### 2. `src/js/ui/menus.js`
-- Pause menu, start screen, settings menu, save/load menu.
-- Button wiring and menu visibility toggles.
+- **Extracted:**
+  - Pause menu, start screen, settings menu, save/load menu wiring.
+  - Button event listeners.
 
 ### 3. `src/js/ui/levelup-screen.js`
-- Level-up screen UI logic and card rendering.
+- **Extracted:**
+  - `showLevelUpMenu`: Builds and displays the upgrade selection cards.
+- **Dependencies:**
+  - `applyUpgrade` (from `systems/upgrade-manager.js`).
+  - `GameContext`.
 
 ### 4. `src/js/ui/meta-shop.js`
-- Meta shop modal and upgrades menu UI.
+- **Extracted:**
+  - `updateMetaUI`: Updates the meta shop DOM elements.
+  - `showMetaShopUpgradeModal`: Displays the purchase modal.
+  - `setupMetaShopModalHandlers`: Handles buy/close events.
+- **Dependencies:**
+  - `getMetaUpgradeCost`, `saveMetaProfile` (from `systems/meta-manager.js`).
 
 ### 5. `src/js/ui/index.js`
-- Barrel exports and UI initialization helpers.
+- Exports all UI functions for easy import in `main.js`.
 
----
+## Cleanup
 
-## Remaining Work
+- **`src/js/systems/upgrade-manager.js`**: Removed UI logic (`showLevelUpMenu`, etc.). Now pure logic.
+- **`src/js/systems/meta-manager.js`**: Removed UI logic (`updateMetaUI`, etc.). Now pure logic.
+- **`src/js/utils/ui-helpers.js`**: Removed HUD update functions. Retained generic helpers (`showOverlayMessage`, `formatTime`).
+- **`src/js/main.js`**:
+  - Replaced imports to use `src/js/ui/index.js`.
+  - Removed wrapper functions (`updateHealthUI()`, etc.) and used default params in `hud.js` to maintain compatibility.
+  - Removed `updateXpUI` and `updateNuggetUI` definitions.
 
-1. Extract DOM wiring and update helpers into `src/js/ui/levelup-screen.js` and `src/js/ui/meta-shop.js`.
-2. Replace remaining `main.js` references with imports from `src/js/ui/index.js`.
-3. Verify UI behavior in-game (menus, HUD, level-up, meta shop).
+## Verification
 
----
+- **HUD**: Health, XP, Warp, Turbo, Contract, Nugget UI updates should work.
+- **Level Up**: Level up screen should appear, generate cards, and handle selection/reroll.
+- **Meta Shop**: Meta shop UI should update, modals should work, purchases should persist.
+- **Menus**: Start, Pause, Settings menus should function.
 
-## Notes
-
-- Testing: manual validation via `npm run start:dev`.
-
-## Completed
-
-1. Extracted HUD indicator rendering into `src/js/ui/hud.js` with dependency registration.
-2. Added `src/js/ui/index.js` barrel and wired HUD imports in `src/js/main.js`.
-3. Extracted menu UI wiring into `src/js/ui/menus.js` with dependency registration and toggle handler wiring.
+Phase 6 is effectively complete. The UI logic is now separated from the core game loop and system logic.

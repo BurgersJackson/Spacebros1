@@ -90,6 +90,8 @@ export const GameContext = {
     gunboatLevel2Unlocked: false,
     minimapFrame: 0,
     pendingTransitionClear: false,
+    suppressWarpGateUntil: 0,
+    suppressWarpInputUntil: 0,
     cruiserEncounterCount: 0,
     pendingStations: 0,
     currentDestroyerType: 1,
@@ -278,6 +280,8 @@ export const GameContext = {
         this.gunboatLevel2Unlocked = false;
         this.minimapFrame = 0;
         this.pendingTransitionClear = false;
+        this.suppressWarpGateUntil = 0;
+        this.suppressWarpInputUntil = 0;
         this.pendingStations = 0;
         this.stationHealthBarVisible = false;
         this.rerollTokens = 0;

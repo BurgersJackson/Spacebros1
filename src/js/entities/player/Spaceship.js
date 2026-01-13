@@ -27,7 +27,7 @@ let _updateHealthUI = null;
 let _updateWarpUI = null;
 let _updateXpUI = null;
 let _updateTurboUI = null;
-let _showLevelUpMenuSystem = null;
+let _showLevelUpMenu = null;
 let _killPlayer = null;
 let _checkWallCollision = null;
 let _rayCast = null;
@@ -51,7 +51,7 @@ export function registerSpaceshipDependencies(deps) {
     if (deps.updateWarpUI) _updateWarpUI = deps.updateWarpUI;
     if (deps.updateXpUI) _updateXpUI = deps.updateXpUI;
     if (deps.updateTurboUI) _updateTurboUI = deps.updateTurboUI;
-    if (deps.showLevelUpMenuSystem) _showLevelUpMenuSystem = deps.showLevelUpMenuSystem;
+    if (deps.showLevelUpMenu) _showLevelUpMenu = deps.showLevelUpMenu;
     if (deps.killPlayer) _killPlayer = deps.killPlayer;
     if (deps.checkWallCollision) _checkWallCollision = deps.checkWallCollision;
     if (deps.rayCast) _rayCast = deps.rayCast;
@@ -262,7 +262,7 @@ export class Spaceship extends Entity {
         // Pause and Show Menu
         playSound('levelup');
         GameContext.gameActive = false; // Soft pause logic required
-        _showLevelUpMenuSystem();
+        if (_showLevelUpMenu) _showLevelUpMenu();
     }
 
     takeHit(damage, ignoreShields = false) {

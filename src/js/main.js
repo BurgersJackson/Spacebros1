@@ -62,11 +62,7 @@ import {
 import {
     clearOverlayMessageTimeout,
     formatTime,
-    showOverlayMessage,
-    updateHealthUI as updateHealthUIHelper,
-    updateTurboUI as updateTurboUIHelper,
-    updateWarpUI as updateWarpUIHelper,
-    updateXpUI as updateXpUIHelper
+    showOverlayMessage
 } from './utils/ui-helpers.js';
 import {
     SAVE_PREFIX,
@@ -84,11 +80,9 @@ import {
     depositMetaNuggets as depositMetaNuggetsSystem,
     getReturningFromModal as getReturningFromModalSystem,
     loadMetaProfile as loadMetaProfileSystem,
-    registerMetaShopNavigationHandlers,
     resetMetaProfile as resetMetaProfileSystem,
     saveMetaProfile as saveMetaProfileSystem,
-    setReturningFromModal as setReturningFromModalSystem,
-    updateMetaUI as updateMetaUISystem
+    setReturningFromModal as setReturningFromModalSystem
 } from './systems/meta-manager.js';
 import {
     getArenaCountdownTimeLeft,
@@ -108,9 +102,7 @@ import {
     updateContractUI as updateContractUISystem
 } from './systems/contract-manager.js';
 import {
-    applyUpgrade as applyUpgradeSystem,
-    registerUpgradeHandlers,
-    showLevelUpMenu as showLevelUpMenuSystem
+    applyUpgrade as applyUpgradeSystem
 } from './systems/upgrade-manager.js';
 import {
     registerHudDependencies,
@@ -118,12 +110,21 @@ import {
     initMenuUi,
     toggleDebugButton,
     clearPixiUiText,
+    hideDebugMenu,
     drawStationIndicator,
     drawDestroyerIndicator,
     drawWarpGateIndicator,
     drawContractIndicator,
     drawMiniEventIndicator,
-    drawSlackerMouseLine
+    drawSlackerMouseLine,
+    updateHealthUI,
+    updateXpUI,
+    updateWarpUI,
+    updateTurboUI,
+    updateContractUI,
+    updateNuggetUI,
+    showLevelUpMenu,
+    updateMetaUI
 } from './ui/index.js';
 import {
     registerSpawnManagerDependencies,
@@ -4724,9 +4725,7 @@ function spawnBarrelSmoke(x, y, angle) {
 // Companion Drones
 
 
-function updateContractUI() {
-    updateContractUISystem();
-}
+
 
 function updateMiniEventUI() {
     const el = document.getElementById('event-display');
@@ -4774,18 +4773,9 @@ function findSpawnPointRelative(random = false, min = 1500, max = 2500) {
     return findSpawnPointRelativeHelper(GameContext, random, min, max);
 }
 
-function updateHealthUI() {
-    updateHealthUIHelper(GameContext);
-}
 
-function updateXpUI() {
-    updateXpUIHelper(GameContext);
-}
 
-function updateNuggetUI() {
-    const el = document.getElementById('nugget-count');
-    if (el) el.innerText = (GameContext.metaProfile.bank || 0) + GameContext.spaceNuggets;
-}
+
 
 // --- Profile Save / Load (player stats only) ---
 let selectedProfileName = null;
@@ -5104,12 +5094,11 @@ async function deleteSelectedProfile() {
     }
 
     deleteProfileRecord(selectedProfileName);
-    if (!GameContext.currentProfileName) {
-        resetProfileStats();
-        resetMetaProfileSystem(); // Clear in-memory upgrades
-        updateMetaUISystem();     // Update UI to show 0 bank/upgrades
-        updateStartScreenDisplay();
-    }
+        if (success) {
+            updateStartScreenDisplay();
+            updateMetaUI();
+            if (showOverlayMessage) showOverlayMessage(`DELETED ${nameToDelete}`, '#f00', 1500);
+        }
 
     selectedProfileName = GameContext.currentProfileName;
     showSaveMenu();
@@ -5272,18 +5261,12 @@ function wipeProfiles() {
     resetMetaProfileSystem();
     GameContext.rerollTokens = 0;
     GameContext.currentProfileName = null;
-    updateMetaUISystem();
+    updateMetaUI();
     updateStartScreenDisplay();
     showOverlayMessage("PROFILE RESET - STARTING FRESH", '#0f0', 2000);
 }
 
-function updateWarpUI() {
-    updateWarpUIHelper(GameContext);
-}
 
-function updateTurboUI() {
-    updateTurboUIHelper(GameContext);
-}
 
 function setupGameWorld() {
     GameContext.player.respawn();
@@ -5522,30 +5505,9 @@ registerGameLoopLogicDependencies({
     ShootingStar
 });
 
-registerMetaShopNavigationHandlers({
-    getActiveMenuElements,
-    updateMenuVisuals,
-    getGpState: () => gpState
-});
 
-registerUpgradeHandlers({
-    playSound,
-    showOverlayMessage,
-    updateHealthUI,
-    updateTurboUI,
-    updateNuggetUI,
-    getActiveMenuElements,
-    updateMenuVisuals,
-    startMusic,
-    isMusicEnabled: () => musicEnabled,
-    saveMetaProfile: saveMetaProfileSystem,
-    getGameNowMs,
-    setSimAccMs: (value) => { simAccMs = value; },
-    setSimLastPerfAt: (value) => { simLastPerfAt = value; },
-    setSuppressWarpGateUntil: (value) => { suppressWarpGateUntil = value; },
-    setSuppressWarpInputUntil: (value) => { suppressWarpInputUntil = value; },
-    spawnDrone
-});
+
+
 
 // Register dependencies for extracted entity classes
 registerAsteroidDependencies({
@@ -5639,7 +5601,7 @@ Cave.registerCaveDependencies({
     applyAOEDamageToPlayer,
     awardCoinsInstant,
     killPlayer,
-    showLevelUpMenuSystem,
+    showLevelUpMenu,
     startSectorTransition,
     resetWarpState,
     clearMiniEvent,
@@ -5792,7 +5754,7 @@ registerSpaceshipDependencies({
     updateWarpUI,
     updateXpUI,
     updateTurboUI,
-    showLevelUpMenuSystem,
+    showLevelUpMenu,
     killPlayer,
     checkWallCollision,
     rayCast,
@@ -6205,7 +6167,7 @@ registerMenuDependencies({
     startMusic,
     showOverlayMessage,
     showSaveMenu,
-    updateMetaUI: updateMetaUISystem,
+    updateMetaUI,
     getActiveMenuElements,
     updateMenuVisuals,
     setMenuDebounce,
@@ -6541,7 +6503,7 @@ if (!GameContext.currentProfileName) {
 if (!autoCreated) {
     loadMetaProfileSystem();
 }
-updateMetaUISystem();
+updateMetaUI();
 updateStartScreenDisplay();
 
 // Save on app close (beforeunload event)

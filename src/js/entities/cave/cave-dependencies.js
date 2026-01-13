@@ -18,7 +18,7 @@ export const caveDeps = {
     applyAOEDamageToPlayer: null,
     awardCoinsInstant: null,
     killPlayer: null,
-    showLevelUpMenuSystem: null,
+    showLevelUpMenu: null,
     startSectorTransition: null,
     resetWarpState: null, // used in startCaveSector2
     clearMiniEvent: null, // used in startCaveSector2

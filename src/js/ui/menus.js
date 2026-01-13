@@ -55,6 +55,224 @@ export function registerMenuDependencies(deps) {
     if (deps.setDebugMenuVisible) setDebugMenuVisibleRef = deps.setDebugMenuVisible;
 }
 
+export function showUpgradesMenu() {
+    const levelupScreen = document.getElementById('levelup-screen');
+    if (levelupScreen) levelupScreen.style.display = 'none';
+    const startScreen = document.getElementById('start-screen');
+    if (startScreen) {
+        startScreen.style.display = 'none';
+        startScreen.style.visibility = 'hidden';
+    }
+    const upgradesMenu = document.getElementById('upgrades-menu');
+    if (upgradesMenu) {
+        upgradesMenu.style.display = 'block';
+        upgradesMenu.style.visibility = 'visible';
+    }
+
+    const allMenuElements = document.querySelectorAll('button, .upgrade-card, .meta-item');
+    allMenuElements.forEach(el => {
+        el.classList.remove('selected');
+        if (el.tagName === 'BUTTON') el.blur();
+    });
+
+    if (updateMetaUIRef) updateMetaUIRef();
+
+    if (GameContextRef) GameContextRef.menuSelectionIndex = 0;
+    if (setMenuDebounceRef) setMenuDebounceRef(Date.now() + 300);
+
+    requestAnimationFrame(() => {
+        const active = getActiveMenuElementsRef ? getActiveMenuElementsRef() : [];
+        if (active.length > 0) {
+            if (updateMenuVisualsRef) updateMenuVisualsRef(active);
+            active[0].focus();
+        }
+    });
+}
+
+export function showRunUpgrades() {
+    if (!GameContextRef || !GameContextRef.player || !GameContextRef.player.inventory) {
+        console.warn('[RUN UPGRADES] Player not initialized');
+        return;
+    }
+
+    const container = document.getElementById('run-upgrades-container');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    const collectedUpgrades = Object.entries(GameContextRef.player.inventory).filter(([id, tier]) => tier > 0);
+
+    if (collectedUpgrades.length === 0) {
+        container.innerHTML = '<div class="run-upgrades-empty">No upgrades collected yet</div>';
+    } else {
+        UPGRADE_DATA.categories.forEach(category => {
+            const categoryUpgrades = category.upgrades.filter(u => GameContextRef.player.inventory[u.id] > 0);
+            if (categoryUpgrades.length === 0) return;
+
+            const categoryDiv = document.createElement('div');
+            categoryDiv.className = 'run-upgrade-category';
+
+            const categoryTitle = document.createElement('div');
+            categoryTitle.className = 'run-upgrade-category-title';
+            categoryTitle.textContent = category.name;
+            categoryDiv.appendChild(categoryTitle);
+
+            categoryUpgrades.forEach(upgrade => {
+                const tier = GameContextRef.player.inventory[upgrade.id];
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'run-upgrade-item';
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'run-upgrade-name';
+                nameSpan.textContent = upgrade.name;
+
+                const tierSpan = document.createElement('span');
+                tierSpan.className = 'run-upgrade-tier';
+                tierSpan.textContent = `TIER ${tier}`;
+
+                itemDiv.appendChild(nameSpan);
+                itemDiv.appendChild(tierSpan);
+                categoryDiv.appendChild(itemDiv);
+            });
+
+            container.appendChild(categoryDiv);
+        });
+    }
+
+    document.getElementById('pause-menu').style.display = 'none';
+    document.getElementById('run-upgrades-screen').style.display = 'block';
+
+    setTimeout(() => {
+        document.getElementById('run-upgrades-back-btn').focus();
+    }, 100);
+}
+
+export function hideRunUpgrades() {
+    document.getElementById('run-upgrades-screen').style.display = 'none';
+    document.getElementById('pause-menu').style.display = 'block';
+
+    setTimeout(() => {
+        document.getElementById('pause-upgrades-btn').focus();
+    }, 100);
+}
+
+export function showDebugMenu() {
+    if (!GameContextRef || !GameContextRef.player || !GameContextRef.player.inventory) {
+        console.warn('[DEBUG] Player not initialized');
+        return;
+    }
+
+    const container = document.getElementById('debug-upgrades-container');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    import('../core/constants.js').then(({ UPGRADE_DATA: upgradeData }) => {
+        upgradeData.categories.forEach(category => {
+            const categoryDiv = document.createElement('div');
+            categoryDiv.className = 'debug-category';
+
+            const categoryTitle = document.createElement('div');
+            categoryTitle.className = 'debug-category-title';
+            categoryTitle.textContent = category.name;
+            categoryDiv.appendChild(categoryTitle);
+
+            category.upgrades.forEach(upgrade => {
+                const currentTier = GameContextRef.player.inventory[upgrade.id] || 0;
+                const maxTier = upgrade.tier5 ? 5 : (upgrade.tier4 ? 4 : 3);
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'debug-upgrade-item';
+
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'debug-upgrade-info';
+
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'debug-upgrade-name';
+                nameDiv.textContent = `${upgrade.name} (Tier ${currentTier})`;
+                infoDiv.appendChild(nameDiv);
+
+                if (upgrade.notes) {
+                    const notesDiv = document.createElement('div');
+                    notesDiv.className = 'debug-upgrade-notes';
+                    notesDiv.textContent = upgrade.notes;
+                    infoDiv.appendChild(notesDiv);
+                }
+
+                itemDiv.appendChild(infoDiv);
+
+                const buttonsDiv = document.createElement('div');
+                buttonsDiv.className = 'debug-tier-buttons';
+
+                for (let tier = 1; tier <= maxTier; tier++) {
+                    const btn = document.createElement('button');
+                    btn.className = 'debug-tier-btn';
+                    btn.textContent = `T${tier}`;
+                    btn.dataset.upgrade = upgrade.id;
+                    btn.dataset.tier = tier;
+                    btn.dataset.name = upgrade.name;
+
+                    if (tier === currentTier) {
+                        btn.classList.add('current-tier');
+                    }
+
+                    buttonsDiv.appendChild(btn);
+                }
+
+                itemDiv.appendChild(buttonsDiv);
+                categoryDiv.appendChild(itemDiv);
+            });
+
+            container.appendChild(categoryDiv);
+        });
+
+        container.querySelectorAll('.debug-tier-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const upgradeId = btn.dataset.upgrade;
+                const tier = parseInt(btn.dataset.tier);
+                const upgradeName = btn.dataset.name;
+                grantDebugUpgrade(upgradeId, tier, upgradeName);
+            });
+        });
+
+        document.getElementById('pause-menu').style.display = 'none';
+        document.getElementById('debug-menu').style.display = 'block';
+
+        setTimeout(() => {
+            document.getElementById('debug-back-btn').focus();
+        }, 100);
+    }).catch(err => console.error('[DEBUG] Failed to load UPGRADE_DATA:', err));
+}
+
+export function hideDebugMenu() {
+    document.getElementById('debug-menu').style.display = 'none';
+    document.getElementById('pause-menu').style.display = 'block';
+
+    setTimeout(() => {
+        document.getElementById('debug-btn').focus();
+    }, 100);
+}
+
+function grantDebugUpgrade(upgradeId, tier, upgradeName) {
+    if (!GameContextRef || !GameContextRef.player) {
+        console.warn('[DEBUG] No player to grant upgrade to');
+        return;
+    }
+
+    const prevTier = GameContextRef.player.inventory[upgradeId] || 0;
+
+    if (applyUpgradeRef) applyUpgradeRef(upgradeId, tier);
+
+    const action = tier > prevTier ? `UPGRADED to Tier ${tier}` :
+        tier < prevTier ? `DOWNGRADED to Tier ${tier}` :
+            `RESET to Tier ${tier}`;
+    if (showOverlayMessageRef) showOverlayMessageRef(`[DEBUG] ${upgradeName}: ${action}`, '#ff0', 1500, 10);
+
+    console.log(`[DEBUG] Granted upgrade: ${upgradeId} Tier ${tier} (was Tier ${prevTier})`);
+
+    showDebugMenu();
+}
+
 /**
  * @returns {void}
  */
@@ -185,224 +403,6 @@ export function initMenuUi() {
                 if (setMenuDebounceRef) setMenuDebounceRef(Date.now() + 300);
             });
         });
-    }
-
-    function showUpgradesMenu() {
-        const levelupScreen = document.getElementById('levelup-screen');
-        if (levelupScreen) levelupScreen.style.display = 'none';
-        const startScreen = document.getElementById('start-screen');
-        if (startScreen) {
-            startScreen.style.display = 'none';
-            startScreen.style.visibility = 'hidden';
-        }
-        const upgradesMenu = document.getElementById('upgrades-menu');
-        if (upgradesMenu) {
-            upgradesMenu.style.display = 'block';
-            upgradesMenu.style.visibility = 'visible';
-        }
-
-        const allMenuElements = document.querySelectorAll('button, .upgrade-card, .meta-item');
-        allMenuElements.forEach(el => {
-            el.classList.remove('selected');
-            if (el.tagName === 'BUTTON') el.blur();
-        });
-
-        if (updateMetaUIRef) updateMetaUIRef();
-
-        if (GameContextRef) GameContextRef.menuSelectionIndex = 0;
-        if (setMenuDebounceRef) setMenuDebounceRef(Date.now() + 300);
-
-        requestAnimationFrame(() => {
-            const active = getActiveMenuElementsRef ? getActiveMenuElementsRef() : [];
-            if (active.length > 0) {
-                if (updateMenuVisualsRef) updateMenuVisualsRef(active);
-                active[0].focus();
-            }
-        });
-    }
-
-    function showRunUpgrades() {
-        if (!GameContextRef || !GameContextRef.player || !GameContextRef.player.inventory) {
-            console.warn('[RUN UPGRADES] Player not initialized');
-            return;
-        }
-
-        const container = document.getElementById('run-upgrades-container');
-        if (!container) return;
-
-        container.innerHTML = '';
-
-        const collectedUpgrades = Object.entries(GameContextRef.player.inventory).filter(([id, tier]) => tier > 0);
-
-        if (collectedUpgrades.length === 0) {
-            container.innerHTML = '<div class="run-upgrades-empty">No upgrades collected yet</div>';
-        } else {
-            UPGRADE_DATA.categories.forEach(category => {
-                const categoryUpgrades = category.upgrades.filter(u => GameContextRef.player.inventory[u.id] > 0);
-                if (categoryUpgrades.length === 0) return;
-
-                const categoryDiv = document.createElement('div');
-                categoryDiv.className = 'run-upgrade-category';
-
-                const categoryTitle = document.createElement('div');
-                categoryTitle.className = 'run-upgrade-category-title';
-                categoryTitle.textContent = category.name;
-                categoryDiv.appendChild(categoryTitle);
-
-                categoryUpgrades.forEach(upgrade => {
-                    const tier = GameContextRef.player.inventory[upgrade.id];
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = 'run-upgrade-item';
-
-                    const nameSpan = document.createElement('span');
-                    nameSpan.className = 'run-upgrade-name';
-                    nameSpan.textContent = upgrade.name;
-
-                    const tierSpan = document.createElement('span');
-                    tierSpan.className = 'run-upgrade-tier';
-                    tierSpan.textContent = `TIER ${tier}`;
-
-                    itemDiv.appendChild(nameSpan);
-                    itemDiv.appendChild(tierSpan);
-                    categoryDiv.appendChild(itemDiv);
-                });
-
-                container.appendChild(categoryDiv);
-            });
-        }
-
-        document.getElementById('pause-menu').style.display = 'none';
-        document.getElementById('run-upgrades-screen').style.display = 'block';
-
-        setTimeout(() => {
-            document.getElementById('run-upgrades-back-btn').focus();
-        }, 100);
-    }
-
-    function hideRunUpgrades() {
-        document.getElementById('run-upgrades-screen').style.display = 'none';
-        document.getElementById('pause-menu').style.display = 'block';
-
-        setTimeout(() => {
-            document.getElementById('pause-upgrades-btn').focus();
-        }, 100);
-    }
-
-    function showDebugMenu() {
-        if (!GameContextRef || !GameContextRef.player || !GameContextRef.player.inventory) {
-            console.warn('[DEBUG] Player not initialized');
-            return;
-        }
-
-        const container = document.getElementById('debug-upgrades-container');
-        if (!container) return;
-
-        container.innerHTML = '';
-
-        import('../core/constants.js').then(({ UPGRADE_DATA: upgradeData }) => {
-            upgradeData.categories.forEach(category => {
-                const categoryDiv = document.createElement('div');
-                categoryDiv.className = 'debug-category';
-
-                const categoryTitle = document.createElement('div');
-                categoryTitle.className = 'debug-category-title';
-                categoryTitle.textContent = category.name;
-                categoryDiv.appendChild(categoryTitle);
-
-                category.upgrades.forEach(upgrade => {
-                    const currentTier = GameContextRef.player.inventory[upgrade.id] || 0;
-                    const maxTier = upgrade.tier5 ? 5 : (upgrade.tier4 ? 4 : 3);
-
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = 'debug-upgrade-item';
-
-                    const infoDiv = document.createElement('div');
-                    infoDiv.className = 'debug-upgrade-info';
-
-                    const nameDiv = document.createElement('div');
-                    nameDiv.className = 'debug-upgrade-name';
-                    nameDiv.textContent = `${upgrade.name} (Tier ${currentTier})`;
-                    infoDiv.appendChild(nameDiv);
-
-                    if (upgrade.notes) {
-                        const notesDiv = document.createElement('div');
-                        notesDiv.className = 'debug-upgrade-notes';
-                        notesDiv.textContent = upgrade.notes;
-                        infoDiv.appendChild(notesDiv);
-                    }
-
-                    itemDiv.appendChild(infoDiv);
-
-                    const buttonsDiv = document.createElement('div');
-                    buttonsDiv.className = 'debug-tier-buttons';
-
-                    for (let tier = 1; tier <= maxTier; tier++) {
-                        const btn = document.createElement('button');
-                        btn.className = 'debug-tier-btn';
-                        btn.textContent = `T${tier}`;
-                        btn.dataset.upgrade = upgrade.id;
-                        btn.dataset.tier = tier;
-                        btn.dataset.name = upgrade.name;
-
-                        if (tier === currentTier) {
-                            btn.classList.add('current-tier');
-                        }
-
-                        buttonsDiv.appendChild(btn);
-                    }
-
-                    itemDiv.appendChild(buttonsDiv);
-                    categoryDiv.appendChild(itemDiv);
-                });
-
-                container.appendChild(categoryDiv);
-            });
-
-            container.querySelectorAll('.debug-tier-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const upgradeId = btn.dataset.upgrade;
-                    const tier = parseInt(btn.dataset.tier);
-                    const upgradeName = btn.dataset.name;
-                    grantDebugUpgrade(upgradeId, tier, upgradeName);
-                });
-            });
-
-            document.getElementById('pause-menu').style.display = 'none';
-            document.getElementById('debug-menu').style.display = 'block';
-
-            setTimeout(() => {
-                document.getElementById('debug-back-btn').focus();
-            }, 100);
-        }).catch(err => console.error('[DEBUG] Failed to load UPGRADE_DATA:', err));
-    }
-
-    function hideDebugMenu() {
-        document.getElementById('debug-menu').style.display = 'none';
-        document.getElementById('pause-menu').style.display = 'block';
-
-        setTimeout(() => {
-            document.getElementById('debug-btn').focus();
-        }, 100);
-    }
-
-    function grantDebugUpgrade(upgradeId, tier, upgradeName) {
-        if (!GameContextRef || !GameContextRef.player) {
-            console.warn('[DEBUG] No player to grant upgrade to');
-            return;
-        }
-
-        const prevTier = GameContextRef.player.inventory[upgradeId] || 0;
-
-        if (applyUpgradeRef) applyUpgradeRef(upgradeId, tier);
-
-        const action = tier > prevTier ? `UPGRADED to Tier ${tier}` :
-            tier < prevTier ? `DOWNGRADED to Tier ${tier}` :
-                `RESET to Tier ${tier}`;
-        if (showOverlayMessageRef) showOverlayMessageRef(`[DEBUG] ${upgradeName}: ${action}`, '#ff0', 1500, 10);
-
-        console.log(`[DEBUG] Granted upgrade: ${upgradeId} Tier ${tier} (was Tier ${prevTier})`);
-
-        showDebugMenu();
     }
 
     const newProfileBtn = document.getElementById('new-profile-btn');
