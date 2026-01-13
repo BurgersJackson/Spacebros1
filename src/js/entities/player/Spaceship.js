@@ -1260,16 +1260,6 @@ export class Spaceship extends Entity {
                 this._pixiContainer = container;
                 pixiPlayerLayer.addChild(container);
 
-                const turbo = new PIXI.Sprite(pixiTextures.player_turbo_flame || pixiTextureWhite);
-                const tfA = pixiTextureAnchors.player_turbo_flame || { x: 0.5, y: 0.5 };
-                turbo.anchor.set((tfA && tfA.x != null) ? tfA.x : 0.5, (tfA && tfA.y != null) ? tfA.y : 0.5);
-                turbo.position.set(0, 0);
-                turbo.visible = false;
-                turbo.alpha = 0.95;
-                turbo.blendMode = PIXI.BLEND_MODES.ADD;
-                container.addChild(turbo);
-                this._pixiTurboFlameSpr = turbo;
-
                 const hullTexture = (this.shipType === 'slacker') ? (pixiTextures.slacker_hull || pixiTextures.player_hull) : pixiTextures.player_hull;
                 const hullAnchorKey = (this.shipType === 'slacker' && pixiTextures.slacker_hull) ? 'slacker_hull' : 'player_hull';
                 const hull = new PIXI.Sprite(hullTexture);
@@ -1279,10 +1269,31 @@ export class Spaceship extends Entity {
                 container.addChild(hull);
                 this._pixiHullSpr = hull;
 
+                // Calculate thruster/turbo position (behind the ship)
+                // Ship faces at `this.angle + PLAYER_HULL_ROT_OFFSET`, so exhaust is opposite
+                const exhaustOffset = 45;  // Distance behind hull center
+                const thrusterX = Math.cos(this.angle + Math.PI) * exhaustOffset;
+                const thrusterY = Math.sin(this.angle + Math.PI) * exhaustOffset;
+
+                // Turbo flame sprite (only create if texture exists)
+                if (pixiTextures.player_turbo_flame) {
+                    const turbo = new PIXI.Sprite(pixiTextures.player_turbo_flame);
+                    const tfA = pixiTextureAnchors.player_turbo_flame || { x: 0.5, y: 0.5 };
+                    turbo.anchor.set((tfA && tfA.x != null) ? tfA.x : 0.5, (tfA && tfA.y != null) ? tfA.y : 0.5);
+                    turbo.position.set(thrusterX, thrusterY);  // Positioned behind ship
+                    turbo.visible = false;
+                    turbo.alpha = 1.0;
+                    turbo.blendMode = PIXI.BLEND_MODES.ADD;
+                    container.addChild(turbo);
+                    this._pixiTurboFlameSpr = turbo;
+                } else {
+                    this._pixiTurboFlameSpr = null;
+                }
+
                 const thr = new PIXI.Sprite(pixiTextures.player_thruster);
                 const tA = pixiTextureAnchors.player_thruster || { x: 0.5, y: 0.5 };
                 thr.anchor.set((tA && tA.x != null) ? tA.x : 0.5, (tA && tA.y != null) ? tA.y : 0.5);
-                thr.position.set(0, 0);
+                thr.position.set(thrusterX, thrusterY);  // Positioned behind ship
                 thr.visible = false;
                 container.addChild(thr);
                 this._pixiThrusterSpr = thr;
@@ -1330,17 +1341,25 @@ export class Spaceship extends Entity {
             // Thruster (simple)
             const thrusting = !!(keys.w || (Math.abs(gpState.move.x) > 0.1 || Math.abs(gpState.move.y) > 0.1));
             const turboActive = !!(this.turboBoost && this.turboBoost.activeFrames > 0);
+
+            // Update thruster/turbo position to be behind the ship as it rotates
+            const exhaustOffset = 45;  // Increased from 20 for turbo flame
+            const thrusterX = Math.cos(this.angle + Math.PI) * exhaustOffset;
+            const thrusterY = Math.sin(this.angle + Math.PI) * exhaustOffset;
+
             if (this._pixiTurboFlameSpr) {
                 this._pixiTurboFlameSpr.visible = turboActive;
+                this._pixiTurboFlameSpr.position.set(thrusterX, thrusterY);  // Update position dynamically
+                this._pixiTurboFlameSpr.rotation = this.angle;
                 if (turboActive) {
-                    this._pixiTurboFlameSpr.rotation = this.angle;
                     const t = (typeof GameContext.frameNow === 'number' && GameContext.frameNow > 0) ? GameContext.frameNow : Date.now();
-                    const flicker = 0.80 + Math.abs(Math.sin(t * 0.02)) * 0.45;
+                    const flicker = 1.8 + Math.abs(Math.sin(t * 0.03)) * 0.4;  // Scale 1.8-2.2 for larger flame
                     this._pixiTurboFlameSpr.scale.set(flicker);
                 }
             }
             if (this._pixiThrusterSpr) {
                 this._pixiThrusterSpr.visible = thrusting && !turboActive;
+                this._pixiThrusterSpr.position.set(thrusterX, thrusterY);  // Update position dynamically
                 this._pixiThrusterSpr.rotation = this.angle;
                 this._pixiThrusterSpr.alpha = 0.9;
             }

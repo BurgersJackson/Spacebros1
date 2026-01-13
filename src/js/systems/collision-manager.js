@@ -226,13 +226,19 @@ export function resolveEntityCollision() {
             if ((e1 instanceof Pinwheel && e2 instanceof Enemy) || (e2 instanceof Pinwheel && e1 instanceof Enemy)) {
                 continue;
             }
+            // Dungeon bosses only collide with player, skip dungeon boss vs other enemies
+            if (e1.isDungeonBoss && e2 !== GameContext.player) continue;
+            if (e2.isDungeonBoss && e1 !== GameContext.player) continue;
+
             let r1 = (e1 instanceof Destroyer || e1 instanceof Destroyer2) ? (e1.shieldRadius || e1.radius) : e1.radius;
             let r2 = (e2 instanceof Destroyer || e2 instanceof Destroyer2) ? (e2.shieldRadius || e2.radius) : e2.radius;
             if (e1.isWarpBoss) r1 = e1.shieldRadius || e1.radius;
             if (e2.isWarpBoss) r2 = e2.shieldRadius || e2.radius;
+            if (e1.isDungeonBoss) r1 = e1.shieldRadius || e1.radius;
+            if (e2.isDungeonBoss) r2 = e2.shieldRadius || e2.radius;
 
-            const isStatic1 = (e1 instanceof Pinwheel) || (e1 instanceof SpaceStation);
-            const isStatic2 = (e2 instanceof Pinwheel) || (e2 instanceof SpaceStation);
+            const isStatic1 = (e1 instanceof Pinwheel) || (e1 instanceof SpaceStation) || e1.isDungeonBoss;
+            const isStatic2 = (e2 instanceof Pinwheel) || (e2 instanceof SpaceStation) || e2.isDungeonBoss;
             const e1IsDestroyer = (e1 instanceof Destroyer || e1 instanceof Destroyer2);
             const e2IsDestroyer = (e2 instanceof Destroyer || e2 instanceof Destroyer2);
 
@@ -431,17 +437,10 @@ export function resolveEntityCollision() {
 
             if (e.isDungeonBoss) {
                 const dist = Math.hypot(GameContext.player.pos.x - e.pos.x, GameContext.player.pos.y - e.pos.y);
-                if (dist < GameContext.player.radius + e.radius) {
-                    const angle = Math.atan2(GameContext.player.pos.y - e.pos.y, GameContext.player.pos.x - e.pos.x);
-                    const nx = Math.cos(angle);
-                    const ny = Math.sin(angle);
-
-                    const pushForce = 12;
-                    GameContext.player.vel.x += nx * pushForce;
-                    GameContext.player.vel.y += ny * pushForce;
-                    e.vel.x -= nx * pushForce * 0.3;
-                    e.vel.y -= ny * pushForce * 0.3;
-
+                // Player collides with dungeon boss at outer shield radius
+                const collisionRadius = e.shieldRadius || e.radius;
+                if (dist < GameContext.player.radius + collisionRadius) {
+                    // Positional collision handled in main loop, only apply damage/effects here
                     const ramDamage = 3 + Math.floor(GameContext.sectorIndex * 0.5);
                     GameContext.player.takeHit(ramDamage);
 

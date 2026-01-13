@@ -44,6 +44,8 @@ export class VortexMatriarch extends Enemy {
 
         this.shieldRadius = Math.round(34 * this.cruiserHullScale);
         this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+        // Player collides with outer shield, bullets with inner shield - 3px
+        this.hullCollisionRadius = this.innerShieldRadius - 3;
         this.shieldSegments = new Array(14).fill(4);
         this.innerShieldSegments = new Array(18).fill(4);
         this.innerShieldRotation = 0;

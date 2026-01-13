@@ -748,11 +748,24 @@ export function initPixiOverlay(options) {
 
         const makePlayerTurboFlame = () => {
             const g = new PIXI.Graphics();
-            g.beginFill(0xff8800, 1);
-            g.drawCircle(0, 0, 10);
+            // Long flame shape - teardrop pointing left (extends behind ship)
+            // Bright inner core
+            g.beginFill(0xffaa00, 1);
+            g.moveTo(0, 0);
+            g.bezierCurveTo(-15, -8, -50, -5, -80, 0);
+            g.bezierCurveTo(-50, 5, -15, 8, 0, 0);
             g.endFill();
-            g.beginFill(0xff8800, 0.3);
-            g.drawCircle(0, 0, 20);
+            // Outer glow
+            g.beginFill(0xff8800, 0.6);
+            g.moveTo(0, 0);
+            g.bezierCurveTo(-20, -12, -60, -8, -90, 0);
+            g.bezierCurveTo(-60, 8, -20, 12, 0, 0);
+            g.endFill();
+            // Faint outermost glow
+            g.beginFill(0xff6600, 0.3);
+            g.moveTo(0, 0);
+            g.bezierCurveTo(-25, -16, -70, -10, -100, 0);
+            g.bezierCurveTo(-70, 10, -25, 16, 0, 0);
             g.endFill();
             return genTexture(g);
         };

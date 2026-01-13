@@ -197,6 +197,7 @@ export function spawnDungeonBoss(bossType) {
         }
 
         GameContext.boss = newBoss;
+        GameContext.enemies.push(newBoss);  // CRITICAL: Add to enemies array for collision!
         GameContext.bossActive = true;
         GameContext.bossArena.x = (GameContext.player.pos.x + GameContext.boss.pos.x) / 2;
         GameContext.bossArena.y = (GameContext.player.pos.y + GameContext.boss.pos.y) / 2;

@@ -43,6 +43,8 @@ export class CerebralPsion extends Enemy {
 
         this.shieldRadius = Math.round(34 * this.cruiserHullScale);
         this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+        // Player collides with outer shield, bullets with inner shield - 3px
+        this.hullCollisionRadius = this.innerShieldRadius - 3;
         this.shieldSegments = new Array(12).fill(4);
         this.innerShieldSegments = new Array(16).fill(4);
         this.innerShieldRotation = 0;

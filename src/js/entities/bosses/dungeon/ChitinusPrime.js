@@ -43,6 +43,8 @@ export class ChitinusPrime extends Enemy {
 
         this.shieldRadius = Math.round(34 * this.cruiserHullScale);
         this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+        // Player collides with outer shield, bullets with inner shield - 3px
+        this.hullCollisionRadius = this.innerShieldRadius - 3;
         // Chitin armor - segmented with more coverage
         this.shieldSegments = new Array(20).fill(5);
         this.innerShieldSegments = new Array(24).fill(5);
