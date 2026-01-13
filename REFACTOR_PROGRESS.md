@@ -5,10 +5,10 @@
 ## Current Progress
 
 **Starting lines**: 6,411
-**Current lines**: 1,294
-**Lines removed**: 5,117 (79.8%)
+**Current lines**: 1,216
+**Lines removed**: 5,195 (81.0%)
 **Target**: Under 1,000 lines
-**Remaining to remove**: 295 lines
+**Remaining to remove**: 217 lines
 
 ---
 
@@ -223,3 +223,24 @@
 - [x] Smoke test after Phase 17 (Sector flow) - PASSED
 - [x] Smoke test after Phase 18 (World setup) - PASSED
 - [x] Smoke test after Phase 19 (Mini event helpers) - PASSED
+
+### Phase 20: Debug Spawn Functions (~250 lines)
+- [x] **Debug spawn functions** (~237 lines removed)
+  - Created: `src/js/debug/debug-spawn.js`, `src/js/debug/index.js`
+  - Extracted: `spawnCruiser`, `spawnStation`, `spawnFinalBoss`, `spawnDungeonBoss`, `enterDungeon1Debug`, all keyboard shortcuts
+  - Lines removed: 237
+  - Smoke test: PASSED
+
+### Phase 21: Pixi Cleanup Functions (~65 lines)
+- [x] **Pixi cleanup functions** (~54 lines removed)
+  - Created: `src/js/rendering/pixi-cleanup.js`
+  - Extracted: `filterArrayWithPixiCleanup`, `resetPixiOverlaySprites`, `cleanupPixiWorldRootExtras`
+  - Lines removed: 54
+  - Smoke test: PASSED
+
+### Phase 22: Game Helper Functions (~60 lines)
+- [x] **Game helper functions** (~54 lines removed)
+  - Created: `src/js/utils/game-helpers.js`
+  - Extracted: `toggleMusic`, `resize`, `handleSpaceStationDestroyed`, `compactArray`
+  - Lines removed: 54
+  - Smoke test: PASSED

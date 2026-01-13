@@ -73,6 +73,13 @@ import {
     pixiCleanupObject
 } from './utils/cleanup-utils.js';
 import {
+    toggleMusic as helperToggleMusic,
+    resize as helperResize,
+    handleSpaceStationDestroyed as helperHandleSpaceStationDestroyed,
+    compactArray as helperCompactArray,
+    registerGameHelperDependencies
+} from './utils/game-helpers.js';
+import {
     clearOverlayMessageTimeout,
     formatTime,
     showOverlayMessage
@@ -331,10 +338,7 @@ let pixiParticleWarpTexture;
 
 // toggleMusic wrapper that updates DOM button
 function toggleMusic() {
-    // Uses audioToggleMusic from module (imported as audioToggleMusic)
-    const enabled = audioToggleMusic(GameContext.gameActive, GameContext.gamePaused);
-    const btn = document.getElementById('music-btn');
-    if (btn) btn.innerText = enabled ? "MUSIC: ON" : "MUSIC: OFF";
+    helperToggleMusic(audioToggleMusic);
 }
 
 let width = 1920;
@@ -507,67 +511,17 @@ const mouseWorld = GameContext.mouseWorld;
 const gpState = GameContext.gpState;
 
 
-
+// Wrapper for resize function
 function resize() {
-    // CRITICAL: Do NOT change canvas size - keep internal resolution fixed
-    // Canvas size is set via setupCanvasResolution() based on internal resolution
-    // CSS scaling (set in setupCanvasResolution) handles visual scaling to window
-
-    // Update minimap (fixed size, unaffected by resolution)
-    minimapCanvas.width = 200;
-    minimapCanvas.height = 200;
-
-    // CRITICAL: Do NOT resize PixiJS renderer - it stays at internal resolution
-    // The CSS scaling (set in pixi-setup.js) handles visual scaling
-
-    // Update background sprites to internal resolution
-    if (pixiCaveGridSprite) {
-        pixiCaveGridSprite.width = internalWidth;
-        pixiCaveGridSprite.height = internalHeight;
-    }
-    const starTiles = getStarTiles();
-    if (starTiles && starTiles.length) {
-        for (const t of starTiles) {
-            if (!t || !t.spr) continue;
-            t.spr.width = internalWidth;
-            t.spr.height = internalHeight;
-        }
-    }
-    const nebulaTiles = getNebulaTiles();
-    if (nebulaTiles && nebulaTiles.length) {
-        for (const t of nebulaTiles) {
-            if (!t || !t.spr) continue;
-            t.spr.width = internalWidth;
-            t.spr.height = internalHeight;
-        }
-    }
-    initStars(width, height);
+    helperResize(minimapCanvas, pixiCaveGridSprite, internalWidth, internalHeight, width, height, getStarTiles, getNebulaTiles, initStars);
 }
 
 function handleSpaceStationDestroyed() {
-    if (!GameContext.spaceStation) return;
-    const sx = GameContext.spaceStation.pos.x;
-    const sy = GameContext.spaceStation.pos.y;
-    playSound('base_explode');
-
-    spawnLargeExplosion(sx, sy, 3.5);
-    spawnParticles(sx, sy, 200, '#fff');
-    for (let k = 0; k < 50; k++) GameContext.coins.push(new Coin(sx + (Math.random() - 0.5) * 200, sy + (Math.random() - 0.5) * 200, 10));
-    for (let k = 0; k < 25; k++) GameContext.nuggets.push(new SpaceNugget(sx + (Math.random() - 0.5) * 220, sy + (Math.random() - 0.5) * 220, 1));
-    showOverlayMessage("SPACE STATION DESTROYED - WARP SIGNAL IN 30s", '#f80', 5000);
-    pixiCleanupObject(GameContext.spaceStation);
-    GameContext.spaceStation = null;
-    GameContext.stationHealthBarVisible = false;
-    setTimeout(() => {
-        GameContext.warpGateUnlocked = true;
-    }, 30000);
-    GameContext.score += 50000;
-    if (GameContext.pendingStations > 0 && !GameContext.sectorTransitionActive) GameContext.nextSpaceStationTime = Date.now() + 7000;
+    helperHandleSpaceStationDestroyed();
 }
 
 window.addEventListener('resize', resize);
 resize();
-
 
 
 // SpaceNugget imported from ./entities/index.js
@@ -594,24 +548,7 @@ GameContext.gameStartTime = null;
 GameContext.pauseStartTime = null;
 GameContext.pausedAccumMs = 0; // total paused time to subtract
 
-function compactArray(arr) {
-    let alive = 0;
-    for (let i = 0; i < arr.length; i++) {
-        const obj = arr[i];
-        if (!obj) continue;
-        if (!obj.dead) {
-            arr[alive++] = obj;
-            continue;
-        }
-        // Explosion-specific cleanup - release particle sprites
-        if (obj instanceof Explosion && typeof obj.cleanup === 'function') {
-            obj.cleanup(window.cachedParticleRes);
-        }
-        else if (obj._poolType === 'bullet' && obj.sprite && pixiBulletSpritePool) destroyBulletSprite(obj);
-        else pixiCleanupObject(obj);
-    }
-    arr.length = alive;
-}
+// compactArray now imported from ./utils/game-helpers.js
 
 // NOTE: snapshotWorldForWarp removed - we no longer save/restore level 1 state
 // Level 1 is deleted when entering warp zone
@@ -904,7 +841,7 @@ registerGameLoopLogicDependencies({
     processStaggeredBombExplosions,
     processStaggeredParticleBursts,
     processLightningEffects,
-    compactArray,
+    compactArray: helperCompactArray,
     compactParticles,
     immediateCompactArray,
     globalStaggeredCleanup,
@@ -1236,6 +1173,15 @@ registerMenuDependencies({
 initMenuUi();
 
 initSettingsMenu();
+
+// Game helpers system
+registerGameHelperDependencies({
+    playSound,
+    spawnLargeExplosion,
+    spawnParticles,
+    showOverlayMessage,
+    pixiCleanupObject
+});
 
 // Debug spawn system
 registerDebugSpawnDependencies({
