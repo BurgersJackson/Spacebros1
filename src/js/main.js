@@ -1180,7 +1180,9 @@ registerGameHelperDependencies({
     spawnLargeExplosion,
     spawnParticles,
     showOverlayMessage,
-    pixiCleanupObject
+    pixiCleanupObject,
+    pixiBulletSpritePool,
+    destroyBulletSprite
 });
 
 // Debug spawn system

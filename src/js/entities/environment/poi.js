@@ -41,11 +41,27 @@ export class SectorPOI extends Entity {
     kill() {
         if (this.dead) {
             if (!this._pixiIsCleaning) {
+                if (this._pixiGfx) {
+                    try { this._pixiGfx.destroy({ children: true }); } catch (e) { }
+                    this._pixiGfx = null;
+                }
+                if (this._pixiNameText) {
+                    try { this._pixiNameText.destroy(); } catch (e) { }
+                    this._pixiNameText = null;
+                }
                 pixiCleanupObject(this);
             }
             return;
         }
         this.dead = true;
+        if (this._pixiGfx) {
+            try { this._pixiGfx.destroy({ children: true }); } catch (e) { }
+            this._pixiGfx = null;
+        }
+        if (this._pixiNameText) {
+            try { this._pixiNameText.destroy(); } catch (e) { }
+            this._pixiNameText = null;
+        }
         pixiCleanupObject(this);
     }
     canClaim() {
@@ -65,7 +81,7 @@ export class SectorPOI extends Entity {
             GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 220, this.pos.y + (Math.random() - 0.5) * 220, 8));
         }
         if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 30, this.color);
-        this.dead = true;
+        this.kill();
     }
     update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;

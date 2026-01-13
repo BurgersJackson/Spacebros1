@@ -333,6 +333,10 @@ export class Destroyer extends Entity {
             try { this._pixiGfx.destroy(true); } catch (e) { }
             this._pixiGfx = null;
         }
+        if (this._pixiTractorGfx) {
+            try { this._pixiTractorGfx.destroy(true); } catch (e) { }
+            this._pixiTractorGfx = null;
+        }
 
         if (this.tractorBeamActive) {
             GameContext.cruiserTimerResumeAt = Date.now() + 20000;
@@ -584,6 +588,27 @@ export class Destroyer extends Entity {
                 } else {
                     debugGfx.visible = false;
                 }
+            }
+
+            // Tractor beam circle
+            if (this.tractorBeamActive && pixiVectorLayer) {
+                let tractorGfx = this._pixiTractorGfx;
+                if (!tractorGfx) {
+                    tractorGfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(tractorGfx);
+                    this._pixiTractorGfx = tractorGfx;
+                } else if (!tractorGfx.parent) {
+                    pixiVectorLayer.addChild(tractorGfx);
+                }
+
+                const pulse = 0.5 + Math.sin(Date.now() * 0.005) * 0.2;
+                tractorGfx.clear();
+                tractorGfx.position.set(rPos.x, rPos.y);
+                tractorGfx.lineStyle(10 / (GameContext.currentZoom || 1), 0x00ffff, 0.4 + pulse * 0.2);
+                tractorGfx.drawCircle(0, 0, this.tractorBeamRadius);
+                tractorGfx.endFill();
+            } else if (this._pixiTractorGfx) {
+                try { this._pixiTractorGfx.visible = false; } catch (e) { }
             }
 
             return;

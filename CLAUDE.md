@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Running the Application
 - `npm start` - Start the Electron app in normal mode
 - `npm run start:dev` - Start with DevTools opened (for debugging)
-- `npm run start:smoke` - Run smoke test (auto-closes after load)
+- `npm run start:smoke` - Run smoke test (auto-closes after load) - **Run after changes to verify basic functionality**
 - `npm run dist` - Build distributables for current platform
 - `npm run dist:win` - Build Windows installer (NSIS)
 - `npm run dist:linux` - Build Linux packages (AppImage, deb, tar.gz)
@@ -34,6 +34,8 @@ Available in browser console (F12) during gameplay:
 - `memStats()` - Memory usage statistics
 - `perfCheck()` - Quick performance check with warnings
 - `window.spawnCruiser()` - DEBUG: Spawn cruiser boss instantly
+- `window.spawnStation()` - DEBUG: Spawn space station instantly
+- `window.spawnFinalBoss()` - DEBUG: Spawn final boss instantly
 
 ## Architecture Overview
 
@@ -41,7 +43,8 @@ Available in browser console (F12) during gameplay:
 - **Entity System**: Class-based entities with manual lifecycle management (not ECS)
 - **Rendering**: Hybrid DOM (primary UI) + PixiJS (game world sprites) + Canvas 2D overlays (directional arrows, minimap)
 - **Collision Detection**: Spatial hash grids for efficient collision queries
-- **State Management**: Global variables for game state (score, flags, active entities)
+- **State Management**: Centralized GameContext object for all global state
+- **Dependency Injection**: Module dependencies registered via `register*Dependencies()` functions
 
 ### Key Systems
 
@@ -55,7 +58,7 @@ Available in browser console (F12) during gameplay:
 - Time-based counters use `this.t += dtFactor` instead of `this.t++`.
 - Frame-based checks use `Math.floor(this.t) % N === 0` for compatibility with time-scaled counters.
 
-**Sprite Pooling** (`src/js/rendering/pixi-setup.js`):
+**Sprite Pooling** (`src/js/rendering/sprite-pools.js`):
 - Pre-allocated sprite pools for performance: bullets, particles, enemies, pickups, asteroids, stars
 - Use `pixiCleanupObject()` for standard cleanup
 - Critical entity graphics must be explicitly cleaned before calling `pixiCleanupObject()`
@@ -78,7 +81,7 @@ Available in browser console (F12) during gameplay:
 **Modular Entity System**:
 - Each entity type in its own file
 - Index files provide clean imports: `import { Spaceship } from './entities/player/index.js'`
-- Entity registry in `entities.js` for dynamic spawning
+- Entity registry in `src/js/entities.js` for dynamic spawning (LEGACY - may contain duplicates)
 - Base `Entity` class with common lifecycle methods
 
 ### Module Structure
@@ -87,21 +90,54 @@ The game uses a **modular ES6 architecture** with the following structure:
 
 ```
 src/js/
-├── index.js             # Main entry point for ES6 module imports
-├── entities.js          # Entity registry and factory functions
+├── main.js              # Main entry point (1,216 lines after refactoring)
+├── index.js             # ES6 module imports for legacy compatibility
+├── entities.js          # LEGACY entity registry (contains duplicate class definitions)
 ├── world.js             # World/spawn management
+├── constants.js         # LEGACY constants (moved to core/)
+├── utils.js             # LEGACY utilities (moved to utils/)
+├── pixi-utils.js        # LEGACY pixi utilities (moved to rendering/)
+├── explosion-safety.js  # Safety wrapper for explosion operations
 ├── core/
 │   ├── index.js         # Core module re-exports
 │   ├── constants.js     # Game configuration (physics, graphics, audio, balance)
 │   │                    # Includes UPGRADE_DATA and META_SHOP_UPGRADE_DATA
 │   ├── math.js          # Vector class, SpatialHash for collision detection
-│   ├── state.js         # Global game state management
+│   ├── state.js         # Legacy global state (replaced by GameContext)
 │   ├── performance.js   # View culling and rendering optimization
 │   ├── game-context.js  # Centralized GameContext object for all game state
 │   ├── profiler.js      # Performance profiling
 │   ├── jitter-monitor.js    # Frame time tracking
 │   ├── staggered-cleanup.js # Spread cleanup across frames
 │   └── perf-debug.js    # Console debug commands
+├── systems/             # Extracted game systems (formerly in main.js)
+│   ├── index.js         # Systems module re-exports
+│   ├── game-loop.js     # Main game loop logic
+│   ├── game-flow.js     # Game start/end/state management
+│   ├── world-setup.js   # World initialization
+│   ├── world-helpers.js # World generation helpers
+│   ├── sector-flow.js   # Sector transitions
+│   ├── spawn-manager.js # Entity spawning
+│   ├── input-manager.js # Input handling
+│   ├── collision-manager.js # Collision detection
+│   ├── event-scheduler.js # Timed events (arena countdown, etc.)
+│   ├── mini-event-manager.js # Mini events
+│   ├── meta-manager.js # Meta shop/profile
+│   ├── save-manager.js # Save/load system
+│   ├── upgrade-manager.js # Level-up upgrades
+│   ├── contract-manager.js # Contracts system
+│   ├── particle-manager.js # Particle effects
+│   └── all-registrations.js # All dependency registrations
+├── ui/                  # User interface modules
+│   ├── index.js         # UI module re-exports
+│   ├── menus.js         # Start, pause, settings menus
+│   ├── hud.js           # Heads-up display
+│   ├── levelup-screen.js # Level-up upgrade menu
+│   ├── meta-shop.js     # Meta shop between runs
+│   └── settings-manager.js # Settings persistence
+├── debug/               # Debug tools
+│   ├── index.js         # Debug module re-exports
+│   └── debug-spawn.js   # Debug spawn functions for testing
 ├── entities/
 │   ├── Entity.js        # Base class for all game entities
 │   ├── FloatingText.js  # Floating damage/combat text
@@ -111,31 +147,92 @@ src/js/
 │   │   └── index.js
 │   ├── bosses/          # Boss enemies (Cruiser, Destroyer, Flagship, etc.)
 │   │   ├── dungeon/     # Dungeon-specific bosses
+│   │   │   ├── NecroticHive.js
+│   │   │   ├── CerebralPsion.js
+│   │   │   ├── Fleshforge.js
+│   │   │   ├── VortexMatriarch.js
+│   │   │   ├── ChitinusPrime.js
+│   │   │   └── PsyLich.js
+│   │   ├── Cruiser.js
+│   │   ├── Destroyer.js
+│   │   ├── Destroyer2.js
+│   │   ├── Flagship.js
+│   │   ├── SuperFlagshipBoss.js
+│   │   ├── FinalBoss.js
+│   │   ├── WarpSentinelBoss.js
+│   │   ├── SpaceStation.js
 │   │   └── index.js
 │   ├── enemies/         # Regular enemies
+│   │   ├── Enemy.js
+│   │   ├── Pinwheel.js
 │   │   └── index.js
 │   ├── projectiles/     # Bullets, missiles, explosives
+│   │   ├── Bullet.js
+│   │   ├── CruiserMineBomb.js
+│   │   ├── FlagshipGuidedMissile.js
+│   │   ├── ClusterBomb.js
+│   │   ├── NapalmZone.js
+│   │   ├── Shockwave.js
 │   │   └── index.js
 │   ├── particles/       # Visual effects and explosions
+│   │   ├── Particle.js
+│   │   ├── Explosion.js
+│   │   ├── SpriteExplosion.js
+│   │   ├── LightningArc.js
 │   │   └── index.js
 │   ├── pickups/         # Collectibles (coins, health, space nuggets)
+│   │   ├── Coin.js
+│   │   ├── HealthPowerUp.js
+│   │   ├── SpaceNugget.js
+│   │   ├── pickup-safety.js
 │   │   └── index.js
-│   ├── environment/     # Destructible asteroids, warp gates
+│   ├── environment/     # Destructible asteroids, warp gates, POIs
+│   │   ├── EnvironmentAsteroid.js
+│   │   ├── WarpGate.js
+│   │   ├── Dungeon1Gate.js
+│   │   ├── ShootingStar.js
+│   │   ├── MiniEventDefendCache.js
+│   │   ├── poi.js       # SectorPOI, DerelictShipPOI, DebrisFieldPOI, ExplorationCache
 │   │   └── index.js
 │   ├── cave/            # Cave-specific entities and levels
+│   │   ├── CaveMonsterBase.js
+│   │   ├── CaveMonster1/2/3.js
+│   │   ├── CaveCritter.js
+│   │   ├── CaveWallTurret.js
+│   │   ├── CaveDraftZone.js
+│   │   ├── CaveGasVent.js
+│   │   ├── CaveRockfall.js
+│   │   ├── CavePowerRelay.js
+│   │   ├── CaveWallSwitch.js
+│   │   ├── CaveRewardPickup.js
+│   │   ├── CaveGuidedMissile.js
+│   │   ├── CaveLevel.js
+│   │   ├── cave-factory.js
 │   │   └── index.js
 │   ├── zones/           # Environmental hazards and special areas
+│   │   ├── RadiationStorm.js
+│   │   ├── WarpMazeZone.js
+│   │   ├── Dungeon1Zone.js
+│   │   ├── WarpBioPod.js
+│   │   ├── AnomalyZone.js
 │   │   └── index.js
 │   └── support/         # Drones, turrets, support entities
+│       ├── Drone.js
+│       ├── WallTurret.js
+│       ├── ContractBeacon.js
+│       ├── GateRing.js
 │       └── index.js
 ├── rendering/
 │   ├── index.js         # Rendering module re-exports
-│   ├── pixi-setup.js    # PixiJS initialization and sprite pooling
 │   ├── pixi-context.js  # PixiJS layer management
 │   ├── sprite-pools.js  # PixiJS sprite pooling system
+│   ├── pixi-init.js     # PixiJS app initialization
+│   ├── canvas-setup.js  # Canvas element setup
+│   ├── pixi-cleanup.js  # PixiJS cleanup utilities
+│   ├── texture-loader.js # Asset loading management
+│   ├── texture-manager.js # Asset loading coordination
 │   ├── background-renderer.js # Star field and nebula rendering
 │   ├── minimap-renderer.js # Minimap rendering
-│   ├── texture-loader.js # Asset loading management
 │   ├── rendering-state.js # Rendering state management
 │   └── colors.js        # Color conversion utilities
 ├── audio/
@@ -144,7 +241,9 @@ src/js/
 └── utils/
     ├── index.js         # Utils module re-exports
     ├── spawn-utils.js   # Spawn point utilities
-    └── cleanup-utils.js # Cleanup utilities
+    ├── cleanup-utils.js # Cleanup utilities (clearArrayWithPixiCleanup, etc.)
+    ├── ui-helpers.js    # UI helper functions
+    └── game-helpers.js  # Game helper functions (compactArray, etc.)
 ```
 
 ### Electron Wrapper (`electron/`)
@@ -219,6 +318,10 @@ kill() {
         try { this._pixiText.destroy(); } catch (e) { }
         this._pixiText = null;
     }
+    if (this._pixiNameText) {
+        try { this._pixiNameText.destroy(); } catch (e) { }
+        this._pixiNameText = null;
+    }
 
     // 2. Then do standard cleanup
     pixiCleanupObject(this);
@@ -226,6 +329,47 @@ kill() {
     // 3. Continue with death logic (sounds, effects, drops)
 }
 ```
+
+**CRITICAL**: `pixiCleanupObject()` does NOT clean up custom graphics like `_pixiGfx`, `_pixiNameText`, `_pixiText`, `_pixiTractorGfx`, etc. These must be explicitly destroyed before calling `pixiCleanupObject()`.
+
+### POI/Event Entity Completion Pattern
+For entities that are "claimed" or "completed" (like POIs), call `kill()` instead of just setting `dead = true`:
+
+```javascript
+claim() {
+    if (this.claimed) return;
+    this.claimed = true;
+    // ... reward logic ...
+    this.kill();  // Use kill() instead of this.dead = true
+}
+```
+
+This ensures graphics are properly destroyed and the entity is removed from arrays.
+
+### Dependency Injection Pattern
+Many systems use dependency injection via `register*Dependencies()` functions:
+
+```javascript
+// In the entity/module file
+let _spawnParticles = null;
+let _getSimNowMs = null;
+
+export function registerEntityDependencies(deps) {
+    if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
+    if (deps.getSimNowMs) _getSimNowMs = deps.getSimNowMs;
+}
+
+// In main.js during initialization
+registerEntityDependencies({
+    spawnParticles,
+    getSimNowMs: getElapsedGameTime
+});
+```
+
+This is critical for:
+- `utils/game-helpers.js` - `compactArray()` needs `pixiCleanupObject`, `pixiBulletSpritePool`, `destroyBulletSprite`
+- `entities/environment/poi.js` - POIs need `spawnParticles`, `getSimNowMs`
+- Boss classes - Need various game functions for spawning particles, explosions, etc.
 
 ### Zoom Scaling for Graphics
 PixiJS `lineStyle()` uses absolute widths. Scale inversely with zoom:
@@ -652,9 +796,11 @@ if (!entity.isInView(camX, camY, viewWidth, viewHeight)) {
 | `randomRange()`, `randomInt()` | core/math.js | Random number generation |
 | `clearArrayWithPixiCleanup(arr)` | utils/cleanup-utils.js | Clear array with sprite cleanup |
 | `filterArrayWithPixiCleanup(arr, fn)` | utils/cleanup-utils.js | Filter with cleanup |
-| `pixiCleanupObject(obj)` | rendering/pixi-setup.js | Standard PixiJS cleanup |
+| `pixiCleanupObject(obj)` | rendering/sprite-pools.js | Standard PixiJS cleanup |
+| `compactArray(arr)` | utils/game-helpers.js | Compact array removing dead entities |
 | `findSpawnPointRelative(hostile)` | utils/spawn-utils.js | Find spawn position |
 | `isInView()`, `isInExtendedView()` | Entity base | View culling checks |
+| `showOverlayMessage()` | utils/ui-helpers.js | Show overlay message to player |
 
 ## Debug Tools
 
@@ -662,13 +808,64 @@ if (!entity.isInView(camX, camY, viewWidth, viewHeight)) {
 - `Ctrl+Shift+3` - Spawn Cruiser boss instantly
 - `Ctrl+Shift+4` - Spawn Space Station instantly
 - `Ctrl+Shift+5` - Spawn Final Boss instantly
+- `Ctrl+Shift+6` - Enter Dungeon1 instantly
+- `Ctrl+Shift+D + 4-9` - Spawn specific dungeon bosses (4=NecroticHive, 5=CerebralPsion, 6=Fleshforge, 7=VortexMatriarch, 8=ChitinusPrime, 9=PsyLich)
 - `Ctrl+Shift+H` - Toggle collision debug visualization (`DEBUG_COLLISION`)
 
 ### Console Commands
 See "Debug Console Commands" section above for full list.
 
+Additional debug spawn functions:
+- `window.spawnDungeonBoss(type)` - Spawn specific dungeon boss by name
+- `window.spawnNecroticHive()`, `window.spawnCerebralPsion()`, etc.
+- `window.enterDungeon1Debug()` - Enter dungeon mode
+
 ### Debug Flags
 - `DEBUG_COLLISION` - Show hitboxes and collision boundaries
+
+## Common Issues and Fixes
+
+### Graphics Not Cleaning Up
+**Symptom**: Entity graphics remain visible after entity should be gone
+**Cause**: `pixiCleanupObject()` doesn't clean up custom `_pixi*` properties
+**Fix**: Explicitly destroy all custom graphics in `kill()` method:
+```javascript
+kill() {
+    if (this.dead) return;
+    this.dead = true;
+    if (this._pixiGfx) {
+        try { this._pixiGfx.destroy({ children: true }); } catch (e) { }
+        this._pixiGfx = null;
+    }
+    // ... other graphics ...
+    pixiCleanupObject(this);
+}
+```
+
+### POI/Event Not Disappearing
+**Symptom**: Derelict Ship, Debris Field, or other POI graphics stay after completion
+**Cause**: Setting `dead = true` without calling `kill()` to cleanup graphics
+**Fix**: Call `this.kill()` in `claim()` method, not just `this.dead = true`
+
+### "X is not defined" Errors
+**Symptom**: `ReferenceError: Cruiser is not defined` (or other entity)
+**Cause**: Entity class imported to systems but missing from import statement
+**Fix**: Add entity to imports in `systems/game-loop.js` or other system files
+
+### Missing Dependency Function
+**Symptom**: `TypeError: pixiCleanupObject is not a function`
+**Cause**: Dependency not registered via `register*Dependencies()`
+**Fix**: Ensure dependency is passed in the registration call in `main.js`
+
+### Destroyer Tractor Beam Circle Not Showing
+**Symptom**: Tractor beam activates but no visible circle appears
+**Cause**: Missing PixiJS drawing code for tractor beam graphic
+**Fix**: Ensure `draw()` method includes tractor beam circle drawing when `this.tractorBeamActive` is true
+
+### Legacy File Duplicates
+**Symptom**: Changes to entity class not taking effect, or duplicate definitions
+**Cause**: `src/js/entities.js` contains legacy duplicate class definitions
+**Fix**: Always prefer the modular versions in `src/js/entities/` subdirectories. The `entities.js` file is legacy and may be removed.
 
 ## Important Constants
 

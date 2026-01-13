@@ -12,7 +12,7 @@ import { updatePixiBackground, updatePixiCaveGrid } from '../rendering/backgroun
 import { drawMinimap } from '../rendering/minimap-renderer.js';
 import { setRenderAlpha } from '../rendering/pixi-context.js';
 import { formatTime } from '../utils/ui-helpers.js';
-import { Enemy, WarpGate, SpaceStation, Destroyer, Destroyer2 } from '../entities/index.js';
+import { Enemy, WarpGate, SpaceStation, Destroyer, Destroyer2, Cruiser } from '../entities/index.js';
 import {
     scheduleNextMiniEvent,
     scheduleNextRadiationStorm,

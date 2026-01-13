@@ -103,7 +103,9 @@ export function handleSpaceStationDestroyed() {
  * Compact array by removing dead entities
  * Handles cleanup for explosions, bullets, and other entities
  */
-export function compactArray(arr, pixiBulletSpritePool, destroyBulletSprite, pixiCleanupObject) {
+export function compactArray(arr) {
+    const { pixiBulletSpritePool, destroyBulletSprite, pixiCleanupObject } = deps;
+
     let alive = 0;
     for (let i = 0; i < arr.length; i++) {
         const obj = arr[i];
