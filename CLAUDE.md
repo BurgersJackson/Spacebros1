@@ -10,6 +10,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run start:smoke` - Run smoke test (auto-closes after load)
 - `npm run dist` - Build distributables for current platform
 - `npm run dist:win` - Build Windows installer (NSIS)
+- `npm run dist:linux` - Build Linux packages (AppImage, deb, tar.gz)
+
+### Testing
+- `npm test` - Run tests once
+- `npm run test:watch` - Run tests in watch mode
+- `npm run test:ui` - Run tests with UI
+- `npm run test:coverage` - Run tests with coverage report
+
+**Test Structure:**
+- Tests located in `/tests/unit/` directory
+- Unit tests for core math and constants
+- Vitest configuration supports ESM modules
+- Tests are AI-callable for automated validation
 
 ### Debug Console Commands
 Available in browser console (F12) during gameplay:
@@ -56,31 +69,82 @@ Available in browser console (F12) during gameplay:
 - Tracks frame time variance and spikes
 - Console commands available for runtime diagnostics
 
+**GameContext Pattern** (`src/js/core/game-context.js`):
+- Centralized global state object replacing scattered global variables
+- All game state accessible via `GameContext` export
+- Includes `reset()` method for clean game restart
+- Contains entity arrays, timing variables, input state, meta progression
+
+**Modular Entity System**:
+- Each entity type in its own file
+- Index files provide clean imports: `import { Spaceship } from './entities/player/index.js'`
+- Entity registry in `entities.js` for dynamic spawning
+- Base `Entity` class with common lifecycle methods
+
 ### Module Structure
+
+The game uses a **modular ES6 architecture** with the following structure:
 
 ```
 src/js/
-├── main.js              # Monolithic game loop (contains all entity classes)
+├── index.js             # Main entry point for ES6 module imports
+├── entities.js          # Entity registry and factory functions
+├── world.js             # World/spawn management
 ├── core/
+│   ├── index.js         # Core module re-exports
 │   ├── constants.js     # Game configuration (physics, graphics, audio, balance)
 │   │                    # Includes UPGRADE_DATA and META_SHOP_UPGRADE_DATA
 │   ├── math.js          # Vector class, SpatialHash for collision detection
 │   ├── state.js         # Global game state management
+│   ├── performance.js   # View culling and rendering optimization
+│   ├── game-context.js  # Centralized GameContext object for all game state
 │   ├── profiler.js      # Performance profiling
 │   ├── jitter-monitor.js    # Frame time tracking
 │   ├── staggered-cleanup.js # Spread cleanup across frames
 │   └── perf-debug.js    # Console debug commands
 ├── entities/
 │   ├── Entity.js        # Base class for all game entities
-│   ├── pickups/         # Coin, SpaceNugget, HealthPowerUp
-│   ├── particles/       # Particle, Explosion, WarpParticle
-│   └── projectiles/     # Projectile classes
+│   ├── FloatingText.js  # Floating damage/combat text
+│   ├── index.js         # Entity module re-exports
+│   ├── player/          # Player ship classes
+│   │   ├── Spaceship.js
+│   │   └── index.js
+│   ├── bosses/          # Boss enemies (Cruiser, Destroyer, Flagship, etc.)
+│   │   ├── dungeon/     # Dungeon-specific bosses
+│   │   └── index.js
+│   ├── enemies/         # Regular enemies
+│   │   └── index.js
+│   ├── projectiles/     # Bullets, missiles, explosives
+│   │   └── index.js
+│   ├── particles/       # Visual effects and explosions
+│   │   └── index.js
+│   ├── pickups/         # Collectibles (coins, health, space nuggets)
+│   │   └── index.js
+│   ├── environment/     # Destructible asteroids, warp gates
+│   │   └── index.js
+│   ├── cave/            # Cave-specific entities and levels
+│   │   └── index.js
+│   ├── zones/           # Environmental hazards and special areas
+│   │   └── index.js
+│   └── support/         # Drones, turrets, support entities
+│       └── index.js
 ├── rendering/
-│   ├── colors.js        # Color conversion utilities
+│   ├── index.js         # Rendering module re-exports
+│   ├── pixi-setup.js    # PixiJS initialization and sprite pooling
+│   ├── pixi-context.js  # PixiJS layer management
 │   ├── sprite-pools.js  # PixiJS sprite pooling system
-│   └── pixi-setup.js    # PixiJS initialization
-└── audio/
-    └── audio-manager.js # Sound and music management
+│   ├── background-renderer.js # Star field and nebula rendering
+│   ├── minimap-renderer.js # Minimap rendering
+│   ├── texture-loader.js # Asset loading management
+│   ├── rendering-state.js # Rendering state management
+│   └── colors.js        # Color conversion utilities
+├── audio/
+│   ├── index.js         # Audio module re-exports
+│   └── audio-manager.js # Sound and music management
+└── utils/
+    ├── index.js         # Utils module re-exports
+    ├── spawn-utils.js   # Spawn point utilities
+    └── cleanup-utils.js # Cleanup utilities
 ```
 
 ### Electron Wrapper (`electron/`)
@@ -289,10 +353,7 @@ Auto-targeting ship designed for easier gameplay:
 - Cursor visible in menus (pause, level-up, start screen, settings)
 
 **Code Location:**
-- Mouse movement: `src/js/main.js:3387-3400`
-- Rotation mode: `src/js/main.js:3396, 3482-3492`
-- Turbo boost with right-click: `src/js/main.js:3354`
-- Cursor hiding: `src/js/main.js:2192-2201`
+- `Spaceship` class: `src/js/entities/player/Spaceship.js`
 
 ## PixiJS Rendering Best Practices
 
@@ -346,7 +407,7 @@ gfx.endFill();
 
 ### Laser Aiming Line (Turret Indicator)
 The dashed cyan laser that shows where the turret is aiming:
-- **Location**: `Spaceship.drawLaser()` in `src/js/main.js:4123-4171`
+- **Location**: `Spaceship` class in `src/js/entities/player/Spaceship.js`
 - **Uses**: `this._pixiLaserGfx` (persistent graphics object)
 - **Pattern**: Dashed line (10px dash, 20px gap) with target circle
 - **Anti-ghosting**: Always call `gfx.endFill()` after drawing line segments
@@ -391,76 +452,127 @@ To create additional project-specific skills:
 
 ## Critical File Locations
 
-The game uses a monolithic `src/js/main.js` (~26,000 lines). Key entity locations:
+The game uses a **modular ES6 architecture**. Key entity locations:
 
-| Entity Type | Line Range | Notes |
-|-------------|------------|-------|
-| `EnvironmentAsteroid` | 2847-3206 | Destructible asteroids |
-| `Spaceship` (Player) | 3207-4734 | Main player class |
-| `CruiserMineBomb` | 4911-5021 | Boss mines |
-| `FlagshipGuidedMissile` | 5022-5255 | Boss missiles |
-| `Bullet` | 5356-5538 | Main projectile class |
-| `ClusterBomb` | 5539-5627 | Splitting projectiles |
-| `NapalmZone` | 5628-5739 | Area damage zones |
-| `Enemy` (base) | 5740-6618 | Base enemy class |
-| `Pinwheel` | 6619-7032 | Pinwheel enemies |
-| `WarpGate` | 7033-7135 | Warp gate entities |
-| `CaveWallTurret` | 7389-7800 | Cave wall turrets |
-| `CaveLevel` | 8384-9665 | Cave level generation |
-| `WarpTurret` | 9666-9742 | Warp zone turrets |
-| `RadiationStorm` | 9999-10150 | Environmental hazard |
-| `Cruiser` (Boss) | 10699-11276 | Cruiser boss |
-| `Flagship` | 11277-11388 | Flagship boss |
-| `SuperFlagshipBoss` | 11389-11639 | Super flagship boss |
-| `WarpSentinelBoss` | 11754-12560 | Warp boss |
-| `FinalBoss` | 12561-13376 | Final boss encounter |
-| `SpaceStation` | 13377-14068 | Space station entity |
-| `Destroyer` | 14069-14810 | Destroyer boss |
-| `Destroyer2` | 14811-15489 | Destroyer variant |
-| `Drone` | 18247-18403 | Companion drones |
-| `WallTurret` | 19000+ | Station turrets |
+| Entity Type | Module Path | Notes |
+|-------------|-------------|-------|
+| `Entity` (base) | `src/js/entities/Entity.js` | Base class for all entities |
+| `Spaceship` | `src/js/entities/player/Spaceship.js` | Main player class |
+| `Enemy` (base) | `src/js/entities/enemies/Enemy.js` | Base enemy class |
+| `Pinwheel` | `src/js/entities/enemies/Pinwheel.js` | Pinwheel enemies |
+| `Cruiser` | `src/js/entities/bosses/Cruiser.js` | Cruiser boss |
+| `Destroyer` | `src/js/entities/bosses/Destroyer.js` | Destroyer boss |
+| `Destroyer2` | `src/js/entities/bosses/Destroyer2.js` | Destroyer variant |
+| `Flagship` | `src/js/entities/bosses/Flagship.js` | Flagship boss |
+| `SuperFlagshipBoss` | `src/js/entities/bosses/SuperFlagshipBoss.js` | Super flagship |
+| `WarpSentinelBoss` | `src/js/entities/bosses/WarpSentinelBoss.js` | Warp boss |
+| `FinalBoss` | `src/js/entities/bosses/FinalBoss.js` | Final boss |
+| `SpaceStation` | `src/js/entities/bosses/SpaceStation.js` | Space station |
+| `Bullet` | `src/js/entities/projectiles/` | Main projectile classes |
+| `ClusterBomb` | `src/js/entities/projectiles/ClusterBomb.js` | Splitting projectiles |
+| `NapalmZone` | `src/js/entities/projectiles/NapalmZone.js` | Area damage zones |
+| `CruiserMineBomb` | `src/js/entities/projectiles/CruiserMineBomb.js` | Boss mines |
+| `FlagshipGuidedMissile` | `src/js/entities/projectiles/FlagshipGuidedMissile.js` | Boss missiles |
+| `Particle` | `src/js/entities/particles/Particle.js` | Base particle class |
+| `Explosion` | `src/js/entities/particles/Explosion.js` | Explosion effects |
+| `SpriteExplosion` | `src/js/entities/particles/SpriteExplosion.js` | Sprite-based explosions |
+| `LightningArc` | `src/js/entities/particles/LightningArc.js` | Lightning effects |
+| `Coin` | `src/js/entities/pickups/Coin.js` | Coin pickup |
+| `HealthPowerUp` | `src/js/entities/pickups/HealthPowerUp.js` | Health pickup |
+| `SpaceNugget` | `src/js/entities/pickups/SpaceNugget.js` | Nugget pickup |
+| `EnvironmentAsteroid` | `src/js/entities/environment/EnvironmentAsteroid.js` | Destructible asteroids |
+| `WarpGate` | `src/js/entities/environment/WarpGate.js` | Warp gate |
+| `Dungeon1Gate` | `src/js/entities/environment/Dungeon1Gate.js` | Dungeon gate |
+| `RadiationStorm` | `src/js/entities/zones/RadiationStorm.js` | Environmental hazard |
+| `WarpMazeZone` | `src/js/entities/zones/WarpMazeZone.js` | Warp zone |
+| `Dungeon1Zone` | `src/js/entities/zones/Dungeon1Zone.js` | Dungeon zone |
+| `WarpBioPod` | `src/js/entities/zones/WarpBioPod.js` | Warp bio pod |
+| `AnomalyZone` | `src/js/entities/zones/AnomalyZone.js` | Anomaly zone |
+| `Drone` | `src/js/entities/support/Drone.js` | Companion drones |
+| `WallTurret` | `src/js/entities/support/WallTurret.js` | Station turrets |
+| `ContractBeacon` | `src/js/entities/support/ContractBeacon.js` | Contract beacons |
+| `GateRing` | `src/js/entities/support/GateRing.js` | Gate rings |
+| `CaveWallTurret` | `src/js/entities/cave/CaveWallTurret.js` | Cave wall turrets |
+| `CaveMonster2` | `src/js/entities/cave/CaveMonster2.js` | Cave monsters |
+| `FloatingText` | `src/js/entities/FloatingText.js` | Floating damage/combat text |
 
-## Global Variables
+## Global State Management
 
-### Game State
+The game uses a centralized **GameContext** object (`src/js/core/game-context.js`) for all global state instead of scattered variables.
+
+### Accessing Game State
+```javascript
+import { GameContext } from './core/index.js';
+
+// Entity arrays
+GameContext.enemies
+GameContext.bullets
+GameContext.particles
+GameContext.coins
+GameContext.drones
+
+// Game state
+GameContext.gameActive
+GameContext.gamePaused
+GameContext.score
+GameContext.difficultyTier
+
+// Boss/event entities
+GameContext.boss
+GameContext.spaceStation
+GameContext.destroyer
+GameContext.radiationStorm
+```
+
+### Key GameContext Properties
+
+**Game State:**
 - `gameActive`, `gamePaused`, `gameMode` - Main game state flags
 - `sectorIndex`, `sectorTransitionActive` - Sector tracking
 - `caveMode`, `caveLevel` - Cave mode state
 - `score`, `difficultyTier`, `pinwheelsDestroyed` - Progress tracking
 
-### Entity Arrays
+**Entity Arrays:**
 - `player` - Single player instance
 - `enemies` - All active enemies
 - `bullets` - All projectiles
 - `bossBombs` - Boss explosive mines
 - `particles`, `explosions` - Visual effects
-- `coins`, `nuggets`, `spaceNuggets` - Collectibles
+- `coins`, `nuggets` - Collectibles
 - `drones` - Companion drones
-- `caches` - Exploration caches
 - `environmentAsteroids` - Destructible environment
 
-### Boss/Event Entities
+**Boss/Event Entities:**
 - `boss`, `bossActive` - Current boss entity
 - `spaceStation` - Space station entity
 - `destroyer` - Destroyer boss
 - `radiationStorm` - Radiation storm event
-- `miniEvent` - Active mini event
 - `warpGate` - Active warp gate
-- `arcadeBoss` - Arcade mode boss
-- `dreadManager` - Dreadnought manager
+- `warpZone`, `dungeon1Gate`, `dungeon1Zone` - Zone entities
 
-### Meta Progression
+**Dungeon Bosses:**
+- `necroticHive`, `cerebralPsion`, `fleshforge` - Dungeon boss instances
+- `vortexMatriarch`, `chitinusPrime`, `psyLich` - More dungeon bosses
+
+**Meta Progression:**
 - `spaceNuggets` - Premium currency
 - `rerollTokens` - Reroll tokens available
 - `metaExtraLifeCount` - Extra lives from meta
 - `activeContract` - Current active contract
 - `shownUpgradesThisRun` - Track shown upgrades
+- `metaProfile` - Meta progression profile (purchases, upgrades)
 
-### Timing
+**Timing:**
 - `simAccMs` - Accumulated simulation time
 - `simNowMs` - Current simulation time
-- `simLastPerfAt` - Last performance check time
 - `renderAlpha` - Interpolation factor (0-1)
+
+**Input State:**
+- `keys` - Keyboard state (w, a, s, d, space, shift, e, f)
+- `mouseState` - Mouse button states
+- `mouseScreen`, `mouseWorld` - Mouse position
+- `gpState` - Gamepad state
+- `usingGamepad` - Whether gamepad is active
 
 ## Asset Organization
 
@@ -532,14 +644,17 @@ if (!entity.isInView(camX, camY, viewWidth, viewHeight)) {
 
 | Function | Location | Purpose |
 |----------|----------|---------|
-| `clearArrayWithPixiCleanup(arr)` | main.js:2140 | Clear array with sprite cleanup |
-| `filterArrayWithPixiCleanup(arr, fn)` | main.js:2153 | Filter with cleanup |
-| `pixiCleanupObject(obj)` | main.js:2083 | Standard PixiJS cleanup |
-| `emitParticle(x, y, vx, vy, color, life)` | main.js:17221 | Spawn particle |
-| `emitBurstParticle(x, y, count, color)` | main.js:17271 | Particle burst |
-| `findSpawnPointRelative(hostile)` | main.js | Find spawn position |
+| `GameContext.reset()` | core/game-context.js | Reset all game state |
+| `getElapsedGameTime()` | core/game-context.js | Get current game time |
+| `Vector` class | core/math.js | Vector math utility |
+| `SpatialHash` | core/math.js | Spatial hashing for collisions |
+| `clamp()`, `lerp()` | core/math.js | Math utility functions |
+| `randomRange()`, `randomInt()` | core/math.js | Random number generation |
+| `clearArrayWithPixiCleanup(arr)` | utils/cleanup-utils.js | Clear array with sprite cleanup |
+| `filterArrayWithPixiCleanup(arr, fn)` | utils/cleanup-utils.js | Filter with cleanup |
+| `pixiCleanupObject(obj)` | rendering/pixi-setup.js | Standard PixiJS cleanup |
+| `findSpawnPointRelative(hostile)` | utils/spawn-utils.js | Find spawn position |
 | `isInView()`, `isInExtendedView()` | Entity base | View culling checks |
-| `updateViewBounds()` | main loop | Update camera bounds |
 
 ## Debug Tools
 
