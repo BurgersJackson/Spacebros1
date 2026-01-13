@@ -40,7 +40,7 @@ import {
     ENABLE_NEBULA, NEBULA_ALPHA, ENABLE_PROJECTILE_IMPACT_SOUNDS,
     PLAYER_SHIELD_RADIUS_SCALE
 } from './core/constants.js';
-import { Particle, SmokeParticle, Explosion, WarpParticle, Coin, FloatingText, HealthPowerUp, SpaceNugget, getOrCreateFloatingText, LightningArc } from './entities/index.js';
+import { Explosion, WarpParticle, Coin, FloatingText, HealthPowerUp, SpaceNugget, getOrCreateFloatingText } from './entities/index.js';
 import * as Cave from './entities/cave/index.js';
 import {
     initAudio, startMusic, stopMusic, setMusicMode, playSound, playMp3Sfx,
@@ -70,6 +70,24 @@ import {
     formatTime,
     showOverlayMessage
 } from './utils/ui-helpers.js';
+import {
+    emitParticle,
+    emitSmokeParticle,
+    compactParticles,
+    spawnParticles,
+    spawnLightningArc,
+    processLightningEffects,
+    scheduleParticleBursts,
+    processStaggeredParticleBursts,
+    scheduleStaggeredBombExplosions,
+    processStaggeredBombExplosions,
+    spawnLargeExplosion,
+    spawnFieryExplosion,
+    spawnBossExplosion,
+    spawnAsteroidExplosion,
+    spawnSmoke,
+    spawnBarrelSmoke
+} from './systems/particle-manager.js';
 import {
     SAVE_PREFIX,
     SAVE_LAST_KEY,
@@ -261,14 +279,6 @@ let pixiParticleSmokeTexture;
 let pixiParticleWarpTexture;
 
 // --- Base Classes (Vector and Entity imported from modules) ---
-
-// Particle, SmokeParticle, Explosion, WarpParticle imported from ./entities/index.js
-// Coin, FloatingText, HealthPowerUp, SpaceNugget imported from ./entities/index.js
-// getOrCreateFloatingText imported from ./entities/index.js
-
-// Audio functions imported from ./audio/audio-manager.js
-// initAudio, startMusic, stopMusic, setMusicMode, playSound, playMp3Sfx,
-// audioToggleMusic, isMusicEnabled, setProjectileImpactSoundContext
 
 // DEBUG: Spawn cruiser instantly from console with window.spawnCruiser()
 window.spawnCruiser = function () {
@@ -1429,328 +1439,6 @@ function _enterDungeon1Internal() {
 }
 
 // Instead, we transition directly to level 2 via sectorTransitionActive
-
-// --- Performance: particle pooling (render-only, no gameplay impact) ---
-const particlePool = [];
-const smokeParticlePool = [];
-
-function emitParticle(x, y, vx, vy, color = '#fff', life = 30) {
-    let p = particlePool.length > 0 ? particlePool.pop() : null;
-    if (!p) p = new Particle(x, y, vx, vy, color, life);
-    else p.reset(x, y, vx, vy, color, life);
-    GameContext.particles.push(p);
-    return p;
-}
-
-function emitSmokeParticle(x, y, vx, vy, color = '#aaa') {
-    let p = smokeParticlePool.length > 0 ? smokeParticlePool.pop() : null;
-    if (!p) p = new SmokeParticle(x, y, vx, vy, color);
-    else p.reset(x, y, vx, vy, color);
-    GameContext.particles.push(p);
-    return p;
-}
-
-function compactParticles(arr) {
-    immediateCompactArray(arr, (p) => {
-        // Release particle sprite back to pool when particle dies
-        if (p.sprite && pixiParticleSpritePool) {
-            releasePixiSprite(pixiParticleSpritePool, p.sprite);
-            p.sprite = null;
-        }
-    });
-}
-
-function spawnParticles(x, y, count = 10, color = '#fff') {
-    for (let i = 0; i < count; i++) emitParticle(x, y, null, null, color, 30);
-}
-
-/**
- * Spawn a lightning arc visual effect between two points
- * @param {number} x1 - Start X position
- * @param {number} y1 - Start Y position
- * @param {number} x2 - End X position
- * @param {number} y2 - End Y position
- * @param {string} color - Lightning color
- */
-function spawnLightningArc(x1, y1, x2, y2, color = '#0ff') {
-    // Create LightningArc entity with 12-frame lifetime (200ms at 60fps, scales with dt)
-    const arc = new LightningArc(x1, y1, x2, y2, color, 12);
-    GameContext.lightningArcs.push(arc);
-    return arc;
-}
-
-/**
- * Process and render lightning effects (placeholder - handled by particles)
- */
-function processLightningEffects() {
-    // Lightning is handled by the particle system, nothing to do here
-}
-
-/**
- * Schedule particle bursts to be spread across multiple frames
- * This prevents sprite pool exhaustion when many particles need to spawn at once
- * @param {number} x - X position
- * @param {number} y - Y position
- * @param {number} totalCount - Total particles to spawn
- * @param {string} color - Particle color
- * @param {number} spreadFrames - Number of frames to spread the spawn over
- */
-function scheduleParticleBursts(x, y, totalCount, color, spreadFrames = 10) {
-    const particlesPerFrame = Math.max(1, Math.floor(totalCount / spreadFrames));
-
-    for (let frame = 0; frame < spreadFrames; frame++) {
-        GameContext.staggeredParticleBursts.push({
-            x: x + (Math.random() - 0.5) * 100, // Add some position variation
-            y: y + (Math.random() - 0.5) * 100,
-            count: particlesPerFrame + (frame === spreadFrames - 1 ? totalCount % spreadFrames : 0),
-            color: color,
-            delayFrames: frame * 2, // Spawn every 2 frames
-            processed: false
-        });
-    }
-}
-
-/**
- * Process staggered particle bursts
- * Call this every frame to handle queued particle spawning
- */
-function processStaggeredParticleBursts() {
-    if (GameContext.staggeredParticleBursts.length === 0) return;
-
-    for (let i = GameContext.staggeredParticleBursts.length - 1; i >= 0; i--) {
-        const burst = GameContext.staggeredParticleBursts[i];
-
-        if (burst.processed) {
-            GameContext.staggeredParticleBursts.splice(i, 1);
-            continue;
-        }
-
-        if (burst.delayFrames <= 0) {
-            burst.processed = true;
-            spawnParticles(burst.x, burst.y, burst.count, burst.color);
-        } else {
-            burst.delayFrames--;
-        }
-    }
-}
-
-/**
- * Schedule bomb explosions to be spread across multiple frames
- * This prevents sprite pool exhaustion and frame spikes when many bombs explode at once
- * @param {number} sourceX - X position to spawn effects at
- * @param {number} sourceY - Y position to spawn effects at
- */
-function scheduleStaggeredBombExplosions(sourceX, sourceY) {
-    const bombCount = GameContext.bossBombs.length;
-    if (bombCount === 0) {
-        clearArrayWithPixiCleanup(GameContext.bossBombs);
-        return;
-    }
-
-    console.log(`[BOSS KILL] Scheduling ${bombCount} bomb explosions over multiple frames`);
-
-    // Clear the bombs array but keep the explosion queue
-    const bombsToExplode = [...GameContext.bossBombs];
-    GameContext.bossBombs.length = 0;
-
-    // Schedule explosions spread across frames
-    // Explode up to 3 bombs per frame to prevent sprite pool exhaustion
-    const bombsPerFrame = Math.min(3, Math.ceil(bombCount / 10)); // Spread over at least 10 frames
-
-    for (let i = 0; i < bombCount; i++) {
-        const bomb = bombsToExplode[i];
-        // Calculate delay in frames
-        const delayFrames = Math.floor(i / bombsPerFrame);
-
-        GameContext.staggeredBombExplosions.push({
-            bomb: bomb,
-            pos: { x: bomb.pos.x, y: bomb.pos.y },
-            delayFrames: delayFrames,
-            processed: false
-        });
-    }
-}
-
-/**
- * Process staggered bomb explosions
- * Call this every frame to handle queued bomb explosions
- */
-function processStaggeredBombExplosions() {
-    if (GameContext.staggeredBombExplosions.length === 0) return;
-
-    const frameTime = performance.now();
-    const explosionsThisFrame = [];
-
-    for (let i = GameContext.staggeredBombExplosions.length - 1; i >= 0; i--) {
-        const queued = GameContext.staggeredBombExplosions[i];
-
-        if (queued.processed) {
-            GameContext.staggeredBombExplosions.splice(i, 1);
-            continue;
-        }
-
-        if (queued.delayFrames <= 0) {
-            // Explode this bomb now
-            queued.processed = true;
-            explosionsThisFrame.push(queued);
-        } else {
-            queued.delayFrames--;
-        }
-    }
-
-    // Execute explosions for this frame
-    // Limit to prevent overwhelming the system
-    const maxPerFrame = 4;
-    const actualExplosions = explosionsThisFrame.slice(0, maxPerFrame);
-
-    for (const queued of actualExplosions) {
-        const bomb = queued.bomb;
-        if (bomb && !bomb.dead) {
-            bomb.dead = true;
-            pixiCleanupObject(bomb);
-            playSound('explode');
-            spawnParticles(bomb.pos.x, bomb.pos.y, 40, '#fa0');
-            GameContext.shockwaves.push(new Shockwave(bomb.pos.x, bomb.pos.y, bomb.damage, bomb.blastRadius, {
-                damagePlayer: true,
-                damageBases: true,
-                ignoreEntity: bomb.owner,
-                color: '#fa0'
-            }));
-        }
-    }
-
-    // If we couldn't process all explosions this frame, keep them for next frame
-    // (they're already marked as processed, so they won't be re-exploded)
-}
-
-// Replaces spawnGunboatExplosion with a more generic large explosion
-function spawnLargeExplosion(x, y, scale = 2.0) {
-    const s = scale;
-    const spriteSize = 250 * (s / 2.0); // Base size 250 at scale 2.0
-    GameContext.explosions.push(new Explosion(x, y, spriteSize));
-
-    // Standard fiery particles (glowy)
-    const count = Math.floor(25 * (s / 1.5));
-    const colors = ['#ff8', '#fa0', '#f40', '#f00'];
-    for (let i = 0; i < count; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const speed = (2.0 + Math.random() * 3.0) * (s / 2.0);
-        const vx = Math.cos(a) * speed;
-        const vy = Math.sin(a) * speed;
-        const color = colors[(Math.random() * colors.length) | 0];
-        const life = 30 + Math.floor(Math.random() * 20);
-        const p = emitParticle(x, y, vx, vy, color, life);
-        p.glow = true;
-        p.size = (6 + Math.random() * 8) * (s / 2.0); // Scale size
-    }
-
-    // EXTRA LARGE debris particles (explode in all directions)
-    const bigCount = Math.floor(12 * (s / 2.0));
-    for (let i = 0; i < bigCount; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const speed = (1.5 + Math.random() * 3.5) * (s / 2.0);
-        const vx = Math.cos(a) * speed;
-        const vy = Math.sin(a) * speed;
-        const life = 40 + Math.floor(Math.random() * 25);
-        // Use enemy bullet colors (Red/Orange) to match request
-        const color = (Math.random() < 0.5) ? '#f00' : '#f80';
-
-        const p = emitParticle(x, y, vx, vy, color, life);
-        p.size = (20 + Math.random() * 12) * (s / 2.0); // Large particles scaled
-        p.glow = true;
-    }
-
-    spawnSmoke(x, y, Math.ceil(6 * (s / 2.0)));
-    playSound('base_explode');
-}
-
-function spawnFieryExplosion(x, y, scale = 1) {
-    const s = Math.max(0.6, Math.min(3, scale || 1));
-    const spriteSize = Math.max(90, Math.round(140 * s));
-    GameContext.explosions.push(new Explosion(x, y, spriteSize));
-
-    const count = Math.max(10, Math.round(12 * s));
-    const colors = ['#ff6', '#fa0', '#f80', '#f00'];
-    for (let i = 0; i < count; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const speed = (0.8 + Math.random() * 1.8) * s;
-        const vx = Math.cos(a) * speed;
-        const vy = Math.sin(a) * speed;
-        const color = colors[(Math.random() * colors.length) | 0];
-        const life = 20 + Math.floor(Math.random() * 16);
-        const p = emitParticle(x, y, vx, vy, color, life);
-        p.glow = true;
-    }
-    spawnSmoke(x, y, Math.max(1, Math.round(2 * s)));
-}
-
-function spawnBossExplosion(x, y, scale = 2.5, chunkCount = 18) {
-    const s = Math.max(1.2, Math.min(5, scale || 1));
-    spawnFieryExplosion(x, y, s);
-
-    const colors = ['#888', '#777', '#666'];
-    const count = Math.max(8, Math.round(chunkCount * (0.6 + s * 0.15)));
-    for (let i = 0; i < count; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const speed = (2.5 + Math.random() * 4.5) * s;
-        const vx = Math.cos(a) * speed;
-        const vy = Math.sin(a) * speed;
-        const life = 40 + Math.floor(Math.random() * 35);
-        const p = emitParticle(x, y, vx, vy, colors[(Math.random() * colors.length) | 0], life);
-        p.size = 4 + Math.random() * 6;
-        p.glow = false;
-    }
-
-    const smokeCount = Math.max(2, Math.round(2 * s));
-    for (let i = 0; i < smokeCount; i++) {
-        const sp = emitSmokeParticle(x, y, (Math.random() - 0.5) * s, (Math.random() - 0.5) * s, '#777');
-        if (sp) {
-            sp.size *= 1.8;
-            sp.life = Math.round(sp.life * 1.3);
-            sp.maxLife = sp.life;
-        }
-    }
-}
-
-function spawnAsteroidExplosion(x, y, scale = 1) {
-    const s = Math.max(0.5, Math.min(2.6, scale || 1)) * 2;
-    const count = Math.max(8, Math.round(10 * s));
-    const colors = ['#fff'];
-    for (let i = 0; i < count; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const speed = (0.6 + Math.random() * 1.6) * s;
-        const vx = Math.cos(a) * speed;
-        const vy = Math.sin(a) * speed;
-        const color = colors[(Math.random() * colors.length) | 0];
-        const life = 18 + Math.floor(Math.random() * 16);
-        const p = emitParticle(x, y, vx, vy, color, life);
-        p.size = (p.size || 2) * 3;
-        p.glow = true;
-    }
-    const smokeCount = Math.max(2, Math.round(4 * s));
-    for (let i = 0; i < smokeCount; i++) {
-        const sp = emitSmokeParticle(x, y, null, null, '#fff');
-        if (sp) {
-            sp.size *= 3;
-            sp.life = Math.round(sp.life * 1.4);
-            sp.maxLife = sp.life;
-        }
-    }
-}
-
-function spawnSmoke(x, y, count = 1, color = '#aaa') {
-    for (let i = 0; i < count; i++) emitSmokeParticle(x, y, null, null, color);
-}
-
-function spawnBarrelSmoke(x, y, angle) {
-    for (let i = 0; i < 3; i++) {
-        const speed = 2 + Math.random() * 2;
-        const spread = (Math.random() - 0.5) * 0.5;
-        const vx = Math.cos(angle + spread) * speed;
-        const vy = Math.sin(angle + spread) * speed;
-        emitSmokeParticle(x, y, vx, vy);
-    }
-}
 
 // Companion Drones
 

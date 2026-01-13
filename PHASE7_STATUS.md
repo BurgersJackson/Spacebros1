@@ -1,6 +1,6 @@
 # Phase 7: Final Reduction to ~1,000 Lines - Status Report
 
-**Last Updated:** 2026-01-12T21:15:00-08:00
+**Last Updated:** 2026-01-12T23:14:15-08:00
 **Status:** IN PROGRESS
 
 ---
@@ -9,9 +9,9 @@
 Reduce `src/js/main.js` from 6,411 lines to under 1,000 lines by extracting remaining initialization and asset setup logic into dedicated modules.
 
 ## Current Metrics
-- **Current lines:** 2,647
+- **Current lines:** 2,495
 - **Target lines:** < 1,000
-- **Remaining to remove:** 1,647 lines
+- **Remaining to remove:** 1,495 lines
 
 ## Planned Work
 
@@ -36,6 +36,11 @@ Reduce `src/js/main.js` from 6,411 lines to under 1,000 lines by extracting rema
 - **Target:** Remove remaining inline helpers, keep bootstrap only
 - **Expected removal:** ~400-700 lines
 
+### 5) Extract Particle System Helpers
+- **Target:** Particle pooling, explosions, lightning, smoke emitters
+- **New module:** `src/js/systems/particle-manager.js`
+- **Expected removal:** ~100-200 lines
+
 ## Testing Plan
 Run after each extraction step:
 - `npm run start:dev` and verify:
@@ -48,5 +53,6 @@ Run after each extraction step:
 - [x] Texture and asset loading extracted
 - [x] Canvas + PixiJS initialization extracted
 - [x] Settings/profile UI extracted
+- [x] Particle system helpers extracted
 - [ ] Main.js trimmed to < 1,000 lines
 - [ ] Final smoke test completed

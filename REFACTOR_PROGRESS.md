@@ -5,10 +5,10 @@
 ## Current Progress
 
 **Starting lines**: 6,411
-**Current lines**: 2,647
-**Lines removed**: 3,764 (58.7%)
+**Current lines**: 2,495
+**Lines removed**: 3,916 (61.1%)
 **Target**: Under 1,000 lines
-**Remaining to remove**: 1,647 lines
+**Remaining to remove**: 1,495 lines
 
 ---
 
@@ -131,6 +131,12 @@
   - Extracted: `ShootingStar`
   - Lines removed: 190
 
+### Phase 13: Particle System
+- [x] **Particle manager extraction** (~150 lines)
+  - Created: `src/js/systems/particle-manager.js`
+  - Extracted particle pooling, explosions, and smoke emitters
+  - Lines removed: 150
+
 ### Phase 1: Simple Entity Classes
 - [x] **WarpGate class** (~80 lines)
   - Removed duplicate class from `src/js/main.js`
@@ -180,3 +186,4 @@
 - [x] Smoke test after Phase 10 (POI/Cache Entities) - PASSED
 - [x] Smoke test after Phase 11 (MiniEventDefendCache) - PASSED
 - [x] Smoke test after Phase 12 (ShootingStar/WarpGate cleanup) - PASSED
+- [x] Smoke test after Phase 13 (Particle manager) - PASSED
