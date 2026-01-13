@@ -515,13 +515,8 @@ const uiCtx = (() => {
 })();
 
 const minimapCanvas = document.getElementById('minimap');
-const minimapCtx = (() => {
-    try { return minimapCanvas.getContext('2d', { desynchronized: true, alpha: false }); }
-    catch (e) { return minimapCanvas.getContext('2d'); }
-})();
 if (ctx) ctx.imageSmoothingEnabled = false;
 if (uiCtx) uiCtx.imageSmoothingEnabled = false;
-if (minimapCtx) minimapCtx.imageSmoothingEnabled = false;
 
 // Handle Canvas Resolution Setup
 // Sets up canvas at fixed internal resolution with CSS scaling for letterboxing
@@ -555,7 +550,6 @@ function setupCanvasResolution(internalW, internalH) {
     height = internalH;
     internalWidth = internalW;
     internalHeight = internalH;
-    aspectRatio = internalW / internalH;
 
     // Disable image smoothing for pixel-perfect rendering
     if (ctx) ctx.imageSmoothingEnabled = false;
@@ -1147,10 +1141,6 @@ roamerImage.src = ROAMER_URL;
 eliteRoamerImage.src = ELITE_ROAMER_URL;
 hunterImage.src = HUNTER_URL;
 defenderImage.src = DEFENDER_URL;
-let roamerLoaded = false;
-let eliteRoamerLoaded = false;
-let hunterLoaded = false;
-let defenderLoaded = false;
 
 const applyEnemyTexture = (img, key) => {
     if (!img || img.naturalWidth <= 0 || !window.PIXI) return;
@@ -1170,25 +1160,17 @@ const applyEnemyTexture = (img, key) => {
 };
 
 roamerImage.addEventListener('load', () => {
-    roamerLoaded = true;
     applyEnemyTexture(roamerImage, 'enemy_roamer');
 });
 eliteRoamerImage.addEventListener('load', () => {
-    eliteRoamerLoaded = true;
     applyEnemyTexture(eliteRoamerImage, 'enemy_elite_roamer');
 });
 hunterImage.addEventListener('load', () => {
-    hunterLoaded = true;
     applyEnemyTexture(hunterImage, 'enemy_hunter');
 });
 defenderImage.addEventListener('load', () => {
-    defenderLoaded = true;
     applyEnemyTexture(defenderImage, 'enemy_defender');
 });
-roamerImage.addEventListener('error', () => { roamerLoaded = false; });
-eliteRoamerImage.addEventListener('error', () => { eliteRoamerLoaded = false; });
-hunterImage.addEventListener('error', () => { hunterLoaded = false; });
-defenderImage.addEventListener('error', () => { defenderLoaded = false; });
 
 // Optional external sprite override for the standard base.
 const BASE1_URL = 'assets/base1.png';
@@ -1419,7 +1401,6 @@ setAsteroidImages(asteroidImages);
 setAsteroidIndestructibleImage(asteroidIndestructibleImage);
 
 let asteroidTexturesExternalReady = false;
-let asteroidIndestructibleTextureReady = false;
 
 const applyAsteroidTextures = () => {
     if (asteroidTexturesExternalReady || !window.PIXI) return;
@@ -1463,7 +1444,6 @@ asteroidIndestructibleImage.addEventListener('load', () => {
         pixiTextures.asteroidIndestructible = tex;
         pixiTextureAnchors.asteroidIndestructible = 0.5;
 
-        asteroidIndestructibleTextureReady = true;
         setAsteroidIndestructibleTextureReady(true);
     } catch (e) {
         console.warn('Failed to load indestructible asteroid texture', e);
@@ -1478,8 +1458,6 @@ const PLAYER1_URL = 'assets/player1.png';
 const playerHullImage = new Image();
 playerHullImage.decoding = 'async';
 playerHullImage.src = PLAYER1_URL;
-const PLAYER_HULL_RENDER_SCALE = 2.5;
-const PLAYER_HULL_ROT_OFFSET = Math.PI / 2; // world angle 0=right, art is nose-up
 let playerHullExternalReady = false; // image loaded (usable by Canvas fallback too)
 let playerHullPixiApplied = false;
 
@@ -1547,14 +1525,6 @@ const EXPLOSION1_URL = 'assets/explosion1.png';
 const explosion1Image = new Image();
 explosion1Image.decoding = 'async';
 explosion1Image.src = EXPLOSION1_URL;
-const EXPLOSION1_COLS = 4;
-const EXPLOSION1_ROWS = 5;
-const EXPLOSION1_FRAMES = EXPLOSION1_COLS * EXPLOSION1_ROWS;
-const EXPLOSION1_FRAME_W = 1024 / EXPLOSION1_COLS;
-const EXPLOSION1_FRAME_H = 1024 / EXPLOSION1_ROWS;
-let explosion1Ready = false;
-explosion1Image.addEventListener('load', () => { explosion1Ready = true; });
-explosion1Image.addEventListener('error', () => { explosion1Ready = false; });
 
 
 if (USE_PIXI_OVERLAY && window.PIXI) {
@@ -2467,14 +2437,6 @@ function destroyBulletSprite(bullet) {
     destroyBulletSpriteHelper(bullet);
 }
 
-function releasePixiEnemySprite(spr) {
-    if (!spr) return;
-    const key = spr._pixiKey;
-    const pool = (key && pixiEnemySpritePools && pixiEnemySpritePools[key]) ? pixiEnemySpritePools[key] : null;
-    if (pool) releasePixiSprite(pool, spr);
-    else releasePixiSprite(null, spr);
-}
-
 function pixiCleanupObject(obj) {
     pixiCleanupObjectHelper(obj);
 }
@@ -2565,7 +2527,6 @@ let width, height;
 // Internal resolution (absolute - game renders at this fixed resolution)
 let internalWidth = 1920;
 let internalHeight = 1080;
-let aspectRatio = internalWidth / internalHeight;
 
 GameContext.gameActive = false;
 GameContext.gamePaused = false;
@@ -4376,8 +4337,6 @@ function exitDungeon1() {
 // Instead, we transition directly to level 2 via sectorTransitionActive
 
 // --- Performance: particle pooling (render-only, no gameplay impact) ---
-const PARTICLE_POOL_MAX = 12000;
-const SMOKE_POOL_MAX = 6000;
 const particlePool = [];
 const smokeParticlePool = [];
 
@@ -4405,29 +4364,6 @@ function compactParticles(arr) {
             p.sprite = null;
         }
     });
-}
-
-// Safety cleanup function to force explosions to clean themselves
-function forceExplosionCleanup() {
-    if (!particleRes || !particleRes.pool) return;
-
-    let forcedCount = 0;
-    for (let i = GameContext.explosions.length - 1; i >= 0; i--) {
-        const ex = GameContext.explosions[i];
-        if (ex && ex.dead && !ex.cleaned) {
-            try {
-                ex.cleanup(particleRes);
-                forcedCount++;
-                console.warn(`[FORCED CLEANUP] Cleaning explosion #${i} at (${Math.round(ex.pos.x)}, ${Math.round(ex.pos.y)})`);
-            } catch (e) {
-                console.error(`[FORCED CLEANUP ERROR] Failed to clean explosion #${i}:`, e);
-            }
-        }
-    }
-
-    if (forcedCount > 0) {
-        console.log(`[FORCED CLEANUP] Cleaned ${forcedCount} explosions`);
-    }
 }
 
 function spawnParticles(x, y, count = 10, color = '#fff') {
@@ -5189,63 +5125,6 @@ function autoSaveToCurrentProfile() {
     saveGameSystem(GameContext.currentProfileName, true);
 }
 
-function showCustomPrompt(message, defaultValue) {
-    return new Promise((resolve) => {
-        const modal = document.getElementById('prompt-modal');
-        const input = document.getElementById('prompt-input');
-        const msgEl = document.getElementById('prompt-message');
-        const confirmBtn = document.getElementById('prompt-confirm');
-        const cancelBtn = document.getElementById('prompt-cancel');
-
-        if (!modal || !input || !msgEl) {
-            console.error('Prompt modal elements missing');
-            resolve(null);
-            return;
-        }
-
-        msgEl.innerText = message;
-        input.value = defaultValue || '';
-        modal.style.display = 'block';
-        input.focus();
-        input.select();
-
-        // Ensure keys don't trigger game actions
-        const stopProp = (e) => e.stopPropagation();
-
-        const cleanup = () => {
-            confirmBtn.removeEventListener('click', onConfirm);
-            cancelBtn.removeEventListener('click', onCancel);
-            input.removeEventListener('keydown', onKey);
-            input.removeEventListener('keypress', stopProp);
-            input.removeEventListener('keyup', stopProp);
-            modal.style.display = 'none';
-        };
-
-        const onConfirm = () => {
-            const val = input.value.trim();
-            cleanup();
-            resolve(val || null);
-        };
-
-        const onCancel = () => {
-            cleanup();
-            resolve(null);
-        };
-
-        const onKey = (e) => {
-            e.stopPropagation();
-            if (e.key === 'Enter') onConfirm();
-            if (e.key === 'Escape') onCancel();
-        };
-
-        confirmBtn.addEventListener('click', onConfirm);
-        cancelBtn.addEventListener('click', onCancel);
-        input.addEventListener('keydown', onKey);
-        input.addEventListener('keypress', stopProp);
-        input.addEventListener('keyup', stopProp);
-    });
-}
-
 function wipeProfiles() {
     // Remove all stored profiles and meta progression
     const toDelete = [];
@@ -5374,15 +5253,6 @@ function awardCoinsInstant(amount, opts = {}) {
     addPickupFloatingText('gold', v, opts.color || '#ff0');
 }
 
-function awardNugzInstant(amount, opts = {}) {
-    const v = Math.max(0, Math.floor(amount || 0));
-    if (v <= 0) return;
-    GameContext.spaceNuggets += v;
-    updateNuggetUI();
-    if (!opts.noSound) playSound(opts.sound || 'coin');
-    addPickupFloatingText('nugs', v, opts.color || '#ff0');
-}
-
 
 
 // --- Core Loop ---
@@ -5468,6 +5338,7 @@ registerGameLoopLogicDependencies({
     getPixiPickupSpritePool: () => pixiPickupSpritePool,
     setRenderAlphaLocal: (value) => { renderAlpha = value; },
     getGameDurationMs: () => GAME_DURATION_MS,
+    intensityBreakDuration: INTENSITY_BREAK_DURATION,
     ctx,
     uiCtx,
     canvas,

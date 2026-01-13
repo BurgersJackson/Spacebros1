@@ -77,6 +77,7 @@ let _ShootingStar = null;
 
 let _setRenderAlphaLocal = null;
 let _getGameDurationMs = null;
+let _intensityBreakDuration = null;
 
 let ctx = null;
 let uiCtx = null;
@@ -195,6 +196,7 @@ export function registerGameLoopLogicDependencies(deps) {
     if (deps.getPixiPickupSpritePool) _getPixiPickupSpritePool = deps.getPixiPickupSpritePool;
     if (deps.setRenderAlphaLocal) _setRenderAlphaLocal = deps.setRenderAlphaLocal;
     if (deps.getGameDurationMs) _getGameDurationMs = deps.getGameDurationMs;
+    if (deps.intensityBreakDuration) _intensityBreakDuration = deps.intensityBreakDuration;
     if (deps.ShootingStar) _ShootingStar = deps.ShootingStar;
 
     if (deps.ctx) ctx = deps.ctx;
@@ -657,9 +659,9 @@ export function gameLoopLogic(opts = null) {
         if (!warpActive && !GameContext.sectorTransitionActive && !GameContext.gamePaused && GameContext.gameActive) {
             if (!GameContext.intensityBreakActive && now >= GameContext.nextIntensityBreakAt) {
                 GameContext.intensityBreakActive = true;
-                GameContext.nextIntensityBreakAt = now + INTENSITY_BREAK_DURATION + 90000; // after break, schedule next in ~90s
+                GameContext.nextIntensityBreakAt = now + _intensityBreakDuration + 90000; // after break, schedule next in ~90s
             }
-            if (GameContext.intensityBreakActive && now >= GameContext.nextIntensityBreakAt - (INTENSITY_BREAK_DURATION)) {
+            if (GameContext.intensityBreakActive && now >= GameContext.nextIntensityBreakAt - (_intensityBreakDuration)) {
                 // during break, stop new roamer spawns
             }
             if (GameContext.intensityBreakActive && now >= GameContext.nextIntensityBreakAt) {
