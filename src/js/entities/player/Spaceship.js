@@ -134,6 +134,17 @@ export class Spaceship extends Entity {
         this.shotgunTimer = 0;
         this.turretLevel = 1;
 
+        // Multishot stagger system - fires multishot bullets with delay between each
+        this.multishotStagger = {
+            currentShot: 0,
+            totalShots: 1,
+            staggerDelay: 4,  // frames between shots (will be adjusted based on bullet count)
+            staggerTimer: 0,
+            lastAimAngle: 0,
+            lastDamage: 0,
+            active: false
+        };
+
         // NEW: Forward laser for Slacker Special (fires independently)
         this.forwardLaserDelay = 20; // Fire rate between shots
         this.forwardLaserTimer = 0;
@@ -495,6 +506,18 @@ export class Spaceship extends Entity {
         if (this.shotgunTimer <= 0) {
             this.shootShotgun();
             this.shotgunTimer = Math.max(4, this.shotgunDelay);
+        }
+
+        // Multishot stagger - handle delayed shots
+        if (this.multishotStagger.active) {
+            this.multishotStagger.staggerTimer -= dtScale;
+            if (this.multishotStagger.staggerTimer <= 0) {
+                this.fireMultishotStaggered();
+                // Reset timer for next shot if more shots remaining
+                if (this.multishotStagger.active && this.multishotStagger.currentShot < this.multishotStagger.totalShots) {
+                    this.multishotStagger.staggerTimer = this.multishotStagger.staggerDelay;
+                }
+            }
         }
 
         // NEW: Slacker Special forward laser (fires independently)
@@ -1091,10 +1114,28 @@ export class Spaceship extends Entity {
         const perpY = aimX;
         const spacing = 12; // Gap between projectiles
 
-        for (let i = 0; i < shots; i++) {
-            // Parallel offset logic
-            const offset = (i - (shots - 1) / 2) * spacing;
-
+        // Start multishot stagger sequence
+        if (shots > 1) {
+            this.multishotStagger.currentShot = 0;
+            this.multishotStagger.totalShots = shots;
+            // More delay for fewer bullets to prevent visual merging
+            // 2 bullets: 8 frames, 3 bullets: 6 frames, 4+ bullets: 4 frames
+            if (shots === 2) {
+                this.multishotStagger.staggerDelay = 8;
+            } else if (shots === 3) {
+                this.multishotStagger.staggerDelay = 6;
+            } else {
+                this.multishotStagger.staggerDelay = 4;
+            }
+            this.multishotStagger.staggerTimer = 0;
+            this.multishotStagger.lastAimAngle = this.turretAngle;
+            this.multishotStagger.lastDamage = damage;
+            this.multishotStagger.active = true;
+            // Fire first shot immediately
+            this.fireMultishotStaggered();
+        } else {
+            // Single shot - fire normally
+            const offset = 0;
             const bx = this.pos.x + aimX * 25 + perpX * offset;
             const by = this.pos.y + aimY * 25 + perpY * offset;
 
@@ -1146,6 +1187,51 @@ export class Spaceship extends Entity {
                 GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle, false, weaponDamage, bulletSpeed, 4, '#0f0'));
             }
         });
+    }
+
+    fireMultishotStaggered() {
+        if (!this.multishotStagger.active || this.multishotStagger.currentShot >= this.multishotStagger.totalShots) {
+            this.multishotStagger.active = false;
+            return;
+        }
+
+        const shot = this.multishotStagger.currentShot;
+        const totalShots = this.multishotStagger.totalShots;
+        const turretAngle = this.multishotStagger.lastAimAngle;
+        const damage = this.multishotStagger.lastDamage;
+        const bulletSpeed = 15;
+
+        // Calculate firing vectors for parallel multi-shot
+        const aimX = Math.cos(turretAngle);
+        const aimY = Math.sin(turretAngle);
+        const perpX = -aimY; // Right vector
+        const perpY = aimX;
+        // Increase spacing for low bullet counts to prevent visual merging
+        const spacing = totalShots <= 2 ? 20 : 12; // 20 for 1-2 shots, 12 for 3+
+
+        // Parallel offset logic
+        const offset = (shot - (totalShots - 1) / 2) * spacing;
+
+        const bx = this.pos.x + aimX * 25 + perpX * offset;
+        const by = this.pos.y + aimY * 25 + perpY * offset;
+
+        GameContext.bullets.push(this.createBullet(bx, by, turretAngle, false, damage, bulletSpeed, 4, null, 0));
+        _spawnBarrelSmoke(bx, by, turretAngle);
+
+        // Split Shot - chance to fire additional projectile at angle
+        if (this.stats.splitShot > 0 && Math.random() < this.stats.splitShot) {
+            const splitAngle = turretAngle + (Math.random() - 0.5) * 0.5;
+            const splitBullet = this.createBullet(bx, by, splitAngle, false, damage, bulletSpeed, 4, '#f80', 0);
+            splitBullet.isSplitShot = true;
+            GameContext.bullets.push(splitBullet);
+        }
+
+        this.multishotStagger.currentShot++;
+
+        // If all shots fired, deactivate stagger
+        if (this.multishotStagger.currentShot >= this.multishotStagger.totalShots) {
+            this.multishotStagger.active = false;
+        }
     }
 
     shootShotgun() {
