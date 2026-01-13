@@ -5,10 +5,10 @@
 ## Current Progress
 
 **Starting lines**: 6,411
-**Current lines**: 1,530
-**Lines removed**: 4,881 (76.1%)
+**Current lines**: 1,294
+**Lines removed**: 5,117 (79.8%)
 **Target**: Under 1,000 lines
-**Remaining to remove**: 530 lines
+**Remaining to remove**: 295 lines
 
 ---
 

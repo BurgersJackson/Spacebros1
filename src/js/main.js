@@ -33,6 +33,13 @@ import {
     setNebulaTiles
 } from './rendering/background-renderer.js';
 import { drawMinimap } from './rendering/minimap-renderer.js';
+import {
+    filterArrayWithPixiCleanup,
+    resetPixiOverlaySprites,
+    cleanupPixiWorldRootExtras,
+    registerPixiCleanupDependencies,
+    setPixiCleanupObject
+} from './rendering/pixi-cleanup.js';
 import { Entity } from './entities/Entity.js';
 import {
     ZOOM_LEVEL, SIM_FPS, SIM_STEP_MS, SIM_MAX_STEPS_PER_FRAME,
@@ -188,6 +195,10 @@ import {
     updateMetaUI
 } from './ui/index.js';
 import {
+    initDebugKeyboardShortcuts,
+    registerDebugSpawnDependencies
+} from './debug/index.js';
+import {
     registerSettingsManagerDependencies,
     showAbortConfirmDialog,
     showSaveMenu,
@@ -318,254 +329,6 @@ let pixiParticleWarpTexture;
 
 // --- Base Classes (Vector and Entity imported from modules) ---
 
-// DEBUG: Spawn cruiser instantly from console with window.spawnCruiser()
-window.spawnCruiser = function () {
-    if (typeof GameContext.bossActive !== 'undefined' && GameContext.bossActive) {
-        console.log('[DEBUG] Boss already active');
-        return;
-    }
-    GameContext.cruiserEncounterCount++;
-    if (GameContext.destroyer) {
-        const idx = GameContext.enemies.indexOf(GameContext.destroyer);
-        if (idx !== -1) GameContext.enemies.splice(idx, 1);
-        if (GameContext.destroyer.pixiCleanupObject && typeof GameContext.destroyer.pixiCleanupObject === 'function') {
-            GameContext.destroyer.pixiCleanupObject();
-        }
-        GameContext.destroyer = null;
-    }
-    clearArrayWithPixiCleanup(GameContext.enemies);
-    clearArrayWithPixiCleanup(GameContext.pinwheels);
-    GameContext.baseRespawnTimers = [];
-    GameContext.roamerRespawnQueue = [];
-    clearArrayWithPixiCleanup(GameContext.bullets);
-    clearArrayWithPixiCleanup(GameContext.bossBombs);
-    clearArrayWithPixiCleanup(GameContext.guidedMissiles);
-    GameContext.boss = new Cruiser(GameContext.cruiserEncounterCount);
-    GameContext.bossActive = true;
-    GameContext.bossArena.x = (GameContext.player.pos.x + GameContext.boss.pos.x) / 2;
-    GameContext.bossArena.y = (GameContext.player.pos.y + GameContext.boss.pos.y) / 2;
-    GameContext.bossArena.radius = 2500;
-    GameContext.bossArena.active = true;
-    GameContext.bossArena.growing = false;
-    GameContext.radiationStorm = null;
-    clearMiniEvent();
-    GameContext.dreadManager.timerActive = false;
-    GameContext.dreadManager.firstSpawnDone = true;
-    showOverlayMessage("DEBUG: CRUISER SPAWNED", '#ff0', 2000);
-    playSound('boss_spawn');
-    if (musicEnabled) setMusicMode('cruiser');
-};
-
-// DEBUG: Ctrl+Shift+3 to spawn cruiser
-document.addEventListener('keydown', function (e) {
-    if (e.ctrlKey && e.shiftKey && (e.code === 'Digit3' || e.code === 'Numpad3')) {
-        e.preventDefault();
-        window.spawnCruiser();
-    } else if (e.ctrlKey && e.shiftKey && (e.code === 'Digit4' || e.code === 'Numpad4')) {
-        e.preventDefault();
-        window.spawnStation();
-    } else if (e.ctrlKey && e.shiftKey && (e.code === 'Digit5' || e.code === 'Numpad5')) {
-        e.preventDefault();
-        window.spawnFinalBoss();
-    } else if (e.ctrlKey && e.shiftKey && (e.code === 'Digit6' || e.code === 'Numpad6')) {
-        e.preventDefault();
-        window.enterDungeon1Debug();
-    } else if (e.ctrlKey && e.shiftKey && e.key === 'd') {
-        // Dungeon boss spawning with Ctrl+Shift+D + number
-        // The number key will be read separately
-    } else if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-        // Same for uppercase D
-    } else if (e.ctrlKey && e.shiftKey && e.code === 'Digit7') {
-        // Spawn random dungeon boss
-        e.preventDefault();
-        const bosses = ['NecroticHive', 'CerebralPsion', 'Fleshforge', 'VortexMatriarch', 'ChitinusPrime', 'PsyLich'];
-        const randomBoss = bosses[Math.floor(Math.random() * bosses.length)];
-        window.spawnDungeonBoss(randomBoss);
-    } else if (e.ctrlKey && (e.key === 'h' || e.key === 'H')) {
-        e.preventDefault();
-        GameContext.DEBUG_COLLISION = !GameContext.DEBUG_COLLISION;
-        showOverlayMessage(`HITBOX DEBUG: ${GameContext.DEBUG_COLLISION ? "ON" : "OFF"}`, GameContext.DEBUG_COLLISION ? '#0f0' : '#f00', 1500);
-    }
-});
-
-// Dungeon boss number shortcuts (Ctrl+Shift+D + 4-9)
-document.addEventListener('keydown', function (e) {
-    if (!e.ctrlKey || !e.shiftKey) return;
-    const key = e.key;
-    if (key === '4') { e.preventDefault(); window.spawnNecroticHive(); }
-    if (key === '5') { e.preventDefault(); window.spawnCerebralPsion(); }
-    if (key === '6') { e.preventDefault(); window.spawnFleshforge(); }
-    if (key === '7') { e.preventDefault(); window.spawnVortexMatriarch(); }
-    if (key === '8') { e.preventDefault(); window.spawnChitinusPrime(); }
-    if (key === '9') { e.preventDefault(); window.spawnPsyLich(); }
-});
-
-// DEBUG: Spawn station instantly (Ctrl+Shift+4)
-window.spawnStation = function () {
-    if (GameContext.spaceStation) {
-        console.log('[DEBUG] Station already active');
-        return;
-    }
-    GameContext.spaceStation = new SpaceStation();
-    // Only decrement if there are pending stations (debug bypass)
-    if (GameContext.pendingStations > 0) GameContext.pendingStations--;
-    GameContext.stationArena.x = GameContext.spaceStation.pos.x;
-    GameContext.stationArena.y = GameContext.spaceStation.pos.y;
-    GameContext.stationArena.radius = 2800;
-    GameContext.stationArena.active = false;
-    showOverlayMessage("DEBUG: SPACE STATION SPAWNED", '#ff0', 2000);
-    playSound('station_spawn');
-    console.log('[DEBUG] Station spawned at', GameContext.spaceStation.pos.x.toFixed(0), GameContext.spaceStation.pos.y.toFixed(0));
-};
-
-// DEBUG: Spawn final boss instantly (Ctrl+Shift+5)
-window.spawnFinalBoss = function () {
-    console.log('[DEBUG] Attempting to spawn Final Boss...');
-    try {
-        if (typeof GameContext.bossActive !== 'undefined' && GameContext.bossActive) {
-            console.log('[DEBUG] Boss already active');
-            showOverlayMessage("BOSS ALREADY ACTIVE", '#f00', 1000);
-            return;
-        }
-
-        console.log('[DEBUG] Clearing existing entities...');
-        clearArrayWithPixiCleanup(GameContext.enemies);
-        clearArrayWithPixiCleanup(GameContext.pinwheels);
-        GameContext.baseRespawnTimers = [];
-        GameContext.roamerRespawnQueue = [];
-        clearArrayWithPixiCleanup(GameContext.bullets);
-        clearArrayWithPixiCleanup(GameContext.bossBombs);
-        clearArrayWithPixiCleanup(GameContext.guidedMissiles);
-
-        // Position boss away from player
-        const dist = 1000;
-        const angle = Math.random() * Math.PI * 2;
-        const x = GameContext.player.pos.x + Math.cos(angle) * dist;
-        const y = GameContext.player.pos.y + Math.sin(angle) * dist;
-
-        console.log('[DEBUG] Creating FinalBoss instance at', x, y);
-        if (typeof FinalBoss === 'undefined') {
-            throw new Error('FinalBoss class is not defined!');
-        }
-        GameContext.boss = new FinalBoss(x, y, null);
-        GameContext.bossActive = true;
-
-        console.log('[DEBUG] Setting up boss arena...');
-        GameContext.bossArena.x = (GameContext.player.pos.x + GameContext.boss.pos.x) / 2;
-        GameContext.bossArena.y = (GameContext.player.pos.y + GameContext.boss.pos.y) / 2;
-        GameContext.bossArena.radius = 2500;
-        GameContext.bossArena.active = true;
-        GameContext.bossArena.growing = false;
-
-        showOverlayMessage("DEBUG: FINAL BOSS SPAWNED", '#ff0', 2000);
-        playSound('boss_spawn');
-        if (musicEnabled) setMusicMode('warp_boss');
-        console.log('[DEBUG] Final Boss spawned successfully.');
-    } catch (err) {
-        console.error('[DEBUG] Failed to spawn Final Boss:', err);
-        showOverlayMessage("ERROR SPAWNING BOSS: " + err.message, '#f00', 3000);
-    }
-};
-
-// DEBUG: Enter Dungeon1 instantly (Ctrl+Shift+6)
-window.enterDungeon1Debug = function () {
-    console.log('[DEBUG] Attempting to enter Dungeon1...');
-    try {
-        if (typeof _enterDungeon1Internal === 'function') {
-            _enterDungeon1Internal();
-            console.log('[DEBUG] Dungeon1 entered successfully');
-        } else {
-            console.error('[DEBUG] _enterDungeon1Internal function not found');
-            showOverlayMessage("ERROR: _enterDungeon1Internal not defined", '#f00', 2000);
-        }
-    } catch (err) {
-        console.error('[DEBUG] Failed to enter Dungeon1:', err);
-        showOverlayMessage("ERROR: " + err.message, '#f00', 3000);
-    }
-};
-
-// DEBUG: Spawn Dungeon Bosses (Ctrl+Shift+D4-9)
-window.spawnDungeonBoss = function (bossType) {
-    console.log(`[DEBUG] Attempting to spawn ${bossType}...`);
-    try {
-        if (typeof GameContext.bossActive !== 'undefined' && GameContext.bossActive) {
-            console.log('[DEBUG] Boss already active');
-            showOverlayMessage("BOSS ALREADY ACTIVE", '#f00', 1000);
-            return;
-        }
-
-        clearArrayWithPixiCleanup(GameContext.enemies);
-        clearArrayWithPixiCleanup(GameContext.pinwheels);
-        GameContext.baseRespawnTimers = [];
-        GameContext.roamerRespawnQueue = [];
-        clearArrayWithPixiCleanup(GameContext.bullets);
-        clearArrayWithPixiCleanup(GameContext.bossBombs);
-        clearArrayWithPixiCleanup(GameContext.guidedMissiles);
-        clearArrayWithPixiCleanup(GameContext.warpBioPods);
-
-        let newBoss;
-        const dist = 2000;
-        const angle = Math.random() * Math.PI * 2;
-        const x = GameContext.player.pos.x + Math.cos(angle) * dist;
-        const y = GameContext.player.pos.y + Math.sin(angle) * dist;
-
-        switch (bossType) {
-            case 'NecroticHive':
-                newBoss = new NecroticHive(1);
-                GameContext.necroticHive = newBoss;
-                break;
-            case 'CerebralPsion':
-                newBoss = new CerebralPsion(1);
-                GameContext.cerebralPsion = newBoss;
-                break;
-            case 'Fleshforge':
-                newBoss = new Fleshforge(1);
-                GameContext.fleshforge = newBoss;
-                break;
-            case 'VortexMatriarch':
-                newBoss = new VortexMatriarch(1);
-                GameContext.vortexMatriarch = newBoss;
-                break;
-            case 'ChitinusPrime':
-                newBoss = new ChitinusPrime(1);
-                GameContext.chitinusPrime = newBoss;
-                break;
-            case 'PsyLich':
-                newBoss = new PsyLich(1);
-                GameContext.psyLich = newBoss;
-                break;
-            default:
-                console.error('[DEBUG] Unknown boss type:', bossType);
-                return;
-        }
-
-        GameContext.boss = newBoss;
-        GameContext.bossActive = true;
-        GameContext.bossArena.x = (GameContext.player.pos.x + GameContext.boss.pos.x) / 2;
-        GameContext.bossArena.y = (GameContext.player.pos.y + GameContext.boss.pos.y) / 2;
-        GameContext.bossArena.radius = 3000;
-        GameContext.bossArena.active = true;
-        GameContext.bossArena.growing = false;
-
-        showOverlayMessage(`DEBUG: ${bossType.toUpperCase()} SPAWNED`, '#ff0', 2000);
-        playSound('boss_spawn');
-        if (musicEnabled) setMusicMode('cruiser');
-        console.log(`[DEBUG] ${bossType} spawned successfully at`, GameContext.boss.pos.x.toFixed(0), GameContext.boss.pos.y.toFixed(0));
-    } catch (err) {
-        console.error(`[DEBUG] Failed to spawn ${bossType}:`, err);
-        showOverlayMessage("ERROR SPAWNING BOSS: " + err.message, '#f00', 3000);
-    }
-};
-
-// Individual spawn functions for convenience
-window.spawnNecroticHive = function () { window.spawnDungeonBoss('NecroticHive'); };
-window.spawnCerebralPsion = function () { window.spawnDungeonBoss('CerebralPsion'); };
-window.spawnFleshforge = function () { window.spawnDungeonBoss('Fleshforge'); };
-window.spawnVortexMatriarch = function () { window.spawnDungeonBoss('VortexMatriarch'); };
-window.spawnChitinusPrime = function () { window.spawnDungeonBoss('ChitinusPrime'); };
-window.spawnPsyLich = function () { window.spawnDungeonBoss('PsyLich'); };
-
-
 // toggleMusic wrapper that updates DOM button
 function toggleMusic() {
     // Uses audioToggleMusic from module (imported as audioToggleMusic)
@@ -672,74 +435,43 @@ const pixiInit = initPixiOverlay({
     pixiBulletTextures
 } = pixiInit);
 
+// Register pixi-cleanup dependencies
+setPixiCleanupObject(pixiCleanupObject);
+registerPixiCleanupDependencies({
+    layers: {
+        pixiWorldRoot,
+        pixiNebulaLayer,
+        pixiCaveGridLayer,
+        pixiCaveGridSprite,
+        pixiStarLayer,
+        pixiAsteroidLayer,
+        pixiPickupLayer,
+        pixiPlayerLayer,
+        pixiBaseLayer,
+        pixiEnemyLayer,
+        pixiBossLayer,
+        pixiVectorLayer,
+        pixiBulletLayer,
+        pixiParticleLayer
+    },
+    pools: {
+        pixiBulletSpritePool,
+        pixiParticleSpritePool,
+        pixiEnemySpritePools,
+        pixiPickupSpritePool,
+        pixiAsteroidSpritePool,
+        pixiStarSpritePool
+    },
+    bgTileGetters: {
+        getNebulaTiles
+    }
+});
+
 
 // colorToPixi is now imported from ./rendering/colors.js
 
-function filterArrayWithPixiCleanup(arr, keepFn) {
-    if (!arr || arr.length === 0) return arr;
-    let w = 0;
-    for (let i = 0; i < arr.length; i++) {
-        const obj = arr[i];
-        if (!obj) continue;
-        if (keepFn(obj)) arr[w++] = obj;
-        else pixiCleanupObject(obj);
-    }
-    arr.length = w;
-    return arr;
-}
+// Pixi cleanup functions now imported from ./rendering/pixi-cleanup.js
 
-function resetPixiOverlaySprites() {
-    // Nebula is a persistent screen-space backdrop; keep it mounted.
-    const nebulaTiles = getNebulaTiles();
-    if (pixiNebulaLayer && nebulaTiles && nebulaTiles.length) {
-        for (const t of nebulaTiles) {
-            if (t && t.spr && !t.spr.parent) pixiNebulaLayer.addChild(t.spr);
-        }
-    }
-    // Cave grid is a persistent screen-space layer; keep it mounted.
-    if (pixiCaveGridLayer && pixiCaveGridSprite && !pixiCaveGridSprite.parent) pixiCaveGridLayer.addChild(pixiCaveGridSprite);
-    if (pixiStarLayer) pixiStarLayer.removeChildren();
-    if (pixiAsteroidLayer) pixiAsteroidLayer.removeChildren();
-    if (pixiPickupLayer) pixiPickupLayer.removeChildren();
-    if (pixiPlayerLayer) pixiPlayerLayer.removeChildren();
-    if (pixiBaseLayer) pixiBaseLayer.removeChildren();
-    if (pixiEnemyLayer) pixiEnemyLayer.removeChildren();
-    if (pixiBossLayer) pixiBossLayer.removeChildren();
-    if (pixiVectorLayer) pixiVectorLayer.removeChildren();
-    if (pixiBulletLayer) pixiBulletLayer.removeChildren();
-    if (pixiParticleLayer) pixiParticleLayer.removeChildren();
-    pixiBulletSpritePool.length = 0;
-    pixiParticleSpritePool.length = 0;
-    try {
-        const keys = pixiEnemySpritePools ? Object.keys(pixiEnemySpritePools) : [];
-        for (const k of keys) pixiEnemySpritePools[k].length = 0;
-    } catch (e) { }
-    pixiPickupSpritePool.length = 0;
-    pixiAsteroidSpritePool.length = 0;
-    pixiStarSpritePool.length = 0;
-}
-
-function cleanupPixiWorldRootExtras() {
-    if (!pixiWorldRoot) return;
-    const keep = new Set();
-    if (pixiAsteroidLayer) keep.add(pixiAsteroidLayer);
-    if (pixiPickupLayer) keep.add(pixiPickupLayer);
-    if (pixiPlayerLayer) keep.add(pixiPlayerLayer);
-    if (pixiBaseLayer) keep.add(pixiBaseLayer);
-    if (pixiEnemyLayer) keep.add(pixiEnemyLayer);
-    if (pixiBossLayer) keep.add(pixiBossLayer);
-    if (pixiVectorLayer) keep.add(pixiVectorLayer);
-    if (pixiBulletLayer) keep.add(pixiBulletLayer);
-    if (pixiParticleLayer) keep.add(pixiParticleLayer);
-
-    for (let i = pixiWorldRoot.children.length - 1; i >= 0; i--) {
-        const child = pixiWorldRoot.children[i];
-        if (!keep.has(child)) {
-            try { if (child.parent) child.parent.removeChild(child); } catch (e) { }
-            try { if (typeof child.destroy === 'function') child.destroy({ children: true }); } catch (e) { }
-        }
-    }
-}
 const overlayMessage = document.getElementById('overlay-message');
 const fpsCounterEl = document.getElementById('fps-counter');
 
@@ -1504,6 +1236,14 @@ registerMenuDependencies({
 initMenuUi();
 
 initSettingsMenu();
+
+// Debug spawn system
+registerDebugSpawnDependencies({
+    destroyer: GameContext.destroyer,
+    clearMiniEvent,
+    enterDungeon1Internal: _enterDungeon1Internal
+});
+initDebugKeyboardShortcuts();
 
 // Robust menu initialization for start screen
 document.getElementById('levelup-screen').style.display = 'none';
