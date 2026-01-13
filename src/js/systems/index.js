@@ -3,3 +3,7 @@ export * from './meta-manager.js';
 export * from './event-scheduler.js';
 export * from './contract-manager.js';
 export * from './upgrade-manager.js';
+export * from './spawn-manager.js';
+export * from './input-manager.js';
+export * from './collision-manager.js';
+export * from './game-loop.js';
