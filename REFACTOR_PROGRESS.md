@@ -5,10 +5,10 @@
 ## Current Progress
 
 **Starting lines**: 6,411
-**Current lines**: 2,495
-**Lines removed**: 3,916 (61.1%)
+**Current lines**: 1,953
+**Lines removed**: 4,458 (69.5%)
 **Target**: Under 1,000 lines
-**Remaining to remove**: 1,495 lines
+**Remaining to remove**: 953 lines
 
 ---
 
@@ -137,6 +137,21 @@
   - Extracted particle pooling, explosions, and smoke emitters
   - Lines removed: 150
 
+### Phase 14: Pixi Cleanup Helpers
+- [x] **Removed local Pixi helper wrappers** (~50 lines)
+  - Dropped unused sprite allocation helpers
+  - Used shared cleanup utils directly
+
+### Phase 15: Game Flow
+- [x] **Game flow extraction** (~380 lines)
+  - Created: `src/js/systems/game-flow.js`
+  - Extracted: start/end game, pause, quit, killPlayer
+
+### Phase 16: World Helpers
+- [x] **World helper extraction** (~110 lines)
+  - Created: `src/js/systems/world-helpers.js`
+  - Extracted: map generation, raycast, AOE damage, despawn checks
+
 ### Phase 1: Simple Entity Classes
 - [x] **WarpGate class** (~80 lines)
   - Removed duplicate class from `src/js/main.js`
@@ -187,3 +202,6 @@
 - [x] Smoke test after Phase 11 (MiniEventDefendCache) - PASSED
 - [x] Smoke test after Phase 12 (ShootingStar/WarpGate cleanup) - PASSED
 - [x] Smoke test after Phase 13 (Particle manager) - PASSED
+- [x] Smoke test after Phase 14 (Pixi helper cleanup) - PASSED
+- [x] Smoke test after Phase 15 (Game flow) - PASSED
+- [x] Smoke test after Phase 16 (World helpers) - PASSED

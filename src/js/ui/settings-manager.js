@@ -89,7 +89,7 @@ function updateProfileSelectionVisuals() {
     });
 }
 
-function resetProfileStats() {
+export function resetProfileStats() {
     GameContextRef.totalKills = 0;
     GameContextRef.highScore = 0;
     GameContextRef.totalPlayTimeMs = 0;

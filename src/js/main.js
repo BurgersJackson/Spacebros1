@@ -36,7 +36,7 @@ import { drawMinimap } from './rendering/minimap-renderer.js';
 import { Entity } from './entities/Entity.js';
 import {
     ZOOM_LEVEL, SIM_FPS, SIM_STEP_MS, SIM_MAX_STEPS_PER_FRAME,
-    PIXI_SPRITE_POOL_MAX, USE_PIXI_OVERLAY, BACKGROUND_MUSIC_URL,
+    USE_PIXI_OVERLAY, BACKGROUND_MUSIC_URL,
     ENABLE_NEBULA, NEBULA_ALPHA, ENABLE_PROJECTILE_IMPACT_SOUNDS,
     PLAYER_SHIELD_RADIUS_SCALE
 } from './core/constants.js';
@@ -61,9 +61,9 @@ import {
 } from './rendering/pixi-context.js';
 import { findSpawnPointRelative as findSpawnPointRelativeHelper } from './utils/spawn-utils.js';
 import {
-    clearArrayWithPixiCleanup as clearArrayWithPixiCleanupHelper,
-    destroyBulletSprite as destroyBulletSpriteHelper,
-    pixiCleanupObject as pixiCleanupObjectHelper
+    clearArrayWithPixiCleanup,
+    destroyBulletSprite,
+    pixiCleanupObject
 } from './utils/cleanup-utils.js';
 import {
     clearOverlayMessageTimeout,
@@ -88,6 +88,23 @@ import {
     spawnSmoke,
     spawnBarrelSmoke
 } from './systems/particle-manager.js';
+import {
+    registerGameFlowDependencies,
+    initGameFlow,
+    endGame,
+    killPlayer,
+    startGame,
+    shiftPausedTimers,
+    togglePause,
+    quitGame
+} from './systems/game-flow.js';
+import {
+    registerWorldHelperDependencies,
+    checkDespawn,
+    generateMap,
+    rayCast,
+    applyAOEDamageToPlayer
+} from './systems/world-helpers.js';
 import {
     SAVE_PREFIX,
     SAVE_LAST_KEY,
@@ -155,6 +172,7 @@ import {
     showAbortConfirmDialog,
     showSaveMenu,
     autoSaveToCurrentProfile,
+    resetProfileStats,
     wipeProfiles,
     selectProfile,
     initProfileSystem,
@@ -598,9 +616,6 @@ let pixiCaveGridLayer = null;   // screen-space
 let pixiCaveGridSprite = null;  // TilingSprite
 let pixiParticleGlowTexture = null;
 
-// PIXI_SPRITE_POOL_MAX imported from ./core/constants.js
-// Sprite pools imported from ./rendering/pixi-setup.js (see imports at top)
-
 let pixiBulletTextures = { glow: null, laser: null, square: null, missile: null };
 
 initTextureAssets();
@@ -639,45 +654,6 @@ const pixiInit = initPixiOverlay({
 
 
 // colorToPixi is now imported from ./rendering/colors.js
-
-function allocPixiSprite(pool, layer, texture = pixiTextureWhite, size = 2, anchor = 0.5) {
-    if (!texture || !layer) return null;
-    let spr = pool && pool.length > 0 ? pool.pop() : null;
-    if (!spr) spr = new PIXI.Sprite(texture);
-    spr.texture = texture;
-    spr.tint = 0xffffff;
-    spr.alpha = 1;
-    spr.rotation = 0;
-    spr.blendMode = PIXI.BLEND_MODES.NORMAL;
-    spr.scale.set(1);
-    if (typeof anchor === 'number') spr.anchor.set(anchor);
-    else if (anchor && typeof anchor.x === 'number' && typeof anchor.y === 'number') spr.anchor.set(anchor.x, anchor.y);
-    else if (Array.isArray(anchor) && anchor.length >= 2) spr.anchor.set(anchor[0], anchor[1]);
-    else spr.anchor.set(0.5);
-    spr.visible = true;
-    if (size != null) spr.width = spr.height = size;
-    if (!spr.parent) layer.addChild(spr);
-    return spr;
-}
-
-function releasePixiSprite(pool, spr) {
-    if (!spr) return;
-    if (spr.parent) spr.parent.removeChild(spr);
-    spr.visible = false;
-    if (pool && pool.length < PIXI_SPRITE_POOL_MAX) pool.push(spr);
-}
-
-function destroyBulletSprite(bullet) {
-    destroyBulletSpriteHelper(bullet);
-}
-
-function pixiCleanupObject(obj) {
-    pixiCleanupObjectHelper(obj);
-}
-
-function clearArrayWithPixiCleanup(arr) {
-    clearArrayWithPixiCleanupHelper(arr);
-}
 
 function filterArrayWithPixiCleanup(arr, keepFn) {
     if (!arr || arr.length === 0) return arr;
@@ -970,45 +946,6 @@ function startCaveSector2() {
     showOverlayMessage("SECTOR 2: CAVE RUN - FLY UPWARD", '#0ff', 3200, 2);
 }
 
-function endGame(elapsedMs) {
-    if (GameContext.gameEnded) return;
-    GameContext.gameEnded = true;
-    GameContext.gameActive = false;
-    GameContext.gamePaused = false;
-    GameContext.canResumeGame = false; // Game ended - can't resume
-    stopMusic();
-    try {
-        depositMetaNuggetsSystem();
-    } catch (e) { console.warn('meta deposit failed', e); }
-    // Save both game profile and meta profile (store upgrades)
-    if (GameContext.currentProfileName) {
-        try {
-            autoSaveToCurrentProfile(); // Saves game state
-            saveMetaProfileSystem();          // Saves meta shop upgrades
-        } catch (e) { console.warn('save on end game failed', e); }
-    }
-    const endEl = document.getElementById('end-screen');
-    if (endEl) endEl.style.display = 'block';
-    const startEl = document.getElementById('start-screen');
-    if (startEl) startEl.style.display = 'none';
-    document.getElementById('pause-menu').style.display = 'none';
-    const t = document.getElementById('end-time');
-    const sc = document.getElementById('end-score');
-    const ng = document.getElementById('end-nuggets');
-    if (t) t.innerText = formatTime(elapsedMs);
-    if (sc) sc.innerText = GameContext.score;
-    if (ng) ng.innerText = GameContext.spaceNuggets;
-    setTimeout(() => {
-        const btn = document.getElementById('restart-btn');
-        if (btn) btn.focus();
-    }, 100);
-
-    // Update resume button state
-    if (window.updateResumeButtonState) {
-        window.updateResumeButtonState();
-    }
-}
-
 function handleSpaceStationDestroyed() {
     if (!GameContext.spaceStation) return;
     const sx = GameContext.spaceStation.pos.x;
@@ -1033,133 +970,7 @@ function handleSpaceStationDestroyed() {
 window.addEventListener('resize', resize);
 resize();
 
-function checkDespawn(entity, range = 6000) {
-    if (!GameContext.player) return;
-    const dist = Math.hypot(entity.pos.x - GameContext.player.pos.x, entity.pos.y - GameContext.player.pos.y);
-    if (dist > range) {
-        entity.dead = true;
-    }
-}
 
-
-// --- Map Entities ---
-// EnvironmentAsteroid class imported from entities/environment/EnvironmentAsteroid.js
-
-function generateMap() {
-    clearArrayWithPixiCleanup(GameContext.environmentAsteroids);
-    GameContext.asteroidRespawnTimers = [];
-    clearArrayWithPixiCleanup(GameContext.caches);
-    clearArrayWithPixiCleanup(GameContext.pois);
-    for (let i = 0; i < 60; i++) {
-        spawnOneAsteroidRelative(true);
-    }
-    spawnExplorationCaches();
-    spawnSectorPOIs();
-}
-
-
-
-
-
-
-
-
-
-function rayCast(x1, y1, angle, maxDist) {
-    const vx = Math.cos(angle);
-    const vy = Math.sin(angle);
-    let closest = { hit: false, dist: maxDist, x: x1 + vx * maxDist, y: y1 + vy * maxDist };
-
-    for (let ast of GameContext.environmentAsteroids) {
-        const cx = ast.pos.x;
-        const cy = ast.pos.y;
-        const r = ast.radius;
-        const fx = x1 - cx;
-        const fy = y1 - cy;
-        const a = vx * vx + vy * vy;
-        const b = 2 * (fx * vx + fy * vy);
-        const c = (fx * fx + fy * fy) - r * r;
-        const discriminant = b * b - 4 * a * c;
-        if (discriminant >= 0) {
-            const t1 = (-b - Math.sqrt(discriminant)) / (2 * a);
-            const t2 = (-b + Math.sqrt(discriminant)) / (2 * a);
-            let t = -1;
-            if (t1 >= 0 && t1 <= maxDist) t = t1;
-            else if (t2 >= 0 && t2 <= maxDist) t = t2;
-            if (t >= 0 && t < closest.dist) {
-                closest.hit = true;
-                closest.dist = t;
-                closest.x = x1 + vx * t;
-                closest.y = y1 + vy * t;
-                closest.obj = ast;
-            }
-        }
-    }
-    return closest;
-}
-
-// Player sprite is rendered larger than its physics radius; scale shield radii to match visuals.
-
-function applyAOEDamageToPlayer(aoeX, aoeY, aoeRadius, totalDamage) {
-    if (!GameContext.player || GameContext.player.dead) return;
-
-    let remainingDamage = Math.max(0, Math.ceil(totalDamage));
-    const playerAngleToAOE = Math.atan2(aoeY - GameContext.player.pos.y, aoeX - GameContext.player.pos.x);
-
-    // Check outer shields first
-    if (GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.some(s => s > 0)) {
-        const shieldAngle = playerAngleToAOE - GameContext.player.outerShieldRotation;
-        const normalizedAngle = (shieldAngle + Math.PI * 2) % (Math.PI * 2);
-        const segCount = GameContext.player.outerShieldSegments.length;
-
-        // Calculate the arc of shield segments hit by the AOE
-        const arcWidth = Math.atan2(aoeRadius, GameContext.player.outerShieldRadius) * 2;
-        const startAngle = normalizedAngle - arcWidth / 2;
-        const endAngle = normalizedAngle + arcWidth / 2;
-
-        // Damage all segments within the AOE arc
-        for (let i = 0; i < segCount && remainingDamage > 0; i++) {
-            const segAngle = (i / segCount) * Math.PI * 2;
-            // Check if this segment is within the AOE arc
-            let angleDiff = Math.abs(segAngle - startAngle);
-            if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
-            if (angleDiff <= arcWidth / 2 && GameContext.player.outerShieldSegments[i] > 0) {
-                const absorb = Math.min(remainingDamage, GameContext.player.outerShieldSegments[i]);
-                GameContext.player.outerShieldSegments[i] -= absorb;
-                remainingDamage -= absorb;
-                GameContext.player.shieldsDirty = true;
-            }
-        }
-    }
-
-    // Check inner shields
-    if (GameContext.player.shieldSegments && remainingDamage > 0) {
-        const shieldAngle = playerAngleToAOE - GameContext.player.shieldRotation;
-        const normalizedAngle = (shieldAngle + Math.PI * 2) % (Math.PI * 2);
-        const segCount = GameContext.player.shieldSegments.length;
-
-        const arcWidth = Math.atan2(aoeRadius, GameContext.player.shieldRadius) * 2;
-        const startAngle = normalizedAngle - arcWidth / 2;
-        const endAngle = normalizedAngle + arcWidth / 2;
-
-        for (let i = 0; i < segCount && remainingDamage > 0; i++) {
-            const segAngle = (i / segCount) * Math.PI * 2;
-            let angleDiff = Math.abs(segAngle - startAngle);
-            if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
-            if (angleDiff <= arcWidth / 2 && GameContext.player.shieldSegments[i] > 0) {
-                const absorb = Math.min(remainingDamage, GameContext.player.shieldSegments[i]);
-                GameContext.player.shieldSegments[i] -= absorb;
-                remainingDamage -= absorb;
-                GameContext.player.shieldsDirty = true;
-            }
-        }
-    }
-
-    // Apply remaining damage to player (shields already handled, don't pierce)
-    if (remainingDamage > 0) {
-        GameContext.player.takeHit(remainingDamage);
-    }
-}
 
 // SpaceNugget imported from ./entities/index.js
 
@@ -1634,6 +1445,51 @@ function awardCoinsInstant(amount, opts = {}) {
     addPickupFloatingText('gold', v, opts.color || '#ff0');
 }
 
+registerGameFlowDependencies({
+    applyMetaUpgrades: applyMetaUpgradesSystem,
+    applyPendingProfile: applyPendingProfileSystem,
+    autoSaveToCurrentProfile,
+    depositMetaNuggets: depositMetaNuggetsSystem,
+    formatTime,
+    getFromPauseMenu: () => fromPauseMenu,
+    setFromPauseMenu: (value) => { fromPauseMenu = value; },
+    getGameNowMs,
+    getMusicEnabled: () => musicEnabled,
+    getSelectedShipType: () => selectedShipType,
+    hideDebugMenu,
+    initAudio,
+    isArenaCountdownActive,
+    listSaveSlots: listSaveSlotsSystem,
+    pixiCleanupObject,
+    playSound,
+    resetCaveState,
+    resetProfileStats,
+    resetWarpState,
+    saveMetaProfile: saveMetaProfileSystem,
+    savePrefix: SAVE_PREFIX,
+    selectProfile,
+    setMusicMode,
+    setSimNowMs: (value) => { simNowMs = value; },
+    setupGameWorld,
+    showOverlayMessage,
+    spawnDrone,
+    spawnParticles,
+    startMusic,
+    stopArenaCountdown,
+    stopMusic,
+    updateContractUI,
+    updateHealthUI,
+    Spaceship
+});
+initGameFlow();
+
+registerWorldHelperDependencies({
+    clearArrayWithPixiCleanup,
+    spawnExplorationCaches,
+    spawnOneAsteroidRelative,
+    spawnSectorPOIs
+});
+
 
 
 // --- Core Loop ---
@@ -2038,396 +1894,6 @@ registerSpaceshipDependencies({
     getPlayerHullExternalReady,
     getSlackerHullExternalReady
 });
-
-function killPlayer() {
-    GameContext.player.dead = true;
-    if (GameContext.metaExtraLifeCount > 0) {
-        GameContext.metaExtraLifeCount--;
-        GameContext.player.dead = false;
-        GameContext.player.hp = Math.max(1, Math.floor(GameContext.player.maxHp * 0.5));
-        GameContext.player.invulnerable = 180;
-        spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 20, '#0f0');
-        showOverlayMessage(`SECOND CHANCE! (${GameContext.metaExtraLifeCount} remaining)`, '#0f0', 1500);
-        updateHealthUI();
-        return;
-    }
-    playSound('explode');
-    spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 30, '#0ff');
-    setTimeout(() => {
-        GameContext.gameActive = false;
-        resetWarpState();
-        stopMusic();
-        try { depositMetaNuggetsSystem(); } catch (e) { console.warn('meta deposit failed', e); }
-        if (GameContext.currentProfileName) {
-            autoSaveToCurrentProfile(); // Saves game state
-            saveMetaProfileSystem();          // Saves meta shop upgrades
-        }
-        document.getElementById('start-screen').style.display = 'block';
-        document.querySelector('#start-screen h1').innerText = "BETTER LUCK NEXT TIME";
-        document.querySelector('#start-screen h1').style.color = "#f00";
-        document.getElementById('start-btn').innerText = "REBOOT SYSTEM";
-        setTimeout(() => {
-            document.getElementById('start-btn').focus();
-            GameContext.menuSelectionIndex = 0; // Reset for start menu
-        }, 100);
-    }, 2000);
-}
-
-function startGame() {
-    console.log('[DEBUG] startGame() called');
-
-    // Auto-create profile if none exists (e.g. after deleting all profiles)
-    if (!GameContext.currentProfileName) {
-        console.log('[START] No profile selected, checking for auto-create');
-        const existing = listSaveSlotsSystem();
-        if (existing.length === 0) {
-            console.log('[START] Auto-creating default profile');
-            const newName = 'profile1';
-            const template = {
-                version: 1,
-                timestamp: Date.now(),
-                lastSavedAt: Date.now(),
-                score: 0,
-                sectorIndex: 1,
-                totalKills: 0,
-                highScore: 0,
-                totalPlayTimeMs: 0,
-                player: null
-            };
-            try {
-                localStorage.setItem(SAVE_PREFIX + newName, JSON.stringify(template));
-                const newMetaProfile = {
-                    bank: 0,
-                    purchases: {
-                        startDamage: 0, passiveHp: 0, rerollTokens: 0, hullPlating: 0, shieldCore: 0,
-                        staticBlueprint: 0, missilePrimer: 0, magnetBooster: 0, nukeCapacitor: 0,
-                        speedTuning: 0, bankMultiplier: 0, shopDiscount: 0, extraLife: 0, droneFabricator: 0,
-                        piercingRounds: 0, explosiveRounds: 0, criticalStrike: 0, splitShot: 0,
-                        thornArmor: 0, lifesteal: 0, evasionBoost: 0, shieldRecharge: 0,
-                        dashCooldown: 0, dashDuration: 0, xpMagnetPlus: 0, autoReroll: 0,
-                        nuggetMagnet: 0, contractSpeed: 0, startingRerolls: 0, luckyDrop: 0,
-                        bountyHunter: 0, comboMeter: 0, startingWeapon: 0, secondWind: 0, batteryCapacitor: 0
-                    }
-                };
-                localStorage.setItem(`meta_profile_v1_${newName}`, JSON.stringify(newMetaProfile));
-                selectProfile(newName);
-            } catch (e) {
-                console.warn('[START] Auto-create failed', e);
-            }
-        }
-    }
-
-    try {
-        // Reset fromPauseMenu flag for fresh start
-        fromPauseMenu = false;
-
-        resetWarpState();
-        resetCaveState();
-        GameContext.warpCompletedOnce = false;
-        // Always reset audio state to normal before a new run
-        setMusicMode('normal');
-        GameContext.gameMode = 'normal';
-        simNowMs = 0; // Reset simulation clock for new game logic
-        GameContext.arcadeBoss = null;
-        GameContext.arcadeWave = 0;
-        GameContext.arcadeWaveNextAt = 0;
-        GameContext.currentZoom = ZOOM_LEVEL;
-        stopMusic();
-        if (GameContext.player) pixiCleanupObject(GameContext.player);
-        GameContext.player = new Spaceship(selectedShipType || 'standard');
-
-        // Load current profile data if available
-        if (GameContext.currentProfileName) {
-            const raw = localStorage.getItem(SAVE_PREFIX + GameContext.currentProfileName);
-            if (raw) {
-                try {
-                    const profile = JSON.parse(raw);
-                    // Restore ONLY career statistics
-                    if (typeof profile.totalKills === 'number') GameContext.totalKills = profile.totalKills;
-                    if (typeof profile.highScore === 'number') GameContext.highScore = profile.highScore;
-                    if (typeof profile.totalPlayTimeMs === 'number') GameContext.totalPlayTimeMs = profile.totalPlayTimeMs;
-
-                    // FIXED: Do NOT restore player state (applyProfile) when starting a new game.
-                    // This ensures in-game upgrades are reset while store upgrades are re-applied below.
-                    // applyProfile(profile); 
-                } catch (e) {
-                    console.warn('Failed to load profile on start', e);
-                }
-            }
-        } else {
-            // Reset stats if no profile
-            resetProfileStats();
-        }
-
-        GameContext.score = 0;
-        GameContext.difficultyTier = 1;
-        GameContext.pinwheelsDestroyedTotal = 0;
-        GameContext.bossActive = false;
-        if (GameContext.boss) pixiCleanupObject(GameContext.boss);
-        GameContext.boss = null;
-        GameContext.bossArena.active = false;
-        GameContext.bossArena.growing = false;
-        stopArenaCountdown();
-        GameContext.cruiserEncounterCount = 0;
-        GameContext.cruiserTimerPausedAt = null;
-        GameContext.dreadManager.upgradesChosen = 0;
-        GameContext.dreadManager.firstSpawnDone = false;
-        GameContext.dreadManager.timerActive = true;
-        GameContext.dreadManager.timerAt = Date.now() + GameContext.dreadManager.minDelayMs + Math.floor(Math.random() * (GameContext.dreadManager.maxDelayMs - GameContext.dreadManager.minDelayMs + 1));
-        GameContext.rerollTokens = GameContext.metaProfile.purchases.rerollTokens || 0;
-        GameContext.metaExtraLifeCount = GameContext.metaProfile.purchases.extraLife || 0;
-
-        // Reset player stats/inventory
-        GameContext.player.fireDelay = 24;
-
-        GameContext.player.turretLevel = 1;
-        GameContext.player.canWarp = false;
-        GameContext.player.shieldSegments = new Array(8).fill(2);
-        GameContext.player.outerShieldSegments = new Array(12).fill(2);
-        GameContext.player.hp = GameContext.player.maxHp;
-        GameContext.player.inventory = {};
-        GameContext.player.reactiveShieldCoins = 0;
-        GameContext.shownUpgradesThisRun = new Set(); // Reset upgrade tracking for new game
-        GameContext.player.xp = 0;
-        GameContext.player.level = 1;
-        GameContext.player.nextLevelXp = 100;
-        GameContext.player.stats = {
-            damageMult: 1.0,
-            fireRateMult: 1.0,
-            shotgunFireRateMult: 1.0,
-            rangeMult: 1.0,
-            multiShot: 1,
-            homing: 0,
-            shieldRegenRate: 8, // seconds per segment baseline
-            hpRegenAmount: 1,
-            hpRegenRate: 10,
-            speedMult: 1.0,
-            slowField: 0,
-            slowFieldDuration: 0,
-            // New upgrade stats
-            critChance: 0,
-            critDamage: 2.0,
-            lifestealAmount: 0,
-            lifestealThreshold: 100,
-            thornArmor: 0,
-            evasion: 0,
-            piercing: 0,
-            explosiveRounds: 0,
-            explosiveDamage: 30,
-            explosiveRadius: 200,
-            splitShot: 0,
-            comboMeter: 0,
-            comboMaxBonus: 0,
-            secondWindFrames: 0,
-            secondWindCooldown: 0,
-            secondWindActive: 0
-        };
-        GameContext.player.comboStacks = 0;
-        GameContext.player.comboMaxStacks = 100;
-        GameContext.player.lastHitTime = Date.now();
-        GameContext.player.lastDamageTakenTime = 0;
-        GameContext.player.lastHpRegenTime = Date.now();
-        GameContext.player.staticWeapons = [];
-        GameContext.player.nukeMaxCooldown = 600;
-        GameContext.player.magnetRadius = 150;
-        GameContext.player.nukeUnlocked = false;
-        // Volley shot initialization
-        GameContext.player.volleyShotUnlocked = false;
-        GameContext.player.volleyShotCount = 0;
-        GameContext.player.volleyCooldown = 0;
-        GameContext.player.lastF = false;
-        GameContext.gameEnded = false;
-
-        // Setup game world (clear all entities)
-        setupGameWorld();
-
-        applyMetaUpgradesSystem(spawnDrone);
-
-        applyPendingProfileSystem();
-        updateHealthUI();
-
-        document.getElementById('score').innerText = GameContext.score;
-        document.getElementById('start-screen').style.display = 'none';
-        const endScreen = document.getElementById('end-screen');
-        if (endScreen) endScreen.style.display = 'none';
-        document.getElementById('pause-menu').style.display = 'none';
-        GameContext.gameActive = true;
-        GameContext.gamePaused = false;
-        GameContext.canResumeGame = false; // New game - can't resume yet
-
-        // Update resume button state
-        if (window.updateResumeButtonState) {
-            window.updateResumeButtonState();
-        }
-
-        setupGameWorld();
-        updateContractUI();
-
-        if (musicEnabled) {
-            initAudio();
-            startMusic();
-        }
-    } catch (e) {
-        console.error('[STARTGAME ERROR]', e);
-    }
-}
-
-function shiftPausedTimers(pauseMs) {
-    if (!pauseMs || pauseMs <= 0) return;
-    const shiftIfNumber = (val) => (typeof val === 'number' && isFinite(val) && val > 0) ? (val + pauseMs) : val;
-    const shiftArrayNumbers = (arr) => {
-        if (!Array.isArray(arr)) return arr;
-        for (let i = 0; i < arr.length; i++) {
-            if (typeof arr[i] === 'number' && isFinite(arr[i]) && arr[i] > 0) arr[i] += pauseMs;
-        }
-        return arr;
-    };
-
-    GameContext.warpCountdownAt = shiftIfNumber(GameContext.warpCountdownAt);
-    GameContext.nextContractAt = shiftIfNumber(GameContext.nextContractAt);
-    GameContext.nextSpaceStationTime = shiftIfNumber(GameContext.nextSpaceStationTime);
-    GameContext.gunboatRespawnAt = shiftIfNumber(GameContext.gunboatRespawnAt);
-    GameContext.nextShootingStarTime = shiftIfNumber(GameContext.nextShootingStarTime);
-    GameContext.nextRadiationStormAt = shiftIfNumber(GameContext.nextRadiationStormAt);
-    GameContext.nextMiniEventAt = shiftIfNumber(GameContext.nextMiniEventAt);
-    GameContext.nextIntensityBreakAt = shiftIfNumber(GameContext.nextIntensityBreakAt);
-    GameContext.initialSpawnDelayAt = shiftIfNumber(GameContext.initialSpawnDelayAt);
-
-    GameContext.asteroidRespawnTimers = shiftArrayNumbers(GameContext.asteroidRespawnTimers);
-    GameContext.baseRespawnTimers = shiftArrayNumbers(GameContext.baseRespawnTimers);
-
-    if (GameContext.dreadManager && GameContext.dreadManager.timerActive && typeof GameContext.dreadManager.timerAt === 'number') {
-        GameContext.dreadManager.timerAt += pauseMs;
-    }
-    if (GameContext.cruiserTimerPausedAt !== null && typeof GameContext.cruiserTimerPausedAt === 'number') {
-        GameContext.cruiserTimerPausedAt += pauseMs;
-    }
-    if (GameContext.radiationStorm && typeof GameContext.radiationStorm.endsAt === 'number') {
-        GameContext.radiationStorm.endsAt += pauseMs;
-    }
-    if (GameContext.miniEvent) {
-        if (typeof GameContext.miniEvent.expiresAt === 'number') GameContext.miniEvent.expiresAt += pauseMs;
-        if (typeof GameContext.miniEvent.nextWaveAt === 'number') GameContext.miniEvent.nextWaveAt += pauseMs;
-        if (typeof GameContext.miniEvent.lastUpdateAt === 'number') GameContext.miniEvent.lastUpdateAt += pauseMs;
-    }
-    if (GameContext.activeContract && typeof GameContext.activeContract.endsAt === 'number') {
-        GameContext.activeContract.endsAt += pauseMs;
-    }
-}
-
-// Global function to update resume button state
-// This is defined globally so it can be called from anywhere in the code
-const updateResumeButtonState = () => {
-    const resumeBtn = document.getElementById('resume-btn-start');
-    if (resumeBtn) {
-        if (GameContext.canResumeGame) {
-            resumeBtn.disabled = false;
-            resumeBtn.style.opacity = '1';
-            resumeBtn.style.cursor = 'pointer';
-        } else {
-            resumeBtn.disabled = true;
-            resumeBtn.style.opacity = '0.5';
-            resumeBtn.style.cursor = 'not-allowed';
-        }
-    }
-};
-
-// Store globally so it can be called from anywhere in the code
-window.updateResumeButtonState = updateResumeButtonState;
-
-function togglePause() {
-    if (!GameContext.gameActive) return;
-
-    // If debug menu is open, close it first
-    if (document.getElementById('debug-menu').style.display === 'block') {
-        hideDebugMenu();
-        return;
-    }
-
-    // Return to pause menu from start screen
-    if (fromPauseMenu && GameContext.gamePaused && document.getElementById('start-screen').style.display === 'block') {
-        document.getElementById('start-screen').style.display = 'none';
-        document.getElementById('pause-menu').style.display = 'block';
-        fromPauseMenu = false;
-        return;
-    }
-
-    const wasPaused = GameContext.gamePaused;
-    GameContext.gamePaused = !GameContext.gamePaused;
-    document.getElementById('pause-menu').style.display = GameContext.gamePaused ? 'block' : 'none';
-    // Pause timer bookkeeping
-    if (GameContext.gamePaused) {
-        GameContext.pauseStartTime = getGameNowMs();
-        if (isArenaCountdownActive()) stopArenaCountdown();
-    } else {
-        if (GameContext.pauseStartTime) {
-            const pauseMs = Math.max(0, getGameNowMs() - GameContext.pauseStartTime);
-            if (pauseMs > 0) {
-                GameContext.pausedAccumMs += pauseMs;
-                shiftPausedTimers(pauseMs);
-            }
-            GameContext.pauseStartTime = null;
-        }
-    }
-    if (GameContext.gamePaused) {
-        setTimeout(() => {
-            document.getElementById('resume-btn').focus();
-            GameContext.menuSelectionIndex = 0;
-        }, 100);
-    }
-    else if (musicEnabled) startMusic();
-}
-
-function quitGame() {
-    // Deposit nuggets and save before aborting
-    try {
-        depositMetaNuggetsSystem();
-    } catch (e) { console.warn('meta deposit failed on abort', e); }
-
-    // Save game state and meta profile
-    if (GameContext.currentProfileName) {
-        try {
-            autoSaveToCurrentProfile();
-            saveMetaProfileSystem();
-        } catch (e) { console.warn('save failed on abort', e); }
-    }
-
-    // End the game properly
-    GameContext.gameActive = false;
-    GameContext.gameEnded = true;
-    stopArenaCountdown();
-    stopMusic();
-
-    // Reset sector index so new game starts at level 1
-    GameContext.sectorIndex = 1;
-
-    // Show start screen with ABORTED message
-    document.getElementById('pause-menu').style.display = 'none';
-    document.getElementById('start-screen').style.display = 'block';
-    const endScreen = document.getElementById('end-screen');
-    if (endScreen) endScreen.style.display = 'none';
-    document.querySelector('#start-screen h1').innerText = "ABORTED";
-    document.getElementById('start-btn').innerText = "INITIATE LAUNCH";
-    setTimeout(() => document.getElementById('resume-btn-start').focus(), 100);
-    GameContext.menuSelectionIndex = 0;
-
-    // Cannot resume an aborted run
-    GameContext.canResumeGame = false;
-
-    // Update resume button state
-    const updateResumeButtonState = () => {
-        const resumeBtn = document.getElementById('resume-btn-start');
-        if (resumeBtn) {
-            resumeBtn.disabled = true;
-            resumeBtn.style.opacity = '0.5';
-            resumeBtn.style.cursor = 'not-allowed';
-        }
-    };
-    updateResumeButtonState();
-
-    // Store the update function so it can be called when game starts/stops
-    window.updateResumeButtonState = updateResumeButtonState;
-}
 
 const SHIP_SELECTION_KEY = 'neon_space_ship_selection';
 let selectedShipType = localStorage.getItem(SHIP_SELECTION_KEY) || 'standard';

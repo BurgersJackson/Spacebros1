@@ -1,6 +1,6 @@
 # Phase 7: Final Reduction to ~1,000 Lines - Status Report
 
-**Last Updated:** 2026-01-12T23:14:15-08:00
+**Last Updated:** 2026-01-12T23:46:01-08:00
 **Status:** IN PROGRESS
 
 ---
@@ -9,9 +9,9 @@
 Reduce `src/js/main.js` from 6,411 lines to under 1,000 lines by extracting remaining initialization and asset setup logic into dedicated modules.
 
 ## Current Metrics
-- **Current lines:** 2,495
+- **Current lines:** 1,953
 - **Target lines:** < 1,000
-- **Remaining to remove:** 1,495 lines
+- **Remaining to remove:** 953 lines
 
 ## Planned Work
 
@@ -41,6 +41,16 @@ Reduce `src/js/main.js` from 6,411 lines to under 1,000 lines by extracting rema
 - **New module:** `src/js/systems/particle-manager.js`
 - **Expected removal:** ~100-200 lines
 
+### 6) Extract Game Flow
+- **Target:** Start/end game, pause, quit, killPlayer
+- **New module:** `src/js/systems/game-flow.js`
+- **Expected removal:** ~300-450 lines
+
+### 7) Extract World Helpers
+- **Target:** Map generation, raycast, AOE damage, despawn checks
+- **New module:** `src/js/systems/world-helpers.js`
+- **Expected removal:** ~100-150 lines
+
 ## Testing Plan
 Run after each extraction step:
 - `npm run start:dev` and verify:
@@ -54,5 +64,8 @@ Run after each extraction step:
 - [x] Canvas + PixiJS initialization extracted
 - [x] Settings/profile UI extracted
 - [x] Particle system helpers extracted
+- [x] Pixi helper wrappers removed
+- [x] Game flow extracted
+- [x] World helpers extracted
 - [ ] Main.js trimmed to < 1,000 lines
 - [ ] Final smoke test completed
