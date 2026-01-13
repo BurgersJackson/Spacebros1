@@ -5,10 +5,10 @@
 ## Current Progress
 
 **Starting lines**: 6,411
-**Current lines**: 3,893
-**Lines removed**: 2,518 (39.3%)
+**Current lines**: 3,554
+**Lines removed**: 2,857 (44.6%)
 **Target**: Under 1,000 lines
-**Remaining to remove**: 2,893 lines
+**Remaining to remove**: 2,554 lines
 
 ---
 
@@ -108,6 +108,12 @@
   - Replaced inline logic with `initSettingsMenu()` and `initProfileSystem()`
   - Lines removed: 718
 
+### Phase 10: POI/Cache Entities
+- [x] **POI and cache entities** (~339 lines)
+  - Created: `src/js/entities/environment/poi.js`
+  - Extracted: `SectorPOI`, `DerelictShipPOI`, `DebrisFieldPOI`, `ExplorationCache`
+  - Lines removed: 339
+
 ---
 
 ## Next Steps (from original plan)
@@ -138,3 +144,4 @@
 - [x] Smoke test after Phase 7 (Texture/Asset Loading) - PASSED
 - [x] Smoke test after Phase 8 (Canvas/PixiJS Init) - PASSED
 - [x] Smoke test after Phase 9 (Settings/Profile UI) - PASSED
+- [x] Smoke test after Phase 10 (POI/Cache Entities) - PASSED

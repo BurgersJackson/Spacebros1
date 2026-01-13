@@ -10,3 +10,10 @@ export {
 } from './EnvironmentAsteroid.js';
 export { WarpGate } from './WarpGate.js';
 export { Dungeon1Gate } from './Dungeon1Gate.js';
+export {
+    SectorPOI,
+    DerelictShipPOI,
+    DebrisFieldPOI,
+    ExplorationCache,
+    registerPoiDependencies
+} from './poi.js';
