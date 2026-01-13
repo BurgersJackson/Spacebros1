@@ -5,10 +5,10 @@
 ## Current Progress
 
 **Starting lines**: 6,411
-**Current lines**: 1,953
-**Lines removed**: 4,458 (69.5%)
+**Current lines**: 1,546
+**Lines removed**: 4,865 (75.9%)
 **Target**: Under 1,000 lines
-**Remaining to remove**: 953 lines
+**Remaining to remove**: 546 lines
 
 ---
 
@@ -152,6 +152,16 @@
   - Created: `src/js/systems/world-helpers.js`
   - Extracted: map generation, raycast, AOE damage, despawn checks
 
+### Phase 17: Sector Flow
+- [x] **Sector flow extraction** (~350 lines)
+  - Created: `src/js/systems/sector-flow.js`
+  - Extracted: sector transitions, warp maze entry, dungeon entry, cave setup
+
+### Phase 18: World Setup
+- [x] **World setup extraction** (~60 lines)
+  - Created: `src/js/systems/world-setup.js`
+  - Extracted: setupGameWorld reset logic
+
 ### Phase 1: Simple Entity Classes
 - [x] **WarpGate class** (~80 lines)
   - Removed duplicate class from `src/js/main.js`
@@ -205,3 +215,5 @@
 - [x] Smoke test after Phase 14 (Pixi helper cleanup) - PASSED
 - [x] Smoke test after Phase 15 (Game flow) - PASSED
 - [x] Smoke test after Phase 16 (World helpers) - PASSED
+- [x] Smoke test after Phase 17 (Sector flow) - PASSED
+- [x] Smoke test after Phase 18 (World setup) - PASSED

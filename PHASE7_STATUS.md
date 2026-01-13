@@ -1,6 +1,6 @@
 # Phase 7: Final Reduction to ~1,000 Lines - Status Report
 
-**Last Updated:** 2026-01-12T23:46:01-08:00
+**Last Updated:** 2026-01-12T23:56:35-08:00
 **Status:** IN PROGRESS
 
 ---
@@ -9,9 +9,9 @@
 Reduce `src/js/main.js` from 6,411 lines to under 1,000 lines by extracting remaining initialization and asset setup logic into dedicated modules.
 
 ## Current Metrics
-- **Current lines:** 1,953
+- **Current lines:** 1,546
 - **Target lines:** < 1,000
-- **Remaining to remove:** 953 lines
+- **Remaining to remove:** 546 lines
 
 ## Planned Work
 
@@ -51,6 +51,16 @@ Reduce `src/js/main.js` from 6,411 lines to under 1,000 lines by extracting rema
 - **New module:** `src/js/systems/world-helpers.js`
 - **Expected removal:** ~100-150 lines
 
+### 8) Extract Sector Flow
+- **Target:** Sector transitions, warp/dungeon entry, cave setup
+- **New module:** `src/js/systems/sector-flow.js`
+- **Expected removal:** ~300-400 lines
+
+### 9) Extract World Setup
+- **Target:** setupGameWorld reset logic
+- **New module:** `src/js/systems/world-setup.js`
+- **Expected removal:** ~50-80 lines
+
 ## Testing Plan
 Run after each extraction step:
 - `npm run start:dev` and verify:
@@ -67,5 +77,7 @@ Run after each extraction step:
 - [x] Pixi helper wrappers removed
 - [x] Game flow extracted
 - [x] World helpers extracted
+- [x] Sector flow extracted
+- [x] World setup extracted
 - [ ] Main.js trimmed to < 1,000 lines
 - [ ] Final smoke test completed

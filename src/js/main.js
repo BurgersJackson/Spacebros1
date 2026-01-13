@@ -106,6 +106,20 @@ import {
     applyAOEDamageToPlayer
 } from './systems/world-helpers.js';
 import {
+    registerSectorFlowDependencies,
+    startSectorTransition,
+    completeSectorWarp,
+    startCaveSector2,
+    enterWarpMaze,
+    resetWarpState,
+    resetCaveState,
+    enterDungeon1Internal as _enterDungeon1Internal
+} from './systems/sector-flow.js';
+import {
+    registerWorldSetupDependencies,
+    setupGameWorld
+} from './systems/world-setup.js';
+import {
     SAVE_PREFIX,
     SAVE_LAST_KEY,
     applyPendingProfile as applyPendingProfileSystem,
@@ -792,160 +806,6 @@ function resize() {
     initStars(width, height);
 }
 
-function startSectorTransition() {
-    GameContext.sectorTransitionActive = true;
-    GameContext.warpCountdownAt = Date.now() + 10000;
-    showOverlayMessage("WARPING TO NEW SECTOR IN 10s", '#0ff', 10000);
-    clearOverlayMessageTimeout();
-    GameContext.pendingStations = 0;
-    GameContext.nextSpaceStationTime = null;
-    GameContext.radiationStorm = null;
-    clearMiniEvent();
-    GameContext.gamePaused = false;
-    GameContext.gameActive = true;
-    GameContext.pendingTransitionClear = true; // clear arrays safely next frame
-    GameContext.dreadManager.timerActive = false;
-}
-
-function completeSectorWarp() {
-    GameContext.gameActive = true;
-    GameContext.gamePaused = false;
-    GameContext.sectorTransitionActive = false;
-    GameContext.warpCountdownAt = null;
-    GameContext.sectorIndex++;
-    // Heal player
-    GameContext.player.hp = GameContext.player.maxHp;
-    GameContext.player.invulnerable = 180;
-    GameContext.player.shieldSegments = GameContext.player.shieldSegments.map(() => 2);
-    if (GameContext.player.maxOuterShieldSegments && GameContext.player.maxOuterShieldSegments > 0) {
-        GameContext.player.outerShieldSegments = new Array(GameContext.player.maxOuterShieldSegments).fill(1);
-    }
-    updateHealthUI();
-
-    // Warp effect
-    spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 40, '#0ff');
-    GameContext.player.pos.x = 0;
-    GameContext.player.pos.y = 0;
-    GameContext.player.vel.x = 0;
-    GameContext.player.vel.y = 0;
-    spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 40, '#0ff');
-
-    // Reset world for new sector
-    resetPixiOverlaySprites();
-    clearArrayWithPixiCleanup(GameContext.bullets);
-    clearArrayWithPixiCleanup(GameContext.bossBombs);
-    clearArrayWithPixiCleanup(GameContext.guidedMissiles);
-    clearArrayWithPixiCleanup(GameContext.enemies);
-    clearArrayWithPixiCleanup(GameContext.pinwheels);
-    clearArrayWithPixiCleanup(GameContext.coins);
-    clearArrayWithPixiCleanup(GameContext.nuggets);
-    clearArrayWithPixiCleanup(GameContext.environmentAsteroids);
-    GameContext.asteroidRespawnTimers = [];
-    GameContext.baseRespawnTimers = [];
-    GameContext.roamerRespawnQueue = [];
-    clearArrayWithPixiCleanup(GameContext.caches);
-    clearArrayWithPixiCleanup(GameContext.powerups);
-    clearArrayWithPixiCleanup(GameContext.shootingStars);
-    clearArrayWithPixiCleanup(GameContext.drones);
-    GameContext.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
-    GameContext.activeContract = null;
-    GameContext.nextContractAt = Date.now() + 30000;
-    GameContext.radiationStorm = null;
-    scheduleNextRadiationStorm(Date.now() + 15000);
-    clearMiniEvent();
-    GameContext.nextMiniEventAt = Date.now() + 120000;
-    scheduleNextMiniEvent(Date.now() + 20000);
-    clearArrayWithPixiCleanup(GameContext.pois);
-    GameContext.warpCompletedOnce = false;
-    GameContext.caveMode = false;
-    GameContext.caveLevel = null;
-    GameContext.warpGateUnlocked = false;
-
-    // Avoid rebuilding stars/nebula when entering Sector 2 cave (background is hidden there).
-    if (GameContext.sectorIndex !== 2) initStars(width, height); // update nebula palette
-
-    // Sector 2: long cave run instead of open space.
-    if (GameContext.sectorIndex === 2) {
-        startCaveSector2();
-        GameContext.dreadManager.timerActive = false;
-        GameContext.dreadManager.timerAt = null;
-        GameContext.cruiserTimerPausedAt = null;
-        stopArenaCountdown();
-        return;
-    }
-
-    generateMap();
-    for (let i = 0; i < 3; i++) spawnNewPinwheelRelative(true);
-    GameContext.gunboatRespawnAt = Date.now() + 5000;
-    GameContext.gunboatLevel2Unlocked = true; // level 2 gunboats allowed after warp
-    // Restart cruiser timer for the new sector
-    GameContext.dreadManager.timerActive = true;
-    GameContext.cruiserTimerPausedAt = null;
-    const firstCruiserGraceMs = 180000; // 3 minutes breathing room after entering a new sector
-    const baseDelay = GameContext.dreadManager.minDelayMs + Math.floor(Math.random() * (GameContext.dreadManager.maxDelayMs - GameContext.dreadManager.minDelayMs + 1));
-    GameContext.dreadManager.timerAt = Date.now() + Math.max(firstCruiserGraceMs, baseDelay);
-
-    // Stations for new sector
-    GameContext.pendingStations = 0;
-    if (GameContext.spaceStation) pixiCleanupObject(GameContext.spaceStation);
-    GameContext.spaceStation = null;
-    GameContext.stationHealthBarVisible = false;
-    GameContext.nextSpaceStationTime = null;
-    if (GameContext.destroyer) pixiCleanupObject(GameContext.destroyer);
-    GameContext.destroyer = null;
-    GameContext.nextDestroyerSpawnTime = null;
-    scheduleNextShootingStar();
-    showOverlayMessage("NEW SECTOR ENTERED", '#0ff', 3000);
-}
-
-function startCaveSector2() {
-    resetWarpState();
-    GameContext.caveMode = true;
-    GameContext.caveLevel = new Cave.CaveLevel();
-    GameContext.caveLevel.generate();
-    clearArrayWithPixiCleanup(GameContext.coins);
-
-    GameContext.activeContract = null;
-    GameContext.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
-    GameContext.nextContractAt = Date.now() + 999999999;
-    GameContext.radiationStorm = null;
-    GameContext.nextRadiationStormAt = null;
-    clearMiniEvent();
-    GameContext.nextMiniEventAt = Date.now() + 999999999;
-    GameContext.nextShootingStarTime = Date.now() + 999999999;
-    GameContext.intensityBreakActive = false;
-    GameContext.nextIntensityBreakAt = Date.now() + 999999999;
-
-    clearArrayWithPixiCleanup(GameContext.pinwheels);
-    GameContext.baseRespawnTimers = [];
-    GameContext.roamerRespawnQueue = [];
-    GameContext.maxRoamers = 0;
-    GameContext.initialSpawnDone = true;
-    GameContext.initialSpawnDelayAt = null;
-    GameContext.pendingStations = 0;
-    if (GameContext.spaceStation) pixiCleanupObject(GameContext.spaceStation);
-    GameContext.spaceStation = null;
-    GameContext.stationHealthBarVisible = false;
-    GameContext.nextSpaceStationTime = null;
-
-    if (GameContext.destroyer) pixiCleanupObject(GameContext.destroyer);
-    GameContext.destroyer = null;
-    GameContext.nextDestroyerSpawnTime = null;
-
-    GameContext.player.pos.x = GameContext.caveLevel.startX;
-    GameContext.player.pos.y = GameContext.caveLevel.startY + 600;
-    GameContext.player.vel.x = 0;
-    GameContext.player.vel.y = 0;
-    GameContext.player.angle = -Math.PI / 2;
-    GameContext.player.turretAngle = -Math.PI / 2;
-
-    GameContext.caveLevel.resetFireWall(GameContext.player.pos.y);
-
-    for (let i = 0; i < 3; i++) spawnNewPinwheelRelative(true);
-
-    showOverlayMessage("SECTOR 2: CAVE RUN - FLY UPWARD", '#0ff', 3200, 2);
-}
-
 function handleSpaceStationDestroyed() {
     if (!GameContext.spaceStation) return;
     const sx = GameContext.spaceStation.pos.x;
@@ -1018,236 +878,6 @@ function compactArray(arr) {
 // NOTE: snapshotWorldForWarp removed - we no longer save/restore level 1 state
 // Level 1 is deleted when entering warp zone
 // Level 1 is deleted when entering warp zone
-
-function enterWarpMaze() {
-    if (GameContext.warpZone && GameContext.warpZone.active) return;
-    if (GameContext.warpCompletedOnce) {
-        showOverlayMessage("WARP ALREADY USED THIS SECTOR", '#f80', 1200, 2);
-        return;
-    }
-    GameContext.warpCompletedOnce = true;
-
-    // Clear world to make a controlled encounter space - NO SNAPSHOT, level 1 is deleted
-    resetPixiOverlaySprites();
-    const detach = (arr) => {
-        if (!arr || arr.length === 0) return;
-        for (let i = 0; i < arr.length; i++) pixiCleanupObject(arr[i]);
-    };
-    detach(GameContext.bullets);
-    detach(GameContext.bossBombs);
-    detach(GameContext.warpBioPods);
-    detach(GameContext.guidedMissiles);
-    detach(GameContext.enemies);
-    detach(GameContext.pinwheels);
-    detach(GameContext.particles);
-    detach(GameContext.explosions);
-    detach(GameContext.floatingTexts);
-    detach(GameContext.coins);
-    detach(GameContext.nuggets);
-    detach(GameContext.powerups);
-    detach(GameContext.shootingStars);
-    detach(GameContext.drones);
-    detach(GameContext.caches);
-    detach(GameContext.pois);
-    detach(GameContext.environmentAsteroids);
-
-    GameContext.bullets = [];
-    GameContext.bossBombs = [];
-    GameContext.warpBioPods = [];
-    GameContext.staggeredBombExplosions = [];
-    GameContext.staggeredParticleBursts = [];
-    GameContext.guidedMissiles = [];
-    GameContext.enemies = [];
-    GameContext.pinwheels = [];
-    GameContext.particles = [];
-    GameContext.explosions = [];
-    GameContext.floatingTexts = [];
-    GameContext.coins = [];
-    GameContext.nuggets = [];
-    GameContext.powerups = [];
-    GameContext.shootingStars = [];
-    GameContext.drones = [];
-    GameContext.caches = [];
-    GameContext.pois = [];
-    GameContext.environmentAsteroids = [];
-    GameContext.asteroidRespawnTimers = [];
-    GameContext.baseRespawnTimers = [];
-
-    GameContext.radiationStorm = null;
-    clearMiniEvent();
-
-    // Reset cave state so cave walls don't persist in warp level
-    resetCaveState();
-
-    GameContext.activeContract = null;
-    GameContext.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
-    GameContext.nextContractAt = Date.now() + 999999999;
-
-    if (GameContext.destroyer) {
-        if (GameContext.destroyer.pixiCleanupObject && typeof GameContext.destroyer.pixiCleanupObject === 'function') {
-            GameContext.destroyer.pixiCleanupObject();
-        }
-        GameContext.destroyer = null;
-    }
-
-    if (GameContext.boss) pixiCleanupObject(GameContext.boss);
-    GameContext.boss = null;
-    GameContext.bossActive = false;
-    GameContext.bossArena.active = false;
-    GameContext.bossArena.growing = false;
-
-    if (GameContext.spaceStation) pixiCleanupObject(GameContext.spaceStation);
-    GameContext.spaceStation = null;
-    GameContext.stationHealthBarVisible = false;
-    GameContext.pendingStations = 0;
-    GameContext.nextSpaceStationTime = null;
-    GameContext.roamerRespawnQueue = [];
-    GameContext.maxRoamers = 0;
-    GameContext.gunboatRespawnAt = null;
-
-    // Spawn warp zone at origin since we're deleting level 1 anyway
-    const originX = 0;
-    const originY = 0;
-    GameContext.warpZone = new WarpMazeZone(originX, originY);
-    GameContext.warpZone.generate();
-    GameContext.warpZone.state = 'boss_intro';
-    GameContext.warpZone.bossIntroAt = Date.now() + 10000;
-    GameContext.warpZone.bossIntroLastSec = null;
-
-
-    // Place the player at the entrance.
-    GameContext.player.pos.x = GameContext.warpZone.entrancePos.x;
-    GameContext.player.pos.y = GameContext.warpZone.entrancePos.y;
-    GameContext.player.vel.x = 0;
-    GameContext.player.vel.y = 0;
-
-    // Seed warp asteroids to reduced density (and let runtime spawning maintain it). 
-    let seedTries = 0;
-    while (GameContext.environmentAsteroids.length < 50 && seedTries < 800) {
-        spawnOneWarpAsteroidRelative(true);
-        seedTries++;
-    }
-
-}
-
-function resetWarpState() {
-    // Hard-reset all warp state so a fresh run can't inherit "in-warp" flags. 
-    try { if (GameContext.warpZone) GameContext.warpZone.active = false; } catch (e) { }
-    GameContext.warpZone = null;
-    if (GameContext.warpGate) pixiCleanupObject(GameContext.warpGate);
-    GameContext.warpGate = null;
-}
-
-function resetCaveState() {
-    // Hard-reset all cave state so a fresh run can't inherit cave flags/walls/clipping. 
-    try { if (GameContext.caveLevel) GameContext.caveLevel.active = false; } catch (e) { }
-    GameContext.caveMode = false;
-    GameContext.caveLevel = null;
-}
-
-function _enterDungeon1Internal() {
-    if (GameContext.dungeon1Zone && GameContext.dungeon1Zone.active) return;
-    if (GameContext.dungeon1CompletedOnce) {
-        showOverlayMessage("DUNGEON ALREADY CLEARED", '#f80', 1200, 2);
-        return;
-    }
-
-    GameContext.dungeon1OriginalPos = { x: GameContext.player.pos.x, y: GameContext.player.pos.y };
-
-    resetPixiOverlaySprites();
-    const detach = (arr) => {
-        if (!arr || arr.length === 0) return;
-        for (let i = 0; i < arr.length; i++) pixiCleanupObject(arr[i]);
-    };
-    detach(GameContext.bullets);
-    detach(GameContext.bossBombs);
-    detach(GameContext.warpBioPods);
-    detach(GameContext.guidedMissiles);
-    detach(GameContext.enemies);
-    detach(GameContext.pinwheels);
-    detach(GameContext.particles);
-    detach(GameContext.explosions);
-    detach(GameContext.floatingTexts);
-    detach(GameContext.coins);
-    detach(GameContext.nuggets);
-    detach(GameContext.powerups);
-    detach(GameContext.shootingStars);
-    detach(GameContext.drones);
-    detach(GameContext.caches);
-    detach(GameContext.pois);
-    detach(GameContext.environmentAsteroids);
-
-    GameContext.bullets = [];
-    GameContext.bossBombs = [];
-    GameContext.warpBioPods = [];
-    GameContext.staggeredBombExplosions = [];
-    GameContext.staggeredParticleBursts = [];
-    GameContext.guidedMissiles = [];
-    GameContext.enemies = [];
-    GameContext.pinwheels = [];
-    GameContext.particles = [];
-    GameContext.explosions = [];
-    GameContext.floatingTexts = [];
-    GameContext.coins = [];
-    GameContext.nuggets = [];
-    GameContext.powerups = [];
-    GameContext.shootingStars = [];
-    GameContext.drones = [];
-    GameContext.caches = [];
-    GameContext.pois = [];
-    GameContext.environmentAsteroids = [];
-    GameContext.asteroidRespawnTimers = [];
-    GameContext.baseRespawnTimers = [];
-
-    GameContext.radiationStorm = null;
-    clearMiniEvent();
-
-    resetCaveState();
-
-    GameContext.activeContract = null;
-    GameContext.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
-    GameContext.nextContractAt = Date.now() + 999999999;
-
-    if (GameContext.destroyer) {
-        if (GameContext.destroyer.pixiCleanupObject && typeof GameContext.destroyer.pixiCleanupObject === 'function') {
-            GameContext.destroyer.pixiCleanupObject();
-        }
-        GameContext.destroyer = null;
-    }
-
-    if (GameContext.boss) pixiCleanupObject(GameContext.boss);
-    GameContext.boss = null;
-    GameContext.bossActive = false;
-    GameContext.bossArena.active = false;
-    GameContext.bossArena.growing = false;
-
-    if (GameContext.spaceStation) pixiCleanupObject(GameContext.spaceStation);
-    GameContext.spaceStation = null;
-    GameContext.stationHealthBarVisible = false;
-    GameContext.pendingStations = 0;
-    GameContext.nextSpaceStationTime = null;
-    GameContext.roamerRespawnQueue = [];
-    GameContext.maxRoamers = 0;
-    GameContext.gunboatRespawnAt = null;
-
-    const originX = 0;
-    const originY = 0;
-    GameContext.dungeon1Zone = new Dungeon1Zone(originX, originY);
-    GameContext.dungeon1Active = true;
-
-    GameContext.player.pos.x = originX;
-    GameContext.player.pos.y = originY + GameContext.dungeon1Arena.radius - 300;
-    GameContext.player.vel.x = 0;
-    GameContext.player.vel.y = 0;
-
-    GameContext.dungeon1Arena.x = originX;
-    GameContext.dungeon1Arena.y = originY;
-    GameContext.dungeon1Arena.radius = 2500;
-    GameContext.dungeon1Arena.active = true;
-    GameContext.dungeon1Arena.growing = false;
-
-    showOverlayMessage("ENTERED DUNGEON 1", '#f80', 2000, 2);
-}
 
 // Instead, we transition directly to level 2 via sectorTransitionActive
 
@@ -1339,85 +969,24 @@ registerSettingsManagerDependencies({
 
 
 
-function setupGameWorld() {
-    GameContext.player.respawn();
-    resetPixiOverlaySprites();
-    clearArrayWithPixiCleanup(GameContext.bullets);
-    clearArrayWithPixiCleanup(GameContext.bossBombs);
-    clearArrayWithPixiCleanup(GameContext.guidedMissiles);
-    clearArrayWithPixiCleanup(GameContext.enemies);
-    clearArrayWithPixiCleanup(GameContext.pinwheels);
-    clearArrayWithPixiCleanup(GameContext.particles);
-    clearArrayWithPixiCleanup(GameContext.explosions);
-    clearArrayWithPixiCleanup(GameContext.floatingTexts);
-    clearArrayWithPixiCleanup(GameContext.coins);
-    clearArrayWithPixiCleanup(GameContext.nuggets);
-    GameContext.spaceNuggets = 0;
-    clearArrayWithPixiCleanup(GameContext.powerups);
-    clearArrayWithPixiCleanup(GameContext.shootingStars);
-    clearArrayWithPixiCleanup(GameContext.drones);
-    clearArrayWithPixiCleanup(GameContext.caches);
-    GameContext.radiationStorm = null;
-    GameContext.nextRadiationStormAt = null;
-    clearMiniEvent();
-    GameContext.nextMiniEventAt = Date.now() + 120000;
-    clearArrayWithPixiCleanup(GameContext.pois);
-    GameContext.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
-    GameContext.activeContract = null;
-    GameContext.nextContractAt = Date.now() + 30000; // first contract after ~30s
-    scheduleNextShootingStar();
-    scheduleNextRadiationStorm();
-    scheduleNextMiniEvent();
-    GameContext.nextIntensityBreakAt = Date.now() + 120000; // first break at 2 minutes
-    GameContext.intensityBreakActive = false;
-    GameContext.warpParticles = [];
-    GameContext.shockwaves = [];
-    GameContext.roamerRespawnQueue = [];
-    GameContext.baseRespawnTimers = [];
-    GameContext.pinwheelsDestroyed = 0;
-    GameContext.pinwheelsDestroyedTotal = 0;
-    if (GameContext.boss) pixiCleanupObject(GameContext.boss);
-    GameContext.boss = null;
-    if (GameContext.spaceStation) pixiCleanupObject(GameContext.spaceStation);
-    GameContext.spaceStation = null;
-    GameContext.stationHealthBarVisible = false;
-    if (GameContext.destroyer) {
-        pixiCleanupObject(GameContext.destroyer);
-        GameContext.destroyer = null;
-    }
-    GameContext.nextDestroyerSpawnTime = null;
-    GameContext.currentDestroyerType = 1;
-    GameContext.bossActive = false;
-    GameContext.bossArena.active = false;
-    GameContext.stationArena.active = false;
-    GameContext.pendingStations = 0;
-    GameContext.sectorIndex = 1;
-    GameContext.sectorTransitionActive = false;
-    GameContext.warpCountdownAt = null;
-    GameContext.warpGateUnlocked = false;
-    // nextSpaceStationTime = Date.now() + 180000; // disabled, after second cruiser
-    GameContext.gunboatRespawnAt = null;
-    GameContext.gunboatLevel2Unlocked = false;
-    GameContext.initialSpawnDone = false;
-    GameContext.gameStartTime = getGameNowMs();
-    GameContext.pauseStartTime = null;
-    GameContext.pausedAccumMs = 0;
-
-    GameContext.initialSpawnDelayAt = GameContext.gameStartTime + 5000;
-
-    generateMap();
-    // Ensure the nebula palette matches Sector 1 when restarting after a Sector 2 cave run. 
-    initStars(width, height);
-
-    GameContext.maxRoamers = 3;
-    document.getElementById('bases-display').innerText = `0`;
-    GameContext.shakeMagnitude = 0;
-    updateWarpUI();
-    updateTurboUI();
-    updateXpUI();
-    updateNuggetUI();
-}
-
+registerWorldSetupDependencies({
+    clearArrayWithPixiCleanup,
+    clearMiniEvent,
+    generateMap,
+    getGameNowMs,
+    getHeight: () => height,
+    getWidth: () => width,
+    initStars,
+    pixiCleanupObject,
+    resetPixiOverlaySprites,
+    scheduleNextMiniEvent,
+    scheduleNextRadiationStorm,
+    scheduleNextShootingStar,
+    updateNuggetUI,
+    updateTurboUI,
+    updateWarpUI,
+    updateXpUI
+});
 function showFloatingText(x, y, amount, color = '#ff0', key = null) {
     if (key) {
         getOrCreateFloatingText(GameContext.floatingTexts, key, x, y, amount, color, {
@@ -1488,6 +1057,30 @@ registerWorldHelperDependencies({
     spawnExplorationCaches,
     spawnOneAsteroidRelative,
     spawnSectorPOIs
+});
+
+registerSectorFlowDependencies({
+    Cave,
+    Dungeon1Zone,
+    WarpMazeZone,
+    clearArrayWithPixiCleanup,
+    clearMiniEvent,
+    clearOverlayMessageTimeout,
+    generateMap,
+    getHeight: () => height,
+    getWidth: () => width,
+    initStars,
+    pixiCleanupObject,
+    resetPixiOverlaySprites,
+    scheduleNextMiniEvent,
+    scheduleNextRadiationStorm,
+    scheduleNextShootingStar,
+    showOverlayMessage,
+    spawnNewPinwheelRelative,
+    spawnOneWarpAsteroidRelative,
+    spawnParticles,
+    stopArenaCountdown,
+    updateHealthUI
 });
 
 
