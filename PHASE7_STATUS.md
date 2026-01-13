@@ -1,6 +1,6 @@
 # Phase 7: Final Reduction to ~1,000 Lines - Status Report
 
-**Last Updated:** 2026-01-12T21:00:00-08:00
+**Last Updated:** 2026-01-12T21:15:00-08:00
 **Status:** IN PROGRESS
 
 ---
@@ -9,9 +9,9 @@
 Reduce `src/js/main.js` from 6,411 lines to under 1,000 lines by extracting remaining initialization and asset setup logic into dedicated modules.
 
 ## Current Metrics
-- **Current lines:** 3,292
+- **Current lines:** 2,647
 - **Target lines:** < 1,000
-- **Remaining to remove:** 2,292 lines
+- **Remaining to remove:** 1,647 lines
 
 ## Planned Work
 

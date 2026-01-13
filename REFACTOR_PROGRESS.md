@@ -5,10 +5,10 @@
 ## Current Progress
 
 **Starting lines**: 6,411
-**Current lines**: 3,292
-**Lines removed**: 3,119 (48.7%)
+**Current lines**: 2,647
+**Lines removed**: 3,764 (58.7%)
 **Target**: Under 1,000 lines
-**Remaining to remove**: 2,292 lines
+**Remaining to remove**: 1,647 lines
 
 ---
 
@@ -125,6 +125,28 @@
   - Removed unused class from `src/js/main.js`
   - Lines removed: 120
 
+### Phase 12: ShootingStar Entity
+- [x] **ShootingStar** (~190 lines)
+  - Created: `src/js/entities/environment/ShootingStar.js`
+  - Extracted: `ShootingStar`
+  - Lines removed: 190
+
+### Phase 1: Simple Entity Classes
+- [x] **WarpGate class** (~80 lines)
+  - Removed duplicate class from `src/js/main.js`
+  - Lines removed: 80
+- [x] **Dungeon1Gate class** (~50 lines)
+  - Removed duplicate class from `src/js/main.js`
+  - Lines removed: 50
+
+### Phase 1: Unused Functions Removed
+- [x] **exitWarpMaze function** (~200 lines)
+  - Removed unused function from `src/js/main.js`
+  - Lines removed: 200
+- [x] **exitDungeon1 function** (~35 lines)
+  - Removed unused function from `src/js/main.js`
+  - Lines removed: 35
+
 ---
 
 ## Next Steps (from original plan)
@@ -157,3 +179,4 @@
 - [x] Smoke test after Phase 9 (Settings/Profile UI) - PASSED
 - [x] Smoke test after Phase 10 (POI/Cache Entities) - PASSED
 - [x] Smoke test after Phase 11 (MiniEventDefendCache) - PASSED
+- [x] Smoke test after Phase 12 (ShootingStar/WarpGate cleanup) - PASSED

@@ -1,5 +1,5 @@
 // --- Module Imports ---
-import { Vector, SpatialHash, _tempVec1, _tempVec2 } from './core/math.js';
+import { Vector, SpatialHash, _tempVec1, _tempVec2, closestPointOnSegment, resolveCircleSegment } from './core/math.js';
 import { GameContext } from './core/game-context.js';
 import { globalProfiler } from './core/profiler.js';
 import { globalJitterMonitor } from './core/jitter-monitor.js';
@@ -176,6 +176,8 @@ import {
     registerPoiDependencies,
     MiniEventDefendCache,
     registerMiniEventDefendCacheDependencies,
+    ShootingStar,
+    registerShootingStarDependencies,
     Enemy,
     registerEnemyDependencies,
     Pinwheel,
@@ -742,7 +744,6 @@ let simNowMs = 0;
 let simLastPerfAt = 0;
 const getGameNowMs = () => (typeof simNowMs === 'number' && simNowMs > 0) ? simNowMs : Date.now();
 let renderAlpha = 1.0; // Global render interpolation alpha (0-1)
-let suppressWarpGateUntil = 0;
 let suppressWarpInputUntil = 0;
 
 GameContext.gameActive = false;
@@ -909,6 +910,54 @@ function completeSectorWarp() {
     GameContext.nextDestroyerSpawnTime = null;
     scheduleNextShootingStar();
     showOverlayMessage("NEW SECTOR ENTERED", '#0ff', 3000);
+}
+
+function startCaveSector2() {
+    resetWarpState();
+    GameContext.caveMode = true;
+    GameContext.caveLevel = new Cave.CaveLevel();
+    GameContext.caveLevel.generate();
+    clearArrayWithPixiCleanup(GameContext.coins);
+
+    GameContext.activeContract = null;
+    GameContext.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+    GameContext.nextContractAt = Date.now() + 999999999;
+    GameContext.radiationStorm = null;
+    GameContext.nextRadiationStormAt = null;
+    clearMiniEvent();
+    GameContext.nextMiniEventAt = Date.now() + 999999999;
+    GameContext.nextShootingStarTime = Date.now() + 999999999;
+    GameContext.intensityBreakActive = false;
+    GameContext.nextIntensityBreakAt = Date.now() + 999999999;
+
+    clearArrayWithPixiCleanup(GameContext.pinwheels);
+    GameContext.baseRespawnTimers = [];
+    GameContext.roamerRespawnQueue = [];
+    GameContext.maxRoamers = 0;
+    GameContext.initialSpawnDone = true;
+    GameContext.initialSpawnDelayAt = null;
+    GameContext.pendingStations = 0;
+    if (GameContext.spaceStation) pixiCleanupObject(GameContext.spaceStation);
+    GameContext.spaceStation = null;
+    GameContext.stationHealthBarVisible = false;
+    GameContext.nextSpaceStationTime = null;
+
+    if (GameContext.destroyer) pixiCleanupObject(GameContext.destroyer);
+    GameContext.destroyer = null;
+    GameContext.nextDestroyerSpawnTime = null;
+
+    GameContext.player.pos.x = GameContext.caveLevel.startX;
+    GameContext.player.pos.y = GameContext.caveLevel.startY + 600;
+    GameContext.player.vel.x = 0;
+    GameContext.player.vel.y = 0;
+    GameContext.player.angle = -Math.PI / 2;
+    GameContext.player.turretAngle = -Math.PI / 2;
+
+    GameContext.caveLevel.resetFireWall(GameContext.player.pos.y);
+
+    for (let i = 0; i < 3; i++) spawnNewPinwheelRelative(true);
+
+    showOverlayMessage("SECTOR 2: CAVE RUN - FLY UPWARD", '#0ff', 3200, 2);
 }
 
 function endGame(elapsedMs) {
@@ -1102,384 +1151,7 @@ function applyAOEDamageToPlayer(aoeX, aoeY, aoeRadius, totalDamage) {
     }
 }
 
-class ShootingStar extends Entity {
-    constructor() {
-        super(0, 0);
-        this.isShootingStar = true;
-        const angle = Math.random() * Math.PI * 2;
-        const dist = 2500; // Start far out
-        this.pos.x = GameContext.player.pos.x + Math.cos(angle) * dist;
-        this.pos.y = GameContext.player.pos.y + Math.sin(angle) * dist;
-
-        // Aim somewhat near the player
-        const targetX = GameContext.player.pos.x + (Math.random() - 0.5) * 1000;
-        const targetY = GameContext.player.pos.y + (Math.random() - 0.5) * 1000;
-        const travelAngle = Math.atan2(targetY - this.pos.y, targetX - this.pos.x);
-
-        this.vel.x = Math.cos(travelAngle) * 15; // 50% slower
-        this.vel.y = Math.sin(travelAngle) * 15;
-
-        this.radius = 40;
-        this.damage = 10;
-        this.hp = 3;
-        this.life = 300; // 5 seconds at 60fps
-        this._pixiGfx = null;
-    }
-
-    update(deltaTime = SIM_STEP_MS) {
-        // Use Entity.update for scaled movement
-        super.update(deltaTime);
-        const dtFactor = deltaTime / 16.67;
-        this.life -= dtFactor;
-        if (this.life <= 0) this.kill(false);
-
-        // Trail
-        for (let i = 0; i < 5; i++) {
-            emitParticle(
-                this.pos.x + (Math.random() - 0.5) * 20,
-                this.pos.y + (Math.random() - 0.5) * 20,
-                -this.vel.x * 0.2 + (Math.random() - 0.5) * 2,
-                -this.vel.y * 0.2 + (Math.random() - 0.5) * 2,
-                '#ffaa00',
-                30
-            );
-        }
-    }
-
-    takeHit(dmg = 1) {
-        if (this.dead) return;
-        this.hp -= dmg;
-        if (this.hp <= 0) this.kill(true);
-    }
-
-    kill(dropNugz = false) {
-        if (this.dead) return;
-        this.dead = true;
-        pixiCleanupObject(this);
-        if (dropNugz) {
-            spawnAsteroidExplosion(this.pos.x, this.pos.y, 1.4);
-            const count = Math.floor(Math.random() * 7);
-            for (let i = 0; i < count; i++) {
-                GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 80, this.pos.y + (Math.random() - 0.5) * 80, 1));
-            }
-        }
-    }
-
-    draw(ctx) {
-        if (this.dead) {
-            pixiCleanupObject(this);
-            return;
-        }
-
-        const rPos = this.getRenderPos(renderAlpha);
-
-        if (pixiBulletLayer) {
-            let g = this._pixiGfx;
-            if (!g) {
-                g = new PIXI.Graphics();
-                // Simple glowing ball
-                g.beginFill(0xffffff, 0.2); // Outer
-                g.drawCircle(0, 0, 40);
-                g.beginFill(0xffaa00, 0.4); // Mid
-                g.drawCircle(0, 0, 25);
-                g.beginFill(0xffffff, 0.8); // Core
-                g.drawCircle(0, 0, 10);
-
-                pixiBulletLayer.addChild(g);
-                this._pixiGfx = g;
-            }
-            g.position.set(rPos.x, rPos.y);
-            return;
-        }
-    }
-}
-
 // SpaceNugget imported from ./entities/index.js
-
-class WarpGate extends Entity {
-    constructor(x, y) {
-        super(x, y);
-        this.radius = 140;
-        this.t = 0;
-        this.mode = 'entry';
-    }
-    update(deltaTime = SIM_STEP_MS) {
-        if (!GameContext.player || GameContext.player.dead) return;
-        if (suppressWarpGateUntil && getGameNowMs() < suppressWarpGateUntil) return;
-        const dtFactor = deltaTime / 16.67;
-        this.t += dtFactor;
-        const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
-        if (dist > this.radius + GameContext.player.radius) return;
-
-        if (GameContext.warpCompletedOnce) {
-            showOverlayMessage("WARP ALREADY USED THIS SECTOR", '#f80', 1200, 2);
-            return;
-        }
-        if (GameContext.warpZone && GameContext.warpZone.active) return;
-        showOverlayMessage("WARP INITIATED", '#0ff', 1400, 3);
-        playSound('contract');
-        enterWarpMaze();
-    }
-    draw(ctx) {
-        if (this.dead) {
-            pixiCleanupObject(this);
-            return;
-        }
-
-        if (pixiWorldRoot) {
-            let container = this._pixiContainer;
-            if (!container) {
-                container = new PIXI.Container();
-                this._pixiContainer = container;
-                pixiWorldRoot.addChildAt(container, 1); // Add behind players/enemies ideally
-
-                const g = new PIXI.Graphics();
-                container.addChild(g);
-                this._pixiGfx = g;
-
-                const text = new PIXI.Text('', {
-                    fontFamily: 'Courier New',
-                    fontSize: 16,
-                    fontWeight: 'bold',
-                    fill: '#ffffff',
-                    align: 'center',
-                    dropShadow: true,
-                    dropShadowColor: '#000000',
-                    dropShadowBlur: 4,
-                    dropShadowDistance: 0
-                });
-                text.anchor.set(0.5);
-                container.addChild(text);
-                this._pixiText = text;
-            }
-            container.visible = true;
-            container.position.set(this.pos.x, this.pos.y);
-
-            const g = this._pixiGfx;
-            g.clear();
-            const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.45;
-            const gateColor = 0xff8800;
-
-            // Glow Ring
-            g.lineStyle(6, gateColor, 0.35 + pulse);
-            g.drawCircle(0, 0, this.radius);
-
-            // Inner Fill
-            g.beginFill(gateColor, 0.08);
-            g.drawCircle(0, 0, this.radius);
-            g.endFill();
-
-            // Text
-            const t = this._pixiText;
-            t.text = this.mode === 'exit' ? 'EXIT' : 'WARP';
-
-            return;
-        }
-    }
-}
-
-class Dungeon1Gate extends Entity {
-    constructor(x, y) {
-        super(x, y);
-        this.radius = 140;
-        this.t = 0;
-        this.mode = 'entry';
-    }
-    update(deltaTime = SIM_STEP_MS) {
-        if (!GameContext.player || GameContext.player.dead) return;
-        const dtFactor = deltaTime / 16.67;
-        this.t += dtFactor;
-        const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
-        if (dist > this.radius + GameContext.player.radius) return;
-
-        if (GameContext.dungeon1CompletedOnce) {
-            showOverlayMessage("DUNGEON ALREADY CLEARED", '#f80', 1200, 2);
-            return;
-        }
-        if (GameContext.dungeon1Zone && GameContext.dungeon1Zone.active) return;
-        showOverlayMessage("ENTERING DUNGEON 1...", '#f80', 1400, 3);
-        playSound('contract');
-        _enterDungeon1Internal();
-    }
-    draw(ctx) {
-        if (this.dead) {
-            pixiCleanupObject(this);
-            return;
-        }
-
-        if (pixiWorldRoot) {
-            let container = this._pixiContainer;
-            if (!container) {
-                container = new PIXI.Container();
-                this._pixiContainer = container;
-                pixiWorldRoot.addChildAt(container, 1);
-
-                const g = new PIXI.Graphics();
-                container.addChild(g);
-                this._pixiGfx = g;
-
-                const text = new PIXI.Text('', {
-                    fontFamily: 'Courier New',
-                    fontSize: 16,
-                    fontWeight: 'bold',
-                    fill: '#ffffff',
-                    align: 'center',
-                    dropShadow: true,
-                    dropShadowColor: '#000000',
-                    dropShadowBlur: 4,
-                    dropShadowDistance: 0
-                });
-                text.anchor.set(0.5);
-                container.addChild(text);
-                this._pixiText = text;
-            }
-            container.visible = true;
-            container.position.set(this.pos.x, this.pos.y);
-
-            const g = this._pixiGfx;
-            g.clear();
-            const pulse = 0.35 + Math.abs(Math.sin(this.t * 0.04)) * 0.45;
-            const gateColor = 0xff8800; // Orange/gold for dungeon
-
-            // Glow Ring
-            g.lineStyle(6, gateColor, 0.35 + pulse);
-            g.drawCircle(0, 0, this.radius);
-
-            // Inner Fill
-            g.beginFill(gateColor, 0.08);
-            g.drawCircle(0, 0, this.radius);
-            g.endFill();
-
-            // Text
-            const t = this._pixiText;
-            t.text = 'DUNGEON';
-
-            return;
-        }
-    }
-}
-
-function beginFlagshipFight(cx, cy, radius = 1875) {
-    if (GameContext.bossActive || GameContext.sectorTransitionActive) return;
-
-    // Start the fight without wiping the whole world (regular asteroids + roaming enemies remain).
-    boss = new Flagship({ x: cx, y: cy - 2200 });
-    GameContext.bossActive = true;
-    GameContext.bossArena.x = cx;
-    GameContext.bossArena.y = cy;
-    GameContext.bossArena.radius = radius;
-    GameContext.bossArena.active = true;
-    GameContext.bossArena.growing = false;
-
-    // Don't let the cruiser timer trigger during a flagship boss.
-    try { GameContext.dreadManager.timerActive = false; GameContext.dreadManager.timerAt = null; } catch (e) { }
-    stopArenaCountdown();
-
-    showOverlayMessage("WARNING: FLAGSHIP ENGAGED - ARENA LOCKED", '#f0f', 4500, 2);
-    playSound('boss_spawn');
-    if (musicEnabled) setMusicMode('cruiser');
-}
-
-function startCaveSector2() {
-    // Ensure no world-mode carryover. 
-    resetWarpState();
-    GameContext.caveMode = true;
-    GameContext.caveLevel = new Cave.CaveLevel();
-    GameContext.caveLevel.generate();
-    clearArrayWithPixiCleanup(GameContext.coins);
-
-    // Disable contracts/events for the cave run.
-    GameContext.activeContract = null;
-    GameContext.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
-    GameContext.nextContractAt = Date.now() + 999999999;
-    GameContext.radiationStorm = null;
-    GameContext.nextRadiationStormAt = null;
-    clearMiniEvent();
-    GameContext.nextMiniEventAt = Date.now() + 999999999;
-    GameContext.nextShootingStarTime = Date.now() + 999999999;
-    GameContext.intensityBreakActive = false;
-    GameContext.nextIntensityBreakAt = Date.now() + 999999999;
-
-    // Keep bases in the cave (Sector 1 feel), but no stations/contracts. 
-    clearArrayWithPixiCleanup(GameContext.pinwheels);
-    GameContext.baseRespawnTimers = [];
-    GameContext.roamerRespawnQueue = [];
-    GameContext.maxRoamers = 0;
-    GameContext.initialSpawnDone = true;
-    GameContext.initialSpawnDelayAt = null;
-    GameContext.pendingStations = 0;
-    if (GameContext.spaceStation) pixiCleanupObject(GameContext.spaceStation);
-    GameContext.spaceStation = null;
-    GameContext.stationHealthBarVisible = false;
-    GameContext.nextSpaceStationTime = null;
-
-    // Ensure no destroyers in cave mode
-    if (GameContext.destroyer) pixiCleanupObject(GameContext.destroyer);
-    GameContext.destroyer = null;
-    GameContext.nextDestroyerSpawnTime = null;
-
-    // Place player at the cave start (bottom), facing upward.
-    GameContext.player.pos.x = GameContext.caveLevel.startX;
-    GameContext.player.pos.y = GameContext.caveLevel.startY + 600;
-    GameContext.player.vel.x = 0;
-    GameContext.player.vel.y = 0;
-    GameContext.player.angle = -Math.PI / 2;
-    GameContext.player.turretAngle = -Math.PI / 2;
-
-    GameContext.caveLevel.resetFireWall(GameContext.player.pos.y);
-
-    // Seed a few pinwheels up the tunnel (they'll also respawn via the normal pinwheel timer loop).
-    for (let i = 0; i < 3; i++) spawnNewPinwheelRelative(true);
-
-    showOverlayMessage("SECTOR 2: CAVE RUN - FLY UPWARD", '#0ff', 3200, 2);
-}
-
-function closestPointOnSegment(px, py, ax, ay, bx, by) {
-    const abx = bx - ax;
-    const aby = by - ay;
-    const apx = px - ax;
-    const apy = py - ay;
-    const abLenSq = abx * abx + aby * aby;
-    let t = 0;
-    if (abLenSq > 0.000001) t = (apx * abx + apy * aby) / abLenSq;
-    if (t < 0) t = 0;
-    if (t > 1) t = 1;
-    return { x: ax + abx * t, y: ay + aby * t, t };
-}
-
-function resolveCircleSegment(entity, ax, ay, bx, by, elasticity = 0.7) {
-    const cp = closestPointOnSegment(entity.pos.x, entity.pos.y, ax, ay, bx, by);
-    let dx = entity.pos.x - cp.x;
-    let dy = entity.pos.y - cp.y;
-    let dist = Math.hypot(dx, dy);
-    if (dist < 0.0001) {
-        // Fallback: choose a stable normal.
-        const sx = bx - ax;
-        const sy = by - ay;
-        const nLen = Math.hypot(sx, sy) || 1;
-        dx = -sy / nLen;
-        dy = sx / nLen;
-        dist = 1;
-    }
-    const pad = 0.5;
-    const minDist = (entity.radius || 0) + pad;
-    if (dist >= minDist) return false;
-
-    const nx = dx / dist;
-    const ny = dy / dist;
-    const overlap = minDist - dist;
-    entity.pos.x += nx * overlap;
-    entity.pos.y += ny * overlap;
-
-    if (entity.vel) {
-        const vn = entity.vel.x * nx + entity.vel.y * ny;
-        if (vn < 0) {
-            entity.vel.x -= nx * vn * (1 + elasticity);
-            entity.vel.y -= ny * vn * (1 + elasticity);
-        }
-    }
-    return true;
-}
 
 // ============================================================================
 // DUNGEON BOSS HELPER CLASSES
@@ -1652,148 +1324,6 @@ function resetCaveState() {
     GameContext.caveLevel = null;
 }
 
-function exitWarpMaze() {
-    if (!GameContext.warpZone || !GameContext.warpZone.active) return;
-    const completedRun = !!(GameContext.warpZone && GameContext.warpZone.exitUnlocked);
-    if (GameContext.warpZone && GameContext.warpZone.active) GameContext.warpZone.active = false;
-
-    // CLEANUP FIX: Properly clean up all warp entities before restoring snapshot
-    // This prevents frozen sprites appearing on screen after warp exit
-    console.log('[WARP EXIT] Cleaning up warp entities before restoring snapshot...');
-
-    // Clean up warp gate if it exists
-    if (GameContext.warpGate) {
-        pixiCleanupObject(GameContext.warpGate);
-        GameContext.warpGate = null;
-        console.log('[WARP EXIT] Cleaned warp gate');
-    }
-
-    // Clean up warp zone and its entities
-    if (GameContext.warpZone) {
-        // Clean up warp turrets
-        if (GameContext.warpZone.turrets && GameContext.warpZone.turrets.length > 0) {
-            for (let i = 0; i < GameContext.warpZone.turrets.length; i++) {
-                const turret = GameContext.warpZone.turrets[i];
-                if (turret) {
-                    try {
-                        pixiCleanupObject(turret);
-                    } catch (e) {
-                        console.warn('[WARP EXIT] Failed to clean turret:', e);
-                    }
-                }
-            }
-            GameContext.warpZone.turrets = [];
-            console.log('[WARP EXIT] Cleaned warp turrets');
-        }
-
-        // Clean up warp zone graphics
-        if (GameContext.warpZone._pixiGfx) {
-            try { GameContext.warpZone._pixiGfx.destroy(true); } catch (e) { }
-            GameContext.warpZone._pixiGfx = null;
-        }
-    }
-
-    // Clean up warp particles (separate array from regular particles)
-    if (GameContext.warpParticles && GameContext.warpParticles.length > 0) {
-        for (let i = 0; i < GameContext.warpParticles.length; i++) {
-            const p = GameContext.warpParticles[i];
-            if (p && p.sprite) {
-                try {
-                    releasePixiSprite(pixiParticleSpritePool, p.sprite);
-                    p.sprite = null;
-                } catch (e) {
-                    console.warn('[WARP EXIT] Failed to clean warp particle sprite:', e);
-                }
-            }
-        }
-        GameContext.warpParticles.length = 0;
-        console.log('[WARP EXIT] Cleaned warp particles');
-    }
-
-    // Clean up all current warp entities (these will be replaced by snapshot)
-    const cleanupWarpArray = (arr, name) => {
-        if (!arr || arr.length === 0) return;
-        let cleaned = 0;
-        for (let i = 0; i < arr.length; i++) {
-            const entity = arr[i];
-            if (entity) {
-                try {
-                    entity.dead = true;
-                    pixiCleanupObject(entity);
-                    cleaned++;
-                } catch (e) {
-                    console.warn(`[WARP EXIT] Failed to clean ${name}[${i}]:`, e);
-                }
-            }
-        }
-        console.log(`[WARP EXIT] Cleaned ${cleaned} ${name}`);
-    };
-
-    // Clean up all warp-specific entities
-    cleanupWarpArray(GameContext.bullets, 'warp bullets');
-    cleanupWarpArray(GameContext.bossBombs, 'warp boss bombs');
-    cleanupWarpArray(GameContext.warpBioPods, 'warp bio pods');
-    cleanupWarpArray(GameContext.staggeredBombExplosions, 'staggered bomb explosions');
-    cleanupWarpArray(GameContext.staggeredParticleBursts, 'staggered particle bursts');
-    cleanupWarpArray(GameContext.guidedMissiles, 'warp guided missiles');
-    cleanupWarpArray(GameContext.enemies, 'warp enemies');
-    cleanupWarpArray(GameContext.pinwheels, 'warp pinwheels');
-    cleanupWarpArray(GameContext.particles, 'warp particles');
-    cleanupWarpArray(GameContext.explosions, 'warp explosions');
-    cleanupWarpArray(GameContext.floatingTexts, 'warp floating texts');
-    cleanupWarpArray(GameContext.coins, 'warp coins');
-    cleanupWarpArray(GameContext.nuggets, 'warp nuggets');
-    cleanupWarpArray(GameContext.powerups, 'warp powerups');
-    cleanupWarpArray(GameContext.shootingStars, 'warp shooting stars');
-    cleanupWarpArray(GameContext.drones, 'warp drones');
-    cleanupWarpArray(GameContext.caches, 'warp caches');
-    cleanupWarpArray(GameContext.pois, 'warp POIs');
-    cleanupWarpArray(GameContext.environmentAsteroids, 'warp asteroids');
-    if (GameContext.boss && GameContext.boss.isWarpBoss) {
-        try {
-            GameContext.boss.dead = true;
-            pixiCleanupObject(GameContext.boss);
-        } catch (e) {
-            console.warn('[WARP EXIT] Failed to clean warp boss:', e);
-        }
-        GameContext.boss = null;
-        GameContext.bossActive = false;
-    }
-
-    // Clear the arrays
-    GameContext.bullets.length = 0;
-    GameContext.bossBombs.length = 0;
-    GameContext.warpBioPods.length = 0;
-    GameContext.staggeredBombExplosions.length = 0;
-    GameContext.staggeredParticleBursts.length = 0;
-    GameContext.guidedMissiles.length = 0;
-    GameContext.napalmZones.length = 0;
-    GameContext.enemies.length = 0;
-    GameContext.pinwheels.length = 0;
-    GameContext.particles.length = 0;
-    GameContext.explosions.length = 0;
-    GameContext.floatingTexts.length = 0;
-    GameContext.coins.length = 0;
-    GameContext.nuggets.length = 0;
-    GameContext.powerups.length = 0;
-    GameContext.shootingStars.length = 0;
-    GameContext.drones.length = 0;
-    GameContext.caches.length = 0;
-    GameContext.pois.length = 0;
-    GameContext.environmentAsteroids.length = 0;
-
-    // Clear Pixi overlay sprites (includes warp zone walls/gates)
-    resetPixiOverlaySprites();
-    cleanupPixiWorldRootExtras();
-
-    // NOTE: No longer restoring snapshots - we transition directly to level 2 after boss defeat
-    // This entire function now just cleans up warp entities
-    // The actual transition to level 2 is handled by sectorTransitionActive countdown in gameLoopLogic
-
-    GameContext.warpZone = null;
-    GameContext.warpGate = null;
-}
-
 function _enterDungeon1Internal() {
     if (GameContext.dungeon1Zone && GameContext.dungeon1Zone.active) return;
     if (GameContext.dungeon1CompletedOnce) {
@@ -1801,10 +1331,8 @@ function _enterDungeon1Internal() {
         return;
     }
 
-    // Store player's original position
     GameContext.dungeon1OriginalPos = { x: GameContext.player.pos.x, y: GameContext.player.pos.y };
 
-    // Clear world to make a controlled encounter space
     resetPixiOverlaySprites();
     const detach = (arr) => {
         if (!arr || arr.length === 0) return;
@@ -1853,7 +1381,6 @@ function _enterDungeon1Internal() {
     GameContext.radiationStorm = null;
     clearMiniEvent();
 
-    // Reset cave state
     resetCaveState();
 
     GameContext.activeContract = null;
@@ -1882,19 +1409,16 @@ function _enterDungeon1Internal() {
     GameContext.maxRoamers = 0;
     GameContext.gunboatRespawnAt = null;
 
-    // Create dungeon zone at origin
     const originX = 0;
     const originY = 0;
     GameContext.dungeon1Zone = new Dungeon1Zone(originX, originY);
     GameContext.dungeon1Active = true;
 
-    // Place the player at the bottom of the arena
     GameContext.player.pos.x = originX;
-    GameContext.player.pos.y = originY + GameContext.dungeon1Arena.radius - 300; // 300 units from bottom edge
+    GameContext.player.pos.y = originY + GameContext.dungeon1Arena.radius - 300;
     GameContext.player.vel.x = 0;
     GameContext.player.vel.y = 0;
 
-    // Activate dungeon arena
     GameContext.dungeon1Arena.x = originX;
     GameContext.dungeon1Arena.y = originY;
     GameContext.dungeon1Arena.radius = 2500;
@@ -1902,28 +1426,6 @@ function _enterDungeon1Internal() {
     GameContext.dungeon1Arena.growing = false;
 
     showOverlayMessage("ENTERED DUNGEON 1", '#f80', 2000, 2);
-}
-
-function exitDungeon1() {
-    if (!GameContext.dungeon1Zone || !GameContext.dungeon1Zone.active) return;
-    GameContext.dungeon1Zone.active = false;
-    GameContext.dungeon1Active = false;
-
-    // Clean up dungeon gate
-    if (GameContext.dungeon1Gate) {
-        pixiCleanupObject(GameContext.dungeon1Gate);
-        GameContext.dungeon1Gate = null;
-    }
-
-    // Clean up dungeon zone
-    if (GameContext.dungeon1Zone) {
-        if (GameContext.dungeon1Zone._pixiGfx) {
-            try { GameContext.dungeon1Zone._pixiGfx.destroy(true); } catch (e) { }
-            GameContext.dungeon1Zone._pixiGfx = null;
-        }
-    }
-
-    GameContext.dungeon1Zone = null;
 }
 
 // Instead, we transition directly to level 2 via sectorTransitionActive
@@ -2586,6 +2088,11 @@ registerPoiDependencies({
 registerMiniEventDefendCacheDependencies({
     spawnParticles,
     getSimNowMs: getGameNowMs
+});
+
+registerShootingStarDependencies({
+    emitParticle,
+    spawnAsteroidExplosion
 });
 
 registerSpawnManagerDependencies({

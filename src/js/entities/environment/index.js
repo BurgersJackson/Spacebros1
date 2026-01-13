@@ -21,3 +21,7 @@ export {
     MiniEventDefendCache,
     registerMiniEventDefendCacheDependencies
 } from './MiniEventDefendCache.js';
+export {
+    ShootingStar,
+    registerShootingStarDependencies
+} from './ShootingStar.js';
