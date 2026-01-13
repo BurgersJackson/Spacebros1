@@ -174,6 +174,8 @@ import {
     DebrisFieldPOI,
     ExplorationCache,
     registerPoiDependencies,
+    MiniEventDefendCache,
+    registerMiniEventDefendCacheDependencies,
     Enemy,
     registerEnemyDependencies,
     Pinwheel,
@@ -1479,282 +1481,6 @@ function resolveCircleSegment(entity, ax, ay, bx, by, elasticity = 0.7) {
     return true;
 }
 
-class WarpTurret extends Entity {
-    constructor(x, y) {
-        super(x, y);
-        this.radius = 24;
-        this.hp = 7;
-        this.maxHp = 7;
-        this.reload = 35 + Math.floor(Math.random() * 25);
-        this.t = 0;
-    }
-    update(deltaTime = SIM_STEP_MS) {
-        if (this.dead) return;
-        const dtFactor = deltaTime / 16.67;
-        this.t += dtFactor;
-        if (!GameContext.warpZone || !GameContext.warpZone.active) return;
-        if (!GameContext.player || GameContext.player.dead) return;
-        // Keep maze turrets as "obstacles", not part of the boss arena phase.
-        if (GameContext.warpZone.state === 'boss') return;
-
-        const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
-        if (dist > 4200) return;
-
-        this.reload -= dtFactor;
-        if (this.reload > 0) return;
-
-        const aim = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
-        const muzzleX = this.pos.x + Math.cos(aim) * (this.radius + 6);
-        const muzzleY = this.pos.y + Math.sin(aim) * (this.radius + 6);
-        GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim, 12, { owner: 'enemy', damage: 1, radius: 4, color: '#0ff' }));
-        if (Math.random() < 0.18) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.10, 12, { owner: 'enemy', damage: 1, radius: 4, color: '#0ff' }));
-        if (Math.random() < 0.18) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.10, 12, { owner: 'enemy', damage: 1, radius: 4, color: '#0ff' }));
-        this.reload = 48 + Math.floor(Math.random() * 35);
-    }
-    draw(ctx) {
-        if (this.dead) return;
-        const z = GameContext.currentZoom || ZOOM_LEVEL;
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        const aim = (GameContext.player && !GameContext.player.dead) ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x) : 0;
-        ctx.rotate(aim);
-
-        ctx.fillStyle = '#061018';
-        ctx.strokeStyle = '#0ff';
-        ctx.lineWidth = 2 / z;
-        ctx.shadowBlur = 12;
-        ctx.shadowColor = '#0ff';
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = '#0ff';
-        ctx.shadowBlur = 0;
-        ctx.fillRect(this.radius * 0.2, -4 / z, this.radius * 1.35, 8 / z);
-
-        // HP ring
-        const pct = this.maxHp > 0 ? Math.max(0, this.hp / this.maxHp) : 0;
-        ctx.globalAlpha = 0.75;
-        ctx.strokeStyle = '#ff6';
-        ctx.lineWidth = 3 / z;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius + (8 / z), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-
-        ctx.restore();
-    }
-    kill() {
-        if (this.dead) return;
-        this.dead = true;
-        // No coin drops in the cave; award instantly instead. 
-        if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active) awardCoinsInstant(6);
-        else for (let i = 0; i < 3; i++) GameContext.coins.push(new Coin(this.pos.x, this.pos.y, 2));
-        spawnParticles(this.pos.x, this.pos.y, 18, '#0ff');
-        playSound('explode');
-    }
-}
-
-class MiniEventDefendCache extends Entity {
-    constructor(x, y) {
-        super(x, y);
-        this.kind = 'defend_cache';
-        this.radius = 520;
-        this.requiredMs = 5000;
-        this.progressMs = 0;
-        this.expiresAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now()) + 75000;
-        this.lastUpdateAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
-        this.nextWaveAt = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now()) + 1500;
-        this.activated = false;
-        this.t = 0;
-        this.shieldsDirty = true;
-        this._pixiGfx = null;
-        this._pixiProgressGfx = null;
-        this._pixiLabelText = null;
-        this._pixiTimerText = null;
-    }
-    kill() {
-        if (this.dead) return;
-        super.kill();
-        // Ensure all Pixi graphics are hidden before cleanup to prevent visual artifacts
-        if (this._pixiGfx && this._pixiGfx.visible !== false) {
-            this._pixiGfx.visible = false;
-        }
-        if (this._pixiProgressGfx && this._pixiProgressGfx.visible !== false) {
-            this._pixiProgressGfx.visible = false;
-        }
-        if (this._pixiLabelText && this._pixiLabelText.visible !== false) {
-            this._pixiLabelText.visible = false;
-        }
-        if (this._pixiTimerText && this._pixiTimerText.visible !== false) {
-            this._pixiTimerText.visible = false;
-        }
-        pixiCleanupObject(this);
-    }
-    update(deltaTime = SIM_STEP_MS) {
-        if (this.dead) return;
-
-        // Save previous position for interpolation (required for fixed timestep rendering)
-        this.prevPos.x = this.pos.x;
-        this.prevPos.y = this.pos.y;
-
-        if (!GameContext.player || GameContext.player.dead) { this.fail(); return; }
-        const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
-        const dt = Math.min(120, Math.max(0, now - this.lastUpdateAt));
-        this.lastUpdateAt = now;
-        const dtFactor = deltaTime / 16.67;
-        this.t += dtFactor;
-
-        const d = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
-        if (!this.activated && d < 900) {
-            this.activated = true;
-            showOverlayMessage("DEFEND THE CACHE - HOLD POSITION", '#ff0', 1500, 1);
-        }
-
-        if (now >= this.expiresAt) {
-            this.fail();
-            return;
-        }
-
-        if (d < this.radius) {
-            this.progressMs += dt;
-        }
-
-        if (this.activated && now >= this.nextWaveAt) {
-            this.spawnWave();
-            this.nextWaveAt = now + 2600 + Math.floor(Math.random() * 1600);
-        }
-
-        if (this.progressMs >= this.requiredMs) {
-            this.success();
-        }
-    }
-    spawnWave() {
-        const cap = 22;
-        if (GameContext.enemies.length >= cap) return;
-        const count = 2 + Math.floor(Math.random() * 2);
-        for (let i = 0; i < count; i++) {
-            if (GameContext.enemies.length >= cap) break;
-            const a = Math.random() * Math.PI * 2;
-            const dist = 900 + Math.random() * 600;
-            const sx = this.pos.x + Math.cos(a) * dist;
-            const sy = this.pos.y + Math.sin(a) * dist;
-            GameContext.enemies.push(new Enemy('roamer', { x: sx, y: sy }));
-        }
-    }
-    success() {
-        if (this.dead) return;
-        this.kill();
-        showOverlayMessage("EVENT COMPLETE - CACHE SECURED", '#0f0', 2200, 1);
-        playSound('powerup');
-        GameContext.player.addXp(60);
-        spawnParticles(this.pos.x, this.pos.y, 40, '#ff0');
-        for (let i = 0; i < 10; i++) GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 220, this.pos.y + (Math.random() - 0.5) * 220, 8));
-    }
-    fail() {
-        if (this.dead) return;
-        this.kill();
-        showOverlayMessage("EVENT FAILED", '#f00', 2000, 1);
-    }
-    getUiText() {
-        const pct = Math.max(0, Math.min(100, Math.floor((this.progressMs / this.requiredMs) * 100)));
-        return `EVENT: DEFEND CACHE ${pct}%`;
-    }
-    draw(ctx) {
-        if (this.dead) return;
-
-        if (USE_PIXI_OVERLAY && pixiVectorLayer) {
-            if (!this._pixiGfx) {
-                this._pixiGfx = new PIXI.Graphics();
-                pixiVectorLayer.addChild(this._pixiGfx);
-            }
-            if (!this._pixiProgressGfx) {
-                this._pixiProgressGfx = new PIXI.Graphics();
-                pixiVectorLayer.addChild(this._pixiProgressGfx);
-            }
-            if (!this._pixiLabelText) {
-                this._pixiLabelText = new PIXI.Text("DEFEND", { fontFamily: 'Courier New', fontSize: 48, fill: 0xffff00, fontWeight: 'bold' });
-                this._pixiLabelText.anchor.set(0.5);
-                pixiVectorLayer.addChild(this._pixiLabelText);
-            }
-            if (!this._pixiTimerText) {
-                this._pixiTimerText = new PIXI.Text("", { fontFamily: 'Courier New', fontSize: 24, fill: 0xffffff, fontWeight: 'bold' });
-                this._pixiTimerText.anchor.set(0.5);
-                pixiVectorLayer.addChild(this._pixiTimerText);
-            }
-
-            const now = (typeof simNowMs !== 'undefined' ? simNowMs : Date.now());
-            const remain = Math.max(0, this.expiresAt - now);
-            const pct = Math.max(0, Math.min(1, this.progressMs / this.requiredMs));
-            const pulse = 0.85 + Math.sin(this.t * 0.08) * 0.15;
-
-            this._pixiGfx.position.set(this.pos.x, this.pos.y);
-            this._pixiProgressGfx.position.set(this.pos.x, this.pos.y);
-            this._pixiLabelText.position.set(this.pos.x, this.pos.y - this.radius - 64);
-            this._pixiTimerText.position.set(this.pos.x, this.pos.y - this.radius - 26);
-
-            this._pixiGfx.clear();
-            // boundary
-            this._pixiGfx.lineStyle(6 / (GameContext.currentZoom || 1), 0xffdc00, 0.45);
-            this._pixiGfx.drawCircle(0, 0, this.radius);
-
-            // central area
-            this._pixiGfx.beginFill(0xffff00, 0.35 * pulse);
-            this._pixiGfx.drawCircle(0, 0, 54);
-            this._pixiGfx.endFill();
-
-            // progress
-            this._pixiProgressGfx.clear();
-            this._pixiProgressGfx.lineStyle(8 / (GameContext.currentZoom || 1), 0x00ff00, 0.6);
-            this._pixiProgressGfx.arc(0, 0, this.radius + 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
-
-            this._pixiTimerText.text = `${(remain / 1000).toFixed(0)}s`;
-            return;
-        }
-
-        const now = Date.now();
-        const remain = Math.max(0, this.expiresAt - now);
-        const pct = Math.max(0, Math.min(1, this.progressMs / this.requiredMs));
-        const pulse = 0.85 + Math.sin(this.t * 0.08) * 0.15;
-
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.lineWidth = 6;
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = '#ff0';
-        ctx.strokeStyle = 'rgba(255, 220, 0, 0.45)';
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.shadowBlur = 0;
-        ctx.lineWidth = 8;
-        ctx.strokeStyle = 'rgba(0, 255, 0, 0.6)';
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius + 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
-        ctx.stroke();
-
-        ctx.globalAlpha = 0.35 * pulse;
-        ctx.fillStyle = '#ff0';
-        ctx.beginPath();
-        ctx.arc(0, 0, 54, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-
-        ctx.fillStyle = '#ff0';
-        ctx.font = 'bold 48px Courier New';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText("DEFEND", 0, -this.radius - 64);
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 24px Courier New';
-        ctx.fillText(`${(remain / 1000).toFixed(0)}s`, 0, -this.radius - 26);
-
-        ctx.restore();
-    }
-}
-
 // ============================================================================
 // DUNGEON BOSS HELPER CLASSES
 // ============================================================================
@@ -2855,6 +2581,18 @@ registerAsteroidDependencies({
 registerPoiDependencies({
     spawnParticles,
     getSimNowMs: getGameNowMs
+});
+
+registerMiniEventDefendCacheDependencies({
+    spawnParticles,
+    getSimNowMs: getGameNowMs
+});
+
+registerSpawnManagerDependencies({
+    ExplorationCache,
+    DerelictShipPOI,
+    DebrisFieldPOI,
+    MiniEventDefendCache
 });
 
 registerEnemyDependencies({

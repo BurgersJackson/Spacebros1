@@ -5,10 +5,10 @@
 ## Current Progress
 
 **Starting lines**: 6,411
-**Current lines**: 3,554
-**Lines removed**: 2,857 (44.6%)
+**Current lines**: 3,292
+**Lines removed**: 3,119 (48.7%)
 **Target**: Under 1,000 lines
-**Remaining to remove**: 2,554 lines
+**Remaining to remove**: 2,292 lines
 
 ---
 
@@ -114,6 +114,17 @@
   - Extracted: `SectorPOI`, `DerelictShipPOI`, `DebrisFieldPOI`, `ExplorationCache`
   - Lines removed: 339
 
+### Phase 11: Mini-Event Entities
+- [x] **MiniEventDefendCache** (~200 lines)
+  - Created: `src/js/entities/environment/MiniEventDefendCache.js`
+  - Extracted: `MiniEventDefendCache`
+  - Lines removed: 200
+
+### Phase 1: Unused Classes Removed
+- [x] **WarpTurret class** (~120 lines)
+  - Removed unused class from `src/js/main.js`
+  - Lines removed: 120
+
 ---
 
 ## Next Steps (from original plan)
@@ -145,3 +156,4 @@
 - [x] Smoke test after Phase 8 (Canvas/PixiJS Init) - PASSED
 - [x] Smoke test after Phase 9 (Settings/Profile UI) - PASSED
 - [x] Smoke test after Phase 10 (POI/Cache Entities) - PASSED
+- [x] Smoke test after Phase 11 (MiniEventDefendCache) - PASSED

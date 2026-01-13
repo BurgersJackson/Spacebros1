@@ -17,3 +17,7 @@ export {
     ExplorationCache,
     registerPoiDependencies
 } from './poi.js';
+export {
+    MiniEventDefendCache,
+    registerMiniEventDefendCacheDependencies
+} from './MiniEventDefendCache.js';
