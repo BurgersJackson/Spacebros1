@@ -229,6 +229,9 @@ export function resolveEntityCollision() {
             // Dungeon bosses only collide with player, skip dungeon boss vs other enemies
             if (e1.isDungeonBoss && e2 !== GameContext.player) continue;
             if (e2.isDungeonBoss && e1 !== GameContext.player) continue;
+            // Warp boss only collides with player, skip warp boss vs other enemies
+            if (e1.isWarpBoss && e2 !== GameContext.player) continue;
+            if (e2.isWarpBoss && e1 !== GameContext.player) continue;
 
             let r1 = (e1 instanceof Destroyer || e1 instanceof Destroyer2) ? (e1.shieldRadius || e1.radius) : e1.radius;
             let r2 = (e2 instanceof Destroyer || e2 instanceof Destroyer2) ? (e2.shieldRadius || e2.radius) : e2.radius;
@@ -275,9 +278,9 @@ export function resolveEntityCollision() {
     }
 
     if (GameContext.bossActive && GameContext.boss && GameContext.boss.isWarpBoss && !GameContext.boss.dead) {
-        for (let i = 0; i < allEntities.length; i++) {
-            const entity = allEntities[i];
-            if (!entity || entity.dead || entity === GameContext.boss) continue;
+        // Warp boss only collides with player, other ships can fly through
+        if (GameContext.player && !GameContext.player.dead) {
+            const entity = GameContext.player;
             const dx = entity.pos.x - GameContext.boss.pos.x;
             const dy = entity.pos.y - GameContext.boss.pos.y;
             const dist = Math.hypot(dx, dy) || 0.001;
@@ -294,13 +297,11 @@ export function resolveEntityCollision() {
                     entity.vel.x -= nx * dot * 1.2;
                     entity.vel.y -= ny * dot * 1.2;
                 }
-                if (entity === GameContext.player) {
-                    const now = Date.now();
-                    if (!GameContext.player.lastWarpBossBlockAt || now - GameContext.player.lastWarpBossBlockAt > 200) {
-                        if (_spawnParticles) _spawnParticles((GameContext.player.pos.x + GameContext.boss.pos.x) / 2, (GameContext.player.pos.y + GameContext.boss.pos.y) / 2, 5, '#0ff');
-                        if (_playSound) _playSound('shield_hit');
-                        GameContext.player.lastWarpBossBlockAt = now;
-                    }
+                const now = Date.now();
+                if (!GameContext.player.lastWarpBossBlockAt || now - GameContext.player.lastWarpBossBlockAt > 200) {
+                    if (_spawnParticles) _spawnParticles((GameContext.player.pos.x + GameContext.boss.pos.x) / 2, (GameContext.player.pos.y + GameContext.boss.pos.y) / 2, 5, '#0ff');
+                    if (_playSound) _playSound('shield_hit');
+                    GameContext.player.lastWarpBossBlockAt = now;
                 }
             }
         }
