@@ -6,7 +6,7 @@ import { Bullet, CruiserMineBomb, FlagshipGuidedMissile } from '../projectiles/i
 import { Coin, HealthPowerUp, SpaceNugget } from '../pickups/index.js';
 import { showOverlayMessage } from '../../utils/ui-helpers.js';
 import { stopArenaCountdown } from '../../systems/event-scheduler.js';
-import { pixiCleanupObject, clearArrayWithPixiCleanup, getRenderAlpha } from '../../rendering/pixi-context.js';
+import { pixiCleanupObject, clearArrayWithPixiCleanup, getRenderAlpha, pixiTextureRotOffsets, pixiVectorLayer } from '../../rendering/pixi-context.js';
 
 let _spawnBossExplosion = null;
 let _spawnLargeExplosion = null;
@@ -160,6 +160,25 @@ export class Cruiser extends Enemy {
             try { this._pixiGfx.destroy(true); } catch (e) { }
             this._pixiGfx = null;
         }
+        if (this._pixiVulnerableGfx) {
+            try { this._pixiVulnerableGfx.destroy(true); } catch (e) { }
+            this._pixiVulnerableGfx = null;
+        }
+        if (this._pixiHardpointsGfx) {
+            try { this._pixiHardpointsGfx.destroy(true); } catch (e) { }
+            this._pixiHardpointsGfx = null;
+        }
+
+        // FIX: Ensure sprite is removed from its parent layer before cleanup
+        // This prevents sprites from being left behind if the pool cleanup fails
+        if (this.sprite && this.sprite.parent) {
+            try {
+                this.sprite.parent.removeChild(this.sprite);
+            } catch (e) {
+                console.warn('Failed to remove Cruiser sprite from parent:', e);
+            }
+        }
+
         pixiCleanupObject(this);
         const boomScale = Math.max(2.6, Math.min(5, (this.radius || 160) / 40));
         if (_spawnBossExplosion) _spawnBossExplosion(this.pos.x, this.pos.y, boomScale, 26);
@@ -193,7 +212,6 @@ export class Cruiser extends Enemy {
             GameContext.dreadManager.timerActive = true;
             GameContext.dreadManager.firstSpawnDone = true;
         } catch (e) { console.warn('failed to start cruiser timer', e); }
-        if (GameContext.boss) pixiCleanupObject(GameContext.boss);
         GameContext.boss = null;
         GameContext.bossArena.active = false;
         GameContext.bossArena.growing = false;
@@ -535,39 +553,132 @@ export class Cruiser extends Enemy {
         super.draw(ctx);
         if (this.dead) return;
 
-        const rPos = this.getRenderPos(getRenderAlpha());
+        // FIX: Use cached render position from Enemy.draw() to ensure sync with sprite/shields
+        const rPos = this._cachedRenderPos || this.pos;
+        // FIX: Account for texture rotation offset in hardpoint positioning
+        // The hardpoint offsets are defined in the sprite's local coordinate system (with texture rotation baked in)
+        // So we need to rotate the offsets by the texture rotation offset before applying the ship's angle
+        const textureRotOffset = pixiTextureRotOffsets?.enemy_cruiser || 0;
         const ang = this.angle + (this.visualAngleOffset || 0);
         const ca = Math.cos(ang);
         const sa = Math.sin(ang);
 
-        ctx.save();
+        // Pre-compute texture rotation sin/cos for offset transformation
+        const troCos = Math.cos(textureRotOffset);
+        const troSin = Math.sin(textureRotOffset);
+
+        // Hardpoints - use PIXI Graphics for consistent positioning with sprite/shields
+        if (pixiVectorLayer) {
+            let hpGfx = this._pixiHardpointsGfx;
+            if (!hpGfx) {
+                hpGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(hpGfx);
+                this._pixiHardpointsGfx = hpGfx;
+            } else if (!hpGfx.parent) {
+                pixiVectorLayer.addChild(hpGfx);
+            }
+
+            // Position at rPos and rotate with ship angle + texture offset
+            hpGfx.position.set(rPos.x, rPos.y);
+            hpGfx.rotation = ang + textureRotOffset;
+            hpGfx.clear();
+
+            for (let i = 0; i < this.hardpoints.length; i++) {
+                const hp = this.hardpoints[i];
+                const alive = hp.hp > 0;
+
+                // Draw hardpoint at local offset (rotation is handled by container)
+                const fillColor = alive ? 0x222222 : 0x004400;
+                const strokeColor = alive ? 0xffff00 : 0x00ff00;
+                const alpha = alive ? 1 : 0.35;
+
+                hpGfx.beginFill(fillColor, alpha);
+                hpGfx.lineStyle(2, strokeColor, alpha);
+                hpGfx.drawCircle(hp.off.x, hp.off.y, hp.r);
+                hpGfx.endFill();
+            }
+            hpGfx.visible = true;
+        }
+
+        // Vulnerable indicator - use PIXI Graphics for consistent positioning with other shields
+        if (this.vulnerableTimer > 0 && pixiVectorLayer) {
+            let vulnGfx = this._pixiVulnerableGfx;
+            if (!vulnGfx) {
+                vulnGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(vulnGfx);
+                this._pixiVulnerableGfx = vulnGfx;
+            } else if (!vulnGfx.parent) {
+                pixiVectorLayer.addChild(vulnGfx);
+            }
+
+            // FIX: Position at the same rPos as the shields for perfect sync
+            vulnGfx.position.set(rPos.x, rPos.y);
+            vulnGfx.clear();
+
+            // Pulsing alpha effect
+            const alpha = 0.25 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.25;
+            vulnGfx.lineStyle(4, 0xffff00, alpha);
+            vulnGfx.drawCircle(0, 0, this.shieldRadius + 5);
+            vulnGfx.visible = true;
+        } else if (this._pixiVulnerableGfx) {
+            // Hide when not vulnerable
+            this._pixiVulnerableGfx.visible = false;
+        }
+
+        // Debug visualization for Ctrl+H
+        this.drawDebug(ctx, rPos);
+    }
+
+    // Debug visualization for Ctrl+H
+    drawDebug(ctx, rPos) {
+        if (!GameContext.DEBUG_COLLISION) return;
+
+        // Draw a bright yellow circle showing where we think the ship center is
+        ctx.strokeStyle = '#FFFF00';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(rPos.x, rPos.y, this.shieldRadius + 15, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Draw crosshairs at the center
+        ctx.strokeStyle = '#FF0000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(rPos.x - 20, rPos.y);
+        ctx.lineTo(rPos.x + 20, rPos.y);
+        ctx.moveTo(rPos.x, rPos.y - 20);
+        ctx.lineTo(rPos.x, rPos.y + 20);
+        ctx.stroke();
+
+        // Draw where each hardpoint is
+        ctx.fillStyle = '#00FF00';
         for (let i = 0; i < this.hardpoints.length; i++) {
             const hp = this.hardpoints[i];
 
-            const ox = hp.off.x;
-            const oy = hp.off.y;
+            // Recalculate the same position as in draw()
+            const textureRotOffset = pixiTextureRotOffsets?.enemy_cruiser || 0;
+            const ang = this.angle + (this.visualAngleOffset || 0);
+            const ca = Math.cos(ang);
+            const sa = Math.sin(ang);
+            const troCos = Math.cos(textureRotOffset);
+            const troSin = Math.sin(textureRotOffset);
+
+            const ox = hp.off.x * troCos - hp.off.y * troSin;
+            const oy = hp.off.x * troSin + hp.off.y * troCos;
             const px = rPos.x + ox * ca - oy * sa;
             const py = rPos.y + ox * sa + oy * ca;
 
-            const alive = hp.hp > 0;
-            ctx.globalAlpha = alive ? 1 : 0.35;
-            ctx.strokeStyle = alive ? '#ff0' : '#0f0';
-            ctx.fillStyle = alive ? '#222' : '#040';
-            ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.arc(px, py, hp.r, 0, Math.PI * 2);
+            ctx.arc(px, py, 8, 0, Math.PI * 2);
             ctx.fill();
-            ctx.stroke();
         }
 
-        if (this.vulnerableTimer > 0) {
-            ctx.globalAlpha = 0.25 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.25;
-            ctx.strokeStyle = '#ff0';
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.arc(rPos.x, rPos.y, this.radius + 18, 0, Math.PI * 2);
-            ctx.stroke();
-        }
-        ctx.restore();
+        // Draw a circle showing the shield radius
+        ctx.strokeStyle = '#00FFFF';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(rPos.x, rPos.y, this.shieldRadius, 0, Math.PI * 2);
+        ctx.stroke();
     }
 }
+

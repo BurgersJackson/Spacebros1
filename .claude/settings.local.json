@@ -20,7 +20,9 @@
       "Bash(python3:*)",
       "Bash(ls:*)",
       "Bash(file:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)"
     ]
   },
   "outputStyle": "default"

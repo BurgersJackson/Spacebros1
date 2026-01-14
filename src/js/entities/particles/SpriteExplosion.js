@@ -57,7 +57,15 @@ export class SpriteExplosion extends Entity {
         if (this.sprite) {
             try {
                 this.sprite.visible = false;
-                releasePixiSprite(pixiResources.pool, this.sprite);
+                // FIX: Always remove from parent layer, even if pool is null
+                // This prevents sprites from being left behind if the pool doesn't exist
+                if (this.sprite.parent) {
+                    this.sprite.parent.removeChild(this.sprite);
+                }
+                // Only return to pool if it exists
+                if (pixiResources && pixiResources.pool) {
+                    releasePixiSprite(pixiResources.pool, this.sprite);
+                }
             } catch (e) {
                 console.warn('[SpriteExplosion] Failed to release sprite:', e);
             }

@@ -80,7 +80,26 @@ export class Explosion extends Entity {
      */
     cleanup(pixiResources) {
         if (this.cleaned) return; // Already cleaned, skip
-        if (!pixiResources || !pixiResources.pool) return;
+        if (!pixiResources) {
+            // FIX: Still try to remove sprites even if pixiResources is null
+            // This prevents sprites from being left behind
+            for (let i = 0; i < this.particles.length; i++) {
+                const p = this.particles[i];
+                if (p.sprite) {
+                    try {
+                        p.sprite.visible = false;
+                        if (p.sprite.parent) {
+                            p.sprite.parent.removeChild(p.sprite);
+                        }
+                    } catch (e) {
+                        console.warn('[Explosion] Failed to remove particle sprite:', e);
+                    }
+                    p.sprite = null;
+                }
+            }
+            this.cleaned = true;
+            return;
+        }
 
         let releasedCount = 0;
         for (let i = 0; i < this.particles.length; i++) {
@@ -89,8 +108,15 @@ export class Explosion extends Entity {
                 try {
                     // Hide sprite first to prevent ghosting
                     p.sprite.visible = false;
-                    releasePixiSprite(pixiResources.pool, p.sprite);
-                    releasedCount++;
+                    // FIX: Always remove from parent layer first
+                    if (p.sprite.parent) {
+                        p.sprite.parent.removeChild(p.sprite);
+                    }
+                    // Only return to pool if it exists
+                    if (pixiResources.pool) {
+                        releasePixiSprite(pixiResources.pool, p.sprite);
+                        releasedCount++;
+                    }
                 } catch (e) {
                     console.warn('[Explosion] Failed to release particle sprite:', e);
                 }

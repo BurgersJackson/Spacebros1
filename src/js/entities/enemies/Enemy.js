@@ -61,6 +61,7 @@ export class Enemy extends Entity {
         this.type = type;
         this.assignedBase = assignedBase;
         this.shieldSegments = [];
+        this._cachedRenderPos = null; // FIX: Cache render position for subclasses
         this.shieldRadius = 0;
         this.shieldRotation = 0;
         this.modifier = null;
@@ -191,23 +192,25 @@ export class Enemy extends Entity {
             try { this._pixiGfx.destroy(true); } catch (e) { }
             this._pixiGfx = null;
         }
+        if (this._pixiNameText) {
+            try { this._pixiNameText.destroy(true); } catch (e) { }
+            this._pixiNameText = null;
+        }
+
+        // FIX: Ensure sprite is removed from its parent layer before cleanup
+        // This prevents sprites from being left behind if the pool cleanup fails
+        if (this.sprite && this.sprite.parent) {
+            try {
+                this.sprite.parent.removeChild(this.sprite);
+            } catch (e) {
+                console.warn('Failed to remove sprite from parent:', e);
+            }
+        }
 
         pixiCleanupObject(this);
 
         if (this.isGunboat) playSound('base_explode');
         else playSound('explode');
-        if (this._pixiGfx) {
-            try { this._pixiGfx.destroy(true); } catch (e) { }
-            this._pixiGfx = null;
-        }
-        if (this._pixiInnerGfx) {
-            try { this._pixiInnerGfx.destroy(true); } catch (e) { }
-            this._pixiInnerGfx = null;
-        }
-        if (this._pixiNameText) {
-            try { this._pixiNameText.destroy(true); } catch (e) { }
-            this._pixiNameText = null;
-        }
 
         // FIX: Mark as dead FIRST before doing anything else
         // This prevents draw() from trying to recreate graphics after cleanup
@@ -690,6 +693,8 @@ export class Enemy extends Entity {
         // Use global renderAlpha from pixi-context
         const currentAlpha = getRenderAlpha();
         const rPos = this.getRenderPos(currentAlpha);
+        // FIX: Cache render position for subclasses (e.g., Cruiser hardpoints)
+        this._cachedRenderPos = rPos;
 
         // Pixi fast path for the hot enemy rendering (hulls + shields + name tags).
         if (pixiEnemyLayer && pixiTextures) {
@@ -815,7 +820,11 @@ export class Enemy extends Entity {
                     pixiVectorLayer.addChild(gfx);
                 }
 
-                gfx.position.set(rPos.x, rPos.y);
+                // FIX: Ensure shield graphics position is always fresh
+                // Don't cache the position reference
+                const shieldX = rPos.x;
+                const shieldY = rPos.y;
+                gfx.position.set(shieldX, shieldY);
                 gfx.alpha = stealthAlpha;
 
                 // --- Inner Shield ---
@@ -829,7 +838,8 @@ export class Enemy extends Entity {
                     } else if (!innerGfx.parent) {
                         pixiVectorLayer.addChild(innerGfx);
                     }
-                    innerGfx.position.set(rPos.x, rPos.y);
+                    // FIX: Use the same shieldX, shieldY values calculated above
+                    innerGfx.position.set(shieldX, shieldY);
                     innerGfx.alpha = stealthAlpha;
                 } else if (innerGfx) {
                     try { innerGfx.destroy(true); } catch (e) { }
