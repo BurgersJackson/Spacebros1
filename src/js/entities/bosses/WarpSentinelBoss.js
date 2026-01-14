@@ -49,14 +49,14 @@ export class WarpSentinelBoss extends Entity {
         this.maxHp = this.hp;
 
         this.maxShieldHp = 999;
-        this.shieldSegments = new Array(60).fill(0);
-        this.innerShieldSegments = new Array(60).fill(0);
+        this.shieldSegments = new Array(48).fill(0);
+        this.innerShieldSegments = new Array(38).fill(0);
         const outerFillEvery = 3;
         const innerFillEvery = 4;
-        for (let i = 0; i < 60; i++) {
+        for (let i = 0; i < 48; i++) {
             if (i % outerFillEvery < 2) this.shieldSegments[i] = 999;
         }
-        for (let i = 0; i < 60; i++) {
+        for (let i = 0; i < 38; i++) {
             if (i % innerFillEvery < 3) this.innerShieldSegments[i] = 999;
         }
         this.shieldRadius = 950;

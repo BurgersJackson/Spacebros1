@@ -36,7 +36,7 @@ export class Cruiser extends Enemy {
         this.isGunboat = true;
         this.gunboatLevel = 2;
 
-        this.cruiserHullScale = 6.2;
+        this.cruiserHullScale = 6.2 * 1.25; // 25% larger (7.75)
         this.gunboatScale = this.cruiserHullScale;
         this.radius = Math.round(22 * this.cruiserHullScale);
         let hp = Math.round(baseCruiserHp * hpScale);
@@ -392,7 +392,7 @@ export class Cruiser extends Enemy {
     fireSprayerFan(baseAngle, count, spread, speed, dmg, color) {
         const spr = this.hardpoints.find(h => h.hp > 0 && h.type === 'sprayer');
         if (!spr) return;
-        const life = Math.round(120 * this.cruiserWeaponRangeMult);
+        const life = Math.round(120 * 0.75 * this.cruiserWeaponRangeMult); // 25% reduced range
         const p = this.hardpointWorld(spr);
         for (let i = 0; i < count; i++) {
             const t = count === 1 ? 0 : (i / (count - 1) - 0.5);
@@ -406,7 +406,7 @@ export class Cruiser extends Enemy {
     fireSprayerSingle(angle, speed, dmg, color) {
         const spr = this.hardpoints.find(h => h.hp > 0 && h.type === 'sprayer');
         if (!spr) return;
-        const life = Math.round(110 * this.cruiserWeaponRangeMult);
+        const life = Math.round(110 * 0.75 * this.cruiserWeaponRangeMult); // 25% reduced range
         const p = this.hardpointWorld(spr);
         const b = new Bullet(p.x, p.y, angle, speed, { owner: 'enemy', damage: dmg, radius: 4, color, life });
         GameContext.bullets.push(b);

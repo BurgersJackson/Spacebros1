@@ -339,4 +339,29 @@ export class VortexMatriarch extends Enemy {
         showOverlayMessage("VORTEX MATRIARCH DESTROYED", '#0af', 3000);
         if (musicEnabled) setMusicMode('normal');
     }
+
+    drawBossHud(ctx) {
+        if (!GameContext.bossActive || this.dead) return;
+        const w = ctx.canvas ? ctx.canvas.width : GameContext.width;
+        const barW = Math.min(560, w - 40);
+        const x = (w - barW) / 2;
+        const y = 14;
+        const pct = Math.max(0, this.hp / this.maxHp);
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(x - 4, y - 4, barW + 8, 20);
+        ctx.strokeStyle = '#0af';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x - 4, y - 4, barW + 8, 20);
+        ctx.fillStyle = '#0af';
+        ctx.fillRect(x, y, barW * pct, 12);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px Courier New';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const phaseText = this.phaseName || 'ACTIVE';
+        ctx.fillText(`VORTEX MATRIARCH  (PHASE: ${phaseText})`, w / 2, y + 12);
+        ctx.restore();
+    }
 }

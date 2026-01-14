@@ -53,16 +53,16 @@ export class FinalBoss extends Entity {
 
         // Crystalline shield system - indestructible shards (cave monster pattern)
         this.maxShieldHp = 999;
-        this.shieldSegments = new Array(60).fill(0);
-        this.innerShieldSegments = new Array(60).fill(0);
+        this.shieldSegments = new Array(48).fill(0);
+        this.innerShieldSegments = new Array(38).fill(0);
         // Fill pattern: consecutive segments with small gaps between groups
         // More segments = smaller gaps proportionally
         const outerFillEvery = 3;  // Fill 2, skip 1 (2/3 coverage)
         const innerFillEvery = 4;  // Fill 3, skip 1 (3/4 coverage)
-        for (let i = 0; i < 60; i++) {
+        for (let i = 0; i < 48; i++) {
             if (i % outerFillEvery < 2) this.shieldSegments[i] = 999;
         }
-        for (let i = 0; i < 60; i++) {
+        for (let i = 0; i < 38; i++) {
             if (i % innerFillEvery < 3) this.innerShieldSegments[i] = 999;
         }
         // Shield radius scaled to protect enlarged body

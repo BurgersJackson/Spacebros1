@@ -211,6 +211,7 @@ export function checkBulletWallCollision(bullet) {
 export function resolveEntityCollision() {
     const allEntities = [GameContext.player, ...GameContext.enemies, ...GameContext.pinwheels, ...(GameContext.contractEntities.fortresses || [])].filter(e => e && !e.dead);
     if (GameContext.destroyer && !GameContext.destroyer.dead) allEntities.push(GameContext.destroyer);
+    if (GameContext.bossActive && GameContext.boss && !GameContext.boss.dead) allEntities.push(GameContext.boss);
 
     const activeAnomalyZone = (GameContext.activeContract && GameContext.activeContract.type === 'anomaly' && GameContext.contractEntities && GameContext.contractEntities.anomalies)
         ? GameContext.contractEntities.anomalies.find(a => a && !a.dead && a.contractId === GameContext.activeContract.id)
@@ -239,6 +240,9 @@ export function resolveEntityCollision() {
             if (e2.isWarpBoss) r2 = e2.shieldRadius || e2.radius;
             if (e1.isDungeonBoss) r1 = e1.shieldRadius || e1.radius;
             if (e2.isDungeonBoss) r2 = e2.shieldRadius || e2.radius;
+            // Cruiser uses shield radius if shields are up, otherwise hull radius
+            if (e1 instanceof Cruiser) r1 = (e1.shieldSegments && e1.shieldSegments.some(s => s > 0)) ? e1.shieldRadius : e1.radius;
+            if (e2 instanceof Cruiser) r2 = (e2.shieldSegments && e2.shieldSegments.some(s => s > 0)) ? e2.shieldRadius : e2.radius;
 
             const isStatic1 = (e1 instanceof Pinwheel) || (e1 instanceof SpaceStation) || e1.isDungeonBoss;
             const isStatic2 = (e2 instanceof Pinwheel) || (e2 instanceof SpaceStation) || e2.isDungeonBoss;
@@ -448,6 +452,24 @@ export function resolveEntityCollision() {
                     if (_spawnParticles) _spawnParticles((GameContext.player.pos.x + e.pos.x) / 2, (GameContext.player.pos.y + e.pos.y) / 2, 12, '#f44');
                     if (_playSound) _playSound('hit');
                 }
+            }
+        }
+
+        // Check collision with Cruiser boss (stored in GameContext.boss)
+        if (GameContext.bossActive && GameContext.boss && !GameContext.boss.dead && GameContext.boss instanceof Cruiser) {
+            const dist = Math.hypot(GameContext.player.pos.x - GameContext.boss.pos.x, GameContext.player.pos.y - GameContext.boss.pos.y);
+            // Use shield radius if shields are up, otherwise use hull radius
+            const collisionRadius = (GameContext.boss.shieldSegments && GameContext.boss.shieldSegments.some(s => s > 0)) 
+                ? GameContext.boss.shieldRadius 
+                : GameContext.boss.radius;
+            
+            if (dist < GameContext.player.radius + collisionRadius) {
+                // Positional collision handled in main loop, only apply damage/effects here
+                const ramDamage = 5; // Fixed damage for ramming the Cruiser
+                GameContext.player.takeHit(ramDamage);
+
+                if (_spawnParticles) _spawnParticles((GameContext.player.pos.x + GameContext.boss.pos.x) / 2, (GameContext.player.pos.y + GameContext.boss.pos.y) / 2, 15, '#f44');
+                if (_playSound) _playSound('hit');
             }
         }
 
@@ -696,15 +718,13 @@ export function processBulletCollisions() {
                                 const segmentHp = GameContext.player.outerShieldSegments[segIndex];
                                 if (b.damage > segmentHp) {
                                     GameContext.player.outerShieldSegments[segIndex] = 0;
-                                    GameContext.player.shieldsDirty = true;
-                                    b.damage -= segmentHp;
                                 } else {
                                     GameContext.player.outerShieldSegments[segIndex] -= b.damage;
-                                    GameContext.player.shieldsDirty = true;
-                                    hit = true;
-                                    if (_playSound) _playSound('shield_hit');
-                                    if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 7, '#b0f');
                                 }
+                                GameContext.player.shieldsDirty = true;
+                                hit = true;
+                                if (_playSound) _playSound('shield_hit');
+                                if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 7, '#b0f');
                             }
                         }
                         if (!hit && dist < GameContext.player.shieldRadius + b.radius * 1.5 && dist > GameContext.player.shieldRadius - b.radius * 2) {
@@ -716,15 +736,13 @@ export function processBulletCollisions() {
                                 const segmentHp = GameContext.player.shieldSegments[segIndex];
                                 if (b.damage > segmentHp) {
                                     GameContext.player.shieldSegments[segIndex] = 0;
-                                    GameContext.player.shieldsDirty = true;
-                                    b.damage -= segmentHp;
                                 } else {
                                     GameContext.player.shieldSegments[segIndex] -= b.damage;
-                                    GameContext.player.shieldsDirty = true;
-                                    hit = true;
-                                    if (_playSound) _playSound('shield_hit');
-                                    if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
                                 }
+                                GameContext.player.shieldsDirty = true;
+                                hit = true;
+                                if (_playSound) _playSound('shield_hit');
+                                if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
                             }
                         }
                         const hitDist = GameContext.player.radius * 1.5 + b.radius * 1.5;
@@ -786,15 +804,13 @@ export function processBulletCollisions() {
                                     const segmentHp = e.shieldSegments[activeIdx];
                                     if (b.damage > segmentHp) {
                                         e.shieldSegments[activeIdx] = 0;
-                                        e.shieldsDirty = true;
-                                        b.damage -= segmentHp;
                                     } else {
                                         e.shieldSegments[activeIdx] = 0;
-                                        e.shieldsDirty = true;
-                                        hit = true;
-                                        if (_playSound) _playSound('enemy_shield_hit');
-                                        if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
                                     }
+                                    e.shieldsDirty = true;
+                                    hit = true;
+                                    if (_playSound) _playSound('enemy_shield_hit');
+                                    if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
                                 }
                             }
                             if (!hit && !b.ignoreShields && e.innerShieldSegments && e.innerShieldSegments.length > 0 && dist < e.innerShieldRadius + b.radius && dist > e.innerShieldRadius - 10) {
@@ -803,15 +819,13 @@ export function processBulletCollisions() {
                                     const segmentHp = e.innerShieldSegments[activeIdx];
                                     if (b.damage > segmentHp) {
                                         e.innerShieldSegments[activeIdx] = 0;
-                                        e.shieldsDirty = true;
-                                        b.damage -= segmentHp;
                                     } else {
                                         e.innerShieldSegments[activeIdx] -= b.damage;
-                                        e.shieldsDirty = true;
-                                        hit = true;
-                                        if (_playSound) _playSound('enemy_shield_hit');
-                                        if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
                                     }
+                                    e.shieldsDirty = true;
+                                    hit = true;
+                                    if (_playSound) _playSound('enemy_shield_hit');
+                                    if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
                                 }
                             }
 
@@ -1111,15 +1125,13 @@ export function processBulletCollisions() {
                             const segmentHp = GameContext.destroyer.shieldSegments[idx];
                             if (b.damage > segmentHp) {
                                 GameContext.destroyer.shieldSegments[idx] = 0;
-                                GameContext.destroyer.shieldsDirty = true;
-                                b.damage -= segmentHp;
                             } else {
                                 GameContext.destroyer.shieldSegments[idx] -= b.damage;
-                                GameContext.destroyer.shieldsDirty = true;
-                                hit = true;
-                                if (_playSound) _playSound('shield_hit');
-                                if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
                             }
+                            GameContext.destroyer.shieldsDirty = true;
+                            hit = true;
+                            if (_playSound) _playSound('shield_hit');
+                            if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, '#0ff');
                         }
                     }
                     if (!hit && !b.ignoreShields && innerUp && dist < GameContext.destroyer.innerShieldRadius + b.radius) {
@@ -1131,15 +1143,13 @@ export function processBulletCollisions() {
                             const segmentHp = GameContext.destroyer.innerShieldSegments[idx];
                             if (b.damage > segmentHp) {
                                 GameContext.destroyer.innerShieldSegments[idx] = 0;
-                                GameContext.destroyer.shieldsDirty = true;
-                                b.damage -= segmentHp;
                             } else {
                                 GameContext.destroyer.innerShieldSegments[idx] -= b.damage;
-                                GameContext.destroyer.shieldsDirty = true;
-                                hit = true;
-                                if (_playSound) _playSound('shield_hit');
-                                if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
                             }
+                            GameContext.destroyer.shieldsDirty = true;
+                            hit = true;
+                            if (_playSound) _playSound('shield_hit');
+                            if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, '#f0f');
                         }
                     }
                     if (!hit && (typeof GameContext.destroyer.hitTestCircle === 'function' ? GameContext.destroyer.hitTestCircle(b.pos.x, b.pos.y, b.radius) : (dist < GameContext.destroyer.radius + b.radius))) {
