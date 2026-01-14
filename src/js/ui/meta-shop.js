@@ -339,7 +339,9 @@ export function showMetaShopUpgradeModal(upgradeId, clickedButton) {
 
     let html = `<div style="margin-bottom: 12px;">${data.description}</div>`;
 
-    if (currentTier === 0) {
+    if (currentTier >= 10) {
+        html += `<div style="color: #888; margin-top: 10px;"><strong>Maximum Tier Reached</strong></div>`;
+    } else if (currentTier === 0) {
         html += `<div style="color: #ff0; margin-top: 10px;"><strong>First Tier:</strong> ${data.tier1}</div>`;
     } else {
         html += `<div style="color: #0f0; margin-top: 10px;"><strong>Current Tier:</strong> ${currentTier}</div>`;
@@ -362,12 +364,21 @@ export function showMetaShopUpgradeModal(upgradeId, clickedButton) {
     html += `<div style="color: #888; font-size: 13px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #333;">${data.notes}</div>`;
 
     contentEl.innerHTML = html;
-    costEl.textContent = `Cost: ${cost} Meta Nuggets`;
-    costEl.style.color = canAfford ? '#0f0' : '#f00';
+
+    const isMaxTier = currentTier >= 10;
+
+    if (isMaxTier) {
+        costEl.textContent = "MAX TIER REACHED";
+        costEl.style.color = '#888';
+    } else {
+        costEl.textContent = `Cost: ${cost} Meta Nuggets`;
+        costEl.style.color = canAfford ? '#0f0' : '#f00';
+    }
+
     tierEl.textContent = `OWNED: TIER ${currentTier}`;
 
-    buyBtn.disabled = !canAfford;
-    buyBtn.textContent = canAfford ? `BUY (${cost} NUGS)` : `NEED ${cost} NUGS`;
+    buyBtn.disabled = !canAfford || isMaxTier;
+    buyBtn.textContent = isMaxTier ? "MAX TIER" : (canAfford ? `BUY (${cost} NUGS)` : `NEED ${cost} NUGS`);
 
     modal.style.display = 'block';
 
@@ -416,6 +427,11 @@ export function setupMetaShopModalHandlers(upgradeId, cost, currentTier) {
     newBackBtn.addEventListener('click', closeModal);
 
     newBuyBtn.addEventListener('click', () => {
+        if (currentTier >= 10) {
+            showOverlayMessage("MAX TIER REACHED", '#888', 1500);
+            return;
+        }
+
         if (GameContext.metaProfile.bank >= cost) {
             GameContext.metaProfile.bank -= cost;
             GameContext.metaProfile.purchases[upgradeId] = currentTier + 1;

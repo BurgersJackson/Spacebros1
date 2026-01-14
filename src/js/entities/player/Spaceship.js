@@ -672,7 +672,7 @@ export class Spaceship extends Entity {
             } else {
                 // Fire the volley!
                 this.fireVolleyShot();
-                this.volleyCooldown = 180; // 3 seconds at 60fps
+                this.volleyCooldown = 120; // 2 seconds at 60fps
             }
         }
 
@@ -777,12 +777,12 @@ export class Spaceship extends Entity {
 
             if (volleyUi) volleyUi.style.display = 'flex';
 
-            // Calculate remaining seconds (180 frames = 3 seconds at 60fps)
+            // Calculate remaining seconds (120 frames = 2 seconds at 60fps)
             const cooldownSeconds = Math.ceil(this.volleyCooldown / 60);
             if (volleyText) volleyText.textContent = cooldownSeconds > 0 ? `${cooldownSeconds}s` : 'READY';
 
             // Bar fill: empty when just fired, full when ready
-            const fillPercent = ((180 - this.volleyCooldown) / 180) * 100;
+            const fillPercent = ((120 - this.volleyCooldown) / 120) * 100;
             if (volleyFill) {
                 volleyFill.style.width = `${fillPercent}%`;
                 // White when ready, yellow when charging
@@ -947,9 +947,6 @@ export class Spaceship extends Entity {
             }
 
             const b = this.createBullet(this.pos.x, this.pos.y, angle, false, damage, 14, 4, '#ff0');
-
-            // Slight damage reduction for volley (balance)
-            b.damage *= 0.7;
 
             GameContext.bullets.push(b);
         }

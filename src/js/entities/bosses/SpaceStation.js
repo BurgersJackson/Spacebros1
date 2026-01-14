@@ -73,12 +73,15 @@ export class SpaceStation extends Entity {
         this.laserWidth = 44;
         this.laserHitThisShot = false;
         this.t = 0;
+        this.angle = Math.random() * Math.PI * 2;
+        this.rotationSpeed = 0.007;
     }
 
     update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
+        this.angle += this.rotationSpeed * dtFactor;
 
         if (this.fixedPos) {
             this.pos.x = this.fixedPos.x;
@@ -342,6 +345,7 @@ export class SpaceStation extends Entity {
             container.visible = true;
             const rPos = this.getRenderPos(getRenderAlpha());
             container.position.set(rPos.x, rPos.y);
+            container.rotation = this.angle;
 
             const now = (typeof GameContext.frameNow === 'number' && GameContext.frameNow > 0) ? GameContext.frameNow : Date.now();
             const hullScale = (this.visualRadius && isFinite(this.visualRadius)) ? (this.visualRadius / 340) : 1;

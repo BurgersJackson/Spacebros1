@@ -187,6 +187,11 @@ export function getDiminishingValue(tier, baseTable, decayFactor = 0.99) {
 
 export function getMetaUpgradeCost(upgradeId, baseCost) {
     const currentTier = GameContext.metaProfile.purchases[upgradeId] || 0;
+
+    if (currentTier >= 10) {
+        return Infinity;
+    }
+
     const discountTier = GameContext.metaProfile.purchases.shopDiscount || 0;
     let discount = 1.0;
     if (discountTier > 0) {
@@ -199,7 +204,9 @@ export function getMetaUpgradeCost(upgradeId, baseCost) {
             discount = 1.0 - discountMultiplier;
         }
     }
-    const cost = Math.ceil(baseCost * Math.pow(1.2, currentTier) * discount);
+
+    const multiplier = Math.pow(1.3, currentTier * 0.5);
+    const cost = Math.ceil(baseCost * multiplier * discount);
     return cost;
 }
 

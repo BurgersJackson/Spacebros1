@@ -186,10 +186,10 @@ export function applyUpgrade(id, tier) {
         case 'volley_shot':
             GameContext.player.volleyShotUnlocked = true;
             if (tier === 1) { GameContext.player.volleyShotCount = 3; }
-            if (tier === 2) { GameContext.player.volleyShotCount = 5; }
-            if (tier === 3) { GameContext.player.volleyShotCount = 7; }
-            if (tier === 4) { GameContext.player.volleyShotCount = 9; }
-            if (tier === 5) { GameContext.player.volleyShotCount = 11; }
+            if (tier === 2) { GameContext.player.volleyShotCount = 4; }
+            if (tier === 3) { GameContext.player.volleyShotCount = 5; }
+            if (tier === 4) { GameContext.player.volleyShotCount = 6; }
+            if (tier === 5) { GameContext.player.volleyShotCount = 7; }
             break;
         case 'ciws':
             GameContext.player.ciwsUnlocked = true;

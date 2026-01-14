@@ -99,6 +99,8 @@ export class Destroyer extends Entity {
         this.battleStartTime = Date.now();
         this.escalationPhase = 1;
         this.escalationMultiplier = 1.0;
+
+        this._firstDraw = true;
     }
 
     getEscalationPhase() {
@@ -387,8 +389,15 @@ export class Destroyer extends Entity {
             }
 
             container.visible = true;
+
             const rPos = this.getRenderPos(getRenderAlpha());
-            container.position.set(rPos.x, rPos.y);
+
+            if (this._firstDraw) {
+                container.position.set(this.pos.x, this.pos.y);
+                this._firstDraw = false;
+            } else {
+                container.position.set(rPos.x, rPos.y);
+            }
             container.rotation = this.angle || 0;
 
             const hullScale = (this.visualRadius && isFinite(this.visualRadius)) ? (this.visualRadius / 340) : 1;

@@ -88,7 +88,7 @@ export const UPGRADE_DATA = {
                 { id: "shotgun", name: "Flak Shotgun", tier1: "Unlock: 5 Pellets", tier2: "8 Pellets, +Range", tier3: "12 Pellets", tier4: "16 Pellets, +Range", tier5: "20 Pellets, max range", notes: "Close-range burst." },
                 { id: "static_weapons", name: "Static Weapons", tier1: "Unlock Forward Laser", tier2: "Add Side Lasers", tier3: "Add Rear Laser", tier4: "Dual Rear Stream", tier5: "Dual Front Stream", notes: "Always-on turrets." },
                 { id: "homing_missiles", name: "Homing Missiles", tier1: "2 missiles, 1 damage (auto-fire)", tier2: "2 missiles, 2 damage", tier3: "2 missiles, 3 damage", tier4: "2 missiles, 4 damage", tier5: "2 missiles, 5 damage", notes: "Auto-fires tracking missiles. Stacks with meta upgrade to 4 missiles." },
-                { id: "volley_shot", name: "Volley Shot", tier1: "Auto-fires 3-shot burst every 3s", tier2: "5-shot burst every 3s", tier3: "7-shot burst every 3s", tier4: "9-shot burst every 3s", tier5: "11-shot burst every 3s", notes: "Automatic burst damage. No input required." },
+                { id: "volley_shot", name: "Volley Shot", tier1: "Auto-fires 3-shot burst every 2s", tier2: "4-shot burst every 2s", tier3: "5-shot burst every 2s", tier4: "6-shot burst every 2s", tier5: "7-shot burst every 2s", notes: "Automatic burst damage. No input required." },
                 { id: "ciws", name: "CIWS", tier1: "Auto-targets 400u, 1 dmg", tier2: "2 dmg", tier3: "3 dmg", tier4: "4 dmg", tier5: "5 dmg", notes: "Rapid-fire defense. Targets all enemies." },
                 { id: "chain_lightning", name: "Chain Lightning", tier1: "Projectiles chain to 1 enemy (200u)", tier2: "Chain to 2 enemies (250u)", tier3: "Chain to 3 enemies (300u)", tier4: "Chain to 4 enemies (350u)", tier5: "Chain to 5 enemies (400u)", notes: "Arc damage hits grouped enemies. Great vs swarms." },
                 { id: "backstabber", name: "Backstabber", tier1: "+50% damage from behind", tier2: "+100% damage from behind", tier3: "+150% damage, slow enemies 2s", tier4: "+200% damage, slow 3s", tier5: "+250% damage, slow 4s", notes: "Positioning matters. Flanking = huge damage." }
@@ -141,6 +141,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "+10% base damage",
         tier2: "+20% base damage",
         tier3: "+35% base damage",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Stacks with in-game damage upgrades. Foundation for DPS builds."
     },
     passiveHp: {
@@ -149,6 +156,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "+5 max HP",
         tier2: "+10 max HP",
         tier3: "+15 max HP",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Survivability boost. Helps tank early damage."
     },
     hullPlating: {
@@ -157,6 +171,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "+15 max HP",
         tier2: "+30 max HP",
         tier3: "+45 max HP",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Major HP increase for tanky builds."
     },
     shieldCore: {
@@ -165,6 +186,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "+1 Shield Segment",
         tier2: "+1 HP per Segment",
         tier3: "+1 Shield Segment",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Alternates between adding segments and increasing segment HP."
     },
     staticBlueprint: {
@@ -173,6 +201,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "Unlock Forward Laser",
         tier2: "Add Side Lasers",
         tier3: "Add Rear Laser",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Fires automatically at nearby enemies."
     },
     missilePrimer: {
@@ -181,6 +216,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "2 missiles, 1 damage",
         tier2: "2 missiles, 2 damage",
         tier3: "2 missiles, 3 damage",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Auto-fires tracking missiles. Combine with in-game upgrade for 4 missiles total."
     },
     magnetBooster: {
@@ -189,6 +231,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "300u magnet radius",
         tier2: "+50% range bonus",
         tier3: "+100% range bonus",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Less chasing coins. Quality of life upgrade."
     },
     nukeCapacitor: {
@@ -197,6 +246,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "1 Fireball, 5 dmg",
         tier2: "2 Fireballs, 6 dmg",
         tier3: "3 Fireballs, 7 dmg",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Fireballs orbit at 500u range. 1 rotation every 6 seconds."
     },
     speedTuning: {
@@ -205,6 +261,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "+10% max speed",
         tier2: "+20% max speed",
         tier3: "+30% max speed",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Move faster, dodge better, kite more effectively."
     },
     bankMultiplier: {
@@ -213,6 +276,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "+25% nuggets",
         tier2: "+50% nuggets",
         tier3: "+75% nuggets",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Faster meta progression."
     },
     shopDiscount: {
@@ -221,6 +291,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "-10% cost",
         tier2: "-20% cost",
         tier3: "-30% cost",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Applies to ALL purchases. Great value long-term."
     },
     extraLife: {
@@ -229,6 +306,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "1 extra life",
         tier2: "2 extra lives",
         tier3: "3 extra lives",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Second chance when you would die."
     },
     droneFabricator: {
@@ -237,6 +321,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "Unlock Shooter Drone",
         tier2: "Add Shield Drone",
         tier3: "Add Heal Drone",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Drones orbit and assist automatically."
     },
     piercingRounds: {
@@ -245,6 +336,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "Pierce 1 enemy",
         tier2: "Pierce 2 enemies",
         tier3: "Pierce 3 enemies",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Helps with clustered enemies. Synergizes with shotgun."
     },
     explosiveRounds: {
@@ -253,6 +351,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "20% chance (30 dmg, 200u)",
         tier2: "40% chance (30 dmg, 200u)",
         tier3: "60% chance (30 dmg, 200u)",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Adds AoE damage. Satisfying feedback."
     },
     criticalStrike: {
@@ -261,6 +366,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "5% crit, 2x damage",
         tier2: "10% crit, 2x damage",
         tier3: "15% crit, 2x damage",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Random spike damage. Exciting moments."
     },
     splitShot: {
@@ -269,6 +381,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "10% chance to split",
         tier2: "20% chance to split",
         tier3: "30% chance to split",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Visual chaos, increased crowd control."
     },
     thornArmor: {
@@ -277,6 +396,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "Reflect 10%",
         tier2: "Reflect 15%",
         tier3: "Reflect 20%",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Rewards aggressive play. Satisfying vs melee."
     },
     lifesteal: {
@@ -285,6 +411,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "Heal 1 HP per kill",
         tier2: "Heal 2 HP per kill",
         tier3: "Heal 3 HP per kill",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Sustain through combat. Less healing pickup dependency."
     },
     evasionBoost: {
@@ -293,6 +426,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "5% evasion",
         tier2: "8% evasion",
         tier3: "12% evasion",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "RNG-based survival. Exciting close calls."
     },
     shieldRecharge: {
@@ -301,6 +441,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "Regen 1 seg / 30s",
         tier2: "Regen 1 seg / 20s",
         tier3: "Regen 1 seg / 15s",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Longer combat sustainability."
     },
     dashCooldown: {
@@ -309,6 +456,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "-1s cooldown (10s -> 9s)",
         tier2: "-2s cooldown",
         tier3: "-3s cooldown",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "More frequent mobility escapes."
     },
     dashDuration: {
@@ -317,6 +471,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "+0.5s duration",
         tier2: "+1s duration",
         tier3: "+1.5s duration",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Extended mobility windows."
     },
     xpMagnetPlus: {
@@ -325,6 +486,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "+20% magnet radius",
         tier2: "+40% magnet radius",
         tier3: "+60% magnet radius",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Stacks with base magnet booster."
     },
     autoReroll: {
@@ -333,6 +501,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "10% chance",
         tier2: "20% chance",
         tier3: "30% chance",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "More build control. Less RNG frustration."
     },
     nuggetMagnet: {
@@ -341,6 +516,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "+50% nugget range",
         tier2: "+100% nugget range",
         tier3: "+150% nugget range",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Easier premium currency collection."
     },
     contractSpeed: {
@@ -349,6 +531,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "+10% speed",
         tier2: "+20% speed",
         tier3: "+30% speed",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Faster contract completion, more variety."
     },
     startingRerolls: {
@@ -357,6 +546,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "Start with 1 token",
         tier2: "Start with 2 tokens",
         tier3: "Start with 3 tokens",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Better early-game build options."
     },
     luckyDrop: {
@@ -365,6 +561,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "+5% health, +2% nugs",
         tier2: "+10% health, +4% nugs",
         tier3: "+15% health, +6% nugs",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "More resources, exciting drops."
     },
     bountyHunter: {
@@ -373,6 +576,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "+5 nugs/elite, +20/boss",
         tier2: "+10 nugs/elite, +40/boss",
         tier3: "+15 nugs/elite, +60/boss",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Rewards combat skill. Targets high-value enemies."
     },
     comboMeter: {
@@ -381,6 +591,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "+1% per 10 stacks, max 10%",
         tier2: "+1.5% per 10, max 15%",
         tier3: "+2% per 10, max 20%",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Rewards skilled play. Resets on damage taken."
     },
     startingWeapon: {
@@ -389,6 +606,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "Start with tier 1 shotgun",
         tier2: "Start with tier 2 shotgun",
         tier3: "Start with tier 3 shotgun",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Early-game power. Different start strategy."
     },
     secondWind: {
@@ -397,6 +621,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "0.5s i-frames",
         tier2: "1.0s i-frames",
         tier3: "1.5s i-frames",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Forgiving for mistakes. Combo preservation."
     },
     batteryCapacitor: {
@@ -405,6 +636,13 @@ export const META_SHOP_UPGRADE_DATA = {
         tier1: "100 dmg, 800u blast (60s charge)",
         tier2: "200 dmg, 900u blast (60s charge)",
         tier3: "300 dmg, 1000u blast (60s charge)",
+        tier4: "Increases effectiveness further",
+        tier5: "Increases effectiveness further",
+        tier6: "Increases effectiveness further",
+        tier7: "Increases effectiveness further",
+        tier8: "Increases effectiveness further",
+        tier9: "Increases effectiveness further",
+        tier10: "MAX TIER REACHED",
         notes: "Press F / Gamepad Y to discharge. Manual control only, never auto-fires."
     }
 };
