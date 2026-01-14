@@ -5,8 +5,6 @@ import { playSound, setMusicMode, musicEnabled } from '../../../audio/audio-mana
 import { Bullet } from '../../projectiles/Bullet.js';
 import { FlagshipGuidedMissile } from '../../projectiles/FlagshipGuidedMissile.js';
 import { PsychicEcho } from './PsychicEcho.js';
-import { Coin } from '../../pickups/Coin.js';
-import { SpaceNugget } from '../../pickups/SpaceNugget.js';
 import { HealthPowerUp } from '../../pickups/HealthPowerUp.js';
 import { showOverlayMessage } from '../../../utils/ui-helpers.js';
 import { pixiCleanupObject } from '../../../rendering/pixi-context.js';
@@ -14,11 +12,15 @@ import { pixiCleanupObject } from '../../../rendering/pixi-context.js';
 let _spawnBossExplosion = null;
 let _spawnLargeExplosion = null;
 let _spawnParticles = null;
+let _awardCoinsInstant = null;
+let _awardNuggetsInstant = null;
 
 export function registerCerebralPsionDependencies(deps) {
     if (deps.spawnBossExplosion) _spawnBossExplosion = deps.spawnBossExplosion;
     if (deps.spawnLargeExplosion) _spawnLargeExplosion = deps.spawnLargeExplosion;
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
+    if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
+    if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
 }
 
 export class CerebralPsion extends Enemy {
@@ -333,12 +335,10 @@ export class CerebralPsion extends Enemy {
         GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 22);
         GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 24);
 
-        for (let i = 0; i < 16; i++) {
-            GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
-        }
-        for (let i = 0; i < 6; i++) {
-            GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
-        }
+        // Award coins directly: 16 coins * 10 value = 160 total
+        if (_awardCoinsInstant) _awardCoinsInstant(160, { noSound: false, sound: 'coin' });
+        // Award nuggets directly: 6 nuggets
+        if (_awardNuggetsInstant) _awardNuggetsInstant(6, { noSound: false, sound: 'coin' });
         GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
         GameContext.bossActive = false;

@@ -3,15 +3,16 @@ import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS, USE_PIXI_OVERLAY, ZOOM_LEVEL } from '../../core/constants.js';
 import { showOverlayMessage } from '../../utils/ui-helpers.js';
 import { playSound } from '../../audio/audio-manager.js';
-import { Coin } from '../pickups/Coin.js';
 import { pixiVectorLayer, pixiCleanupObject } from '../../rendering/pixi-context.js';
 
 let _spawnParticles = null;
 let _getSimNowMs = null;
+let _awardCoinsInstant = null;
 
 export function registerRadiationStormDependencies(deps) {
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
     if (deps.getSimNowMs) _getSimNowMs = deps.getSimNowMs;
+    if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
 }
 
 function getNowMs() {
@@ -66,7 +67,8 @@ export class RadiationStorm extends Entity {
             if (this.tick % 60 === 0) {
                 // Reward: XP + small gold drip
                 GameContext.player.addXp(4);
-                GameContext.coins.push(new Coin(GameContext.player.pos.x + (Math.random() - 0.5) * 40, GameContext.player.pos.y + (Math.random() - 0.5) * 40, 2));
+                // Award coin directly: 1 coin * 2 value = 2 total
+                if (_awardCoinsInstant) _awardCoinsInstant(2, { noSound: false, sound: 'coin' });
 
                 // Cost: drains shields (main shield first, then outer shield)
                 let drained = false;

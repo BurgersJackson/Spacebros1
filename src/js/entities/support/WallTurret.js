@@ -7,9 +7,11 @@ import { Coin } from '../pickups/Coin.js';
 import { pixiVectorLayer, pixiCleanupObject } from '../../rendering/pixi-context.js';
 
 let _spawnParticles = null;
+let _awardCoinsInstant = null;
 
 export function registerWallTurretDependencies(deps) {
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
+    if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
 }
 
 export class WallTurret extends Entity {
@@ -31,8 +33,8 @@ export class WallTurret extends Entity {
         if (this.dead) return;
         this.dead = true;
         pixiCleanupObject(this);
-        // Drop coins like a roamer ship.
-        for (let i = 0; i < 3; i++) GameContext.coins.push(new Coin(this.pos.x, this.pos.y, 2));
+        // Award coins directly: 3 coins * 2 value = 6 total
+        if (_awardCoinsInstant) _awardCoinsInstant(6, { noSound: false, sound: 'coin' });
         if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 18, '#ff6');
         playSound('explode');
     }

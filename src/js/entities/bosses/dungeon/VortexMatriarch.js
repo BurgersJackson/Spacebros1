@@ -6,8 +6,6 @@ import { Bullet } from '../../projectiles/Bullet.js';
 import { CruiserMineBomb } from '../../projectiles/CruiserMineBomb.js';
 import { FlagshipGuidedMissile } from '../../projectiles/FlagshipGuidedMissile.js';
 import { GravityWell } from './GravityWell.js';
-import { Coin } from '../../pickups/Coin.js';
-import { SpaceNugget } from '../../pickups/SpaceNugget.js';
 import { HealthPowerUp } from '../../pickups/HealthPowerUp.js';
 import { showOverlayMessage } from '../../../utils/ui-helpers.js';
 import { pixiCleanupObject } from '../../../rendering/pixi-context.js';
@@ -15,11 +13,15 @@ import { pixiCleanupObject } from '../../../rendering/pixi-context.js';
 let _spawnBossExplosion = null;
 let _spawnLargeExplosion = null;
 let _spawnParticles = null;
+let _awardCoinsInstant = null;
+let _awardNuggetsInstant = null;
 
 export function registerVortexMatriarchDependencies(deps) {
     if (deps.spawnBossExplosion) _spawnBossExplosion = deps.spawnBossExplosion;
     if (deps.spawnLargeExplosion) _spawnLargeExplosion = deps.spawnLargeExplosion;
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
+    if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
+    if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
 }
 
 export class VortexMatriarch extends Enemy {
@@ -324,12 +326,10 @@ export class VortexMatriarch extends Enemy {
         GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 23);
         GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 25);
 
-        for (let i = 0; i < 17; i++) {
-            GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
-        }
-        for (let i = 0; i < 7; i++) {
-            GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
-        }
+        // Award coins directly: 17 coins * 10 value = 170 total
+        if (_awardCoinsInstant) _awardCoinsInstant(170, { noSound: false, sound: 'coin' });
+        // Award nuggets directly: 7 nuggets
+        if (_awardNuggetsInstant) _awardNuggetsInstant(7, { noSound: false, sound: 'coin' });
         GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
         GameContext.bossActive = false;

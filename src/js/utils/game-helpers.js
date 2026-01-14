@@ -4,7 +4,7 @@
 // ============================================================================
 
 import { GameContext } from '../core/game-context.js';
-import { Explosion, Coin, SpaceNugget } from '../entities/index.js';
+import { Explosion } from '../entities/index.js';
 
 // Dependencies that will be injected
 let deps = {};
@@ -74,10 +74,10 @@ export function resize(
 
 /**
  * Handle space station destroyed
- * Triggers explosion, drops coins/nuggets, unlocks warp gate
+ * Triggers explosion, awards coins/nuggets directly, unlocks warp gate
  */
 export function handleSpaceStationDestroyed() {
-    const { playSound, spawnLargeExplosion, spawnParticles, showOverlayMessage, pixiCleanupObject } = deps;
+    const { playSound, spawnLargeExplosion, spawnParticles, showOverlayMessage, pixiCleanupObject, awardCoinsInstant, awardNuggetsInstant } = deps;
 
     if (!GameContext.spaceStation) return;
     const sx = GameContext.spaceStation.pos.x;
@@ -86,8 +86,10 @@ export function handleSpaceStationDestroyed() {
 
     spawnLargeExplosion(sx, sy, 3.5);
     spawnParticles(sx, sy, 200, '#fff');
-    for (let k = 0; k < 50; k++) GameContext.coins.push(new Coin(sx + (Math.random() - 0.5) * 200, sy + (Math.random() - 0.5) * 200, 10));
-    for (let k = 0; k < 25; k++) GameContext.nuggets.push(new SpaceNugget(sx + (Math.random() - 0.5) * 220, sy + (Math.random() - 0.5) * 220, 1));
+    // Award coins directly: 50 coins * 10 value = 500 total
+    if (awardCoinsInstant) awardCoinsInstant(500, { noSound: false, sound: 'coin' });
+    // Award nuggets directly: 25 nuggets
+    if (awardNuggetsInstant) awardNuggetsInstant(25, { noSound: false, sound: 'coin' });
     showOverlayMessage("SPACE STATION DESTROYED - WARP SIGNAL IN 30s", '#f80', 5000);
     pixiCleanupObject(GameContext.spaceStation);
     GameContext.spaceStation = null;

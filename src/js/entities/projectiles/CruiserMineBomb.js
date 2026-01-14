@@ -87,14 +87,19 @@ export class CruiserMineBomb extends Entity {
         if (this.dead) return;
         this.dead = true;
 
-        // FIX: Clean up shield graphics BEFORE calling pixiCleanupObject
-        // This prevents pixiCleanupObject from missing these
+        // FIX: Clean up graphics, ensuring they're removed from parent first
         if (this._pixiInnerGfx) {
-            try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+            try {
+                if (this._pixiInnerGfx.parent) this._pixiInnerGfx.parent.removeChild(this._pixiInnerGfx);
+                this._pixiInnerGfx.destroy(true);
+            } catch (e) { }
             this._pixiInnerGfx = null;
         }
         if (this._pixiGfx) {
-            try { this._pixiGfx.destroy(true); } catch (e) { }
+            try {
+                if (this._pixiGfx.parent) this._pixiGfx.parent.removeChild(this._pixiGfx);
+                this._pixiGfx.destroy(true);
+            } catch (e) { }
             this._pixiGfx = null;
         }
 
@@ -109,7 +114,24 @@ export class CruiserMineBomb extends Entity {
         }));
     }
     draw(ctx) {
-        if (this.dead) return;
+        if (this.dead) {
+            // Ensure graphics are cleaned up if draw is called after death
+            if (this._pixiGfx) {
+                try {
+                    if (this._pixiGfx.parent) this._pixiGfx.parent.removeChild(this._pixiGfx);
+                    this._pixiGfx.destroy(true);
+                } catch (e) { }
+                this._pixiGfx = null;
+            }
+            if (this._pixiInnerGfx) {
+                try {
+                    if (this._pixiInnerGfx.parent) this._pixiInnerGfx.parent.removeChild(this._pixiInnerGfx);
+                    this._pixiInnerGfx.destroy(true);
+                } catch (e) { }
+                this._pixiInnerGfx = null;
+            }
+            return;
+        }
 
         const rPos = this.getRenderPos(getRenderAlpha());
 

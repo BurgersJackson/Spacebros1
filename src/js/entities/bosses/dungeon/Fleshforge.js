@@ -4,8 +4,6 @@ import { SIM_FPS, SIM_STEP_MS } from '../../../core/constants.js';
 import { playSound, setMusicMode, musicEnabled } from '../../../audio/audio-manager.js';
 import { Bullet } from '../../projectiles/Bullet.js';
 import { ClusterBomb } from '../../projectiles/ClusterBomb.js';
-import { Coin } from '../../pickups/Coin.js';
-import { SpaceNugget } from '../../pickups/SpaceNugget.js';
 import { HealthPowerUp } from '../../pickups/HealthPowerUp.js';
 import { showOverlayMessage } from '../../../utils/ui-helpers.js';
 import { pixiCleanupObject } from '../../../rendering/pixi-context.js';
@@ -14,12 +12,16 @@ let _spawnBossExplosion = null;
 let _spawnLargeExplosion = null;
 let _spawnParticles = null;
 let _spawnNapalmZone = null;
+let _awardCoinsInstant = null;
+let _awardNuggetsInstant = null;
 
 export function registerFleshforgeDependencies(deps) {
     if (deps.spawnBossExplosion) _spawnBossExplosion = deps.spawnBossExplosion;
     if (deps.spawnLargeExplosion) _spawnLargeExplosion = deps.spawnLargeExplosion;
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
     if (deps.spawnNapalmZone) _spawnNapalmZone = deps.spawnNapalmZone;
+    if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
+    if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
 }
 
 export class Fleshforge extends Enemy {
@@ -280,12 +282,10 @@ export class Fleshforge extends Enemy {
         GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 24);
         GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 26);
 
-        for (let i = 0; i < 18; i++) {
-            GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 10));
-        }
-        for (let i = 0; i < 7; i++) {
-            GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 140, this.pos.y + (Math.random() - 0.5) * 140, 1));
-        }
+        // Award coins directly: 18 coins * 10 value = 180 total
+        if (_awardCoinsInstant) _awardCoinsInstant(180, { noSound: false, sound: 'coin' });
+        // Award nuggets directly: 7 nuggets
+        if (_awardNuggetsInstant) _awardNuggetsInstant(7, { noSound: false, sound: 'coin' });
         GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
         GameContext.bossActive = false;

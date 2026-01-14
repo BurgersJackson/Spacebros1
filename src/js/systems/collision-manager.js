@@ -1,5 +1,5 @@
 import { GameContext } from '../core/game-context.js';
-import { Enemy, Pinwheel, Destroyer, Destroyer2, SpaceStation, Cruiser, Coin, SpaceNugget } from '../entities/index.js';
+import { Enemy, Pinwheel, Destroyer, Destroyer2, SpaceStation, Cruiser } from '../entities/index.js';
 
 let _spawnParticles = null;
 let _playSound = null;
@@ -14,6 +14,8 @@ let _spawnLargeExplosion = null;
 let _destroyBulletSprite = null;
 let _updateContractUI = null;
 let _setProjectileImpactSoundContext = null;
+let _awardCoinsInstant = null;
+let _awardNuggetsInstant = null;
 
 /**
  * @param {Object} deps
@@ -32,6 +34,8 @@ export function registerCollisionDependencies(deps) {
     if (deps.destroyBulletSprite) _destroyBulletSprite = deps.destroyBulletSprite;
     if (deps.updateContractUI) _updateContractUI = deps.updateContractUI;
     if (deps.setProjectileImpactSoundContext) _setProjectileImpactSoundContext = deps.setProjectileImpactSoundContext;
+    if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
+    if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
 }
 
 /**
@@ -233,6 +237,9 @@ export function resolveEntityCollision() {
             // Warp boss only collides with player, skip warp boss vs other enemies
             if (e1.isWarpBoss && e2 !== GameContext.player) continue;
             if (e2.isWarpBoss && e1 !== GameContext.player) continue;
+            // Destroyer only collides with player, skip destroyer vs other enemies
+            if ((e1 instanceof Destroyer || e1 instanceof Destroyer2) && e2 !== GameContext.player) continue;
+            if ((e2 instanceof Destroyer || e2 instanceof Destroyer2) && e1 !== GameContext.player) continue;
 
             let r1 = (e1 instanceof Destroyer || e1 instanceof Destroyer2) ? (e1.shieldRadius || e1.radius) : e1.radius;
             let r2 = (e2 instanceof Destroyer || e2 instanceof Destroyer2) ? (e2.shieldRadius || e2.radius) : e2.radius;
@@ -615,8 +622,10 @@ export function resolveEntityCollision() {
                             b.dead = true;
                             if (_playSound) _playSound('base_explode');
                             if (_spawnLargeExplosion) _spawnLargeExplosion(b.pos.x, b.pos.y, 2.0);
-                            for (let i = 0; i < 6; i++) GameContext.coins.push(new Coin(b.pos.x + (Math.random() - 0.5) * 50, b.pos.y + (Math.random() - 0.5) * 50, 5));
-                            GameContext.nuggets.push(new SpaceNugget(b.pos.x, b.pos.y, 1));
+                            // Award coins directly: 6 coins * 5 value = 30 total
+                            if (_awardCoinsInstant) _awardCoinsInstant(30, { noSound: false, sound: 'coin' });
+                            // Award nugget directly
+                            if (_awardNuggetsInstant) _awardNuggetsInstant(1, { noSound: false, sound: 'coin' });
                             GameContext.pinwheelsDestroyed++;
                             GameContext.pinwheelsDestroyedTotal++;
                             GameContext.difficultyTier = 1 + Math.floor(GameContext.pinwheelsDestroyedTotal / 6);
@@ -798,14 +807,27 @@ export function processBulletCollisions() {
                             const distSq = dx * dx + dy * dy;
                             const dist = Math.sqrt(distSq);
 
-                            if (!b.ignoreShields && e.shieldSegments && e.shieldSegments.length > 0 && dist < e.shieldRadius + b.radius && dist > e.shieldRadius - 10) {
-                                const activeIdx = e.shieldSegments.findIndex(s => s > 0);
-                                if (activeIdx !== -1) {
-                                    const segmentHp = e.shieldSegments[activeIdx];
-                                    if (b.damage > segmentHp) {
-                                        e.shieldSegments[activeIdx] = 0;
+                            // Check shields: shields protect the hull, so if bullet is within shield radius and shield is active, block it
+                            // Check outer shield first (if bullet is within outer shield radius)
+                            if (!b.ignoreShields && e.shieldSegments && e.shieldSegments.length > 0 && dist < e.shieldRadius + b.radius) {
+                                // Find the shield segment based on angle
+                                const angle = Math.atan2(dy, dx);
+                                const normalizedAngle = (angle - (e.shieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                                const segCount = e.shieldSegments.length;
+                                const segAngle = (Math.PI * 2) / segCount;
+                                const segmentIdx = Math.floor(normalizedAngle / segAngle) % segCount;
+                                
+                                // Only check outer shield if bullet is outside inner shield (or no inner shield exists)
+                                const innerShieldOuterEdge = e.innerShieldSegments && e.innerShieldSegments.length > 0 
+                                    ? e.innerShieldRadius + b.radius 
+                                    : e.radius + b.radius;
+                                
+                                if (dist > innerShieldOuterEdge && e.shieldSegments[segmentIdx] > 0) {
+                                    const segmentHp = e.shieldSegments[segmentIdx];
+                                    if (b.damage >= segmentHp) {
+                                        e.shieldSegments[segmentIdx] = 0;
                                     } else {
-                                        e.shieldSegments[activeIdx] = 0;
+                                        e.shieldSegments[segmentIdx] -= b.damage;
                                     }
                                     e.shieldsDirty = true;
                                     hit = true;
@@ -813,19 +835,80 @@ export function processBulletCollisions() {
                                     if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
                                 }
                             }
-                            if (!hit && !b.ignoreShields && e.innerShieldSegments && e.innerShieldSegments.length > 0 && dist < e.innerShieldRadius + b.radius && dist > e.innerShieldRadius - 10) {
-                                const activeIdx = e.innerShieldSegments.findIndex(s => s > 0);
-                                if (activeIdx !== -1) {
-                                    const segmentHp = e.innerShieldSegments[activeIdx];
-                                    if (b.damage > segmentHp) {
-                                        e.innerShieldSegments[activeIdx] = 0;
+                            // Check inner shield (if bullet is within inner shield radius but outside hull)
+                            if (!hit && !b.ignoreShields && e.innerShieldSegments && e.innerShieldSegments.length > 0 && dist < e.innerShieldRadius + b.radius && dist > e.radius + b.radius) {
+                                // Find the inner shield segment based on angle
+                                const angle = Math.atan2(dy, dx);
+                                const normalizedAngle = (angle - (e.innerShieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                                const innerCount = e.innerShieldSegments.length;
+                                const innerAngle = (Math.PI * 2) / innerCount;
+                                const segmentIdx = Math.floor(normalizedAngle / innerAngle) % innerCount;
+                                
+                                if (e.innerShieldSegments[segmentIdx] > 0) {
+                                    const segmentHp = e.innerShieldSegments[segmentIdx];
+                                    if (b.damage >= segmentHp) {
+                                        e.innerShieldSegments[segmentIdx] = 0;
                                     } else {
-                                        e.innerShieldSegments[activeIdx] -= b.damage;
+                                        e.innerShieldSegments[segmentIdx] -= b.damage;
                                     }
                                     e.shieldsDirty = true;
                                     hit = true;
                                     if (_playSound) _playSound('enemy_shield_hit');
                                     if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
+                                }
+                            }
+                            // Also check if bullet is inside hull but would pass through active shields
+                            // If there are active shields, they should block even bullets that are "inside" the hull visually
+                            if (!hit && !b.ignoreShields && dist < e.radius + b.radius) {
+                                // Check if any shields are still active - if so, they should block
+                                const hasActiveOuter = e.shieldSegments && e.shieldSegments.length > 0 && e.shieldSegments.some(s => s > 0);
+                                const hasActiveInner = e.innerShieldSegments && e.innerShieldSegments.length > 0 && e.innerShieldSegments.some(s => s > 0);
+                                
+                                if (hasActiveOuter || hasActiveInner) {
+                                    // Bullet is inside hull radius but shields are still up - check which shield should block
+                                    const angle = Math.atan2(dy, dx);
+                                    
+                                    // Check inner shield first (closer to hull)
+                                    if (hasActiveInner && e.innerShieldSegments && e.innerShieldSegments.length > 0) {
+                                        const normalizedAngle = (angle - (e.innerShieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                                        const innerCount = e.innerShieldSegments.length;
+                                        const innerAngle = (Math.PI * 2) / innerCount;
+                                        const segmentIdx = Math.floor(normalizedAngle / innerAngle) % innerCount;
+                                        
+                                        if (e.innerShieldSegments[segmentIdx] > 0) {
+                                            const segmentHp = e.innerShieldSegments[segmentIdx];
+                                            if (b.damage >= segmentHp) {
+                                                e.innerShieldSegments[segmentIdx] = 0;
+                                            } else {
+                                                e.innerShieldSegments[segmentIdx] -= b.damage;
+                                            }
+                                            e.shieldsDirty = true;
+                                            hit = true;
+                                            if (_playSound) _playSound('enemy_shield_hit');
+                                            if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
+                                        }
+                                    }
+                                    
+                                    // If inner didn't block, check outer shield
+                                    if (!hit && hasActiveOuter && e.shieldSegments && e.shieldSegments.length > 0) {
+                                        const normalizedAngle = (angle - (e.shieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                                        const segCount = e.shieldSegments.length;
+                                        const segAngle = (Math.PI * 2) / segCount;
+                                        const segmentIdx = Math.floor(normalizedAngle / segAngle) % segCount;
+                                        
+                                        if (e.shieldSegments[segmentIdx] > 0) {
+                                            const segmentHp = e.shieldSegments[segmentIdx];
+                                            if (b.damage >= segmentHp) {
+                                                e.shieldSegments[segmentIdx] = 0;
+                                            } else {
+                                                e.shieldSegments[segmentIdx] -= b.damage;
+                                            }
+                                            e.shieldsDirty = true;
+                                            hit = true;
+                                            if (_playSound) _playSound('enemy_shield_hit');
+                                            if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
+                                        }
+                                    }
                                 }
                             }
 
@@ -898,8 +981,119 @@ export function processBulletCollisions() {
                             const dx = b.pos.x - e.pos.x;
                             const dy = b.pos.y - e.pos.y;
                             const distSq = dx * dx + dy * dy;
+                            const dist = Math.sqrt(distSq);
+                            
+                            // Check shields: shields protect the hull, so if bullet is within shield radius and shield is active, block it
+                            // Check outer shield first (if bullet is within outer shield radius)
+                            if (!b.ignoreShields && e.shieldSegments && e.shieldSegments.length > 0 && dist < e.shieldRadius + b.radius) {
+                                // Find the shield segment based on angle
+                                const angle = Math.atan2(dy, dx);
+                                const normalizedAngle = (angle - (e.shieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                                const segCount = e.shieldSegments.length;
+                                const segAngle = (Math.PI * 2) / segCount;
+                                const segmentIdx = Math.floor(normalizedAngle / segAngle) % segCount;
+                                
+                                // Only check outer shield if bullet is outside inner shield (or no inner shield exists)
+                                const innerShieldOuterEdge = e.innerShieldSegments && e.innerShieldSegments.length > 0 
+                                    ? e.innerShieldRadius + b.radius 
+                                    : e.radius + b.radius;
+                                
+                                if (dist > innerShieldOuterEdge && e.shieldSegments[segmentIdx] > 0) {
+                                    const segmentHp = e.shieldSegments[segmentIdx];
+                                    if (b.damage >= segmentHp) {
+                                        e.shieldSegments[segmentIdx] = 0;
+                                    } else {
+                                        e.shieldSegments[segmentIdx] -= b.damage;
+                                    }
+                                    e.shieldsDirty = true;
+                                    hit = true;
+                                    e.aggro = true;
+                                    if (_playSound) _playSound('enemy_shield_hit');
+                                    if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
+                                }
+                            }
+                            // Check inner shield (if bullet is within inner shield radius but outside hull)
+                            if (!hit && !b.ignoreShields && e.innerShieldSegments && e.innerShieldSegments.length > 0 && dist < e.innerShieldRadius + b.radius && dist > e.radius + b.radius) {
+                                // Find the inner shield segment based on angle
+                                const angle = Math.atan2(dy, dx);
+                                const normalizedAngle = (angle - (e.innerShieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                                const innerCount = e.innerShieldSegments.length;
+                                const innerAngle = (Math.PI * 2) / innerCount;
+                                const segmentIdx = Math.floor(normalizedAngle / innerAngle) % innerCount;
+                                
+                                if (e.innerShieldSegments[segmentIdx] > 0) {
+                                    const segmentHp = e.innerShieldSegments[segmentIdx];
+                                    if (b.damage >= segmentHp) {
+                                        e.innerShieldSegments[segmentIdx] = 0;
+                                    } else {
+                                        e.innerShieldSegments[segmentIdx] -= b.damage;
+                                    }
+                                    e.shieldsDirty = true;
+                                    hit = true;
+                                    e.aggro = true;
+                                    if (_playSound) _playSound('enemy_shield_hit');
+                                    if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
+                                }
+                            }
+                            // Also check if bullet is inside hull but would pass through active shields
+                            // If there are active shields, they should block even bullets that are "inside" the hull visually
+                            if (!hit && !b.ignoreShields && dist < e.radius + b.radius) {
+                                // Check if any shields are still active - if so, they should block
+                                const hasActiveOuter = e.shieldSegments && e.shieldSegments.length > 0 && e.shieldSegments.some(s => s > 0);
+                                const hasActiveInner = e.innerShieldSegments && e.innerShieldSegments.length > 0 && e.innerShieldSegments.some(s => s > 0);
+                                
+                                if (hasActiveOuter || hasActiveInner) {
+                                    // Bullet is inside hull radius but shields are still up - check which shield should block
+                                    const angle = Math.atan2(dy, dx);
+                                    
+                                    // Check inner shield first (closer to hull)
+                                    if (hasActiveInner && e.innerShieldSegments && e.innerShieldSegments.length > 0) {
+                                        const normalizedAngle = (angle - (e.innerShieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                                        const innerCount = e.innerShieldSegments.length;
+                                        const innerAngle = (Math.PI * 2) / innerCount;
+                                        const segmentIdx = Math.floor(normalizedAngle / innerAngle) % innerCount;
+                                        
+                                        if (e.innerShieldSegments[segmentIdx] > 0) {
+                                            const segmentHp = e.innerShieldSegments[segmentIdx];
+                                            if (b.damage >= segmentHp) {
+                                                e.innerShieldSegments[segmentIdx] = 0;
+                                            } else {
+                                                e.innerShieldSegments[segmentIdx] -= b.damage;
+                                            }
+                                            e.shieldsDirty = true;
+                                            hit = true;
+                                            e.aggro = true;
+                                            if (_playSound) _playSound('enemy_shield_hit');
+                                            if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
+                                        }
+                                    }
+                                    
+                                    // If inner didn't block, check outer shield
+                                    if (!hit && hasActiveOuter && e.shieldSegments && e.shieldSegments.length > 0) {
+                                        const normalizedAngle = (angle - (e.shieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                                        const segCount = e.shieldSegments.length;
+                                        const segAngle = (Math.PI * 2) / segCount;
+                                        const segmentIdx = Math.floor(normalizedAngle / segAngle) % segCount;
+                                        
+                                        if (e.shieldSegments[segmentIdx] > 0) {
+                                            const segmentHp = e.shieldSegments[segmentIdx];
+                                            if (b.damage >= segmentHp) {
+                                                e.shieldSegments[segmentIdx] = 0;
+                                            } else {
+                                                e.shieldSegments[segmentIdx] -= b.damage;
+                                            }
+                                            e.shieldsDirty = true;
+                                            hit = true;
+                                            e.aggro = true;
+                                            if (_playSound) _playSound('enemy_shield_hit');
+                                            if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
+                                        }
+                                    }
+                                }
+                            }
+                            
                             const hitRadius = e.radius + b.radius;
-                            if (distSq < hitRadius * hitRadius) {
+                            if (!hit && distSq < hitRadius * hitRadius) {
                                 e.hp -= b.damage;
                                 hit = true;
                                 e.aggro = true;
@@ -960,8 +1154,10 @@ export function processBulletCollisions() {
                                     e.dead = true;
                                     if (_playSound) _playSound('base_explode');
                                     if (_spawnLargeExplosion) _spawnLargeExplosion(e.pos.x, e.pos.y, 2.0);
-                                    for (let i = 0; i < 6; i++) GameContext.coins.push(new Coin(e.pos.x + (Math.random() - 0.5) * 50, e.pos.y + (Math.random() - 0.5) * 50, 5));
-                                    GameContext.nuggets.push(new SpaceNugget(e.pos.x, e.pos.y, 1));
+                                    // Award coins directly: 6 coins * 5 value = 30 total
+                                    if (_awardCoinsInstant) _awardCoinsInstant(30, { noSound: false, sound: 'coin' });
+                                    // Award nugget directly
+                                    if (_awardNuggetsInstant) _awardNuggetsInstant(1, { noSound: false, sound: 'coin' });
                                 }
                                 break;
                             }

@@ -3,16 +3,19 @@ import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS } from '../../core/constants.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { FlagshipGuidedMissile } from '../projectiles/FlagshipGuidedMissile.js';
-import { Coin, SpaceNugget } from '../pickups/index.js';
 import { showOverlayMessage } from '../../utils/ui-helpers.js';
 import { clearArrayWithPixiCleanup, pixiCleanupObject } from '../../rendering/pixi-context.js';
 
 let _spawnParticles = null;
 let _spawnLargeExplosion = null;
+let _awardCoinsInstant = null;
+let _awardNuggetsInstant = null;
 
 export function registerFlagshipDependencies(deps) {
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
     if (deps.spawnLargeExplosion) _spawnLargeExplosion = deps.spawnLargeExplosion;
+    if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
+    if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
 }
 
 export class Flagship extends Cruiser {
@@ -115,8 +118,10 @@ export class Flagship extends Cruiser {
         clearArrayWithPixiCleanup(GameContext.bossBombs);
         clearArrayWithPixiCleanup(GameContext.guidedMissiles);
 
-        for (let i = 0; i < 50; i++) GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 260, this.pos.y + (Math.random() - 0.5) * 260, 10));
-        for (let i = 0; i < 16; i++) GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 320, this.pos.y + (Math.random() - 0.5) * 320, 1));
+        // Award coins directly: 50 coins * 10 value = 500 total
+        if (_awardCoinsInstant) _awardCoinsInstant(500, { noSound: false, sound: 'coin' });
+        // Award nuggets directly: 16 nuggets
+        if (_awardNuggetsInstant) _awardNuggetsInstant(16, { noSound: false, sound: 'coin' });
 
         GameContext.bossActive = false;
         GameContext.bossArena.active = false;

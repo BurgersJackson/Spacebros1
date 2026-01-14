@@ -4,23 +4,23 @@ import { updateContractUI as updateContractUIHud } from '../ui/hud.js';
 let findSpawnPointRelativeFn = null;
 let ContractBeaconCtor = null;
 let GateRingCtor = null;
-let SpaceNuggetCtor = null;
-let CoinCtor = null;
 let showOverlayMessageFn = null;
 let playSoundFn = null;
 let clearArrayWithPixiCleanupFn = null;
 let filterArrayWithPixiCleanupFn = null;
+let awardCoinsInstantFn = null;
+let awardNuggetsInstantFn = null;
 
 export function registerContractHandlers(handlers) {
     findSpawnPointRelativeFn = handlers.findSpawnPointRelative || null;
     ContractBeaconCtor = handlers.ContractBeacon || null;
     GateRingCtor = handlers.GateRing || null;
-    SpaceNuggetCtor = handlers.SpaceNugget || null;
-    CoinCtor = handlers.Coin || null;
     showOverlayMessageFn = handlers.showOverlayMessage || null;
     playSoundFn = handlers.playSound || null;
     clearArrayWithPixiCleanupFn = handlers.clearArrayWithPixiCleanup || null;
     filterArrayWithPixiCleanupFn = handlers.filterArrayWithPixiCleanup || null;
+    awardCoinsInstantFn = handlers.awardCoinsInstant || null;
+    awardNuggetsInstantFn = handlers.awardNuggetsInstant || null;
 }
 
 export function updateContractUI() {
@@ -41,14 +41,10 @@ export function completeContract(success = true) {
     const contractId = GameContext.activeContract.id;
     if (success) {
         const rewardNugs = (GameContext.activeContract.rewardNugs !== undefined) ? GameContext.activeContract.rewardNugs : 4;
-        if (SpaceNuggetCtor && GameContext.player) {
-            for (let i = 0; i < rewardNugs; i++) {
-                GameContext.nuggets.push(new SpaceNuggetCtor(GameContext.player.pos.x + (Math.random() - 0.5) * 120, GameContext.player.pos.y + (Math.random() - 0.5) * 120, 1));
-            }
-        }
-        if (CoinCtor && GameContext.player) {
-            GameContext.coins.push(new CoinCtor(GameContext.player.pos.x + (Math.random() - 0.5) * 80, GameContext.player.pos.y + (Math.random() - 0.5) * 80, 10));
-        }
+        // Award nuggets directly
+        if (awardNuggetsInstantFn) awardNuggetsInstantFn(rewardNugs, { noSound: false, sound: 'coin' });
+        // Award coin directly: 1 coin * 10 value = 10 total
+        if (awardCoinsInstantFn) awardCoinsInstantFn(10, { noSound: false, sound: 'coin' });
         const rewardScore = (GameContext.activeContract.rewardScore !== undefined) ? GameContext.activeContract.rewardScore : 5000;
         GameContext.score += rewardScore;
         if (showOverlayMessageFn) showOverlayMessageFn("CONTRACT COMPLETE", '#0f0', 1500);

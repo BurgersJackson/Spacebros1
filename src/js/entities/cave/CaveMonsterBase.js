@@ -381,23 +381,12 @@ export class CaveMonsterBase extends Entity {
         this.dead = true;
         pixiCleanupObject(this);
 
-        // Drop loot
+        // Award loot directly
         const coinCount = 18 + this.monsterType * 4;
         const nuggetCount = 5 + this.monsterType * 2;
-        for (let i = 0; i < coinCount; i++) {
-            GameContext.coins.push(new Coin(
-                this.pos.x + (Math.random() - 0.5) * 180,
-                this.pos.y + (Math.random() - 0.5) * 180,
-                10
-            ));
-        }
-        for (let i = 0; i < nuggetCount; i++) {
-            GameContext.nuggets.push(new SpaceNugget(
-                this.pos.x + (Math.random() - 0.5) * 240,
-                this.pos.y + (Math.random() - 0.5) * 240,
-                1
-            ));
-        }
+        const totalCoinValue = coinCount * 10;
+        if (caveDeps.awardCoinsInstant) caveDeps.awardCoinsInstant(totalCoinValue, { noSound: false, sound: 'coin' });
+        if (caveDeps.awardNuggetsInstant) caveDeps.awardNuggetsInstant(nuggetCount, { noSound: false, sound: 'coin' });
         GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
         if (caveDeps.spawnParticles) caveDeps.spawnParticles(this.pos.x, this.pos.y, 120, '#0ff');

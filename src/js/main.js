@@ -562,6 +562,8 @@ GameContext.pausedAccumMs = 0; // total paused time to subtract
 
 
 registerContractHandlers({
+    awardCoinsInstant,
+    awardNuggetsInstant,
     findSpawnPointRelative,
     ContractBeacon,
     GateRing,
@@ -665,6 +667,15 @@ function awardCoinsInstant(amount, opts = {}) {
     if (GameContext.player && !GameContext.player.dead && typeof GameContext.player.addXp === 'function') GameContext.player.addXp(v);
     if (!opts.noSound) playSound(opts.sound || 'coin');
     addPickupFloatingText('gold', v, opts.color || '#ff0');
+}
+
+function awardNuggetsInstant(amount, opts = {}) {
+    const v = Math.max(0, Math.floor(amount || 0));
+    if (v <= 0) return;
+    GameContext.spaceNuggets += v;
+    updateNuggetUI();
+    if (!opts.noSound) playSound(opts.sound || 'coin');
+    addPickupFloatingText('nugs', v, opts.color || '#ff0');
 }
 
 registerGameFlowDependencies({
@@ -779,7 +790,9 @@ registerCollisionDependencies({
     spawnLargeExplosion,
     destroyBulletSprite,
     updateContractUI,
-    setProjectileImpactSoundContext
+    setProjectileImpactSoundContext,
+    awardCoinsInstant,
+    awardNuggetsInstant
 });
 
 registerGameLoopDependencies({
@@ -872,7 +885,8 @@ registerAsteroidDependencies({
 
 registerPoiDependencies({
     spawnParticles,
-    getSimNowMs: getGameNowMs
+    getSimNowMs: getGameNowMs,
+    awardCoinsInstant
 });
 
 registerMiniEventDefendCacheDependencies({
@@ -882,7 +896,8 @@ registerMiniEventDefendCacheDependencies({
 
 registerShootingStarDependencies({
     emitParticle,
-    spawnAsteroidExplosion
+    spawnAsteroidExplosion,
+    awardNuggetsInstant
 });
 
 registerSpawnManagerDependencies({
@@ -896,6 +911,7 @@ registerEnemyDependencies({
     spawnLargeExplosion,
     spawnFieryExplosion,
     awardCoinsInstant,
+    awardNuggetsInstant,
     spawnParticles,
     spawnSmoke,
     checkDespawn,
@@ -909,7 +925,8 @@ registerPinwheelDependencies({
     checkDespawn,
     spawnSmoke,
     spawnBarrelSmoke,
-    spawnLargeExplosion
+    spawnLargeExplosion,
+    awardNuggetsInstant
 });
 
 registerCruiserDependencies({
@@ -917,17 +934,23 @@ registerCruiserDependencies({
     spawnLargeExplosion,
     spawnParticles,
     spawnBarrelSmoke,
-    canvas
+    canvas,
+    awardCoinsInstant,
+    awardNuggetsInstant
 });
 
 registerFlagshipDependencies({
     spawnParticles,
-    spawnLargeExplosion
+    spawnLargeExplosion,
+    awardCoinsInstant,
+    awardNuggetsInstant
 });
 
 registerSuperFlagshipDependencies({
     spawnParticles,
     spawnLargeExplosion,
+    awardCoinsInstant,
+    awardNuggetsInstant,
     awardCoinsInstant,
     endGame,
     killPlayer,
@@ -976,6 +999,7 @@ Cave.registerCaveDependencies({
     emitParticle,
     applyAOEDamageToPlayer,
     awardCoinsInstant,
+    awardNuggetsInstant,
     killPlayer,
     showLevelUpMenu,
     startSectorTransition,
@@ -1018,7 +1042,8 @@ registerDestroyerDependencies({
     spawnBossExplosion,
     spawnLargeExplosion,
     spawnParticles,
-    spawnBarrelSmoke
+    spawnBarrelSmoke,
+    awardNuggetsInstant
 });
 
 registerDestroyer2Dependencies({
@@ -1043,7 +1068,9 @@ registerFinalBossDependencies({
 registerNecroticHiveDependencies({
     spawnBossExplosion,
     spawnLargeExplosion,
-    spawnParticles
+    spawnParticles,
+    awardCoinsInstant,
+    awardNuggetsInstant
 });
 
 registerCerebralPsionDependencies({
@@ -1055,25 +1082,33 @@ registerCerebralPsionDependencies({
 registerFleshforgeDependencies({
     spawnBossExplosion,
     spawnLargeExplosion,
-    spawnParticles
+    spawnParticles,
+    awardCoinsInstant,
+    awardNuggetsInstant
 });
 
 registerVortexMatriarchDependencies({
     spawnBossExplosion,
     spawnLargeExplosion,
-    spawnParticles
+    spawnParticles,
+    awardCoinsInstant,
+    awardNuggetsInstant
 });
 
 registerChitinusPrimeDependencies({
     spawnBossExplosion,
     spawnLargeExplosion,
-    spawnParticles
+    spawnParticles,
+    awardCoinsInstant,
+    awardNuggetsInstant
 });
 
 registerPsyLichDependencies({
     spawnBossExplosion,
     spawnLargeExplosion,
-    spawnParticles
+    spawnParticles,
+    awardCoinsInstant,
+    awardNuggetsInstant
 });
 
 registerDroneDependencies({
@@ -1091,7 +1126,8 @@ registerGateRingDependencies({
 });
 
 registerWallTurretDependencies({
-    spawnParticles
+    spawnParticles,
+    awardCoinsInstant
 });
 
 registerWarpMazeZoneDependencies({
@@ -1106,7 +1142,8 @@ registerDungeon1ZoneDependencies({
 
 registerRadiationStormDependencies({
     spawnParticles,
-    getSimNowMs: () => simNowMs
+    getSimNowMs: () => simNowMs,
+    awardCoinsInstant
 });
 
 registerAnomalyZoneDependencies({
@@ -1182,7 +1219,9 @@ registerGameHelperDependencies({
     showOverlayMessage,
     pixiCleanupObject,
     pixiBulletSpritePool,
-    destroyBulletSprite
+    destroyBulletSprite,
+    awardCoinsInstant,
+    awardNuggetsInstant
 });
 
 // Debug spawn system

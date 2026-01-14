@@ -118,7 +118,8 @@ export class CaveWallTurret extends Entity {
         if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active) {
             if (_awardCoinsInstant) _awardCoinsInstant(6);
         } else {
-            for (let i = 0; i < 3; i++) GameContext.coins.push(new Coin(this.pos.x, this.pos.y, 2));
+            // Award coins directly: 3 coins * 2 value = 6 total
+            if (_awardCoinsInstant) _awardCoinsInstant(6, { noSound: false, sound: 'coin' });
         }
         if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 18, '#88f');
         playSound('explode');

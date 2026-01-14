@@ -1,11 +1,11 @@
 import { Entity } from '../Entity.js';
 import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS } from '../../core/constants.js';
-import { SpaceNugget } from '../pickups/SpaceNugget.js';
 import { pixiCleanupObject, pixiBulletLayer, getRenderAlpha } from '../../rendering/pixi-context.js';
 
 let _emitParticle = null;
 let _spawnAsteroidExplosion = null;
+let _awardNuggetsInstant = null;
 
 /**
  * @param {object} deps
@@ -14,6 +14,7 @@ let _spawnAsteroidExplosion = null;
 export function registerShootingStarDependencies(deps) {
     if (deps.emitParticle) _emitParticle = deps.emitParticle;
     if (deps.spawnAsteroidExplosion) _spawnAsteroidExplosion = deps.spawnAsteroidExplosion;
+    if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
 }
 
 export class ShootingStar extends Entity {
@@ -72,9 +73,8 @@ export class ShootingStar extends Entity {
         if (dropNugz) {
             if (_spawnAsteroidExplosion) _spawnAsteroidExplosion(this.pos.x, this.pos.y, 1.4);
             const count = Math.floor(Math.random() * 7);
-            for (let i = 0; i < count; i++) {
-                GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 80, this.pos.y + (Math.random() - 0.5) * 80, 1));
-            }
+            // Award nuggets directly
+            if (_awardNuggetsInstant && count > 0) _awardNuggetsInstant(count, { noSound: false, sound: 'coin' });
         }
     }
 

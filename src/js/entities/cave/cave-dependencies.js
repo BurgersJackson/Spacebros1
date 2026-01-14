@@ -17,6 +17,7 @@ export const caveDeps = {
     // Mechanics
     applyAOEDamageToPlayer: null,
     awardCoinsInstant: null,
+    awardNuggetsInstant: null,
     killPlayer: null,
     showLevelUpMenu: null,
     startSectorTransition: null,

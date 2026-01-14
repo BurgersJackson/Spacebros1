@@ -32,6 +32,7 @@ import {
 let _spawnLargeExplosion = null;
 let _spawnFieryExplosion = null;
 let _awardCoinsInstant = null;
+let _awardNuggetsInstant = null;
 let _spawnParticles = null;
 let _spawnSmoke = null;
 let _checkDespawn = null;
@@ -46,6 +47,7 @@ export function registerEnemyDependencies(deps) {
     if (deps.spawnLargeExplosion) _spawnLargeExplosion = deps.spawnLargeExplosion;
     if (deps.spawnFieryExplosion) _spawnFieryExplosion = deps.spawnFieryExplosion;
     if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
+    if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
     if (deps.spawnSmoke) _spawnSmoke = deps.spawnSmoke;
     if (deps.checkDespawn) _checkDespawn = deps.checkDespawn;
@@ -222,7 +224,7 @@ export class Enemy extends Entity {
             if (_spawnFieryExplosion) _spawnFieryExplosion(this.pos.x, this.pos.y, boomScale);
         }
 
-        // DROP COINS (increased by 25%)
+        // AWARD COINS DIRECTLY (increased by 25%)
         if (!this.noDrops) {
             let val = 2;
             let count = 4;  // was 3
@@ -231,26 +233,18 @@ export class Enemy extends Entity {
             if (this.type === 'defender') { val = 3; count = 4; }  // was 3
             if (this.nameTag) { val += 1; count += 2; }
             const caveActive = (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active);
-            if (caveActive) {
-                let total = count * val;
-                if (this.isGunboat) total += 10 + (5 * 2);
-                // Reduce roamer-style coin income in Level 2.
-                if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter') {
-                    total = Math.floor(total * 0.75);
-                }
-                if (_awardCoinsInstant) _awardCoinsInstant(total, { noSound: false, sound: 'coin' });
-            } else {
-                if (this.isGunboat) {
-                    // Gunboat drops: 1 gold coin (value 10) + 5 regular (value 2)
-                    GameContext.coins.push(new Coin(this.pos.x, this.pos.y, 10));
-                    for (let i = 0; i < 5; i++) GameContext.coins.push(new Coin(this.pos.x, this.pos.y, 2));
-                }
-                for (let i = 0; i < count; i++) {
-                    GameContext.coins.push(new Coin(this.pos.x, this.pos.y, val));
-                }
+            
+            let total = count * val;
+            if (this.isGunboat) total += 10 + (5 * 2);
+            // Reduce roamer-style coin income in Level 2.
+            if (caveActive && (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter')) {
+                total = Math.floor(total * 0.75);
             }
-            if (this.nameTag) {
-                GameContext.nuggets.push(new SpaceNugget(this.pos.x, this.pos.y, 1));
+            if (_awardCoinsInstant && total > 0) _awardCoinsInstant(total, { noSound: false, sound: 'coin' });
+            
+            // Award nuggets directly
+            if (this.nameTag && _awardNuggetsInstant) {
+                _awardNuggetsInstant(1, { noSound: false, sound: 'coin' });
             }
 
             // Sector 2 needs more nugz to match the pace of Sector 1 (no contracts/stations here).
@@ -262,10 +256,8 @@ export class Enemy extends Entity {
                 if (this.isGunboat) p = 0.25;
 
                 if (Math.random() < p) {
-                    const count = this.isGunboat ? 2 : 1;
-                    for (let k = 0; k < count; k++) {
-                        GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 80, this.pos.y + (Math.random() - 0.5) * 80, 1));
-                    }
+                    const nuggetCount = this.isGunboat ? 2 : 1;
+                    if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: 'coin' });
                 }
             }
         }

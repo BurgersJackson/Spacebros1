@@ -1,7 +1,6 @@
 import { Entity } from '../Entity.js';
 import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS, USE_PIXI_OVERLAY } from '../../core/constants.js';
-import { Coin } from '../pickups/Coin.js';
 import { Enemy } from '../enemies/Enemy.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { showOverlayMessage } from '../../utils/ui-helpers.js';
@@ -9,10 +8,12 @@ import { pixiCleanupObject, pixiVectorLayer, getRenderAlpha } from '../../render
 
 let _spawnParticles = null;
 let _getSimNowMs = null;
+let _awardCoinsInstant = null;
 
 export function registerMiniEventDefendCacheDependencies(deps) {
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
     if (deps.getSimNowMs) _getSimNowMs = deps.getSimNowMs;
+    if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
 }
 
 export class MiniEventDefendCache extends Entity {
@@ -108,7 +109,8 @@ export class MiniEventDefendCache extends Entity {
         playSound('powerup');
         GameContext.player.addXp(60);
         if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 40, '#ff0');
-        for (let i = 0; i < 10; i++) GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 220, this.pos.y + (Math.random() - 0.5) * 220, 8));
+        // Award coins directly: 10 coins * 8 value = 80 total
+        if (_awardCoinsInstant) _awardCoinsInstant(80, { noSound: false, sound: 'coin' });
     }
     fail() {
         if (this.dead) return;

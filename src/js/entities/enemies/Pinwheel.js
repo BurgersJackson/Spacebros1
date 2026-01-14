@@ -8,7 +8,6 @@ import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS } from '../../core/constants.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { Bullet } from '../projectiles/Bullet.js';
-import { SpaceNugget } from '../pickups/SpaceNugget.js';
 
 import {
     pixiBaseLayer,
@@ -26,6 +25,7 @@ let _checkDespawn = null;
 let _spawnSmoke = null;
 let _spawnBarrelSmoke = null;
 let _spawnLargeExplosion = null;
+let _awardNuggetsInstant = null;
 
 /**
  * Register dependencies from main.js logic.
@@ -36,6 +36,7 @@ export function registerPinwheelDependencies(deps) {
     if (deps.spawnSmoke) _spawnSmoke = deps.spawnSmoke;
     if (deps.spawnBarrelSmoke) _spawnBarrelSmoke = deps.spawnBarrelSmoke;
     if (deps.spawnLargeExplosion) _spawnLargeExplosion = deps.spawnLargeExplosion;
+    if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
 }
 
 export class Pinwheel extends Entity {
@@ -44,14 +45,15 @@ export class Pinwheel extends Entity {
         this.pos.x = x;
         this.pos.y = y;
         this.type = type;
-        this.radius = 70;
+        this.radius = 84; // 70 * 1.2 (20% increase for collision sphere)
         this.hp = 10 + (GameContext.difficultyTier - 1) * 5;
         this.shootTimer = 75; // 150 / 2
         this.angle = 0;
         this.turretAngle = 0;
-        this.shieldRadius = 130; // outer shield (moved out from 110)
+        this.shieldRadius = 130; // outer shield (moved out from 110) - unchanged
         const BASE_SHIELD_GAP = 35;
-        this.innerShieldRadius = Math.max(this.radius + 15, this.shieldRadius - BASE_SHIELD_GAP); // keep inner ring inside the outer shield with a fixed gap
+        // Keep inner shield radius unchanged (was 95 = max(70+15, 130-35))
+        this.innerShieldRadius = 95;
         this.aggro = false;
 
         let outerCount = 24;
@@ -110,6 +112,7 @@ export class Pinwheel extends Entity {
         this._pixiTurretBaseSpr = null;
         this._pixiBarrelSpr = null;
         this._pixiGfx = null;
+        this._pixiDebugGfx = null;
     }
 
     update(deltaTime = SIM_STEP_MS) {
@@ -201,8 +204,8 @@ export class Pinwheel extends Entity {
 
         this.pos.add(this.vel);
         if (_checkDespawn) _checkDespawn(this, 6000);
-        this.shieldRotation += 0.01 * dtFactor;
-        this.innerShieldRotation -= 0.015 * dtFactor;
+        this.shieldRotation += 0.015 * dtFactor; // 0.01 * 1.5 (50% increase)
+        this.innerShieldRotation -= 0.0225 * dtFactor; // 0.015 * 1.5 (50% increase)
 
         if (this.hp <= 5 && Math.random() < 0.1 && _spawnSmoke) _spawnSmoke(this.pos.x, this.pos.y, 1);
 
@@ -277,6 +280,10 @@ export class Pinwheel extends Entity {
                 try { this._pixiGfx.destroy(true); } catch (e) { }
                 this._pixiGfx = null;
             }
+            if (this._pixiDebugGfx) {
+                try { this._pixiDebugGfx.destroy(true); } catch (e) { }
+                this._pixiDebugGfx = null;
+            }
             return;
         }
 
@@ -321,7 +328,9 @@ export class Pinwheel extends Entity {
                 const a = pixiTextureAnchors[baseKey] || { x: 0.5, y: 0.5 };
                 this._pixiHullSpr.texture = tex;
                 this._pixiHullSpr.anchor.set((a && a.x != null) ? a.x : 0.5, (a && a.y != null) ? a.y : 0.5);
-                this._pixiHullSpr.scale.set(pixiTextureBaseScales[baseKey] || 1);
+                // Apply 20% size increase to sprite graphic (1.2x multiplier)
+                const baseScale = pixiTextureBaseScales[baseKey] || 1;
+                this._pixiHullSpr.scale.set(baseScale * 1.2);
             }
 
             const jitter = (this.hp <= 2) ? 2 : 0;
@@ -433,6 +442,44 @@ export class Pinwheel extends Entity {
                 }
             }
 
+            // Debug visualization for Ctrl+H
+            if (pixiVectorLayer && typeof GameContext.DEBUG_COLLISION !== 'undefined' && GameContext.DEBUG_COLLISION) {
+                let debugGfx = this._pixiDebugGfx;
+                if (!debugGfx) {
+                    debugGfx = new PIXI.Graphics();
+                    pixiVectorLayer.addChild(debugGfx);
+                    this._pixiDebugGfx = debugGfx;
+                } else if (!debugGfx.parent) {
+                    pixiVectorLayer.addChild(debugGfx);
+                }
+
+                debugGfx.visible = true;
+                debugGfx.clear();
+                debugGfx.position.set(rPos.x, rPos.y);
+
+                // Draw hull collision radius (green)
+                debugGfx.lineStyle(3, 0x00FF00, 0.8);
+                debugGfx.drawCircle(0, 0, this.radius);
+
+                // Draw outer shield radius (cyan) if shields exist
+                if (this.shieldSegments && this.shieldSegments.length > 0) {
+                    const hasActiveOuter = this.shieldSegments.some(s => s > 0);
+                    debugGfx.lineStyle(2, hasActiveOuter ? 0x00FFFF : 0x888888, hasActiveOuter ? 0.6 : 0.3);
+                    debugGfx.drawCircle(0, 0, this.shieldRadius);
+                }
+
+                // Draw inner shield radius (magenta) if inner shields exist
+                if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+                    const hasActiveInner = this.innerShieldSegments.some(s => s > 0);
+                    debugGfx.lineStyle(2, hasActiveInner ? 0xFF00FF : 0x888888, hasActiveInner ? 0.6 : 0.3);
+                    debugGfx.drawCircle(0, 0, this.innerShieldRadius);
+                }
+            } else if (this._pixiDebugGfx) {
+                if (this._pixiDebugGfx.parent) {
+                    this._pixiDebugGfx.visible = false;
+                }
+            }
+
             return;
         }
 
@@ -446,13 +493,7 @@ export class Pinwheel extends Entity {
 
         if (_spawnLargeExplosion) _spawnLargeExplosion(this.pos.x, this.pos.y, 2.0);
 
-        // Drop coins
-        for (let i = 0; i < 5; i++) {
-            GameContext.nuggets.push(new SpaceNugget(
-                this.pos.x + (Math.random() - 0.5) * 120,
-                this.pos.y + (Math.random() - 0.5) * 120,
-                1
-            ));
-        }
+        // Award nuggets directly: 5 nuggets
+        if (_awardNuggetsInstant) _awardNuggetsInstant(5, { noSound: false, sound: 'coin' });
     }
 }

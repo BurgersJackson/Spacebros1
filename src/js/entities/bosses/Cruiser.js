@@ -3,7 +3,7 @@ import { GameContext } from '../../core/game-context.js';
 import { SIM_FPS, SIM_STEP_MS } from '../../core/constants.js';
 import { playSound, setMusicMode, musicEnabled } from '../../audio/audio-manager.js';
 import { Bullet, CruiserMineBomb, FlagshipGuidedMissile } from '../projectiles/index.js';
-import { Coin, HealthPowerUp, SpaceNugget } from '../pickups/index.js';
+import { HealthPowerUp } from '../pickups/index.js';
 import { showOverlayMessage } from '../../utils/ui-helpers.js';
 import { stopArenaCountdown } from '../../systems/event-scheduler.js';
 import { pixiCleanupObject, clearArrayWithPixiCleanup, getRenderAlpha, pixiTextureRotOffsets, pixiVectorLayer } from '../../rendering/pixi-context.js';
@@ -13,6 +13,8 @@ let _spawnLargeExplosion = null;
 let _spawnParticles = null;
 let _spawnBarrelSmoke = null;
 let _canvas = null;
+let _awardCoinsInstant = null;
+let _awardNuggetsInstant = null;
 
 export function registerCruiserDependencies(deps) {
     if (deps.spawnBossExplosion) _spawnBossExplosion = deps.spawnBossExplosion;
@@ -20,6 +22,8 @@ export function registerCruiserDependencies(deps) {
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
     if (deps.spawnBarrelSmoke) _spawnBarrelSmoke = deps.spawnBarrelSmoke;
     if (deps.canvas) _canvas = deps.canvas;
+    if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
+    if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
 }
 
 export class Cruiser extends Enemy {
@@ -152,20 +156,34 @@ export class Cruiser extends Enemy {
     kill() {
         if (this.dead) return;
         this.dead = true;
+        
+        // Clean up all graphics, ensuring they're removed from parent first
         if (this._pixiInnerGfx) {
-            try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+            try {
+                if (this._pixiInnerGfx.parent) this._pixiInnerGfx.parent.removeChild(this._pixiInnerGfx);
+                this._pixiInnerGfx.destroy(true);
+            } catch (e) { }
             this._pixiInnerGfx = null;
         }
         if (this._pixiGfx) {
-            try { this._pixiGfx.destroy(true); } catch (e) { }
+            try {
+                if (this._pixiGfx.parent) this._pixiGfx.parent.removeChild(this._pixiGfx);
+                this._pixiGfx.destroy(true);
+            } catch (e) { }
             this._pixiGfx = null;
         }
         if (this._pixiVulnerableGfx) {
-            try { this._pixiVulnerableGfx.destroy(true); } catch (e) { }
+            try {
+                if (this._pixiVulnerableGfx.parent) this._pixiVulnerableGfx.parent.removeChild(this._pixiVulnerableGfx);
+                this._pixiVulnerableGfx.destroy(true);
+            } catch (e) { }
             this._pixiVulnerableGfx = null;
         }
         if (this._pixiHardpointsGfx) {
-            try { this._pixiHardpointsGfx.destroy(true); } catch (e) { }
+            try {
+                if (this._pixiHardpointsGfx.parent) this._pixiHardpointsGfx.parent.removeChild(this._pixiHardpointsGfx);
+                this._pixiHardpointsGfx.destroy(true);
+            } catch (e) { }
             this._pixiHardpointsGfx = null;
         }
 
@@ -188,12 +206,10 @@ export class Cruiser extends Enemy {
         GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 22);
         GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 24);
         clearArrayWithPixiCleanup(GameContext.bossBombs);
-        for (let i = 0; i < 13; i++) {
-            GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 100, this.pos.y + (Math.random() - 0.5) * 100, 10));
-        }
-        for (let i = 0; i < 5; i++) {
-            GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 120, this.pos.y + (Math.random() - 0.5) * 120, 1));
-        }
+        // Award coins directly: 13 coins * 10 value = 130 total
+        if (_awardCoinsInstant) _awardCoinsInstant(130, { noSound: false, sound: 'coin' });
+        // Award nuggets directly: 5 nuggets
+        if (_awardNuggetsInstant) _awardNuggetsInstant(5, { noSound: false, sound: 'coin' });
         GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
         GameContext.bossActive = false;
         GameContext.bossArena.active = false;
@@ -551,7 +567,24 @@ export class Cruiser extends Enemy {
 
     draw(ctx) {
         super.draw(ctx);
-        if (this.dead) return;
+        if (this.dead) {
+            // Ensure all graphics are cleaned up if draw is called after death
+            if (this._pixiHardpointsGfx) {
+                try {
+                    if (this._pixiHardpointsGfx.parent) this._pixiHardpointsGfx.parent.removeChild(this._pixiHardpointsGfx);
+                    this._pixiHardpointsGfx.destroy(true);
+                } catch (e) { }
+                this._pixiHardpointsGfx = null;
+            }
+            if (this._pixiVulnerableGfx) {
+                try {
+                    if (this._pixiVulnerableGfx.parent) this._pixiVulnerableGfx.parent.removeChild(this._pixiVulnerableGfx);
+                    this._pixiVulnerableGfx.destroy(true);
+                } catch (e) { }
+                this._pixiVulnerableGfx = null;
+            }
+            return;
+        }
 
         // FIX: Use cached render position from Enemy.draw() to ensure sync with sprite/shields
         const rPos = this._cachedRenderPos || this.pos;

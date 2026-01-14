@@ -3,13 +3,13 @@ import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS, ZOOM_LEVEL } from '../../core/constants.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { Enemy } from '../enemies/Enemy.js';
-import { SpaceNugget } from '../pickups/index.js';
 import { showOverlayMessage } from '../../utils/ui-helpers.js';
 import { clearArrayWithPixiCleanup, pixiCleanupObject } from '../../rendering/pixi-context.js';
 
 let _spawnParticles = null;
 let _spawnLargeExplosion = null;
 let _awardCoinsInstant = null;
+let _awardNuggetsInstant = null;
 let _endGame = null;
 let _killPlayer = null;
 let _updateHealthUI = null;
@@ -24,6 +24,7 @@ export function registerSuperFlagshipDependencies(deps) {
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
     if (deps.spawnLargeExplosion) _spawnLargeExplosion = deps.spawnLargeExplosion;
     if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
+    if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
     if (deps.endGame) _endGame = deps.endGame;
     if (deps.killPlayer) _killPlayer = deps.killPlayer;
     if (deps.updateHealthUI) _updateHealthUI = deps.updateHealthUI;
@@ -241,7 +242,8 @@ export class SuperFlagshipBoss extends Flagship {
         clearArrayWithPixiCleanup(GameContext.guidedMissiles);
 
         if (_awardCoinsInstant) _awardCoinsInstant(80 * 10, { noSound: false, sound: 'coin', color: '#ff0' });
-        for (let i = 0; i < 24; i++) GameContext.nuggets.push(new SpaceNugget(this.pos.x + (Math.random() - 0.5) * 360, this.pos.y + (Math.random() - 0.5) * 360, 1));
+        // Award nuggets directly: 24 nuggets
+        if (_awardNuggetsInstant) _awardNuggetsInstant(24, { noSound: false, sound: 'coin' });
 
         GameContext.bossActive = false;
         GameContext.bossArena.active = false;

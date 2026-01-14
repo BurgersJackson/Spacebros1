@@ -1,7 +1,6 @@
 import { Entity } from '../Entity.js';
 import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS, USE_PIXI_OVERLAY } from '../../core/constants.js';
-import { Coin } from '../pickups/Coin.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { showOverlayMessage } from '../../utils/ui-helpers.js';
 import {
@@ -13,6 +12,7 @@ import {
 
 let _spawnParticles = null;
 let _getSimNowMs = null;
+let _awardCoinsInstant = null;
 
 /**
  * @param {object} deps
@@ -21,6 +21,7 @@ let _getSimNowMs = null;
 export function registerPoiDependencies(deps) {
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
     if (deps.getSimNowMs) _getSimNowMs = deps.getSimNowMs;
+    if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
 }
 
 export class SectorPOI extends Entity {
@@ -76,10 +77,8 @@ export class SectorPOI extends Entity {
         showOverlayMessage(`POI CLEARED: ${this.name}`, '#0ff', 1600, 1);
         playSound('powerup');
         if (GameContext.player) GameContext.player.addXp(this.rewardXp);
-        const coinsToSpawn = Math.max(1, Math.floor(this.rewardCoins / 8));
-        for (let i = 0; i < coinsToSpawn; i++) {
-            GameContext.coins.push(new Coin(this.pos.x + (Math.random() - 0.5) * 220, this.pos.y + (Math.random() - 0.5) * 220, 8));
-        }
+        // Award coins directly
+        if (_awardCoinsInstant) _awardCoinsInstant(this.rewardCoins, { noSound: false, sound: 'coin' });
         if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 30, this.color);
         this.kill();
     }

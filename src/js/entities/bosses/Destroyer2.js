@@ -6,7 +6,6 @@ import { Bullet } from '../projectiles/Bullet.js';
 import { Destroyer2GuidedMissile } from '../projectiles/Destroyer2GuidedMissile.js';
 import { ClusterBomb } from '../projectiles/ClusterBomb.js';
 import { NapalmZone } from '../projectiles/NapalmZone.js';
-import { SpaceNugget } from '../pickups/SpaceNugget.js';
 import { showOverlayMessage } from '../../utils/ui-helpers.js';
 import {
     pixiBossLayer,
@@ -21,12 +20,14 @@ let _spawnBossExplosion = null;
 let _spawnLargeExplosion = null;
 let _spawnParticles = null;
 let _spawnBarrelSmoke = null;
+let _awardNuggetsInstant = null;
 
 export function registerDestroyer2Dependencies(deps) {
     if (deps.spawnBossExplosion) _spawnBossExplosion = deps.spawnBossExplosion;
     if (deps.spawnLargeExplosion) _spawnLargeExplosion = deps.spawnLargeExplosion;
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
     if (deps.spawnBarrelSmoke) _spawnBarrelSmoke = deps.spawnBarrelSmoke;
+    if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
 }
 
 export class Destroyer2 extends Entity {
@@ -351,14 +352,8 @@ export class Destroyer2 extends Entity {
 
         pixiCleanupObject(this);
 
-        // Drop 20 nuggets
-        for (let i = 0; i < 20; i++) {
-            GameContext.nuggets.push(new SpaceNugget(
-                this.pos.x + (Math.random() - 0.5) * 200,
-                this.pos.y + (Math.random() - 0.5) * 200,
-                1
-            ));
-        }
+        // Award nuggets directly: 20 nuggets
+        if (_awardNuggetsInstant) _awardNuggetsInstant(20, { noSound: false, sound: 'coin' });
 
         const boomScale = Math.max(2.8, Math.min(5, (this.visualRadius || this.radius || 400) / 250));
         if (_spawnBossExplosion) _spawnBossExplosion(this.pos.x, this.pos.y, boomScale, 22);
