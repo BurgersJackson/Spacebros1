@@ -368,7 +368,6 @@ export class Cruiser extends Enemy {
                 if (_spawnBarrelSmoke) _spawnBarrelSmoke(p.x, p.y, a);
             }
         }
-        if (Math.random() < 0.05) console.log(`[CRUISER] fireCannons. Shots: ${shots} Time: ${Date.now()}`);
         playSound('rapid_shoot');
     }
 

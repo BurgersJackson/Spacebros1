@@ -924,7 +924,15 @@ export function gameLoopLogic(opts = null) {
     const wz = GameContext.warpZone;
     if (wz && wz.active) { if (doUpdate) wz.update(deltaTime); if (doDraw) wz.draw(ctx); }
     const wg = GameContext.warpGate;
-    if (wg && !wg.dead) { if (doUpdate) wg.update(deltaTime); if (doDraw) wg.draw(ctx); }
+    if (wg && !wg.dead) {
+        if (doUpdate) wg.update(deltaTime, {
+            getGameNowMs: () => Date.now(), // Use wall clock time to match suppressWarpGateUntil
+            suppressUntil: GameContext.suppressWarpGateUntil,
+            showMessage: showOverlayMessage,
+            enterWarp: enterWarpMaze
+        });
+        if (doDraw) wg.draw(ctx);
+    }
     if (caveActive) { if (doUpdate) GameContext.caveLevel.update(deltaTime); }
 
     // Dungeon1 zone and gate

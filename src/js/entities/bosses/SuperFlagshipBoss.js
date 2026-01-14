@@ -114,7 +114,7 @@ export class SuperFlagshipBoss extends Flagship {
             playSound('shield_hit');
             if (_spawnParticles) _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#0ff');
         }
-        GameContext.player.invulnerable = 22;
+        GameContext.player.invulnerable = 5;
     }
 
     update(deltaTime = SIM_STEP_MS) {

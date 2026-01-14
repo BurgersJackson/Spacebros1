@@ -251,6 +251,7 @@ export class Shockwave extends Entity {
             const alpha = Math.max(0, 1 - (this.currentRadius / this.maxRadius));
             g.lineStyle(18, colorToPixi(this.color), alpha);
             g.drawCircle(0, 0, this.currentRadius);
+            g.endFill(); // Clear lineStyle to prevent ghosting
             g.position.set(rPos.x, rPos.y);
             return;
         }

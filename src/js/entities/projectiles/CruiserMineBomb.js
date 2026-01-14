@@ -126,6 +126,7 @@ export class CruiserMineBomb extends Entity {
                 g.beginFill(0xffaa00, 1);
                 g.drawCircle(0, 0, this.radius);
                 g.endFill();
+                g.lineStyle(0); // Clear lineStyle to prevent ghosting
 
                 pixiBulletLayer.addChild(g);
                 this._pixiGfx = g;

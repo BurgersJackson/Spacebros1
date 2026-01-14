@@ -92,6 +92,7 @@ export class NapalmZone extends Entity {
 
             gfx.lineStyle(3, 0xff8800, alpha);
             gfx.drawCircle(this.pos.x, this.pos.y, this.radius * pulse);
+            gfx.endFill(); // Clear lineStyle to prevent ghosting
         }
 
         if (ctx && !pixiVectorLayer) {

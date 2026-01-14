@@ -8,7 +8,7 @@ import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS } from '../../core/constants.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { pixiCleanupObject } from '../../utils/cleanup-utils.js';
-import { pixiWorldRoot } from '../../rendering/pixi-setup.js';
+import { pixiWorldRoot } from '../../rendering/pixi-context.js';
 
 /**
  * Warp gate portal entry/exit point.

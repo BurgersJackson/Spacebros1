@@ -373,7 +373,7 @@ export class CaveMonsterBase extends Entity {
             playSound('shield_hit');
             if (caveDeps.spawnParticles) caveDeps.spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#0ff');
         }
-        GameContext.player.invulnerable = 22;
+        GameContext.player.invulnerable = 5;
     }
 
     kill() {

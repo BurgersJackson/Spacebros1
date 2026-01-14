@@ -1497,11 +1497,13 @@ export class Spaceship extends Entity {
                         const r = Math.max(this.shieldRadius || 0, outerR || 0) + 14;
                         gfx.lineStyle(3, 0xffdc00, 0.6);
                         gfx.drawCircle(0, 0, r);
+                        gfx.endFill(); // Clear lineStyle to prevent ghosting
                     }
 
                     if (this.stats && this.stats.slowField > 0) {
                         gfx.lineStyle(2, 0x00c8ff, 0.30);
                         gfx.drawCircle(0, 0, this.stats.slowField);
+                        gfx.endFill(); // Clear lineStyle to prevent ghosting
                     }
 
                     // --- GLOBAL DEFENSE RING ---

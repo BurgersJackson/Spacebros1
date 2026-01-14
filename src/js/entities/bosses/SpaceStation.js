@@ -155,7 +155,7 @@ export class SpaceStation extends Entity {
                         if (_spawnParticles) _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#ff0');
                         playSound('shield_hit');
                     }
-                    GameContext.player.invulnerable = 11;
+                    GameContext.player.invulnerable = 5;
                 };
 
                 if (this.laserFire > 0) {
@@ -261,6 +261,41 @@ export class SpaceStation extends Entity {
         }
         if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 20, '#f00');
         playSound('boss_spawn');
+    }
+
+    kill() {
+        if (this.dead) return;
+        this.dead = true;
+        // Clean up PixiJS graphics
+        if (this._pixiInnerGfx) {
+            try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+            this._pixiInnerGfx = null;
+        }
+        if (this._pixiGfx) {
+            try { this._pixiGfx.destroy(true); } catch (e) { }
+            this._pixiGfx = null;
+        }
+        if (this._pixiContainer) {
+            try { this._pixiContainer.destroy({ children: true }); } catch (e) { }
+            this._pixiContainer = null;
+        }
+        if (this._pixiTurrets) {
+            for (let i = 0; i < this._pixiTurrets.length; i++) {
+                if (this._pixiTurrets[i]) {
+                    try { this._pixiTurrets[i].destroy(); } catch (e) { }
+                }
+            }
+            this._pixiTurrets = null;
+        }
+        if (this._pixiHullSpr) {
+            try { this._pixiHullSpr.destroy(); } catch (e) { }
+            this._pixiHullSpr = null;
+        }
+        if (this._pixiNameText) {
+            try { this._pixiNameText.destroy(); } catch (e) { }
+            this._pixiNameText = null;
+        }
+        pixiCleanupObject(this);
     }
 
     draw(ctx) {
@@ -422,6 +457,7 @@ export class SpaceStation extends Entity {
                                     graphics.arc(0, 0, radius, a0, a1);
                                 }
                             }
+                            graphics.endFill(); // Clear lineStyle to prevent ghosting
                         };
 
                         if (gfx && hasOuter) drawRing(gfx, this.shieldSegments, this.shieldRadius, 0x00ffff);

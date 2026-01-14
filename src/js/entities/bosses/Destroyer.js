@@ -339,6 +339,23 @@ export class Destroyer extends Entity {
             try { this._pixiTractorGfx.destroy(true); } catch (e) { }
             this._pixiTractorGfx = null;
         }
+        // Clean up health bar and name text
+        if (this._pixiHealthBar) {
+            try { this._pixiHealthBar.destroy(); } catch (e) { }
+            this._pixiHealthBar = null;
+        }
+        if (this._pixiHealthText) {
+            try { this._pixiHealthText.destroy(); } catch (e) { }
+            this._pixiHealthText = null;
+        }
+        if (this._pixiDebugGfx) {
+            try { this._pixiDebugGfx.destroy(); } catch (e) { }
+            this._pixiDebugGfx = null;
+        }
+        if (this._pixiNameText) {
+            try { this._pixiNameText.destroy(); } catch (e) { }
+            this._pixiNameText = null;
+        }
 
         if (this.tractorBeamActive) {
             GameContext.cruiserTimerResumeAt = Date.now() + 20000;

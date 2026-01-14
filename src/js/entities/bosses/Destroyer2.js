@@ -331,6 +331,23 @@ export class Destroyer2 extends Entity {
             try { this._pixiPhaseGfx.destroy(true); } catch (e) { }
             this._pixiPhaseGfx = null;
         }
+        // Clean up health bar and name text
+        if (this._pixiHealthBar) {
+            try { this._pixiHealthBar.destroy(); } catch (e) { }
+            this._pixiHealthBar = null;
+        }
+        if (this._pixiHealthText) {
+            try { this._pixiHealthText.destroy(); } catch (e) { }
+            this._pixiHealthText = null;
+        }
+        if (this._pixiDebugGfx) {
+            try { this._pixiDebugGfx.destroy(); } catch (e) { }
+            this._pixiDebugGfx = null;
+        }
+        if (this._pixiNameText) {
+            try { this._pixiNameText.destroy(); } catch (e) { }
+            this._pixiNameText = null;
+        }
 
         pixiCleanupObject(this);
 

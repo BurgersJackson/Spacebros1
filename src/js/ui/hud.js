@@ -421,6 +421,7 @@ export function drawSlackerMouseLine() {
     pixiArrowsGraphics.lineStyle(2, 0xffffff, 0.5);
     pixiArrowsGraphics.moveTo(screenStartX, screenStartY);
     pixiArrowsGraphics.lineTo(screenMouseX, screenMouseY);
+    pixiArrowsGraphics.endFill(); // Clear lineStyle to prevent ghosting
 }
 
 /**

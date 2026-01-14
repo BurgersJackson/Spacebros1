@@ -214,7 +214,7 @@ export class CaveWallTurret extends Entity {
                     if (_spawnParticles) _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 8, '#ff0');
                     playSound('shield_hit');
                 }
-                GameContext.player.invulnerable = 20;
+                GameContext.player.invulnerable = 5;
             };
 
             if (this.beamFire > 0) {

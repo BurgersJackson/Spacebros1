@@ -417,7 +417,7 @@ export class WarpSentinelBoss extends Entity {
                     if (_updateHealthUI) _updateHealthUI();
                     if (GameContext.player.hp <= 0 && _killPlayer) _killPlayer();
                 }
-                GameContext.player.invulnerable = 22;
+                GameContext.player.invulnerable = 5;
             }
         }
     }
