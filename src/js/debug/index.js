@@ -18,3 +18,9 @@ export {
     enterDungeon1Debug,
     initDebugKeyboardShortcuts
 } from './debug-spawn.js';
+
+export {
+    SpriteEditor,
+    getSpriteEditor,
+    toggleSpriteEditor
+} from './sprite-editor.js';

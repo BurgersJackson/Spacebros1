@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { GameContext } from '../core/game-context.js';
+import { toggleSpriteEditor } from './sprite-editor.js';
 import { clearArrayWithPixiCleanup } from '../utils/cleanup-utils.js';
 import { showOverlayMessage } from '../utils/ui-helpers.js';
 import { playSound, musicEnabled, setMusicMode } from '../audio/audio-manager.js';
@@ -252,9 +253,13 @@ export function initDebugKeyboardShortcuts() {
     // Ctrl+Shift+5: Spawn Final Boss
     // Ctrl+Shift+6: Enter Dungeon1
     // Ctrl+Shift+7: Spawn Random Dungeon Boss
+    // Ctrl+Shift+E: Toggle Sprite Editor
     // Ctrl+Shift+H: Toggle collision debug
     document.addEventListener('keydown', function (e) {
-        if (e.ctrlKey && e.shiftKey && (e.code === 'Digit3' || e.code === 'Numpad3')) {
+        if (e.ctrlKey && e.shiftKey && (e.key === 'e' || e.key === 'E')) {
+            e.preventDefault();
+            toggleSpriteEditor();
+        } else if (e.ctrlKey && e.shiftKey && (e.code === 'Digit3' || e.code === 'Numpad3')) {
             e.preventDefault();
             spawnCruiser();
         } else if (e.ctrlKey && e.shiftKey && (e.code === 'Digit4' || e.code === 'Numpad4')) {
@@ -303,4 +308,5 @@ export function initDebugKeyboardShortcuts() {
     window.spawnChitinusPrime = spawnChitinusPrime;
     window.spawnPsyLich = spawnPsyLich;
     window.enterDungeon1Debug = enterDungeon1Debug;
+    window.toggleSpriteEditor = toggleSpriteEditor;
 }
