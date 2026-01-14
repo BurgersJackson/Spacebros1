@@ -25,9 +25,23 @@ export function emitSmokeParticle(x, y, vx, vy, color = '#aaa') {
 
 export function compactParticles(arr) {
     immediateCompactArray(arr, (p) => {
+        // Release sprite from pool
         if (p.sprite && pixiParticleSpritePool) {
             releasePixiSprite(pixiParticleSpritePool, p.sprite);
             p.sprite = null;
+        }
+        // Clean up any custom PixiJS graphics
+        if (p._pixiCustomGfx) {
+            try { p._pixiCustomGfx.destroy({ children: true }); } catch (e) { }
+            p._pixiCustomGfx = null;
+        }
+        if (p._pixiText) {
+            try { p._pixiText.destroy(); } catch (e) { }
+            p._pixiText = null;
+        }
+        if (p._pixiGfx) {
+            try { p._pixiGfx.destroy({ children: true }); } catch (e) { }
+            p._pixiGfx = null;
         }
     });
 }
