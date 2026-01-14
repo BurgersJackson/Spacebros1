@@ -200,6 +200,7 @@ export const GameContext = {
     menuSelectionIndex: 0,
     overlayTimeout: null,
     DEBUG_COLLISION: false,
+    TEST_WARP_GATE_AT_START: false, // Set to true to spawn warp gate at game start for testing
     /**
      * @returns {void}
      */

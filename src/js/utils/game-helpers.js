@@ -94,6 +94,8 @@ export function handleSpaceStationDestroyed() {
     GameContext.stationHealthBarVisible = false;
     setTimeout(() => {
         GameContext.warpGateUnlocked = true;
+        // Reset suppression when warp gate unlocks to ensure it's usable
+        GameContext.suppressWarpGateUntil = 0;
     }, 30000);
     GameContext.score += 50000;
     if (GameContext.pendingStations > 0 && !GameContext.sectorTransitionActive) GameContext.nextSpaceStationTime = Date.now() + 7000;

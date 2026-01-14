@@ -455,6 +455,8 @@ export function gameLoopLogic(opts = null) {
                 const gx = GameContext.player.pos.x + 900;
                 const gy = GameContext.player.pos.y;
                 GameContext.warpGate = new WarpGate(gx, gy);
+                // Ensure warp gate is not suppressed when it spawns
+                GameContext.suppressWarpGateUntil = 0;
                 showOverlayMessage("WARP GATE OPEN", '#f80', 1600);
             }
         } else {

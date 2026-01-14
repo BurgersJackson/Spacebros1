@@ -23,6 +23,7 @@ export class WarpGate extends Entity {
         this.radius = 140;
         this.t = 0;
         this.mode = 'entry';
+        this._warpTriggered = false; // Prevent multiple triggers
     }
 
     /**
@@ -48,16 +49,31 @@ export class WarpGate extends Entity {
             GameContext.player.pos.x - this.pos.x,
             GameContext.player.pos.y - this.pos.y
         );
-        if (dist > this.radius + GameContext.player.radius) return;
+        
+        const threshold = this.radius + GameContext.player.radius;
+        
+        // Reset trigger flag if player moves away
+        if (dist > threshold + 50) {
+            this._warpTriggered = false;
+            return;
+        }
+
+        // Only proceed if player is within range
+        if (dist > threshold) return;
 
         if (GameContext.warpCompletedOnce) {
-            if (options.showMessage) {
+            if (options.showMessage && !this._warpTriggered) {
                 options.showMessage("WARP ALREADY USED THIS SECTOR", '#f80', 1200, 2);
             }
             return;
         }
 
         if (GameContext.warpZone && GameContext.warpZone.active) return;
+
+        // Only trigger once
+        if (this._warpTriggered) return;
+
+        this._warpTriggered = true;
 
         if (options.showMessage) {
             options.showMessage("WARP INITIATED", '#0ff', 1400, 3);
