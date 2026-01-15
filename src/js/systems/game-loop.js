@@ -12,6 +12,7 @@ import { updatePixiBackground, updatePixiCaveGrid } from '../rendering/backgroun
 import { drawMinimap } from '../rendering/minimap-renderer.js';
 import { setRenderAlpha } from '../rendering/pixi-context.js';
 import { formatTime } from '../utils/ui-helpers.js';
+import { updateCrtFilter } from '../ui/crt-filter.js';
 import { Enemy, WarpGate, SpaceStation, Destroyer, Destroyer2, Cruiser } from '../entities/index.js';
 import {
     scheduleNextMiniEvent,
@@ -1377,6 +1378,11 @@ export function gameLoopLogic(opts = null) {
         drawMiniEventIndicator();
         updateMiniEventUI();
         if (GameContext.bossActive && GameContext.boss && typeof GameContext.boss.drawBossHud === 'function') GameContext.boss.drawBossHud(uiCtx);
+
+        // Update CRT filter animation
+        if (updateCrtFilter) {
+            try { updateCrtFilter(); } catch (e) { }
+        }
 
         // Render Pixi overlay (MOVED from Update loop)
         if (pixiApp && pixiApp.renderer && pixiApp.stage) {

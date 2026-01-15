@@ -24,6 +24,9 @@ let getViewportSizeRef = null;
 let SAVE_PREFIX_REF = '';
 let SAVE_LAST_KEY_REF = '';
 
+let isCrtFilterEnabledRef = null;
+let toggleCrtFilterRef = null;
+
 let selectedProfileName = null;
 
 /**
@@ -56,6 +59,8 @@ export function registerSettingsManagerDependencies(deps) {
     getViewportSizeRef = deps.getViewportSize;
     SAVE_PREFIX_REF = deps.SAVE_PREFIX;
     SAVE_LAST_KEY_REF = deps.SAVE_LAST_KEY;
+    isCrtFilterEnabledRef = deps.isCrtFilterEnabled;
+    toggleCrtFilterRef = deps.toggleCrtFilter;
 }
 
 function formatPlayTime(ms) {
@@ -573,6 +578,7 @@ export function initSettingsMenu() {
     const fullscreenCheck = document.getElementById('fullscreen-check');
     const vsyncCheck = document.getElementById('vsync-check');
     const framelessCheck = document.getElementById('frameless-check');
+    const crtCheck = document.getElementById('crt-check');
 
     const isElectron = window.SpacebrosApp && window.SpacebrosApp.settings;
 

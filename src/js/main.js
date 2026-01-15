@@ -199,7 +199,11 @@ import {
     updateContractUI,
     updateNuggetUI,
     showLevelUpMenu,
-    updateMetaUI
+    updateMetaUI,
+    registerCrtFilterDependencies,
+    initCrtFilterUI,
+    isCrtFilterEnabled,
+    toggleCrtFilter
 } from './ui/index.js';
 import {
     initDebugKeyboardShortcuts,
@@ -612,7 +616,9 @@ registerSettingsManagerDependencies({
     initStars,
     getViewportSize: () => ({ width, height }),
     SAVE_PREFIX,
-    SAVE_LAST_KEY
+    SAVE_LAST_KEY,
+    isCrtFilterEnabled,
+    toggleCrtFilter
 });
 
 
@@ -1210,6 +1216,14 @@ registerMenuDependencies({
 initMenuUi();
 
 initSettingsMenu();
+
+// Initialize CRT filter
+registerCrtFilterDependencies({
+    GameContext,
+    showOverlayMessage,
+    getPixiApp: () => pixiApp
+});
+initCrtFilterUI();
 
 // Game helpers system
 registerGameHelperDependencies({

@@ -447,6 +447,7 @@ export function initMenuUi() {
         'pause-settings-btn',
         'restart-btn-pause',
         'music-btn',
+        'crt-toggle-btn',
         'quit-btn',
         'debug-btn',
         'desktop-quit-pause-btn'
