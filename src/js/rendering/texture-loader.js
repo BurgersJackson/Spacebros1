@@ -29,6 +29,10 @@ export const pixiTextures = {
     base_heavy: null,
     base_rapid: null,
 
+    cave_pinwheel_1: null,
+    cave_pinwheel_2: null,
+    cave_pinwheel_3: null,
+
     station_hull: null,
     station_core: null,
     station_turret: null,
@@ -728,6 +732,102 @@ base3Image.addEventListener('error', () => {
     base3Loaded = false;
 });
 
+// Cave Pinwheel Textures
+const CAVE_PINWHEEL1_URL = 'assets/cave_pinwheel1.png';
+const CAVE_PINWHEEL2_URL = 'assets/cave_pinwheel2.png';
+const CAVE_PINWHEEL3_URL = 'assets/cave_pinwheel3.png';
+const cavePinwheel1Image = new Image();
+const cavePinwheel2Image = new Image();
+const cavePinwheel3Image = new Image();
+cavePinwheel1Image.decoding = 'async';
+cavePinwheel2Image.decoding = 'async';
+cavePinwheel3Image.decoding = 'async';
+cavePinwheel1Image.src = CAVE_PINWHEEL1_URL;
+cavePinwheel2Image.src = CAVE_PINWHEEL2_URL;
+cavePinwheel3Image.src = CAVE_PINWHEEL3_URL;
+let cavePinwheel1Texture = null;
+let cavePinwheel2Texture = null;
+let cavePinwheel3Texture = null;
+let cavePinwheel1Loaded = false;
+let cavePinwheel2Loaded = false;
+let cavePinwheel3Loaded = false;
+
+export function applyCavePinwheel1Texture() {
+    if (!cavePinwheel1Loaded || cavePinwheel1Texture || !window.PIXI) return;
+    try {
+        const tex = PIXI.Texture.from(cavePinwheel1Image);
+        try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+        try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+
+        cavePinwheel1Texture = tex;
+        pixiTextures.cave_pinwheel_1 = tex;
+        pixiTextureAnchors.cave_pinwheel_1 = 0.5;
+
+        // Scale: 140/256 = 0.547 for 256x256 graphics
+        const desired = 140;
+        const denom = Math.max(1, Math.max(cavePinwheel1Image.naturalWidth || 1, cavePinwheel1Image.naturalHeight || 1));
+        pixiTextureBaseScales.cave_pinwheel_1 = desired / denom;
+    } catch (e) { }
+}
+
+export function applyCavePinwheel2Texture() {
+    if (!cavePinwheel2Loaded || cavePinwheel2Texture || !window.PIXI) return;
+    try {
+        const tex = PIXI.Texture.from(cavePinwheel2Image);
+        try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+        try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+
+        cavePinwheel2Texture = tex;
+        pixiTextures.cave_pinwheel_2 = tex;
+        pixiTextureAnchors.cave_pinwheel_2 = 0.5;
+
+        // Scale: 140/256 = 0.547 for 256x256 graphics
+        const desired = 140;
+        const denom = Math.max(1, Math.max(cavePinwheel2Image.naturalWidth || 1, cavePinwheel2Image.naturalHeight || 1));
+        pixiTextureBaseScales.cave_pinwheel_2 = desired / denom;
+    } catch (e) { }
+}
+
+export function applyCavePinwheel3Texture() {
+    if (!cavePinwheel3Loaded || cavePinwheel3Texture || !window.PIXI) return;
+    try {
+        const tex = PIXI.Texture.from(cavePinwheel3Image);
+        try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+        try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+
+        cavePinwheel3Texture = tex;
+        pixiTextures.cave_pinwheel_3 = tex;
+        pixiTextureAnchors.cave_pinwheel_3 = 0.5;
+
+        // Scale: 140/256 = 0.547 for 256x256 graphics
+        const desired = 140;
+        const denom = Math.max(1, Math.max(cavePinwheel3Image.naturalWidth || 1, cavePinwheel3Image.naturalHeight || 1));
+        pixiTextureBaseScales.cave_pinwheel_3 = desired / denom;
+    } catch (e) { }
+}
+
+cavePinwheel1Image.addEventListener('load', () => {
+    cavePinwheel1Loaded = true;
+    applyCavePinwheel1Texture();
+});
+cavePinwheel1Image.addEventListener('error', () => {
+    cavePinwheel1Loaded = false;
+});
+cavePinwheel2Image.addEventListener('load', () => {
+    cavePinwheel2Loaded = true;
+    applyCavePinwheel2Texture();
+});
+cavePinwheel2Image.addEventListener('error', () => {
+    cavePinwheel2Loaded = false;
+});
+cavePinwheel3Image.addEventListener('load', () => {
+    cavePinwheel3Loaded = true;
+    applyCavePinwheel3Texture();
+});
+cavePinwheel3Image.addEventListener('error', () => {
+    cavePinwheel3Loaded = false;
+});
+
 const CRUISER_URL = 'assets/cruiser.png';
 const cruiserImage = new Image();
 cruiserImage.decoding = 'async';
@@ -835,6 +935,9 @@ export function loadAllTextures() {
     applyBase1Texture();
     applyBase2Texture();
     applyBase3Texture();
+    applyCavePinwheel1Texture();
+    applyCavePinwheel2Texture();
+    applyCavePinwheel3Texture();
     applyCruiserTexture();
     applyWarpBossTexture();
     applyFinalBossTexture();

@@ -1,4 +1,7 @@
 
+export * from './CavePinwheel1.js';
+export * from './CavePinwheel2.js';
+export * from './CavePinwheel3.js';
 export * from './CaveGuidedMissile.js';
 export * from './CaveWallTurret.js';
 export * from './CaveWallSwitch.js';

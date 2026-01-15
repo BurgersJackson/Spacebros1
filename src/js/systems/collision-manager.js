@@ -1,5 +1,6 @@
 import { GameContext } from '../core/game-context.js';
 import { Enemy, Pinwheel, Destroyer, Destroyer2, SpaceStation, Cruiser } from '../entities/index.js';
+import { CavePinwheel1, CavePinwheel2, CavePinwheel3 } from '../entities/cave/index.js';
 
 let _spawnParticles = null;
 let _playSound = null;
@@ -138,6 +139,45 @@ export function checkWallCollision(entity, elasticity = 0) {
         }
     }
 
+    // Cave boss arena boundary (similar to station arena)
+    if (GameContext.caveBossArena && GameContext.caveBossArena.active && GameContext.caveMode) {
+        const dx = entity.pos.x - GameContext.caveBossArena.x;
+        const dy = entity.pos.y - GameContext.caveBossArena.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist > GameContext.caveBossArena.radius) {
+            if (entity === GameContext.player) {
+                if (Date.now() - GameContext.player.lastArenaDamageTime > 1000) {
+                    if (GameContext.player.invulnerable <= 0) {
+                        GameContext.player.hp -= 1;
+                        if (_playSound) _playSound('hit');
+                        if (_updateHealthUI) _updateHealthUI();
+                        if (_spawnParticles) _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 5, '#f80');
+                        if (_showOverlayMessage) _showOverlayMessage("ARENA BOUNDARY DAMAGE", '#f80', 1000);
+                        if (GameContext.player.hp <= 0) {
+                            if (_killPlayer) _killPlayer();
+                            else GameContext.player.dead = true;
+                        }
+                    }
+                    GameContext.player.lastArenaDamageTime = Date.now();
+                }
+            }
+
+            const angle = Math.atan2(dy, dx);
+            entity.pos.x = GameContext.caveBossArena.x + Math.cos(angle) * GameContext.caveBossArena.radius;
+            entity.pos.y = GameContext.caveBossArena.y + Math.sin(angle) * GameContext.caveBossArena.radius;
+
+            const nx = Math.cos(angle);
+            const ny = Math.sin(angle);
+            const dot = entity.vel.x * nx + entity.vel.y * ny;
+
+            if (dot > 0) {
+                entity.vel.x -= nx * dot * (1 + elasticity);
+                entity.vel.y -= ny * dot * (1 + elasticity);
+            }
+        }
+    }
+
     if (GameContext.dungeon1Arena.active && entity instanceof Enemy) return;
     if (GameContext.dungeon1Arena.active) {
         const dx = entity.pos.x - GameContext.dungeon1Arena.x;
@@ -213,7 +253,7 @@ export function checkBulletWallCollision(bullet) {
  * @returns {void}
  */
 export function resolveEntityCollision() {
-    const allEntities = [GameContext.player, ...GameContext.enemies, ...GameContext.pinwheels, ...(GameContext.contractEntities.fortresses || [])].filter(e => e && !e.dead);
+    const allEntities = [GameContext.player, ...GameContext.enemies, ...GameContext.pinwheels, ...GameContext.cavePinwheels, ...(GameContext.contractEntities.fortresses || [])].filter(e => e && !e.dead);
     if (GameContext.destroyer && !GameContext.destroyer.dead) allEntities.push(GameContext.destroyer);
     if (GameContext.bossActive && GameContext.boss && !GameContext.boss.dead) allEntities.push(GameContext.boss);
 
@@ -240,6 +280,9 @@ export function resolveEntityCollision() {
             // Destroyer only collides with player, skip destroyer vs other enemies
             if ((e1 instanceof Destroyer || e1 instanceof Destroyer2) && e2 !== GameContext.player) continue;
             if ((e2 instanceof Destroyer || e2 instanceof Destroyer2) && e1 !== GameContext.player) continue;
+            // Cave bosses only collide with player, skip cave boss vs other enemies
+            if (e1.isCaveBoss && e2 !== GameContext.player) continue;
+            if (e2.isCaveBoss && e1 !== GameContext.player) continue;
 
             let r1 = (e1 instanceof Destroyer || e1 instanceof Destroyer2) ? (e1.shieldRadius || e1.radius) : e1.radius;
             let r2 = (e2 instanceof Destroyer || e2 instanceof Destroyer2) ? (e2.shieldRadius || e2.radius) : e2.radius;
@@ -247,12 +290,14 @@ export function resolveEntityCollision() {
             if (e2.isWarpBoss) r2 = e2.shieldRadius || e2.radius;
             if (e1.isDungeonBoss) r1 = e1.shieldRadius || e1.radius;
             if (e2.isDungeonBoss) r2 = e2.shieldRadius || e2.radius;
+            if (e1.isCaveBoss) r1 = e1.shieldRadius || e1.radius;
+            if (e2.isCaveBoss) r2 = e2.shieldRadius || e2.radius;
             // Cruiser uses shield radius if shields are up, otherwise hull radius
             if (e1 instanceof Cruiser) r1 = (e1.shieldSegments && e1.shieldSegments.some(s => s > 0)) ? e1.shieldRadius : e1.radius;
             if (e2 instanceof Cruiser) r2 = (e2.shieldSegments && e2.shieldSegments.some(s => s > 0)) ? e2.shieldRadius : e2.radius;
 
-            const isStatic1 = (e1 instanceof Pinwheel) || (e1 instanceof SpaceStation) || e1.isDungeonBoss;
-            const isStatic2 = (e2 instanceof Pinwheel) || (e2 instanceof SpaceStation) || e2.isDungeonBoss;
+            const isStatic1 = (e1 instanceof Pinwheel) || (e1 instanceof SpaceStation) || e1.isDungeonBoss || e1.isCaveBoss;
+            const isStatic2 = (e2 instanceof Pinwheel) || (e2 instanceof SpaceStation) || e2.isDungeonBoss || e2.isCaveBoss;
             const e1IsDestroyer = (e1 instanceof Destroyer || e1 instanceof Destroyer2);
             const e2IsDestroyer = (e2 instanceof Destroyer || e2 instanceof Destroyer2);
 
@@ -318,7 +363,7 @@ export function resolveEntityCollision() {
         }
     }
 
-    const damageable = [GameContext.player, ...GameContext.enemies, ...GameContext.pinwheels, ...(GameContext.contractEntities.fortresses || [])];
+    const damageable = [GameContext.player, ...GameContext.enemies, ...GameContext.pinwheels, ...GameContext.cavePinwheels, ...(GameContext.contractEntities.fortresses || [])];
     if (GameContext.boss && GameContext.bossActive && !GameContext.boss.dead) damageable.push(GameContext.boss);
     if (GameContext.destroyer && !GameContext.destroyer.dead) damageable.push(GameContext.destroyer);
 
@@ -660,6 +705,38 @@ export function resolveEntityCollision() {
                     }
                 }
             }
+            if (!hitEntity) {
+                for (let b of GameContext.cavePinwheels) {
+                    if (!b || b.dead) continue;
+                    const dist = Math.hypot(s.pos.x - b.pos.x, s.pos.y - b.pos.y);
+                    if (dist < s.radius + b.radius) {
+                        b.hp -= s.damage;
+                        b.aggro = true;
+                        if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 18, '#fa0');
+                        if (_playSound) _playSound('explode');
+                        if (b.hp <= 0) {
+                            b.dead = true;
+                            if (_playSound) _playSound('base_explode');
+                            if (_spawnLargeExplosion) _spawnLargeExplosion(b.pos.x, b.pos.y, 2.0);
+                            // Award coins directly: 6 coins * 5 value = 30 total
+                            if (_awardCoinsInstant) _awardCoinsInstant(30, { noSound: false, sound: 'coin' });
+                            // Award nugget directly
+                            if (_awardNuggetsInstant) _awardNuggetsInstant(1, { noSound: false, sound: 'coin' });
+                            GameContext.pinwheelsDestroyed++;
+                            GameContext.pinwheelsDestroyedTotal++;
+                            GameContext.difficultyTier = 1 + Math.floor(GameContext.pinwheelsDestroyedTotal / 6);
+                            GameContext.score += 1000;
+                            const baseEl = document.getElementById('bases-display');
+                            if (baseEl) baseEl.innerText = `${GameContext.pinwheelsDestroyedTotal}`;
+                            GameContext.enemies.forEach(e => { if (e.assignedBase === b) e.type = 'roamer'; });
+                            const delay = 5000 + Math.random() * 5000;
+                            GameContext.baseRespawnTimers.push(Date.now() + delay);
+                        }
+                        hitEntity = true;
+                        break;
+                    }
+                }
+            }
             if (!hitEntity && GameContext.bossActive && GameContext.boss && !GameContext.boss.dead) {
                 // Skip ship-boss collision for cave bosses - enemies can fly through them
                 if (!GameContext.boss.isCaveBoss && typeof GameContext.boss.hitTestCircle === 'function' && GameContext.boss.hitTestCircle(s.pos.x, s.pos.y, s.radius)) {
@@ -951,7 +1028,10 @@ export function processBulletCollisions() {
 
                                         for (let other of nearby) {
                                             if (other.dead) continue;
-                                            if (!(other instanceof Enemy) && !(other instanceof Pinwheel)) continue;
+                                            const isEnemy = other instanceof Enemy;
+                                            const isPinwheel = other instanceof Pinwheel;
+                                            const isCavePinwheel = other instanceof CavePinwheel1 || other instanceof CavePinwheel2 || other instanceof CavePinwheel3;
+                                            if (!isEnemy && !isPinwheel && !isCavePinwheel) continue;
                                             if (other === GameContext.boss) continue;
                                             if (chainTargets.has(other)) continue;
 
@@ -1132,7 +1212,200 @@ export function processBulletCollisions() {
 
                                         for (let other of nearby) {
                                             if (other.dead) continue;
-                                            if (!(other instanceof Enemy) && !(other instanceof Pinwheel)) continue;
+                                            const isEnemy = other instanceof Enemy;
+                                            const isPinwheel = other instanceof Pinwheel;
+                                            const isCavePinwheel = other instanceof CavePinwheel1 || other instanceof CavePinwheel2 || other instanceof CavePinwheel3;
+                                            if (!isEnemy && !isPinwheel && !isCavePinwheel) continue;
+                                            if (other === GameContext.boss) continue;
+                                            if (chainTargets.has(other)) continue;
+
+                                            const d = Math.hypot(other.pos.x - chainSource.pos.x, other.pos.y - chainSource.pos.y);
+                                            if (d < nearestDist) {
+                                                nearestDist = d;
+                                                nearestTarget = other;
+                                            }
+                                        }
+
+                                        if (nearestTarget) {
+                                            const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                                            if (nearestTarget === GameContext.destroyer) {
+                                                const hpBefore = nearestTarget.hp;
+                                                nearestTarget.hp -= chainDamage;
+                                                console.log(`[DESTROYER DEBUG] CHAIN LIGHTNING: ${chainDamage.toFixed(1)} damage | HP: ${hpBefore} -> ${nearestTarget.hp} | Chain: ${chain + 1}`);
+                                            } else {
+                                                nearestTarget.hp -= chainDamage;
+                                            }
+                                            chainTargets.add(nearestTarget);
+
+                                            if (_spawnLightningArc) _spawnLightningArc(chainSource.pos.x, chainSource.pos.y, nearestTarget.pos.x, nearestTarget.pos.y, '#0ff');
+                                            if (_spawnParticles) _spawnParticles(nearestTarget.pos.x, nearestTarget.pos.y, 3, '#0ff');
+                                            if (_playSound) _playSound('hit');
+
+                                            if (nearestTarget.hp <= 0) {
+                                                nearestTarget.kill();
+                                                GameContext.score += 100;
+                                            }
+
+                                            chainSource = nearestTarget;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if (e.hp <= 0) {
+                                    e.dead = true;
+                                    if (_playSound) _playSound('base_explode');
+                                    if (_spawnLargeExplosion) _spawnLargeExplosion(e.pos.x, e.pos.y, 2.0);
+                                    // Award coins directly: 6 coins * 5 value = 30 total
+                                    if (_awardCoinsInstant) _awardCoinsInstant(30, { noSound: false, sound: 'coin' });
+                                    // Award nugget directly
+                                    if (_awardNuggetsInstant) _awardNuggetsInstant(1, { noSound: false, sound: 'coin' });
+                                }
+                                break;
+                            }
+                        }
+                        // Cave Pinwheels (CavePinwheel1, CavePinwheel2, CavePinwheel3) - same collision logic as regular Pinwheels
+                        if (e instanceof CavePinwheel1 || e instanceof CavePinwheel2 || e instanceof CavePinwheel3) {
+                            if (b.isEnemy) continue;
+                            const dx = b.pos.x - e.pos.x;
+                            const dy = b.pos.y - e.pos.y;
+                            const distSq = dx * dx + dy * dy;
+                            const dist = Math.sqrt(distSq);
+
+                            // Check shields: shields protect the hull, so if bullet is within shield radius and shield is active, block it
+                            // Check outer shield first (if bullet is within outer shield radius)
+                            if (!b.ignoreShields && e.shieldSegments && e.shieldSegments.length > 0 && dist < e.shieldRadius + b.radius) {
+                                // Find the shield segment based on angle
+                                const angle = Math.atan2(dy, dx);
+                                const normalizedAngle = (angle - (e.shieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                                const segCount = e.shieldSegments.length;
+                                const segAngle = (Math.PI * 2) / segCount;
+                                const segmentIdx = Math.floor(normalizedAngle / segAngle) % segCount;
+
+                                // Only check outer shield if bullet is outside inner shield (or no inner shield exists)
+                                const innerShieldOuterEdge = e.innerShieldSegments && e.innerShieldSegments.length > 0
+                                    ? e.innerShieldRadius + b.radius
+                                    : e.radius + b.radius;
+
+                                if (dist > innerShieldOuterEdge && e.shieldSegments[segmentIdx] > 0) {
+                                    const segmentHp = e.shieldSegments[segmentIdx];
+                                    if (b.damage >= segmentHp) {
+                                        e.shieldSegments[segmentIdx] = 0;
+                                    } else {
+                                        e.shieldSegments[segmentIdx] -= b.damage;
+                                    }
+                                    e.shieldsDirty = true;
+                                    hit = true;
+                                    e.aggro = true;
+                                    if (_playSound) _playSound('enemy_shield_hit');
+                                    if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
+                                }
+                            }
+                            // Check inner shield (if bullet is within inner shield radius but outside hull)
+                            if (!hit && !b.ignoreShields && e.innerShieldSegments && e.innerShieldSegments.length > 0 && dist < e.innerShieldRadius + b.radius && dist > e.radius + b.radius) {
+                                // Find the inner shield segment based on angle
+                                const angle = Math.atan2(dy, dx);
+                                const normalizedAngle = (angle - (e.innerShieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                                const innerCount = e.innerShieldSegments.length;
+                                const innerAngle = (Math.PI * 2) / innerCount;
+                                const segmentIdx = Math.floor(normalizedAngle / innerAngle) % innerCount;
+
+                                if (e.innerShieldSegments[segmentIdx] > 0) {
+                                    const segmentHp = e.innerShieldSegments[segmentIdx];
+                                    if (b.damage >= segmentHp) {
+                                        e.innerShieldSegments[segmentIdx] = 0;
+                                    } else {
+                                        e.innerShieldSegments[segmentIdx] -= b.damage;
+                                    }
+                                    e.shieldsDirty = true;
+                                    hit = true;
+                                    e.aggro = true;
+                                    if (_playSound) _playSound('enemy_shield_hit');
+                                    if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
+                                }
+                            }
+                            // Also check if bullet is inside hull but would pass through active shields
+                            // If there are active shields, they should block even bullets that are "inside" the hull visually
+                            if (!hit && !b.ignoreShields && dist < e.radius + b.radius) {
+                                // Check if any shields are still active - if so, they should block
+                                const hasActiveOuter = e.shieldSegments && e.shieldSegments.length > 0 && e.shieldSegments.some(s => s > 0);
+                                const hasActiveInner = e.innerShieldSegments && e.innerShieldSegments.length > 0 && e.innerShieldSegments.some(s => s > 0);
+
+                                if (hasActiveOuter || hasActiveInner) {
+                                    // Bullet is inside hull radius but shields are still up - check which shield should block
+                                    const angle = Math.atan2(dy, dx);
+
+                                    // Check inner shield first (closer to hull)
+                                    if (hasActiveInner && e.innerShieldSegments && e.innerShieldSegments.length > 0) {
+                                        const normalizedAngle = (angle - (e.innerShieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                                        const innerCount = e.innerShieldSegments.length;
+                                        const innerAngle = (Math.PI * 2) / innerCount;
+                                        const segmentIdx = Math.floor(normalizedAngle / innerAngle) % innerCount;
+
+                                        if (e.innerShieldSegments[segmentIdx] > 0) {
+                                            const segmentHp = e.innerShieldSegments[segmentIdx];
+                                            if (b.damage >= segmentHp) {
+                                                e.innerShieldSegments[segmentIdx] = 0;
+                                            } else {
+                                                e.innerShieldSegments[segmentIdx] -= b.damage;
+                                            }
+                                            e.shieldsDirty = true;
+                                            hit = true;
+                                            e.aggro = true;
+                                            if (_playSound) _playSound('enemy_shield_hit');
+                                            if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#ff0');
+                                        }
+                                    }
+
+                                    // If inner didn't block, check outer shield
+                                    if (!hit && hasActiveOuter && e.shieldSegments && e.shieldSegments.length > 0) {
+                                        const normalizedAngle = (angle - (e.shieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                                        const segCount = e.shieldSegments.length;
+                                        const segAngle = (Math.PI * 2) / segCount;
+                                        const segmentIdx = Math.floor(normalizedAngle / segAngle) % segCount;
+
+                                        if (e.shieldSegments[segmentIdx] > 0) {
+                                            const segmentHp = e.shieldSegments[segmentIdx];
+                                            if (b.damage >= segmentHp) {
+                                                e.shieldSegments[segmentIdx] = 0;
+                                            } else {
+                                                e.shieldSegments[segmentIdx] -= b.damage;
+                                            }
+                                            e.shieldsDirty = true;
+                                            hit = true;
+                                            e.aggro = true;
+                                            if (_playSound) _playSound('enemy_shield_hit');
+                                            if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, '#f0f');
+                                        }
+                                    }
+                                }
+                            }
+
+                            const hitRadius = e.radius + b.radius;
+                            if (!hit && distSq < hitRadius * hitRadius) {
+                                e.hp -= b.damage;
+                                hit = true;
+                                e.aggro = true;
+                                if (_playSound) _playSound('hit');
+                                if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, '#fff');
+
+                                if (GameContext.player.chainLightningCount && GameContext.player.chainLightningCount > 0 && GameContext.player.chainLightningRange && !b.isEnemy) {
+                                    let chainCount = GameContext.player.chainLightningCount;
+                                    let chainSource = e;
+                                    let chainTargets = new Set();
+                                    chainTargets.add(e);
+
+                                    for (let chain = 0; chain < chainCount; chain++) {
+                                        let nearestTarget = null;
+                                        let nearestDist = GameContext.player.chainLightningRange;
+
+                                        for (let other of nearby) {
+                                            if (other.dead) continue;
+                                            const isEnemy = other instanceof Enemy;
+                                            const isPinwheel = other instanceof Pinwheel;
+                                            const isCavePinwheel = other instanceof CavePinwheel1 || other instanceof CavePinwheel2 || other instanceof CavePinwheel3;
+                                            if (!isEnemy && !isPinwheel && !isCavePinwheel) continue;
                                             if (other === GameContext.boss) continue;
                                             if (chainTargets.has(other)) continue;
 

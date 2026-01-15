@@ -48,6 +48,7 @@ export function completeSectorWarp() {
     deps.clearArrayWithPixiCleanup(GameContext.guidedMissiles);
     deps.clearArrayWithPixiCleanup(GameContext.enemies);
     deps.clearArrayWithPixiCleanup(GameContext.pinwheels);
+    deps.clearArrayWithPixiCleanup(GameContext.cavePinwheels);
     deps.clearArrayWithPixiCleanup(GameContext.coins);
     deps.clearArrayWithPixiCleanup(GameContext.nuggets);
     deps.clearArrayWithPixiCleanup(GameContext.environmentAsteroids);
@@ -126,6 +127,7 @@ export function startCaveSector2() {
     GameContext.nextIntensityBreakAt = Date.now() + 999999999;
 
     deps.clearArrayWithPixiCleanup(GameContext.pinwheels);
+    deps.clearArrayWithPixiCleanup(GameContext.cavePinwheels);
     GameContext.baseRespawnTimers = [];
     GameContext.roamerRespawnQueue = [];
     GameContext.maxRoamers = 0;

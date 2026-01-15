@@ -1066,6 +1066,18 @@ export class Spaceship extends Entity {
             }
         }
 
+        // Check cave pinwheels array
+        if (typeof GameContext.cavePinwheels !== 'undefined') {
+            for (let p of GameContext.cavePinwheels) {
+                if (p.dead) continue;
+                const dist = Math.hypot(p.pos.x - this.pos.x, p.pos.y - this.pos.y);
+                if (dist <= range && dist < minDist) {
+                    minDist = dist;
+                    nearestTarget = p;
+                }
+            }
+        }
+
         // Check cave wall turrets
         if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active && GameContext.caveLevel.wallTurrets) {
             for (let t of GameContext.caveLevel.wallTurrets) {

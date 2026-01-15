@@ -14,6 +14,7 @@ export function setupGameWorld() {
     deps.clearArrayWithPixiCleanup(GameContext.guidedMissiles);
     deps.clearArrayWithPixiCleanup(GameContext.enemies);
     deps.clearArrayWithPixiCleanup(GameContext.pinwheels);
+    deps.clearArrayWithPixiCleanup(GameContext.cavePinwheels);
     deps.clearArrayWithPixiCleanup(GameContext.particles);
     deps.clearArrayWithPixiCleanup(GameContext.explosions);
     deps.clearArrayWithPixiCleanup(GameContext.floatingTexts);

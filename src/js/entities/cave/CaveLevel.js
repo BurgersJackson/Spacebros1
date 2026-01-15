@@ -52,6 +52,9 @@ export class CaveLevel {
         this.finalSpawned = false;
         this.enemySpawnCooldown = 0;
         this.critterSpawnCooldown = 0;
+        // Cave boss arena state
+        this.bossArenaPlaced = false;
+        this.bossArenaTier = null;
     }
 
     generate() {
@@ -543,13 +546,19 @@ export class CaveLevel {
             const progress = dist / caveLen;
 
             // Simple boss encounter logic without gates
-            if (progress > 0.33 && this.bossesDefeated === 0 && !GameContext.bossActive) {
-                this.spawnBoss(1);
-            } else if (progress > 0.66 && this.bossesDefeated === 1 && !GameContext.bossActive) {
-                this.spawnBoss(2);
-            } else if (progress > 0.95 && this.bossesDefeated === 2 && !GameContext.bossActive && !this.finalSpawned) {
-                this.spawnBoss(3);
+            // Place cave boss arena at progress thresholds
+            if (progress > 0.30 && this.bossesDefeated === 0 && !this.bossArenaPlaced && !GameContext.bossActive) {
+                this.placeBossArena(1);
+            } else if (progress > 0.63 && this.bossesDefeated === 1 && !this.bossArenaPlaced && !GameContext.bossActive) {
+                this.placeBossArena(2);
+            } else if (progress > 0.92 && this.bossesDefeated === 2 && !this.bossArenaPlaced && !GameContext.bossActive && !this.finalSpawned) {
+                this.placeBossArena(3);
                 this.finalSpawned = true;
+            }
+
+            // Check if player entered arena (spawn boss if not yet spawned)
+            if (this.bossArenaPlaced && GameContext.caveBossArena && !GameContext.caveBossArena.bossSpawned) {
+                this.checkArenaEntry();
             }
         }
 
@@ -573,6 +582,68 @@ export class CaveLevel {
         if (caveDeps.showOverlayMessage) caveDeps.showOverlayMessage("WARNING: TITAN CLASS DETECTED", "#f00", 3000, 5);
 
         // This relies on BossArena logic in main.js to trap player.
+    }
+
+    placeBossArena(tier) {
+        if (!GameContext.player) return;
+
+        // Place arena ahead of player (3000 units forward)
+        const playerY = GameContext.player.pos.y;
+        const arenaY = playerY - 3000;  // Ahead of player
+
+        GameContext.caveBossArena.x = 0;
+        GameContext.caveBossArena.y = arenaY;
+        GameContext.caveBossArena.radius = 2500;
+        GameContext.caveBossArena.active = false;
+        GameContext.caveBossArena.bossSpawned = false;
+
+        this.bossArenaPlaced = true;
+        this.bossArenaTier = tier;
+
+        // Warning message
+        const bossNames = ["", "CAVE CRYPTID", "HOLLOW HORROR", "VOID TERROR"];
+        const bossName = bossNames[tier];
+        if (caveDeps.showOverlayMessage) {
+            caveDeps.showOverlayMessage(`${bossName} LAIR AHEAD - ENTER TO CONFRONT`, "#fa0", 3000);
+        }
+    }
+
+    checkArenaEntry() {
+        if (!GameContext.player || !GameContext.caveBossArena || GameContext.caveBossArena.bossSpawned) return;
+
+        const pdx = GameContext.player.pos.x - GameContext.caveBossArena.x;
+        const pdy = GameContext.player.pos.y - GameContext.caveBossArena.y;
+        const pdist = Math.hypot(pdx, pdy);
+
+        // Player entered the arena circle
+        if (pdist < GameContext.caveBossArena.radius * 0.7) {  // Enter 70% of radius
+            this.spawnBossFromArena();
+        }
+    }
+
+    spawnBossFromArena() {
+        const tier = this.bossArenaTier;
+        const arenaY = GameContext.caveBossArena.y;
+
+        // Spawn boss at arena center
+        const boss = createCaveMonsterBoss(0, arenaY, tier);
+        GameContext.enemies.push(boss);
+        GameContext.boss = boss;
+        GameContext.bossActive = true;
+
+        // Activate arena (lock player in)
+        GameContext.caveBossArena.active = true;
+        GameContext.caveBossArena.bossSpawned = true;
+
+        const bossNames = ["", "CAVE CRYPTID", "HOLLOW HORROR", "VOID TERROR"];
+        const bossName = bossNames[tier];
+
+        if (caveDeps.showOverlayMessage) {
+            caveDeps.showOverlayMessage(`${bossName} ENGAGED - ARENA LOCKED`, "#f00", 3000);
+        }
+        if (caveDeps.playSound) {
+            caveDeps.playSound('boss_spawn');
+        }
     }
 
     initPixi() {
@@ -703,5 +774,35 @@ export class CaveLevel {
             gfx.moveTo(-this.baseWidth, fy);
             gfx.lineTo(this.baseWidth, fy);
         }
+    }
+
+    drawCaveBossArena(ctx) {
+        if (!this.bossArenaPlaced) return;
+
+        const arena = GameContext.caveBossArena;
+        // Don't draw arena if boss was spawned but is now dead
+        if (arena.bossSpawned && (!GameContext.bossActive || !GameContext.boss || GameContext.boss.dead)) return;
+
+        const pulse = 0.5 + Math.sin(Date.now() * 0.008) * 0.3;
+
+        ctx.save();
+        ctx.translate(arena.x, arena.y);
+
+        // Color changes when active (locked)
+        const isActive = arena.active;
+        ctx.strokeStyle = isActive ?
+            `rgba(255,50,50,${0.5 + pulse * 0.3})` :    // Red when locked
+            `rgba(255,200,50,${0.25 + pulse * 0.15})`;  // Orange when waiting
+        ctx.lineWidth = 12;
+        ctx.shadowBlur = isActive ? 40 : 20;
+        ctx.shadowColor = isActive ? '#f00' : '#fa0';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        ctx.beginPath();
+        ctx.arc(0, 0, arena.radius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.restore();
     }
 }

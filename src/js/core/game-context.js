@@ -19,6 +19,7 @@ export const GameContext = {
     napalmZones: [],
     enemies: [],
     pinwheels: [],
+    cavePinwheels: [],
     particles: [],
     lightningArcs: [],
     explosions: [],
@@ -55,6 +56,7 @@ export const GameContext = {
     psyLich: null,
     bossArena: { x: 0, y: 0, radius: 2500, active: false, growing: false, countdownActive: false, countdownEndTime: 0 },
     stationArena: { x: 0, y: 0, radius: 2800, active: false },
+    caveBossArena: { x: 0, y: 0, radius: 2500, active: false, bossSpawned: false },
     dungeon1Arena: { x: 0, y: 0, radius: 3000, active: false },
     caveMode: false,
     caveLevel: null,
@@ -218,6 +220,7 @@ export const GameContext = {
         this.napalmZones = [];
         this.enemies = [];
         this.pinwheels = [];
+        this.cavePinwheels = [];
         this.particles = [];
         this.lightningArcs = [];
         this.explosions = [];
@@ -250,6 +253,7 @@ export const GameContext = {
         this.psyLich = null;
         this.bossArena = { x: 0, y: 0, radius: 2500, active: false, growing: false };
         this.stationArena = { x: 0, y: 0, radius: 2800, active: false };
+        this.caveBossArena = { x: 0, y: 0, radius: 2500, active: false, bossSpawned: false };
         this.dungeon1Arena = { x: 0, y: 0, radius: 3000, active: false };
         this.caveMode = false;
         this.caveLevel = null;

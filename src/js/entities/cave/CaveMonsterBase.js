@@ -139,6 +139,9 @@ export class CaveMonsterBase extends Entity {
         // Reinforcement spawning
         this.reinforcementCooldown = 360; // 6 seconds at 60fps reference
         this.reinforcementTimer = 360;
+        // Summon limits based on boss tier
+        this.maxCaveGunboats = 2; // Total: 1 cave_gunboat1 + 1 cave_gunboat2
+        this.maxDefenders = this.monsterType === 1 ? 3 : (this.monsterType === 2 ? 4 : 5);
 
         // Movement
         this.strafeAngle = 0;
@@ -303,11 +306,40 @@ export class CaveMonsterBase extends Entity {
     }
 
     spawnReinforcements() {
-        const count = 1 + Math.floor(Math.random() * 2); // 1-2 enemies
-        const enemyTypes = ['cave_gunboat1', 'roamer', 'defender'];
+        // Count current summoned enemies by type
+        let caveGunboat1Count = 0;
+        let caveGunboat2Count = 0;
+        let defenderCount = 0;
+
+        for (const enemy of GameContext.enemies) {
+            if (enemy.dead) continue;
+            if (enemy.type === 'cave_gunboat1') caveGunboat1Count++;
+            else if (enemy.type === 'cave_gunboat2') caveGunboat2Count++;
+            else if (enemy.type === 'defender') defenderCount++;
+        }
+
+        // Determine what we can spawn based on limits
+        const canSpawnGunboat1 = caveGunboat1Count < 1;
+        const canSpawnGunboat2 = caveGunboat2Count < 1;
+        const canSpawnDefender = defenderCount < this.maxDefenders;
+
+        // Build list of available spawn types
+        const availableTypes = [];
+        if (canSpawnGunboat1) availableTypes.push('cave_gunboat1');
+        if (canSpawnGunboat2) availableTypes.push('cave_gunboat2');
+        if (canSpawnDefender) availableTypes.push('defender');
+
+        // If nothing available to spawn, return
+        if (availableTypes.length === 0) return;
+
+        // Spawn 1-2 enemies from available types
+        const count = 1 + Math.floor(Math.random() * Math.min(2, availableTypes.length));
 
         for (let i = 0; i < count; i++) {
-            const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+            // Pick a random type from available
+            const typeIndex = Math.floor(Math.random() * availableTypes.length);
+            const type = availableTypes[typeIndex];
+
             const angle = Math.random() * Math.PI * 2;
             const dist = 400 + Math.random() * 200;
             const ex = this.pos.x + Math.cos(angle) * dist;
@@ -315,6 +347,10 @@ export class CaveMonsterBase extends Entity {
 
             const enemy = new Enemy(type, { x: ex, y: ey }, null);
             GameContext.enemies.push(enemy);
+
+            // Remove this type from available so we don't spawn it twice in one call
+            availableTypes.splice(typeIndex, 1);
+            if (availableTypes.length === 0) break;
         }
         playSound('powerup');
     }
@@ -387,7 +423,7 @@ export class CaveMonsterBase extends Entity {
         if (caveDeps.showOverlayMessage) caveDeps.showOverlayMessage(`${this.displayName} DESTROYED`, '#0f0', 2800, 3);
 
         GameContext.bossActive = false;
-        GameContext.bossArena.active = false;
+        GameContext.caveBossArena.active = false;
         if (GameContext.boss) pixiCleanupObject(GameContext.boss);
         GameContext.boss = null;
 

@@ -2,6 +2,7 @@ import { GameContext } from '../core/game-context.js';
 import { EnvironmentAsteroid } from '../entities/environment/EnvironmentAsteroid.js';
 import { Enemy } from '../entities/enemies/Enemy.js';
 import { Pinwheel } from '../entities/enemies/Pinwheel.js';
+import { CavePinwheel1, CavePinwheel2, CavePinwheel3 } from '../entities/cave/index.js';
 import { Drone } from '../entities/support/Drone.js';
 import { findSpawnPointRelative } from '../utils/spawn-utils.js';
 import { playSound } from '../audio/audio-manager.js';
@@ -148,11 +149,8 @@ export function spawnOneWarpAsteroidRelative(initial = false) {
 
 export function spawnNewPinwheelRelative(initial = false) {
     if (!GameContext.player) return;
-    const availableTypes = ['standard'];
-    if (GameContext.difficultyTier >= 2) availableTypes.push('rapid');
-    if (GameContext.difficultyTier >= 3) availableTypes.push('heavy');
 
-    const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+    // Determine position
     let angle;
     if (initial) {
         angle = Math.random() * Math.PI * 2;
@@ -175,8 +173,31 @@ export function spawnNewPinwheelRelative(initial = false) {
         by = GameContext.player.pos.y + Math.sin(angle) * dist;
     }
 
-    const b = new Pinwheel(bx, by, type);
-    GameContext.pinwheels.push(b);
+    let b;
+    if (GameContext.caveMode) {
+        // Spawn cave pinwheels in cave mode
+        const caveTypes = ['cave1'];
+        if (GameContext.difficultyTier >= 2) caveTypes.push('cave2');  // Rapid variant
+        if (GameContext.difficultyTier >= 3) caveTypes.push('cave3');  // Heavy variant
+
+        const type = caveTypes[Math.floor(Math.random() * caveTypes.length)];
+        if (type === 'cave1') b = new CavePinwheel1(bx, by);
+        else if (type === 'cave2') b = new CavePinwheel2(bx, by);
+        else b = new CavePinwheel3(bx, by);
+
+        GameContext.cavePinwheels.push(b);
+    } else {
+        // Original regular pinwheel spawning logic
+        const availableTypes = ['standard'];
+        if (GameContext.difficultyTier >= 2) availableTypes.push('rapid');
+        if (GameContext.difficultyTier >= 3) availableTypes.push('heavy');
+
+        const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+        b = new Pinwheel(bx, by, type);
+        GameContext.pinwheels.push(b);
+    }
+
+    // Spawn defender escort
     const da = Math.random() * Math.PI * 2;
     const defX = b.pos.x + Math.cos(da) * 150;
     const defY = b.pos.y + Math.sin(da) * 150;

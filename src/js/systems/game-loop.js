@@ -361,6 +361,10 @@ export function gameLoopLogic(opts = null) {
     if (GameContext.stationArena.active && (!GameContext.spaceStation || GameContext.spaceStation.dead)) {
         GameContext.stationArena.active = false;
     }
+    // Safety: deactivate cave boss arena if boss gone
+    if (GameContext.caveBossArena && GameContext.caveBossArena.active && GameContext.caveMode && (!GameContext.bossActive || !GameContext.boss || GameContext.boss.dead)) {
+        GameContext.caveBossArena.active = false;
+    }
     const doDraw = !(opts && opts.doDraw === false);
     const doUpdate = !(opts && opts.doUpdate === false);
     const deltaTime = (opts && opts.deltaTime) || SIM_STEP_MS; // Default to 60fps step for backwards compatibility
@@ -389,6 +393,7 @@ export function gameLoopLogic(opts = null) {
             resetPixiOverlaySprites();
             clearArrayWithPixiCleanup(GameContext.enemies);
             clearArrayWithPixiCleanup(GameContext.pinwheels);
+            clearArrayWithPixiCleanup(GameContext.cavePinwheels);
             clearArrayWithPixiCleanup(GameContext.bullets);
             clearArrayWithPixiCleanup(GameContext.bossBombs);
             clearArrayWithPixiCleanup(GameContext.floatingTexts);
@@ -535,6 +540,7 @@ export function gameLoopLogic(opts = null) {
                 }
                 clearArrayWithPixiCleanup(enemies);
     clearArrayWithPixiCleanup(pinwheels);
+    clearArrayWithPixiCleanup(cavePinwheels);
     baseRespawnTimers = [];
                 roamerRespawnQueue = [];
                 // Clear all bullets to prevent immediate cruiser death
@@ -759,6 +765,7 @@ export function gameLoopLogic(opts = null) {
         GameContext.targetGrid.clear();
         for (let i = 0; i < GameContext.enemies.length; i++) GameContext.targetGrid.insert(GameContext.enemies[i]);
         for (let i = 0; i < GameContext.pinwheels.length; i++) GameContext.targetGrid.insert(GameContext.pinwheels[i]);
+        for (let i = 0; i < GameContext.cavePinwheels.length; i++) GameContext.targetGrid.insert(GameContext.cavePinwheels[i]);
         for (let i = 0; i < GameContext.shootingStars.length; i++) GameContext.targetGrid.insert(GameContext.shootingStars[i]);
         if (GameContext.contractEntities) {
             if (GameContext.contractEntities.fortresses) {
@@ -794,13 +801,16 @@ export function gameLoopLogic(opts = null) {
                 else targetBases = 4;
             }
 
-            if (GameContext.pinwheels.length < targetBases) {
+            const currentPinwheels = GameContext.caveMode ? GameContext.cavePinwheels.length : GameContext.pinwheels.length;
+
+            if (currentPinwheels < targetBases) {
                 if (GameContext.baseRespawnTimers.length === 0) spawnNewPinwheelRelative();
             }
 
             for (let i = GameContext.baseRespawnTimers.length - 1; i >= 0; i--) {
                 if (now > GameContext.baseRespawnTimers[i]) {
-                    if (GameContext.pinwheels.length < targetBases) {
+                    const currentPinwheelsCheck = GameContext.caveMode ? GameContext.cavePinwheels.length : GameContext.pinwheels.length;
+                    if (currentPinwheelsCheck < targetBases) {
                         spawnNewPinwheelRelative();
                         GameContext.baseRespawnTimers.splice(i, 1);
                     } else {
@@ -961,6 +971,11 @@ export function gameLoopLogic(opts = null) {
         GameContext.caveLevel.drawFireWall(ctx, camX, camY, width, height, zoom);
     }
 
+    // Draw cave boss arena
+    if (doDraw && caveActive && GameContext.caveLevel && typeof GameContext.caveLevel.drawCaveBossArena === 'function') {
+        GameContext.caveLevel.drawCaveBossArena(ctx);
+    }
+
     if (doUpdate) globalProfiler.end('LevelLogic');
     // Asteroids should render behind everything else (drops, ships, UI).
     globalProfiler.start('Entities');
@@ -1071,6 +1086,13 @@ export function gameLoopLogic(opts = null) {
     // Pinwheels - always update (can fire), cull drawing
     for (let i = 0, len = GameContext.pinwheels.length; i < len; i++) {
         const b = GameContext.pinwheels[i];
+        if (doUpdate) b.update(deltaTime);
+        if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
+    }
+
+    // Cave Pinwheels - always update (can fire), cull drawing
+    for (let i = 0, len = GameContext.cavePinwheels.length; i < len; i++) {
+        const b = GameContext.cavePinwheels[i];
         if (doUpdate) b.update(deltaTime);
         if (doDraw && isInView(b.pos.x, b.pos.y)) b.draw(ctx);
     }
@@ -1281,6 +1303,7 @@ export function gameLoopLogic(opts = null) {
         });
         immediateCompactArray(GameContext.enemies, pixiCleanupObject);
         immediateCompactArray(GameContext.pinwheels, pixiCleanupObject);
+        immediateCompactArray(GameContext.cavePinwheels, pixiCleanupObject);
         immediateCompactArray(GameContext.environmentAsteroids, pixiCleanupObject);
 
         // Explosion cleanup with safety check for uncleaned sprites
