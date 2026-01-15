@@ -138,7 +138,7 @@ export class CaveLevel {
             : (this.startY + 600);
         this.fireWall = {
             y: baseY + gap,
-            speed: 160,
+            speed: 176, // 160 * 1.1 (10% increase)
             damagePerSecond: 5,
             damageTimer: 0,
             minY: this.endY + 1200
@@ -149,8 +149,13 @@ export class CaveLevel {
         if (!this.active || !this.fireWall) return;
         const fire = this.fireWall;
         const dtSec = Math.max(0, deltaTime) / 1000;
-        fire.y -= fire.speed * dtSec;
-        if (fire.minY !== undefined && fire.y < fire.minY) fire.y = fire.minY;
+        
+        // Pause firewall movement if player is fighting a boss in cave level
+        const isBossFightActive = GameContext.bossActive && GameContext.boss && !GameContext.boss.dead && GameContext.caveMode;
+        if (!isBossFightActive) {
+            fire.y -= fire.speed * dtSec;
+            if (fire.minY !== undefined && fire.y < fire.minY) fire.y = fire.minY;
+        }
 
         if (GameContext.player && !GameContext.player.dead && GameContext.player.pos.y >= fire.y) {
             fire.damageTimer += deltaTime;
@@ -164,12 +169,7 @@ export class CaveLevel {
             fire.damageTimer = 0;
         }
 
-        for (let i = 0; i < GameContext.enemies.length; i++) {
-            const e = GameContext.enemies[i];
-            if (e && !e.dead && e.pos.y >= fire.y && typeof e.takeHit === 'function') {
-                e.takeHit(fire.damagePerSecond * dtSec);
-            }
-        }
+        // Firewall no longer damages enemies - removed enemy damage loop
     }
 
     boundsAt(y) {
@@ -270,7 +270,25 @@ export class CaveLevel {
     }
 
     applyFireWallCollision(entity) {
-        return;
+        if (!this.active || !this.fireWall || !entity || entity.dead) return;
+        
+        // Only collide with player, other entities can pass through
+        if (entity !== GameContext.player) return;
+        
+        const fire = this.fireWall;
+        const playerY = entity.pos.y;
+        
+        // If player is at or below firewall, push them up
+        if (playerY >= fire.y) {
+            const pushForce = 8; // Push force to keep player above firewall
+            entity.pos.y = fire.y - 1; // Position player just above firewall
+            // Also add upward velocity to help player escape
+            if (entity.vel && entity.vel.y < 0) {
+                entity.vel.y = Math.max(entity.vel.y, -pushForce);
+            } else if (entity.vel) {
+                entity.vel.y = -pushForce;
+            }
+        }
     }
 
     bulletHitsWall(bullet) {

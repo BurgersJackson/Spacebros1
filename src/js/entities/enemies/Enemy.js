@@ -236,10 +236,6 @@ export class Enemy extends Entity {
             
             let total = count * val;
             if (this.isGunboat) total += 10 + (5 * 2);
-            // Reduce roamer-style coin income in Level 2.
-            if (caveActive && (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter')) {
-                total = Math.floor(total * 0.75);
-            }
             if (_awardCoinsInstant && total > 0) _awardCoinsInstant(total, { noSound: false, sound: 'coin' });
             
             // Award nuggets directly
