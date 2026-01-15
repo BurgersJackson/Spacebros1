@@ -22,7 +22,8 @@
       "Bash(file:*)",
       "Bash(npm install:*)",
       "Bash(dir:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(npm run test)"
     ]
   },
   "outputStyle": "default"

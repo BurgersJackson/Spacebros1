@@ -576,6 +576,25 @@ export function resolveEntityCollision() {
             }
         }
 
+        // Check collision with cave wall turrets
+        if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active && GameContext.caveLevel.wallTurrets) {
+            for (let t of GameContext.caveLevel.wallTurrets) {
+                if (!t || t.dead) continue;
+                const dist = Math.hypot(GameContext.player.pos.x - t.pos.x, GameContext.player.pos.y - t.pos.y);
+                const collisionRadius = t.outerShieldRadius || t.radius;
+                if (dist < GameContext.player.radius + collisionRadius) {
+                    // Push player back and apply damage
+                    const angle = Math.atan2(GameContext.player.pos.y - t.pos.y, GameContext.player.pos.x - t.pos.x);
+                    GameContext.player.vel.x += Math.cos(angle) * 2;
+                    GameContext.player.vel.y += Math.sin(angle) * 2;
+                    GameContext.player.takeHit(2);
+                    if (_updateHealthUI) _updateHealthUI();
+                    if (_playSound) _playSound('hit');
+                    if (_spawnParticles) _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 8, '#f00');
+                }
+            }
+        }
+
         for (let s of GameContext.shootingStars) {
             if (s.dead) continue;
 
@@ -1205,6 +1224,17 @@ export function processBulletCollisions() {
                                     break;
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Check cave wall turrets
+                if (!hit && !b.isEnemy && GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active && GameContext.caveLevel.wallTurrets && GameContext.caveLevel.wallTurrets.length > 0) {
+                    for (let t of GameContext.caveLevel.wallTurrets) {
+                        if (!t || t.dead) continue;
+                        if (typeof t.hitByPlayerBullet === 'function' && t.hitByPlayerBullet(b)) {
+                            hit = true;
+                            break;
                         }
                     }
                 }

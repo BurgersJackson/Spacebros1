@@ -1019,6 +1019,15 @@ registerWarpBioPodDependencies({
     spawnParticles
 });
 
+Cave.registerCaveWallTurretDependencies({
+    spawnParticles,
+    updateHealthUI,
+    killPlayer,
+    awardCoinsInstant,
+    closestPointOnSegment,
+    spawnLargeExplosion
+});
+
 registerDungeonDroneDependencies({
     spawnParticles
 });

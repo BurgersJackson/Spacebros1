@@ -396,6 +396,13 @@ let monster1Loaded = false;
 let monster2Loaded = false;
 let monster4Loaded = false;
 
+const CAVE_TURRET_URL = 'assets/caveturret.png';
+const caveTurretImage = new Image();
+caveTurretImage.decoding = 'async';
+caveTurretImage.src = CAVE_TURRET_URL;
+let caveTurretTexture = null;
+let caveTurretLoaded = false;
+
 export function applyMonsterTextures() {
     if (!window.PIXI) return;
     try {
@@ -453,6 +460,28 @@ monster4Image.addEventListener('load', () => {
 });
 monster4Image.addEventListener('error', () => {
     monster4Loaded = false;
+});
+
+export function applyCaveTurretTexture() {
+    if (!caveTurretLoaded || caveTurretTexture || !window.PIXI) return;
+    try {
+        const tex = PIXI.Texture.from(caveTurretImage);
+        try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+        try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+        caveTurretTexture = tex;
+        pixiTextures.cave_turret = tex;
+        pixiTextureAnchors.cave_turret = 0.5;
+        pixiTextureRotOffsets.cave_turret = 0;
+    } catch (e) {
+    }
+}
+
+caveTurretImage.addEventListener('load', () => {
+    caveTurretLoaded = true;
+    applyCaveTurretTexture();
+});
+caveTurretImage.addEventListener('error', () => {
+    caveTurretLoaded = false;
 });
 
 const NUGGET_URL = 'assets/nugget.png';
@@ -738,6 +767,7 @@ export function loadAllTextures() {
     applyDestroyer2Texture();
     applyDungeonTextures();
     applyMonsterTextures();
+    applyCaveTurretTexture();
     applyNuggetTexture();
     applyBase1Texture();
     applyBase2Texture();

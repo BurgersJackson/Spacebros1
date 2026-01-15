@@ -1066,6 +1066,18 @@ export class Spaceship extends Entity {
             }
         }
 
+        // Check cave wall turrets
+        if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active && GameContext.caveLevel.wallTurrets) {
+            for (let t of GameContext.caveLevel.wallTurrets) {
+                if (!t || t.dead) continue;
+                const dist = Math.hypot(t.pos.x - this.pos.x, t.pos.y - this.pos.y);
+                if (dist <= range && dist < minDist) {
+                    minDist = dist;
+                    nearestTarget = t;
+                }
+            }
+        }
+
         // Check guided missiles array (destroyer missiles)
         if (typeof GameContext.guidedMissiles !== 'undefined') {
             for (let m of GameContext.guidedMissiles) {

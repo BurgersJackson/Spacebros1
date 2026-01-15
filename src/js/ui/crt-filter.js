@@ -23,10 +23,16 @@ export function registerCrtFilterDependencies(deps) {
 
 /**
  * Check if CRT filter is currently enabled
+ * Defaults to true if not set
  * @returns {boolean}
  */
 export function isCrtFilterEnabled() {
-    return localStorage.getItem(CRT_FILTER_STORAGE_KEY) === 'true';
+    const stored = localStorage.getItem(CRT_FILTER_STORAGE_KEY);
+    // Default to true if not set, otherwise use stored value
+    if (stored === null || stored === undefined) {
+        return true;
+    }
+    return stored === 'true';
 }
 
 /**

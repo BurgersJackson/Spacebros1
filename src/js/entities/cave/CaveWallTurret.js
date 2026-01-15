@@ -5,13 +5,15 @@ import { playSound } from '../../audio/audio-manager.js';
 import { Bullet } from '../projectiles/Bullet.js';
 import { CaveGuidedMissile } from './CaveGuidedMissile.js';
 import { Coin } from '../pickups/Coin.js';
-import { pixiCleanupObject } from '../../rendering/pixi-context.js';
+import { pixiCleanupObject, getRenderAlpha, pixiEnemyLayer } from '../../rendering/pixi-context.js';
+import { pixiTextures } from '../../rendering/texture-loader.js';
 
 let _spawnParticles = null;
 let _updateHealthUI = null;
 let _killPlayer = null;
 let _awardCoinsInstant = null;
 let _closestPointOnSegment = null;
+let _spawnLargeExplosion = null;
 
 export function registerCaveWallTurretDependencies(deps) {
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
@@ -19,6 +21,7 @@ export function registerCaveWallTurretDependencies(deps) {
     if (deps.killPlayer) _killPlayer = deps.killPlayer;
     if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
     if (deps.closestPointOnSegment) _closestPointOnSegment = deps.closestPointOnSegment;
+    if (deps.spawnLargeExplosion) _spawnLargeExplosion = deps.spawnLargeExplosion;
 }
 
 export class CaveWallTurret extends Entity {
@@ -31,7 +34,7 @@ export class CaveWallTurret extends Entity {
         this.weakpointHp = Math.max(0, opts.weakpointHp || (this.armored ? 4 : 0));
         this.maxWeakpointHp = this.weakpointHp;
         this._weakOffset = null;
-        this.radius = 66;
+        this.radius = 86;
         this.hp = 6;
         this.maxHp = 6;
         this.t = 0;
@@ -53,6 +56,14 @@ export class CaveWallTurret extends Entity {
         this.beamLen = 4200;
         this.beamWidth = 20;
         this.beamHitThisShot = false;
+
+        // 12-shard outer shield, 2hp each
+        this.outerShieldRadius = this.radius + 56;
+        this.outerShieldSegments = [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2];
+        this.shieldRotation = Math.random() * Math.PI * 2; // Random start angle
+        this.shieldsDirty = true;
+        this._pixiShieldGfx = null;
+        this._pixiSprite = null;
     }
 
     weakpointPos() {
@@ -69,8 +80,33 @@ export class CaveWallTurret extends Entity {
         if (this.dead) return false;
         if (!b || b.isEnemy) return false;
         const dist = Math.hypot(b.pos.x - this.pos.x, b.pos.y - this.pos.y);
+
+        // Check shield collision first (radius slightly smaller than shield visual)
+        const shieldRadius = this.outerShieldRadius - 5;
+        if (dist <= shieldRadius + b.radius) {
+            // Find which shield segment was hit
+            const angle = Math.atan2(b.pos.y - this.pos.y, b.pos.x - this.pos.x);
+            let normalizedAngle = angle;
+            if (normalizedAngle < 0) normalizedAngle += Math.PI * 2;
+            const segCount = this.outerShieldSegments.length;
+            const segAngle = (Math.PI * 2) / segCount;
+            const segIndex = Math.floor(normalizedAngle / segAngle) % segCount;
+
+            if (this.outerShieldSegments[segIndex] > 0) {
+                // Shield absorbs damage
+                const absorbed = Math.min(this.outerShieldSegments[segIndex], b.damage);
+                this.outerShieldSegments[segIndex] -= absorbed;
+                this.shieldsDirty = true;
+                if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 4, '#0ff');
+                playSound('shield_hit');
+                return true;
+            }
+            // If shield at 0, fall through to hull check
+        }
+
+        // Hull collision check
         if (dist > this.radius + b.radius) {
-            // Weakpoint can be slightly outside the core radius. 
+            // Weakpoint can be slightly outside the core radius.
             if (this.armored && (this.armorHp > 0 || this.weakpointHp > 0)) {
                 const wp = this.weakpointPos();
                 const d2 = Math.hypot(b.pos.x - wp.x, b.pos.y - wp.y);
@@ -88,14 +124,14 @@ export class CaveWallTurret extends Entity {
                 if (_spawnParticles) _spawnParticles(wp.x, wp.y, 10, '#0ff');
                 playSound('hit');
                 if (this.weakpointHp <= 0) {
-                    // Cable severed: turret disabled immediately. 
+                    // Cable severed: turret disabled immediately.
                     this.hp = 0;
                     this.kill();
                 }
                 return true;
             }
 
-            // Armored shell: heavily reduced damage until armor breaks. 
+            // Armored shell: heavily reduced damage until armor breaks.
             if (this.armorHp > 0) {
                 this.armorHp -= Math.max(1, Math.ceil(b.damage * 0.6));
                 if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 6, '#88f');
@@ -115,20 +151,33 @@ export class CaveWallTurret extends Entity {
     kill() {
         if (this.dead) return;
         this.dead = true;
+        pixiCleanupObject(this);
+
+        // Remove from wallTurrets array
+        if (GameContext.caveLevel && GameContext.caveLevel.wallTurrets) {
+            const idx = GameContext.caveLevel.wallTurrets.indexOf(this);
+            if (idx > -1) {
+                GameContext.caveLevel.wallTurrets.splice(idx, 1);
+            }
+        }
+
         if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active) {
             if (_awardCoinsInstant) _awardCoinsInstant(6);
         } else {
             // Award coins directly: 3 coins * 2 value = 6 total
             if (_awardCoinsInstant) _awardCoinsInstant(6, { noSound: false, sound: 'coin' });
         }
+
+        if (_spawnLargeExplosion) _spawnLargeExplosion(this.pos.x, this.pos.y, 1.5);
         if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 18, '#88f');
-        playSound('explode');
+        playSound('base_explode');
     }
 
     update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
+        this.shieldRotation += 0.008 * dtFactor; // Slow rotation like pinwheel
         if (!GameContext.caveMode || !GameContext.caveLevel || !GameContext.caveLevel.active) return;
         if (!GameContext.player || GameContext.player.dead) return;
 
@@ -148,7 +197,7 @@ export class CaveWallTurret extends Entity {
                     const a = Math.atan2(leadY - this.pos.y, leadX - this.pos.x);
                     const muzzleX = this.pos.x + Math.cos(a) * (this.radius + 6);
                     const muzzleY = this.pos.y + Math.sin(a) * (this.radius + 6);
-                    GameContext.bullets.push(new Bullet(muzzleX, muzzleY, a, 16, { owner: 'enemy', damage: 1, radius: 4, color: '#0ff' }));
+                    GameContext.bullets.push(new Bullet(muzzleX, muzzleY, a, 24, { owner: 'enemy', damage: 1, radius: 4, color: '#0ff' }));
                     this.trackerBurst--;
                     this.trackerBurstCd = 6;
                     playSound('rapid_shoot');
@@ -176,7 +225,7 @@ export class CaveWallTurret extends Entity {
         if (this.mode === 'missile') {
             this.reload -= dtFactor;
             if (this.reload <= 0) {
-                GameContext.guidedMissiles.push(new CaveGuidedMissile(this, { hp: 5, maxDamage: 5, radius: 18, speed: 8.2, turnRate: 0.12 }));
+                GameContext.guidedMissiles.push(new CaveGuidedMissile(this, { hp: 5, maxDamage: 5, radius: 36, speed: 8.2, turnRate: 0.12 }));
                 if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 8, '#fa0');
                 playSound('heavy_shoot');
                 // Slower missile turret cadence. 
@@ -258,9 +307,9 @@ export class CaveWallTurret extends Entity {
         if (this.reload <= 0) {
             const muzzleX = this.pos.x + Math.cos(aim) * (this.radius + 6);
             const muzzleY = this.pos.y + Math.sin(aim) * (this.radius + 6);
-            GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim, 14, { owner: 'enemy', damage: 1, radius: 4, color: '#8ff' }));
-            if (Math.random() < 0.25) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.08, 14, { owner: 'enemy', damage: 1, radius: 4, color: '#8ff' }));
-            if (Math.random() < 0.25) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.08, 14, { owner: 'enemy', damage: 1, radius: 4, color: '#8ff' }));
+            GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim, 21, { owner: 'enemy', damage: 1, radius: 4, color: '#8ff' }));
+            if (Math.random() < 0.25) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.08, 21, { owner: 'enemy', damage: 1, radius: 4, color: '#8ff' }));
+            if (Math.random() < 0.25) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.08, 21, { owner: 'enemy', damage: 1, radius: 4, color: '#8ff' }));
             this.reload = 26 + Math.floor(Math.random() * 18);
         }
     }
@@ -273,165 +322,55 @@ export class CaveWallTurret extends Entity {
 
         const aim = (GameContext.player && !GameContext.player.dead) ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x) : 0;
 
-        // Pixi Rendering
-        if (GameContext.caveLevel && GameContext.caveLevel._pixiContainer) {
+        // Pixi Rendering - use pixiEnemyLayer for rendering above asteroids
+        if (pixiEnemyLayer) {
             let container = this._pixiContainer;
             if (!container) {
                 container = new PIXI.Container();
                 this._pixiContainer = container;
-                GameContext.caveLevel._pixiContainer.addChild(container);
+                pixiEnemyLayer.addChild(container);
 
-                // Base Gfx (Staticish)
-                const g = new PIXI.Graphics();
-                g.name = 'base';
-                container.addChild(g);
-                this._pixiGfx = g;
+                // Sprite for turret
+                const sprite = new PIXI.Sprite(pixiTextures.cave_turret);
+                sprite.anchor.set(0.5);
+                container.addChild(sprite);
+                this._pixiSprite = sprite;
 
-                // Overlay Gfx (Beams/Trackers)
-                const overlay = new PIXI.Graphics();
-                overlay.name = 'overlay';
-                container.addChild(overlay);
-                this._pixiOverlay = overlay;
-
-                // Label/UI if needed (none for turret)
+                // Shield graphics
+                const shieldGfx = new PIXI.Graphics();
+                container.addChild(shieldGfx);
+                this._pixiShieldGfx = shieldGfx;
             }
 
-            container.visible = true; // Managed by caller ideally, but ensure true if called
+            container.visible = true;
             container.position.set(this.pos.x, this.pos.y);
 
-            const z = GameContext.currentZoom || ZOOM_LEVEL;
-            const g = this._pixiGfx;
-            const overlay = this._pixiOverlay;
+            // Rotate sprite to face player
+            this._pixiSprite.rotation = aim;
+            // Rotate shield independently like pinwheel
+            this._pixiShieldGfx.rotation = this.shieldRotation;
 
-            // Redraw every frame for now due to dynamic rotation/state. 
-            // Optimization: Cache base, only rotate gun?
-            // For now, full redraw is safer for migration.
-            g.clear();
-            overlay.clear();
-
-            // Turret Base/Gun
-            g.beginFill(0x101018);
-            g.lineStyle(2, 0x8888ff, 1);
-            // Shadow not maintained in Pixi Gfx easily without filters, skipping shadow for perf
-            g.drawCircle(0, 0, this.radius);
-            g.endFill();
-
-            // Gun Barrel
-            g.beginFill(0x8888ff);
-            g.drRect = { x: this.radius * 0.2, y: -4, w: this.radius * 1.35, h: 8 };
-            // Rotate manually for barrel? No, rotate Graphics? 
-            // Turret rotates to aim.
-            // Base is round, so rotating container is fine.
-            container.rotation = aim;
-
-            g.drawRect(this.radius * 0.2, -4, this.radius * 1.35, 8);
-            g.endFill();
-
-            // Weakpoint (Armored Cable) - drawn in world space relative to turret? 
-            // Weakpoint is calculated by weakpointPos(), usually offset.
-            // If I rotate container by `aim`, local (0,0) is center.
-            // weakpointPos() logic: nx * (radius+16), y random.
-            // That logic is constant in *world* space? No, weakpointPos uses `nx` based on `centerXAt`.
-            // The turret base (round) is at `pos`.
-            // The weakpoint is at `pos + offset`.
-            // The gun rotates `aim`.
-            // So if I rotate `container` by `aim`, the *weakpoint* (attached to wall) would rotate too!
-            // Incorrect.
-
-            // Correction: Container should NOT rotate. Only the Gun Barrel should rotate.
-            container.rotation = 0;
-
-            // Redraw Base (Circle) - No rotation needed.
-            g.beginFill(0x101018);
-            g.lineStyle(2, 0x8888ff);
-            g.drawCircle(0, 0, this.radius);
-            g.endFill();
-
-            // Draw Gun Barrel (Rotated)
-            const barrX = Math.cos(aim);
-            const barrY = Math.sin(aim);
-            // Rotated rect points
-            // Start at offset *0.2
-            // Since we are doing geometry, maybe use a sub-container for gun?
-            // Let's use drawing matrix or just trig.
-            // Gun rect: x:0.2*r, y:-4, w:1.35*r, h:8.
-            // It's easier to add a 'gun' child Container.
-            if (!this._pixiGun) {
-                const gun = new PIXI.Graphics();
-                gun.beginFill(0x8888ff);
-                gun.drawRect(this.radius * 0.2, -4, this.radius * 1.35, 8);
-                gun.endFill();
-                container.addChild(gun);
-                this._pixiGun = gun;
+            // Draw shield shards (only when dirty)
+            if (this.shieldsDirty) {
+                const g = this._pixiShieldGfx;
+                g.clear();
+                const segCount = this.outerShieldSegments.length;
+                const segAngle = (Math.PI * 2) / segCount;
+                for (let i = 0; i < segCount; i++) {
+                    const hp = this.outerShieldSegments[i];
+                    if (hp > 0) {
+                        const a0 = i * segAngle + 0.1;
+                        const a1 = (i + 1) * segAngle - 0.1;
+                        const alpha = Math.max(0.3, Math.min(1, hp / 2));
+                        g.lineStyle(4, 0xff0000, alpha);
+                        g.moveTo(Math.cos(a0) * this.outerShieldRadius, Math.sin(a0) * this.outerShieldRadius);
+                        g.arc(0, 0, this.outerShieldRadius, a0, a1);
+                    }
+                }
+                this.shieldsDirty = false;
             }
-            this._pixiGun.rotation = aim;
-
-            // Weakpoint
-            if (this.armored && (this.armorHp > 0 || this.weakpointHp > 0)) {
-                // We draw lines from (0,0) to weakpoint offset
-                const wp = this.weakpointPos();
-                const lx = wp.x - this.pos.x;
-                const ly = wp.y - this.pos.y;
-
-                g.lineStyle(2, 0x00ffff, 0.9);
-                g.moveTo(0, 0);
-                g.lineTo(lx, ly);
-
-                g.beginFill(0x00ffff);
-                g.lineStyle(0);
-                g.drawCircle(lx, ly, 6);
-                g.endFill();
-            }
-
-            // Overlay (Beams, Trackers)
-            // Tracker
-            if (this.mode === 'tracker' && (this.trackerLock > 0 || this.trackerBurst > 0)) {
-                // Dashed line from center to aim
-                // LineDash not native in v5 Graphics easily without plugins, simulate dots?
-                // Or just solid line with low alpha
-                overlay.lineStyle(2, 0x00ffff, 0.35);
-                // Draw manual dash?
-                const angle = this.trackerAngle;
-                const tx = Math.cos(angle) * 2600;
-                const ty = Math.sin(angle) * 2600;
-                overlay.moveTo(0, 0);
-                overlay.lineTo(tx, ty);
-            }
-            // Beam
-            if (this.mode === 'beam' && this.beamCharge > 0) {
-                overlay.lineStyle(2, 0xffff00, 0.35);
-                const angle = this.beamAngle;
-                const bx = Math.cos(angle) * 2600;
-                const by = Math.sin(angle) * 2600;
-                overlay.moveTo(0, 0);
-                overlay.lineTo(bx, by);
-            }
-
-            // HP Ring
-            const pct = this.maxHp > 0 ? Math.max(0, this.hp / this.maxHp) : 0;
-            overlay.lineStyle(3, 0xffff66, 0.75);
-            overlay.drawCircle(0, 0, this.radius + 8);
-            // drawCircle is full circle. Canvas was partial arc based on pct.
-            // Graphics.arc(cx, cy, radius, startAngle, endAngle)
-            overlay.clear();
-            if (this.mode === 'tracker' && (this.trackerLock > 0 || this.trackerBurst > 0)) {
-                overlay.lineStyle(2, 0x00ffff, 0.35);
-                const angle = this.trackerAngle;
-                overlay.moveTo(0, 0);
-                overlay.lineTo(Math.cos(angle) * 2600, Math.sin(angle) * 2600);
-            }
-            if (this.mode === 'beam' && this.beamCharge > 0) {
-                overlay.lineStyle(2, 0xffff00, 0.35);
-                const angle = this.beamAngle;
-                overlay.moveTo(0, 0);
-                overlay.lineTo(Math.cos(angle) * 2600, Math.sin(angle) * 2600);
-            }
-            overlay.lineStyle(3, 0xffff66, 0.75);
-            overlay.arc(0, 0, this.radius + 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
 
             return;
         }
-
-        // Canvas Fallback Removed
     }
 }
