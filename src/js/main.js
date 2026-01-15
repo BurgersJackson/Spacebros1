@@ -1012,7 +1012,12 @@ Cave.registerCaveDependencies({
     resetWarpState,
     clearMiniEvent,
     showOverlayMessage,
-    updateHealthUI
+    updateHealthUI,
+    onBossDefeated: () => {
+        if (GameContext.caveLevel) {
+            GameContext.caveLevel.bossesDefeated++;
+        }
+    }
 });
 
 registerWarpBioPodDependencies({

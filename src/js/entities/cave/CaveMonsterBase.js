@@ -400,6 +400,9 @@ export class CaveMonsterBase extends Entity {
         GameContext.bossArena.active = false;
         if (GameContext.boss) pixiCleanupObject(GameContext.boss);
         GameContext.boss = null;
+
+        // Notify cave level that boss is defeated
+        if (caveDeps.onBossDefeated) caveDeps.onBossDefeated();
         // setMusicMode is handled in main loop mostly or via callback? 
         // Main.js says: if (musicEnabled) setMusicMode('normal');
         // I can't easily access musicEnabled global. Maybe emit event?

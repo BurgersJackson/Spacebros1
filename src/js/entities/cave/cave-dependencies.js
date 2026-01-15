@@ -26,7 +26,10 @@ export const caveDeps = {
 
     // UI
     showOverlayMessage: null,
-    updateHealthUI: null
+    updateHealthUI: null,
+
+    // Boss progression
+    onBossDefeated: null
 };
 
 export function registerCaveDependencies(deps) {
