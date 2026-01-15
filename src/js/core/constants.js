@@ -116,7 +116,6 @@ export const UPGRADE_DATA = {
         {
             name: "Specials",
             upgrades: [
-                { id: "xp_magnet", name: "XP Magnet", tier1: "2x range", tier2: "4x range", tier3: "8x range", tier4: "12x range", tier5: "16x range", notes: "Faster leveling." },
                 { id: "area_nuke", name: "Area Nuke", tier1: "Auto-fire 500u blast (5 dmg)", tier2: "600u range, 10 dmg", tier3: "800u range, 15 dmg", tier4: "1000u range, 20 dmg", tier5: "1200u range, 25 dmg", notes: "Auto-activates when ready." },
                 { id: "invincibility", name: "Phase Shield", tier1: "3s Active / 20s CD", tier2: "5s Active / 15s CD", tier3: "7s Active / 10s CD + Regen", tier4: "9s Active / 8s CD + Regen", tier5: "12s Active / 6s CD + Regen", notes: "Auto-cycling invulnerability." },
                 { id: "slow_field", name: "Stasis Field", tier1: "Stops roamers 3s", tier2: "Stops 5s, +25% Area", tier3: "Stops 8s, +25% Area", tier4: "Stops 10s, +25% Area", tier5: "Stops 12s, +50% Area", notes: "Freezes enemies." },
@@ -224,21 +223,6 @@ export const META_SHOP_UPGRADE_DATA = {
         tier9: "Increases effectiveness further",
         tier10: "MAX TIER REACHED",
         notes: "Auto-fires tracking missiles. Combine with in-game upgrade for 4 missiles total."
-    },
-    magnetBooster: {
-        name: "Magnet Booster",
-        description: "Increase XP and pickup collection range",
-        tier1: "300u magnet radius",
-        tier2: "+50% range bonus",
-        tier3: "+100% range bonus",
-        tier4: "Increases effectiveness further",
-        tier5: "Increases effectiveness further",
-        tier6: "Increases effectiveness further",
-        tier7: "Increases effectiveness further",
-        tier8: "Increases effectiveness further",
-        tier9: "Increases effectiveness further",
-        tier10: "MAX TIER REACHED",
-        notes: "Less chasing coins. Quality of life upgrade."
     },
     nukeCapacitor: {
         name: "Global Defense Ring",
@@ -480,21 +464,6 @@ export const META_SHOP_UPGRADE_DATA = {
         tier10: "MAX TIER REACHED",
         notes: "Extended mobility windows."
     },
-    xpMagnetPlus: {
-        name: "XP Magnet+",
-        description: "Increases magnet booster effectiveness",
-        tier1: "+20% magnet radius",
-        tier2: "+40% magnet radius",
-        tier3: "+60% magnet radius",
-        tier4: "Increases effectiveness further",
-        tier5: "Increases effectiveness further",
-        tier6: "Increases effectiveness further",
-        tier7: "Increases effectiveness further",
-        tier8: "Increases effectiveness further",
-        tier9: "Increases effectiveness further",
-        tier10: "MAX TIER REACHED",
-        notes: "Stacks with base magnet booster."
-    },
     autoReroll: {
         name: "Auto-Reroll",
         description: "Chance for free reroll on level-up",
@@ -509,21 +478,6 @@ export const META_SHOP_UPGRADE_DATA = {
         tier9: "Increases effectiveness further",
         tier10: "MAX TIER REACHED",
         notes: "More build control. Less RNG frustration."
-    },
-    nuggetMagnet: {
-        name: "Nugget Magnet",
-        description: "Increase magnet for Space Nuggets specifically",
-        tier1: "+50% nugget range",
-        tier2: "+100% nugget range",
-        tier3: "+150% nugget range",
-        tier4: "Increases effectiveness further",
-        tier5: "Increases effectiveness further",
-        tier6: "Increases effectiveness further",
-        tier7: "Increases effectiveness further",
-        tier8: "Increases effectiveness further",
-        tier9: "Increases effectiveness further",
-        tier10: "MAX TIER REACHED",
-        notes: "Easier premium currency collection."
     },
     contractSpeed: {
         name: "Contract Speed",

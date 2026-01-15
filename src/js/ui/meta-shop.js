@@ -48,12 +48,6 @@ export function updateMetaUI() {
         const cost = getMetaUpgradeCost('missilePrimer', 40);
         missileEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
-    const magnetEl = document.getElementById('meta-magnet');
-    if (magnetEl) {
-        const tier = GameContext.metaProfile.purchases.magnetBooster || 0;
-        const cost = getMetaUpgradeCost('magnetBooster', 25);
-        magnetEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
     const nukeEl = document.getElementById('meta-nuke');
     if (nukeEl) {
         const tier = GameContext.metaProfile.purchases.nukeCapacitor || 0;
@@ -150,23 +144,11 @@ export function updateMetaUI() {
         const cost = getMetaUpgradeCost('dashDuration', 30);
         dashDurEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
-    const xpMagEl = document.getElementById('meta-xpmag');
-    if (xpMagEl) {
-        const tier = GameContext.metaProfile.purchases.xpMagnetPlus || 0;
-        const cost = getMetaUpgradeCost('xpMagnetPlus', 25);
-        xpMagEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
     const autoRerollEl = document.getElementById('meta-autoreroll');
     if (autoRerollEl) {
         const tier = GameContext.metaProfile.purchases.autoReroll || 0;
         const cost = getMetaUpgradeCost('autoReroll', 50);
         autoRerollEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
-    }
-    const nuggetMagEl = document.getElementById('meta-nuggetmag');
-    if (nuggetMagEl) {
-        const tier = GameContext.metaProfile.purchases.nuggetMagnet || 0;
-        const cost = getMetaUpgradeCost('nuggetMagnet', 35);
-        nuggetMagEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
     const contractSpeedEl = document.getElementById('meta-contractspeed');
     if (contractSpeedEl) {
@@ -224,7 +206,6 @@ export function updateMetaUI() {
         'buy-shield-core': 'shieldCore',
         'buy-static': 'staticBlueprint',
         'buy-missile': 'missilePrimer',
-        'buy-magnet': 'magnetBooster',
         'buy-nuke': 'nukeCapacitor',
         'buy-speed': 'speedTuning',
         'buy-bank-mult': 'bankMultiplier',
@@ -241,9 +222,7 @@ export function updateMetaUI() {
         'buy-shieldregen': 'shieldRecharge',
         'buy-dashcd': 'dashCooldown',
         'buy-dashdur': 'dashDuration',
-        'buy-xpmag': 'xpMagnetPlus',
         'buy-autoreroll': 'autoReroll',
-        'buy-nuggetmag': 'nuggetMagnet',
         'buy-contractspeed': 'contractSpeed',
         'buy-startreroll': 'startingRerolls',
         'buy-lucky': 'luckyDrop',
@@ -320,14 +299,14 @@ export function showMetaShopUpgradeModal(upgradeId, clickedButton) {
     const currentTier = GameContext.metaProfile.purchases[upgradeId] || 0;
     const baseCostMap = {
         'startDamage': 10, 'passiveHp': 15, 'hullPlating': 30, 'shieldCore': 30,
-        'staticBlueprint': 40, 'missilePrimer': 40, 'magnetBooster': 25,
+        'staticBlueprint': 40, 'missilePrimer': 40,
         'nukeCapacitor': 35, 'speedTuning': 25, 'bankMultiplier': 50,
         'shopDiscount': 50, 'extraLife': 60, 'droneFabricator': 40,
         'piercingRounds': 45, 'explosiveRounds': 55, 'criticalStrike': 50,
         'splitShot': 60, 'thornArmor': 35, 'lifesteal': 40,
         'evasionBoost': 45, 'shieldRecharge': 30, 'dashCooldown': 35,
-        'dashDuration': 30, 'xpMagnetPlus': 25, 'autoReroll': 50,
-        'nuggetMagnet': 35, 'contractSpeed': 40, 'startingRerolls': 30,
+        'dashDuration': 30, 'autoReroll': 50,
+        'contractSpeed': 40, 'startingRerolls': 30,
         'luckyDrop': 55, 'bountyHunter': 45, 'comboMeter': 50,
         'startingWeapon': 60, 'secondWind': 70, 'batteryCapacitor': 45
     };

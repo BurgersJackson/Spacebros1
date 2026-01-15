@@ -139,13 +139,6 @@ export function applyUpgrade(id, tier) {
             updateTurboUI(GameContext);
             break;
         }
-        case 'xp_magnet':
-            if (tier === 1) GameContext.player.magnetRadius = 300;
-            if (tier === 2) GameContext.player.magnetRadius = 600;
-            if (tier === 3) GameContext.player.magnetRadius = 1200;
-            if (tier === 4) GameContext.player.magnetRadius = 1800;
-            if (tier === 5) GameContext.player.magnetRadius = 2400;
-            break;
         case 'area_nuke':
             GameContext.player.nukeUnlocked = true;
             GameContext.player.nukeMaxCooldown = 600;

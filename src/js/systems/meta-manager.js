@@ -59,7 +59,6 @@ export function loadMetaProfile() {
             shieldCore: 0,
             staticBlueprint: 0,
             missilePrimer: 0,
-            magnetBooster: 0,
             nukeCapacitor: 0,
             speedTuning: 0,
             bankMultiplier: 0,
@@ -76,9 +75,7 @@ export function loadMetaProfile() {
             shieldRecharge: 0,
             dashCooldown: 0,
             dashDuration: 0,
-            xpMagnetPlus: 0,
             autoReroll: 0,
-            nuggetMagnet: 0,
             contractSpeed: 0,
             startingRerolls: 0,
             luckyDrop: 0,
@@ -92,7 +89,7 @@ export function loadMetaProfile() {
         if (typeof GameContext.metaProfile.bank !== 'number') GameContext.metaProfile.bank = 0;
 
         for (const key of ['startDamage', 'passiveHp', 'hullPlating', 'shieldCore',
-            'staticBlueprint', 'missilePrimer', 'magnetBooster',
+            'staticBlueprint', 'missilePrimer',
             'nukeCapacitor', 'speedTuning', 'bankMultiplier',
             'shopDiscount', 'extraLife', 'droneFabricator']) {
             if (GameContext.metaProfile.purchases[key] === true) {
@@ -116,7 +113,6 @@ export function resetMetaProfile() {
             shieldCore: 0,
             staticBlueprint: 0,
             missilePrimer: 0,
-            magnetBooster: 0,
             nukeCapacitor: 0,
             speedTuning: 0,
             bankMultiplier: 0,
@@ -133,9 +129,7 @@ export function resetMetaProfile() {
             shieldRecharge: 0,
             dashCooldown: 0,
             dashDuration: 0,
-            xpMagnetPlus: 0,
             autoReroll: 0,
-            nuggetMagnet: 0,
             contractSpeed: 0,
             startingRerolls: 0,
             luckyDrop: 0,
@@ -257,13 +251,6 @@ export function applyMetaUpgrades(spawnDroneFn) {
     if (missilePrimerTier > 0) {
         GameContext.player.stats.homing = Math.max(GameContext.player.stats.homingFromUpgrade, GameContext.player.stats.homingFromMeta);
         GameContext.player.missileTimer = 0;
-    }
-
-    const magnetBoosterTier = GameContext.metaProfile.purchases.magnetBooster || 0;
-    if (magnetBoosterTier > 0) {
-        const baseRadius = 300;
-        const extraRadius = magnetBoosterTier > 1 ? (magnetBoosterTier - 1) * 50 * Math.pow(0.9, magnetBoosterTier - 2) : 0;
-        GameContext.player.magnetRadius = Math.max(GameContext.player.magnetRadius, baseRadius + extraRadius);
     }
 
     const nukeCapacitorTier = GameContext.metaProfile.purchases.nukeCapacitor || 0;
@@ -390,15 +377,6 @@ export function applyMetaUpgrades(spawnDroneFn) {
         GameContext.player.stats.turboDurationBonus = durationBonus * 60;
     }
 
-    const xpMagnetPlusTier = GameContext.metaProfile.purchases.xpMagnetPlus || 0;
-    if (xpMagnetPlusTier > 0) {
-        let magnetBonus = 0.2 * Math.min(xpMagnetPlusTier, 3);
-        if (xpMagnetPlusTier > 3) {
-            magnetBonus += 0.1 * (xpMagnetPlusTier - 3);
-        }
-        GameContext.player.stats.magnetBonusMult = (GameContext.player.stats.magnetBonusMult || 1.0) + magnetBonus;
-    }
-
     const autoRerollTier = GameContext.metaProfile.purchases.autoReroll || 0;
     if (autoRerollTier > 0) {
         let autoRerollChance = 0.1 * Math.min(autoRerollTier, 3);
@@ -406,15 +384,6 @@ export function applyMetaUpgrades(spawnDroneFn) {
             autoRerollChance += 0.03 * (autoRerollTier - 3);
         }
         GameContext.player.stats.autoRerollChance = Math.min(autoRerollChance, 0.50);
-    }
-
-    const nuggetMagnetTier = GameContext.metaProfile.purchases.nuggetMagnet || 0;
-    if (nuggetMagnetTier > 0) {
-        let nuggetMagnetBonus = 0.5 * Math.min(nuggetMagnetTier, 3);
-        if (nuggetMagnetTier > 3) {
-            nuggetMagnetBonus += 0.25 * (nuggetMagnetTier - 3);
-        }
-        GameContext.player.stats.nuggetMagnetBonus = (GameContext.player.stats.nuggetMagnetBonus || 1.0) + nuggetMagnetBonus;
     }
 
     const contractSpeedTier = GameContext.metaProfile.purchases.contractSpeed || 0;

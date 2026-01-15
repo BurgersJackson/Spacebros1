@@ -512,12 +512,12 @@ export function initProfileSystem() {
                     bank: 0,
                     purchases: {
                         startDamage: 0, passiveHp: 0, rerollTokens: 0, hullPlating: 0, shieldCore: 0,
-                        staticBlueprint: 0, missilePrimer: 0, magnetBooster: 0, nukeCapacitor: 0,
+                        staticBlueprint: 0, missilePrimer: 0,  nukeCapacitor: 0,
                         speedTuning: 0, bankMultiplier: 0, shopDiscount: 0, extraLife: 0, droneFabricator: 0,
                         piercingRounds: 0, explosiveRounds: 0, criticalStrike: 0, splitShot: 0,
                         thornArmor: 0, lifesteal: 0, evasionBoost: 0, shieldRecharge: 0,
-                        dashCooldown: 0, dashDuration: 0, xpMagnetPlus: 0, autoReroll: 0,
-                        nuggetMagnet: 0, contractSpeed: 0, startingRerolls: 0, luckyDrop: 0,
+                        dashCooldown: 0, dashDuration: 0,  autoReroll: 0,
+                         contractSpeed: 0, startingRerolls: 0, luckyDrop: 0,
                         bountyHunter: 0, comboMeter: 0, startingWeapon: 0, secondWind: 0, batteryCapacitor: 0
                     }
                 };
