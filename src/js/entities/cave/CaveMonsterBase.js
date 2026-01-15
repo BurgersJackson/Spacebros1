@@ -1,5 +1,6 @@
 
 import { Entity } from '../Entity.js';
+import { Enemy } from '../enemies/Enemy.js';
 import { Vector } from '../../core/math.js';
 import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS, SIM_FPS, ZOOM_LEVEL } from '../../core/constants.js';
@@ -134,6 +135,10 @@ export class CaveMonsterBase extends Entity {
         this.t = 0;
         this.attackTimer = 0;
         this.attackCooldown = 120;
+
+        // Reinforcement spawning
+        this.reinforcementCooldown = 360; // 6 seconds at 60fps reference
+        this.reinforcementTimer = 360;
 
         // Movement
         this.strafeAngle = 0;
@@ -281,52 +286,37 @@ export class CaveMonsterBase extends Entity {
                 this.fireAttack(phase);
                 this.attackTimer = this.attackCooldown / mult;
             }
+
+            // Reinforcement spawning
+            this.reinforcementTimer -= dtFactor;
+            if (this.reinforcementTimer <= 0) {
+                this.spawnReinforcements();
+                this.reinforcementTimer = this.reinforcementCooldown;
+            }
         }
 
-        this.enforceExclusionZone();
         super.update(deltaTime);
-    }
-
-    enforceExclusionZone() {
-        if (GameContext.player && !GameContext.player.dead) {
-            this.pushEntityOut(GameContext.player);
-        }
-        for (const e of GameContext.enemies) {
-            if (e !== this && !e.dead) {
-                this.pushEntityOut(e);
-            }
-        }
-    }
-
-    pushEntityOut(entity) {
-        const dx = entity.pos.x - this.pos.x;
-        const dy = entity.pos.y - this.pos.y;
-        const dist = Math.hypot(dx, dy);
-        // Invisible collision sphere matching the outer shield radius
-        // Prevents ships from entering but allows bullets to pass
-        const minDist = this.shieldRadius + entity.radius;
-
-        if (dist < minDist) {
-            const angle = Math.atan2(dy, dx);
-            const overlap = minDist - dist;
-
-            // Hard push to edge of sphere
-            entity.pos.x += Math.cos(angle) * overlap;
-            entity.pos.y += Math.sin(angle) * overlap;
-
-            // Bounce velocity slightly to prevent sticking
-            const normalX = Math.cos(angle);
-            const normalY = Math.sin(angle);
-            const dot = entity.vel.x * normalX + entity.vel.y * normalY;
-            if (dot < 0) {
-                entity.vel.x -= normalX * dot * 1.2;
-                entity.vel.y -= normalY * dot * 1.2;
-            }
-        }
     }
 
     fireAttack(phase) {
         // Override in subclasses
+    }
+
+    spawnReinforcements() {
+        const count = 1 + Math.floor(Math.random() * 2); // 1-2 enemies
+        const enemyTypes = ['cave_gunboat1', 'roamer', 'defender'];
+
+        for (let i = 0; i < count; i++) {
+            const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 400 + Math.random() * 200;
+            const ex = this.pos.x + Math.cos(angle) * dist;
+            const ey = this.pos.y + Math.sin(angle) * dist;
+
+            const enemy = new Enemy(type, { x: ex, y: ey }, null);
+            GameContext.enemies.push(enemy);
+        }
+        playSound('powerup');
     }
 
     takeHit(dmg = 1) {

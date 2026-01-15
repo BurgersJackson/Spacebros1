@@ -581,15 +581,20 @@ export function gameLoopLogic(opts = null) {
             const level2Alive = GameContext.enemies.some(e => e.isGunboat && e.gunboatLevel === 2);
             const level1Alive = GameContext.enemies.some(e => e.isGunboat && e.gunboatLevel === 1);
             if (GameContext.gunboatRespawnAt && now >= GameContext.gunboatRespawnAt) {
+                // Determine enemy type based on mode (cave mode uses cave_gunboat types)
+                const isCaveMode = GameContext.caveMode;
+                const gunboatType1 = isCaveMode ? 'cave_gunboat1' : 'gunboat';
+                const gunboatType2 = isCaveMode ? 'cave_gunboat2' : 'gunboat';
+
                 // Spawn rules: before warp, only level 1, one at a time. After warp, allow one level 1 and one level 2 simultaneously.
                 if (!GameContext.gunboatLevel2Unlocked) {
-                    if (!level1Alive) GameContext.enemies.push(new Enemy('gunboat', null, null, { gunboatLevel: 1 }));
+                    if (!level1Alive) GameContext.enemies.push(new Enemy(gunboatType1, null, null, { gunboatLevel: 1 }));
                     GameContext.gunboatRespawnAt = null;
                 } else {
                     if (!level1Alive) {
-                        GameContext.enemies.push(new Enemy('gunboat', null, null, { gunboatLevel: 1 })); // level decided in constructor
+                        GameContext.enemies.push(new Enemy(gunboatType1, null, null, { gunboatLevel: 1 }));
                     } else if (!level2Alive) {
-                        GameContext.enemies.push(new Enemy('gunboat', null, null, { gunboatLevel: 2 }));
+                        GameContext.enemies.push(new Enemy(gunboatType2, null, null, { gunboatLevel: 2 }));
                     }
                     GameContext.gunboatRespawnAt = null;
                 }

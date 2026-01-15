@@ -58,6 +58,19 @@ let gunboat2Texture = null;
 let gunboat1Loaded = false;
 let gunboat2Loaded = false;
 
+const CAVE_GUNBOAT1_URL = 'assets/cave_gunboat1.png';
+const CAVE_GUNBOAT2_URL = 'assets/cave_gunboat2.png';
+const caveGunboat1Image = new Image();
+const caveGunboat2Image = new Image();
+caveGunboat1Image.decoding = 'async';
+caveGunboat2Image.decoding = 'async';
+caveGunboat1Image.src = CAVE_GUNBOAT1_URL;
+caveGunboat2Image.src = CAVE_GUNBOAT2_URL;
+let caveGunboat1Texture = null;
+let caveGunboat2Texture = null;
+let caveGunboat1Loaded = false;
+let caveGunboat2Loaded = false;
+
 const STATION1_URL = 'assets/station1.png';
 const station1Image = new Image();
 station1Image.decoding = 'async';
@@ -152,6 +165,41 @@ export function applyGunboatTextures() {
             pixiTextureRotOffsets.enemy_gunboat_2 = Math.PI / 2;
             pixiTextureScaleToRadius.enemy_gunboat_2 = true;
             pixiTextureBaseScales.enemy_gunboat_2 = 1;
+        }
+    } catch (e) {
+    }
+}
+
+export function applyCaveGunboatTextures() {
+    if (!window.PIXI) return;
+    try {
+        if (caveGunboat1Loaded && !caveGunboat1Texture) {
+            const tex = PIXI.Texture.from(caveGunboat1Image);
+            try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+            try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+            caveGunboat1Texture = tex;
+        }
+        if (caveGunboat2Loaded && !caveGunboat2Texture) {
+            const tex = PIXI.Texture.from(caveGunboat2Image);
+            try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+            try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+            caveGunboat2Texture = tex;
+        }
+
+        if (caveGunboat1Texture) {
+            pixiTextures.cave_gunboat_1 = caveGunboat1Texture;
+            pixiTextureAnchors.cave_gunboat_1 = 0.5;
+            pixiTextureRotOffsets.cave_gunboat_1 = Math.PI / 2;
+            pixiTextureScaleToRadius.cave_gunboat_1 = true;
+            pixiTextureBaseScales.cave_gunboat_1 = 1;
+        }
+
+        if (caveGunboat2Texture) {
+            pixiTextures.cave_gunboat_2 = caveGunboat2Texture;
+            pixiTextureAnchors.cave_gunboat_2 = 0.5;
+            pixiTextureRotOffsets.cave_gunboat_2 = Math.PI / 2;
+            pixiTextureScaleToRadius.cave_gunboat_2 = true;
+            pixiTextureBaseScales.cave_gunboat_2 = 1;
         }
     } catch (e) {
     }
@@ -311,6 +359,20 @@ gunboat2Image.addEventListener('load', () => {
 });
 gunboat2Image.addEventListener('error', () => {
     gunboat2Loaded = false;
+});
+caveGunboat1Image.addEventListener('load', () => {
+    caveGunboat1Loaded = true;
+    applyCaveGunboatTextures();
+});
+caveGunboat1Image.addEventListener('error', () => {
+    caveGunboat1Loaded = false;
+});
+caveGunboat2Image.addEventListener('load', () => {
+    caveGunboat2Loaded = true;
+    applyCaveGunboatTextures();
+});
+caveGunboat2Image.addEventListener('error', () => {
+    caveGunboat2Loaded = false;
 });
 station1Image.addEventListener('load', () => {
     station1Loaded = true;
@@ -762,6 +824,7 @@ finalBossImage.addEventListener('error', () => {
 
 export function loadAllTextures() {
     applyGunboatTextures();
+    applyCaveGunboatTextures();
     applyStationTexture();
     applyDestroyerTexture();
     applyDestroyer2Texture();

@@ -140,11 +140,18 @@ export class Enemy extends Entity {
         this.freezeTimer = 0;
         this.freezeCooldown = 0;
         this.flankSide = 1;
-        this.isGunboat = (type === 'gunboat');
+        this.isGunboat = (type === 'gunboat' || type === 'cave_gunboat1' || type === 'cave_gunboat2');
         this.gunboatLevel = 1;
         if (this.isGunboat) {
-            const overrideLevel = opts.gunboatLevel;
-            this.gunboatLevel = overrideLevel ? overrideLevel : ((GameContext.difficultyTier >= 4 || (GameContext.player && GameContext.player.level >= 6)) ? 2 : 1);
+            // Determine gunboat level: cave_gunboat2 is level 2, others use difficulty/level check
+            if (type === 'cave_gunboat2') {
+                this.gunboatLevel = 2;
+            } else if (type === 'cave_gunboat1') {
+                this.gunboatLevel = 1;
+            } else {
+                const overrideLevel = opts.gunboatLevel;
+                this.gunboatLevel = overrideLevel ? overrideLevel : ((GameContext.difficultyTier >= 4 || (GameContext.player && GameContext.player.level >= 6)) ? 2 : 1);
+            }
             this.radius = 30; // match player size
             this.hp = this.gunboatLevel === 1 ? 10 : 16;
             this.maxSpeed = 8.0; // doubled
@@ -446,6 +453,7 @@ export class Enemy extends Entity {
             if (count > 0) { sepForce.mult(1.5); desiredVel.add(sepForce); }
 
             // Avoid pinwheels/stations/fortresses so we don't rely on collision pushing.
+            // Note: Cave bosses are NOT in this list - enemies can fly through them freely.
             const avoid = new Vector(0, 0);
             const obstacles = [];
             for (let b of GameContext.pinwheels) if (b && !b.dead) obstacles.push({ e: b, r: b.radius + 420 });
@@ -708,6 +716,14 @@ export class Enemy extends Entity {
                     tex = pixiTextures[dungeonKey];
                     anchor = pixiTextureAnchors[dungeonKey] || 0.5;
                     key = dungeonKey;
+                } else if (this.type === 'cave_gunboat_2' || (this.type === 'cave_gunboat2' && this.gunboatLevel === 2)) {
+                    tex = pixiTextures.cave_gunboat_2;
+                    anchor = pixiTextureAnchors.cave_gunboat_2 || 0.5;
+                    key = 'cave_gunboat_2';
+                } else if (this.type === 'cave_gunboat1' || this.type === 'cave_gunboat_1') {
+                    tex = pixiTextures.cave_gunboat_1;
+                    anchor = pixiTextureAnchors.cave_gunboat_1 || 0.5;
+                    key = 'cave_gunboat_1';
                 } else if (this.gunboatLevel === 2) {
                     tex = pixiTextures.enemy_gunboat_2;
                     anchor = pixiTextureAnchors.enemy_gunboat_2 || 0.5;

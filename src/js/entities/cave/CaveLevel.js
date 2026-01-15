@@ -20,9 +20,9 @@ export class CaveLevel {
         this.active = true;
         this.startX = 0;
         this.startY = 0;
-        this.endY = -220000; // ~10 minutes of flight at stock speeds 
+        this.endY = -220000; // ~10 minutes of flight at stock speeds
         this.stepY = 240;
-        this.baseWidth = 4688;
+        this.baseWidth = 5160; // 10% wider than original 4688
         // Pixi Rendering
         this._pixiContainer = null;
         this._pixiBackGfx = null;

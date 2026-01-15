@@ -184,7 +184,7 @@ function updateCrtButtonStates(enabled) {
  */
 export function updateCrtFilter() {
     const pixiApp = getPixiAppRef ? getPixiAppRef() : null;
-    
+
     if (!pixiApp || !pixiApp.stage || !pixiApp.stage.filters) {
         return;
     }

@@ -661,7 +661,8 @@ export function resolveEntityCollision() {
                 }
             }
             if (!hitEntity && GameContext.bossActive && GameContext.boss && !GameContext.boss.dead) {
-                if (typeof GameContext.boss.hitTestCircle === 'function' && GameContext.boss.hitTestCircle(s.pos.x, s.pos.y, s.radius)) {
+                // Skip ship-boss collision for cave bosses - enemies can fly through them
+                if (!GameContext.boss.isCaveBoss && typeof GameContext.boss.hitTestCircle === 'function' && GameContext.boss.hitTestCircle(s.pos.x, s.pos.y, s.radius)) {
                     if (!(GameContext.boss.isWarpBoss && GameContext.boss.ramInvulnerable > 0)) {
                         GameContext.boss.hp -= s.damage;
                         if (_spawnParticles) _spawnParticles(GameContext.boss.pos.x, GameContext.boss.pos.y, 22, '#fa0');
