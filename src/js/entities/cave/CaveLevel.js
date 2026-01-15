@@ -14,6 +14,7 @@ import { closestPointOnSegment, resolveCircleSegment } from '../../core/math.js'
 import { caveDeps } from './cave-dependencies.js';
 import { pixiWorldRoot } from '../../rendering/pixi-context.js';
 import { playSound, setMusicMode, musicEnabled } from '../../audio/audio-manager.js';
+import { pixiCleanupObject } from '../../utils/cleanup-utils.js';
 
 export class CaveLevel {
     constructor() {
@@ -22,7 +23,7 @@ export class CaveLevel {
         this.startY = 0;
         this.endY = -220000; // ~10 minutes of flight at stock speeds
         this.stepY = 240;
-        this.baseWidth = 5160; // 10% wider than original 4688
+        this.baseWidth = 4902; // 5% narrower (5160 * 0.95)
         // Pixi Rendering
         this._pixiContainer = null;
         this._pixiBackGfx = null;
@@ -61,8 +62,9 @@ export class CaveLevel {
         this.resetFireWall();
         const length = Math.abs(this.endY - this.startY);
         const count = Math.max(1, Math.ceil(length / this.stepY));
-        this.buckets = new Array(count);
-        for (let i = 0; i < count; i++) this.buckets[i] = [];
+        // Allocate one extra bucket to ensure we cover the full cave length including the very end
+        this.buckets = new Array(count + 1);
+        for (let i = 0; i < count + 1; i++) this.buckets[i] = [];
 
         const leftPts = [];
         const rightPts = [];
@@ -522,13 +524,20 @@ export class CaveLevel {
 
         this.updateFireWall(deltaTime);
 
-        // Update Turrets
+        // Update Turrets and remove dead ones
         for (let i = this.wallTurrets.length - 1; i >= 0; i--) {
             const t = this.wallTurrets[i];
-            t.update(deltaTime);
-            if (t.dead && typeof t.kill === 'function') {
-                // Should clean up?
+            if (!t || t.dead) {
+                if (t) {
+                    if (typeof t.kill === 'function') {
+                        try { t.kill(); } catch (e) { }
+                    }
+                    try { pixiCleanupObject(t); } catch (e) { }
+                }
+                this.wallTurrets.splice(i, 1);
+                continue;
             }
+            t.update(deltaTime);
         }
 
         // Spawning Logic (Bosses)
@@ -562,10 +571,34 @@ export class CaveLevel {
             }
         }
 
-        // Update other entities
-        [this.gasVents, this.draftZones, this.critters, this.rockfalls, this.rewards, this.switches].forEach(arr => {
-            for (let i = 0; i < arr.length; i++) arr[i].update(deltaTime);
-        });
+        // Update other entities and remove dead ones
+        const entityArrays = [
+            { arr: this.gasVents, name: 'gasVents' },
+            { arr: this.draftZones, name: 'draftZones' },
+            { arr: this.critters, name: 'critters' },
+            { arr: this.rockfalls, name: 'rockfalls' },
+            { arr: this.rewards, name: 'rewards' },
+            { arr: this.switches, name: 'switches' },
+            { arr: this.relays, name: 'relays' }
+        ];
+        
+        for (const { arr } of entityArrays) {
+            if (!arr) continue;
+            for (let i = arr.length - 1; i >= 0; i--) {
+                const entity = arr[i];
+                if (!entity || entity.dead) {
+                    if (entity) {
+                        if (typeof entity.kill === 'function') {
+                            try { entity.kill(); } catch (e) { }
+                        }
+                        try { pixiCleanupObject(entity); } catch (e) { }
+                    }
+                    arr.splice(i, 1);
+                    continue;
+                }
+                entity.update(deltaTime);
+            }
+        }
     }
 
     spawnBoss(tier) {
@@ -615,8 +648,8 @@ export class CaveLevel {
         const pdy = GameContext.player.pos.y - GameContext.caveBossArena.y;
         const pdist = Math.hypot(pdx, pdy);
 
-        // Player entered the arena circle
-        if (pdist < GameContext.caveBossArena.radius * 0.7) {  // Enter 70% of radius
+        // Player entered the arena circle - spawn boss immediately
+        if (pdist < GameContext.caveBossArena.radius) {  // Enter arena radius
             this.spawnBossFromArena();
         }
     }
@@ -678,6 +711,55 @@ export class CaveLevel {
         this._pixiFrontGfx = null;
         this._pixiBlockerGfx = null;
         this._pixiReady = false;
+    }
+
+    /**
+     * Clean up all entities and resources in the cave level
+     */
+    cleanup() {
+        this.active = false;
+        
+        // Clean up all entity arrays
+        const entityArrays = [
+            this.wallTurrets,
+            this.switches,
+            this.relays,
+            this.rewards,
+            this.gasVents,
+            this.draftZones,
+            this.critters,
+            this.rockfalls
+        ];
+        
+        for (const arr of entityArrays) {
+            if (arr && arr.length > 0) {
+                for (let i = 0; i < arr.length; i++) {
+                    const entity = arr[i];
+                    if (entity) {
+                        entity.dead = true;
+                        if (typeof entity.kill === 'function') {
+                            try { entity.kill(); } catch (e) { }
+                        }
+                        if (typeof pixiCleanupObject === 'function') {
+                            try { pixiCleanupObject(entity); } catch (e) { }
+                        }
+                    }
+                }
+                arr.length = 0;
+            }
+        }
+        
+        // Clean up PixiJS graphics
+        this.cleanupPixi();
+        
+        // Clear other arrays
+        this.buckets = [];
+        this.leftPts = [];
+        this.rightPts = [];
+        this.innerSegments = [];
+        this.doors = [];
+        this.gates = [];
+        this.arenaSegments = [];
     }
 
     updatePixi() {

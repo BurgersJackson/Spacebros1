@@ -90,7 +90,9 @@ export class Bullet extends Entity {
                 for (let t of GameContext.contractEntities.wallTurrets) consider(t);
             }
             if (GameContext.warpZone && GameContext.warpZone.active && GameContext.warpZone.turrets && GameContext.warpZone.turrets.length > 0) {
-                for (let t of GameContext.warpZone.turrets) consider(t);
+                for (let t of GameContext.warpZone.turrets) {
+                    if (t && !t.dead) consider(t);
+                }
             }
             if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active && GameContext.caveLevel.wallTurrets && GameContext.caveLevel.wallTurrets.length > 0) {
                 for (let t of GameContext.caveLevel.wallTurrets) consider(t);

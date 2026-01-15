@@ -142,7 +142,6 @@ let findSpawnPointRelative = null;
 let resolveEntityCollision = null;
 let processBulletCollisions = null;
 
-let posUiNextAt = 0;
 let shakeOffsetX = 0;
 let shakeOffsetY = 0;
 let renderAlpha = 1.0;
@@ -436,14 +435,6 @@ export function gameLoopLogic(opts = null) {
             }
         } catch (e) { console.warn('timer update failed', e); }
 
-        if (GameContext.player && now >= posUiNextAt) {
-            const posEl = document.getElementById('pos-debug');
-            if (posEl) {
-                posEl.innerText = `POS: ${Math.round(GameContext.player.pos.x)}, ${Math.round(GameContext.player.pos.y)}`;
-                posUiNextAt = now + 100;
-            }
-        }
-
         // Sector transition countdown
         if (GameContext.sectorTransitionActive && GameContext.warpCountdownAt) {
             const remainingMs = Math.max(0, GameContext.warpCountdownAt - now);
@@ -683,7 +674,8 @@ export function gameLoopLogic(opts = null) {
             }
         }
 
-        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.initialSpawnDone) {
+        // Allow roamers to spawn in normal mode and cave mode (but not in warp/dungeon/boss)
+        if (!warpActive && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.initialSpawnDone) {
             // Time-based pacing for roamer count and strength 
             let elapsed = now - GameContext.gameStartTime - GameContext.pausedAccumMs;
             if (GameContext.pauseStartTime) elapsed = GameContext.pauseStartTime - GameContext.gameStartTime - GameContext.pausedAccumMs;
@@ -725,7 +717,18 @@ export function gameLoopLogic(opts = null) {
                             type = 'hunter';
                         }
                     }
-                    GameContext.enemies.push(new Enemy(type));
+                    // Use cave-aware spawn point finder for cave mode
+                    // findSpawnPointRelative from main.js takes (random, min, max) and uses GameContext internally
+                    if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active && findSpawnPointRelative) {
+                        const spawnPoint = findSpawnPointRelative(true, 1500, 2500);
+                        if (spawnPoint && spawnPoint.x !== undefined && spawnPoint.y !== undefined) {
+                            GameContext.enemies.push(new Enemy(type, spawnPoint));
+                        } else {
+                            GameContext.enemies.push(new Enemy(type));
+                        }
+                    } else {
+                        GameContext.enemies.push(new Enemy(type));
+                    }
                 }
             }
         } else {
@@ -776,7 +779,10 @@ export function gameLoopLogic(opts = null) {
             }
         }
         if (GameContext.warpZone && GameContext.warpZone.turrets) {
-            for (let i = 0; i < GameContext.warpZone.turrets.length; i++) GameContext.targetGrid.insert(GameContext.warpZone.turrets[i]);
+            for (let i = 0; i < GameContext.warpZone.turrets.length; i++) {
+                const t = GameContext.warpZone.turrets[i];
+                if (t && !t.dead) GameContext.targetGrid.insert(t);
+            }
         }
         if (GameContext.boss && !GameContext.boss.dead) GameContext.targetGrid.insert(GameContext.boss);
         if (GameContext.destroyer && !GameContext.destroyer.dead) GameContext.targetGrid.insert(GameContext.destroyer);
@@ -817,6 +823,9 @@ export function gameLoopLogic(opts = null) {
                         // Delay respawns until the current target count needs them.
                         GameContext.baseRespawnTimers[i] = now + 8000;
                     }
+                } else if (GameContext.baseRespawnTimers[i] > now + 60000) {
+                    // Remove timers that are more than 60 seconds in the future (stale timers)
+                    GameContext.baseRespawnTimers.splice(i, 1);
                 }
             }
         }
@@ -979,45 +988,122 @@ export function gameLoopLogic(opts = null) {
     if (doUpdate) globalProfiler.end('LevelLogic');
     // Asteroids should render behind everything else (drops, ships, UI).
     globalProfiler.start('Entities');
-    GameContext.environmentAsteroids.forEach(a => { if (doUpdate) a.update(deltaTime); if (doDraw) a.draw(ctx); });
+    // Update environment asteroids and skip dead ones
+    for (let i = GameContext.environmentAsteroids.length - 1; i >= 0; i--) {
+        const a = GameContext.environmentAsteroids[i];
+        if (!a || a.dead) continue;
+        if (doUpdate) a.update(deltaTime);
+        if (doDraw) a.draw(ctx);
+    }
 
-    GameContext.coins.forEach(c => {
+    // Update coins and skip dead ones
+    for (let i = GameContext.coins.length - 1; i >= 0; i--) {
+        const c = GameContext.coins[i];
+        if (!c || c.dead) continue;
         if (doUpdate) c.update(GameContext.player, deltaTime);
         if (doDraw) {
             if (isInView(c.pos.x, c.pos.y, 50)) c.draw(ctx, pickupRes);
             else if (typeof c.cull === 'function') c.cull();
         }
-    });
-    GameContext.nuggets.forEach(n => {
+    }
+    // Update nuggets and skip dead ones
+    for (let i = GameContext.nuggets.length - 1; i >= 0; i--) {
+        const n = GameContext.nuggets[i];
+        if (!n || n.dead) continue;
         if (doUpdate) n.update(GameContext.player, deltaTime);
         if (doDraw) {
             if (isInView(n.pos.x, n.pos.y, 50)) n.draw(ctx, pickupRes);
             else if (typeof n.cull === 'function') n.cull();
         }
-    });
-    GameContext.powerups.forEach(p => {
+    }
+    // Update powerups and skip dead ones
+    for (let i = GameContext.powerups.length - 1; i >= 0; i--) {
+        const p = GameContext.powerups[i];
+        if (!p || p.dead) continue;
         if (doUpdate) p.update(GameContext.player, deltaTime);
         if (doDraw) {
             if (isInView(p.pos.x, p.pos.y, 60)) p.draw(ctx, pickupRes);
             else if (typeof p.cull === 'function') p.cull();
         }
-    });
-    GameContext.shootingStars.forEach(s => { if (doUpdate) s.update(deltaTime); if (doDraw) s.draw(ctx); });
-    GameContext.caches.forEach(c => { if (doUpdate) c.update(deltaTime); if (doDraw) c.draw(ctx, pickupRes); });
-    GameContext.pois.forEach(p => { if (doUpdate) p.update(deltaTime); if (doDraw) p.draw(ctx); });
+    }
+    // Update shooting stars and skip dead ones
+    for (let i = GameContext.shootingStars.length - 1; i >= 0; i--) {
+        const s = GameContext.shootingStars[i];
+        if (!s || s.dead) continue;
+        if (doUpdate) s.update(deltaTime);
+        if (doDraw) s.draw(ctx);
+    }
+    // Update caches and skip dead ones
+    for (let i = GameContext.caches.length - 1; i >= 0; i--) {
+        const c = GameContext.caches[i];
+        if (!c || c.dead) continue;
+        if (doUpdate) c.update(deltaTime);
+        if (doDraw) c.draw(ctx, pickupRes);
+    }
+    // Update POIs and skip dead ones
+    for (let i = GameContext.pois.length - 1; i >= 0; i--) {
+        const p = GameContext.pois[i];
+        if (!p || p.dead) continue;
+        if (doUpdate) p.update(deltaTime);
+        if (doDraw) p.draw(ctx);
+    }
     if (GameContext.radiationStorm && !GameContext.radiationStorm.dead) { if (doUpdate) GameContext.radiationStorm.update(deltaTime); if (doDraw) GameContext.radiationStorm.draw(ctx); }
     if (GameContext.miniEvent && !GameContext.miniEvent.dead) { if (doUpdate) GameContext.miniEvent.update(deltaTime); if (doDraw) GameContext.miniEvent.draw(ctx); }
-    GameContext.contractEntities.beacons.forEach(b => { if (doUpdate) b.update(deltaTime); if (doDraw) b.draw(ctx); });
-    GameContext.contractEntities.gates.forEach(g => { if (doUpdate) g.update(deltaTime); if (doDraw) g.draw(ctx); });
-    GameContext.contractEntities.anomalies.forEach(a => { if (doUpdate) a.update(deltaTime); if (doDraw) a.draw(ctx); });
-    GameContext.contractEntities.fortresses.forEach(f => { if (doUpdate) f.update(deltaTime); if (doDraw) f.draw(ctx); });
-    GameContext.contractEntities.wallTurrets.forEach(t => { if (doUpdate) t.update(deltaTime); if (doDraw) t.draw(ctx); });
+    // Update contract entities and skip dead ones
+    if (GameContext.contractEntities) {
+        if (GameContext.contractEntities.beacons) {
+            for (let i = GameContext.contractEntities.beacons.length - 1; i >= 0; i--) {
+                const b = GameContext.contractEntities.beacons[i];
+                if (!b || b.dead) continue;
+                if (doUpdate) b.update(deltaTime);
+                if (doDraw) b.draw(ctx);
+            }
+        }
+        if (GameContext.contractEntities.gates) {
+            for (let i = GameContext.contractEntities.gates.length - 1; i >= 0; i--) {
+                const g = GameContext.contractEntities.gates[i];
+                if (!g || g.dead) continue;
+                if (doUpdate) g.update(deltaTime);
+                if (doDraw) g.draw(ctx);
+            }
+        }
+        if (GameContext.contractEntities.anomalies) {
+            for (let i = GameContext.contractEntities.anomalies.length - 1; i >= 0; i--) {
+                const a = GameContext.contractEntities.anomalies[i];
+                if (!a || a.dead) continue;
+                if (doUpdate) a.update(deltaTime);
+                if (doDraw) a.draw(ctx);
+            }
+        }
+        if (GameContext.contractEntities.fortresses) {
+            for (let i = GameContext.contractEntities.fortresses.length - 1; i >= 0; i--) {
+                const f = GameContext.contractEntities.fortresses[i];
+                if (!f || f.dead) continue;
+                if (doUpdate) f.update(deltaTime);
+                if (doDraw) f.draw(ctx);
+            }
+        }
+        if (GameContext.contractEntities.wallTurrets) {
+            for (let i = GameContext.contractEntities.wallTurrets.length - 1; i >= 0; i--) {
+                const t = GameContext.contractEntities.wallTurrets[i];
+                if (!t || t.dead) continue;
+                if (doUpdate) t.update(deltaTime);
+                if (doDraw) t.draw(ctx);
+            }
+        }
+    }
 
-    // Monster shield drones (from CaveMonster3)
+    // Monster shield drones (from CaveMonster3) - cleanup dead ones
     if (window.monsterDrones && window.monsterDrones.length > 0) {
         for (let i = window.monsterDrones.length - 1; i >= 0; i--) {
             const drone = window.monsterDrones[i];
             if (!drone || drone.dead) {
+                if (drone) {
+                    if (typeof drone.kill === 'function') {
+                        try { drone.kill(); } catch (e) { }
+                    }
+                    try { pixiCleanupObject(drone); } catch (e) { }
+                }
                 window.monsterDrones.splice(i, 1);
                 continue;
             }
@@ -1361,11 +1447,14 @@ export function gameLoopLogic(opts = null) {
         }
         immediateCompactArray(GameContext.caches);
         immediateCompactArray(GameContext.pois, (poi) => { if (typeof poi.kill === 'function') poi.kill(); });
-        immediateCompactArray(GameContext.contractEntities.beacons);
-        immediateCompactArray(GameContext.contractEntities.gates);
-        immediateCompactArray(GameContext.contractEntities.anomalies);
-        immediateCompactArray(GameContext.contractEntities.fortresses);
-        immediateCompactArray(GameContext.contractEntities.wallTurrets);
+        // Clean up contract entities - remove dead entities
+        if (GameContext.contractEntities) {
+            immediateCompactArray(GameContext.contractEntities.beacons, pixiCleanupObject);
+            immediateCompactArray(GameContext.contractEntities.gates, pixiCleanupObject);
+            immediateCompactArray(GameContext.contractEntities.anomalies, pixiCleanupObject);
+            immediateCompactArray(GameContext.contractEntities.fortresses, pixiCleanupObject);
+            immediateCompactArray(GameContext.contractEntities.wallTurrets, pixiCleanupObject);
+        }
 
         globalProfiler.end('Cleanup');
 

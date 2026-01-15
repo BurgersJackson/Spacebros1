@@ -130,7 +130,7 @@ export function startCaveSector2() {
     deps.clearArrayWithPixiCleanup(GameContext.cavePinwheels);
     GameContext.baseRespawnTimers = [];
     GameContext.roamerRespawnQueue = [];
-    GameContext.maxRoamers = 0;
+    GameContext.maxRoamers = 15; // Allow roamers to spawn in cave mode
     GameContext.initialSpawnDone = true;
     GameContext.initialSpawnDelayAt = null;
     GameContext.pendingStations = 0;
@@ -262,16 +262,52 @@ export function enterWarpMaze() {
 }
 
 export function resetWarpState() {
-    try { if (GameContext.warpZone) GameContext.warpZone.active = false; } catch (e) { }
+    try { 
+        if (GameContext.warpZone) {
+            if (typeof GameContext.warpZone.cleanup === 'function') {
+                GameContext.warpZone.cleanup();
+            } else {
+                GameContext.warpZone.active = false;
+            }
+        }
+    } catch (e) { 
+        console.warn('[resetWarpState] Error cleaning up warp zone:', e);
+    }
     GameContext.warpZone = null;
     if (GameContext.warpGate) deps.pixiCleanupObject(GameContext.warpGate);
     GameContext.warpGate = null;
 }
 
 export function resetCaveState() {
-    try { if (GameContext.caveLevel) GameContext.caveLevel.active = false; } catch (e) { }
+    try { 
+        if (GameContext.caveLevel) {
+            if (typeof GameContext.caveLevel.cleanup === 'function') {
+                GameContext.caveLevel.cleanup();
+            } else {
+                GameContext.caveLevel.active = false;
+            }
+        }
+    } catch (e) { 
+        console.warn('[resetCaveState] Error cleaning up cave level:', e);
+    }
     GameContext.caveMode = false;
     GameContext.caveLevel = null;
+}
+
+export function resetDungeon1State() {
+    try { 
+        if (GameContext.dungeon1Zone) {
+            if (typeof GameContext.dungeon1Zone.cleanup === 'function') {
+                GameContext.dungeon1Zone.cleanup();
+            } else {
+                GameContext.dungeon1Zone.active = false;
+            }
+        }
+    } catch (e) { 
+        console.warn('[resetDungeon1State] Error cleaning up dungeon1 zone:', e);
+    }
+    GameContext.dungeon1Active = false;
+    GameContext.dungeon1Zone = null;
 }
 
 export function enterDungeon1Internal() {

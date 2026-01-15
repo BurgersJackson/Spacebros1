@@ -80,14 +80,21 @@ export function processStaggeredParticleBursts() {
     for (let i = GameContext.staggeredParticleBursts.length - 1; i >= 0; i--) {
         const burst = GameContext.staggeredParticleBursts[i];
 
-        if (burst.processed) {
+        // Remove invalid or processed entries
+        if (!burst || burst.processed) {
             GameContext.staggeredParticleBursts.splice(i, 1);
             continue;
         }
 
         if (burst.delayFrames <= 0) {
-            burst.processed = true;
-            spawnParticles(burst.x, burst.y, burst.count, burst.color);
+            try {
+                burst.processed = true;
+                spawnParticles(burst.x, burst.y, burst.count, burst.color);
+            } catch (e) {
+                console.warn('[processStaggeredParticleBursts] Error spawning particles:', e);
+                // Mark as processed even on error to prevent infinite retries
+                burst.processed = true;
+            }
         } else {
             burst.delayFrames--;
         }
@@ -129,7 +136,14 @@ export function processStaggeredBombExplosions() {
     for (let i = GameContext.staggeredBombExplosions.length - 1; i >= 0; i--) {
         const queued = GameContext.staggeredBombExplosions[i];
 
-        if (queued.processed) {
+        // Remove invalid or processed entries
+        if (!queued || queued.processed) {
+            GameContext.staggeredBombExplosions.splice(i, 1);
+            continue;
+        }
+
+        // Remove entries with dead or null bombs
+        if (!queued.bomb || queued.bomb.dead) {
             GameContext.staggeredBombExplosions.splice(i, 1);
             continue;
         }
@@ -148,17 +162,23 @@ export function processStaggeredBombExplosions() {
     for (const queued of actualExplosions) {
         const bomb = queued.bomb;
         if (bomb && !bomb.dead) {
-            bomb.dead = true;
-            pixiCleanupObject(bomb);
-            playSound('explode');
-            spawnParticles(bomb.pos.x, bomb.pos.y, 40, '#fa0');
-            GameContext.shockwaves.push(new Shockwave(bomb.pos.x, bomb.pos.y, bomb.damage, bomb.blastRadius, {
-                damagePlayer: true,
-                damageBases: true,
-                ignoreEntity: bomb.owner,
-                color: '#fa0'
-            }));
+            try {
+                bomb.dead = true;
+                pixiCleanupObject(bomb);
+                playSound('explode');
+                spawnParticles(bomb.pos.x, bomb.pos.y, 40, '#fa0');
+                GameContext.shockwaves.push(new Shockwave(bomb.pos.x, bomb.pos.y, bomb.damage, bomb.blastRadius, {
+                    damagePlayer: true,
+                    damageBases: true,
+                    ignoreEntity: bomb.owner,
+                    color: '#fa0'
+                }));
+            } catch (e) {
+                console.warn('[processStaggeredBombExplosions] Error processing bomb:', e);
+            }
         }
+        // Mark as processed even if bomb was already dead
+        queued.processed = true;
     }
 }
 

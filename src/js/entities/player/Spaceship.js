@@ -769,27 +769,6 @@ export class Spaceship extends Entity {
             }
         }
 
-        // Update volley cooldown UI
-        if (this.volleyShotUnlocked) {
-            const volleyUi = document.getElementById('volley-ui');
-            const volleyText = document.getElementById('volley-text');
-            const volleyFill = document.getElementById('volley-fill');
-
-            if (volleyUi) volleyUi.style.display = 'flex';
-
-            // Calculate remaining seconds (120 frames = 2 seconds at 60fps)
-            const cooldownSeconds = Math.ceil(this.volleyCooldown / 60);
-            if (volleyText) volleyText.textContent = cooldownSeconds > 0 ? `${cooldownSeconds}s` : 'READY';
-
-            // Bar fill: empty when just fired, full when ready
-            const fillPercent = ((120 - this.volleyCooldown) / 120) * 100;
-            if (volleyFill) {
-                volleyFill.style.width = `${fillPercent}%`;
-                // White when ready, yellow when charging
-                volleyFill.style.background = this.volleyCooldown <= 0 ? '#fff' : '#ff0';
-            }
-        }
-
         if (this.hp <= 3 && Math.random() < 0.1 * dtScale) {
             _spawnSmoke(this.pos.x, this.pos.y, 1);
         }

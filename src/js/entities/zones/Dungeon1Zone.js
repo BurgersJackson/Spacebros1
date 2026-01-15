@@ -12,6 +12,7 @@ import { VortexMatriarch } from '../bosses/dungeon/VortexMatriarch.js';
 import { ChitinusPrime } from '../bosses/dungeon/ChitinusPrime.js';
 import { PsyLich } from '../bosses/dungeon/PsyLich.js';
 import { EnvironmentAsteroid } from '../environment/EnvironmentAsteroid.js';
+import { pixiCleanupObject } from '../../utils/cleanup-utils.js';
 
 let _clearArrayWithPixiCleanup = null;
 let _filterArrayWithPixiCleanup = null;
@@ -42,6 +43,14 @@ export class Dungeon1Zone extends Entity {
             this.spawnWave1();
             this.spawnIndestructibleAsteroids();
             this.waveSpawned = true;
+        }
+
+        // Remove dead enemies from dungeonEnemies array
+        for (let i = this.dungeonEnemies.length - 1; i >= 0; i--) {
+            const enemy = this.dungeonEnemies[i];
+            if (!enemy || enemy.dead) {
+                this.dungeonEnemies.splice(i, 1);
+            }
         }
 
         // Check if wave 1 is complete
@@ -251,5 +260,27 @@ export class Dungeon1Zone extends Entity {
 
     draw(ctx) {
         return;
+    }
+
+    /**
+     * Clean up all entities and resources in the dungeon zone
+     */
+    cleanup() {
+        this.active = false;
+        
+        // Clean up dungeon enemies array
+        if (this.dungeonEnemies && this.dungeonEnemies.length > 0) {
+            for (let i = 0; i < this.dungeonEnemies.length; i++) {
+                const enemy = this.dungeonEnemies[i];
+                if (enemy) {
+                    enemy.dead = true;
+                    if (typeof enemy.kill === 'function') {
+                        try { enemy.kill(); } catch (e) { }
+                    }
+                    try { pixiCleanupObject(enemy); } catch (e) { }
+                }
+            }
+            this.dungeonEnemies.length = 0;
+        }
     }
 }

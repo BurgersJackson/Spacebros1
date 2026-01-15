@@ -7,6 +7,7 @@ import { Enemy } from '../enemies/Enemy.js';
 import { EnvironmentAsteroid } from '../environment/EnvironmentAsteroid.js';
 import { WarpSentinelBoss } from '../bosses/WarpSentinelBoss.js';
 import { FinalBoss } from '../bosses/FinalBoss.js';
+import { pixiCleanupObject } from '../../utils/cleanup-utils.js';
 
 let _clearArrayWithPixiCleanup = null;
 let _filterArrayWithPixiCleanup = null;
@@ -104,6 +105,22 @@ export class WarpMazeZone extends Entity {
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
         if (!this.generated) this.generate();
+
+        // Remove dead turrets from array
+        if (this.turrets && this.turrets.length > 0) {
+            for (let i = this.turrets.length - 1; i >= 0; i--) {
+                const turret = this.turrets[i];
+                if (!turret || turret.dead) {
+                    if (turret) {
+                        if (typeof turret.kill === 'function') {
+                            try { turret.kill(); } catch (e) { }
+                        }
+                        try { pixiCleanupObject(turret); } catch (e) { }
+                    }
+                    this.turrets.splice(i, 1);
+                }
+            }
+        }
 
         // Spawn roamers in waves as the player moves inward.
         if (this.mobSpawnCooldown > 0) this.mobSpawnCooldown -= dtFactor;
@@ -281,5 +298,32 @@ export class WarpMazeZone extends Entity {
 
     draw(ctx) {
         return;
+    }
+
+    /**
+     * Clean up all entities and resources in the warp zone
+     */
+    cleanup() {
+        this.active = false;
+        
+        // Clean up turrets array
+        if (this.turrets && this.turrets.length > 0) {
+            for (let i = 0; i < this.turrets.length; i++) {
+                const turret = this.turrets[i];
+                if (turret) {
+                    turret.dead = true;
+                    if (typeof turret.kill === 'function') {
+                        try { turret.kill(); } catch (e) { }
+                    }
+                    try { pixiCleanupObject(turret); } catch (e) { }
+                }
+            }
+            this.turrets.length = 0;
+        }
+        
+        // Clear other arrays
+        this.rings = [];
+        this.segments = [];
+        this.dynamicSegments = [];
     }
 }

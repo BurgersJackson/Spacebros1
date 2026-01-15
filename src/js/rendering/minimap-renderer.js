@@ -80,7 +80,7 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
             pixiMinimapGraphics.lineTo(centerX + x1, centerY + y1);
         }
 
-        if (GameContext.warpZone.turrets && GameContext.warpZone.turrets.length > 0) {
+        if (GameContext.warpZone && GameContext.warpZone.turrets && GameContext.warpZone.turrets.length > 0) {
             pixiMinimapGraphics.beginFill(0x00ffff);
             for (let i = 0; i < GameContext.warpZone.turrets.length; i++) {
                 const t = GameContext.warpZone.turrets[i];

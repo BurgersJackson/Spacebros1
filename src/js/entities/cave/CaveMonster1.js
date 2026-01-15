@@ -15,7 +15,7 @@ export class CaveMonster1 extends CaveMonsterBase {
         this.pulseActive = false;
         this.pulseRadius = 0;
         this.pulseMaxRadius = 600;
-        this.pulseExpansionSpeed = 25;
+        this.pulseExpansionSpeed = 6.25;
         this.pulseHit = false;
         this.artillerySpeed = 3.0;
         this.attackType = 0;
@@ -104,8 +104,8 @@ export class CaveMonster1 extends CaveMonsterBase {
             const my = this.pos.y + Math.sin(angle) * dist;
 
             const mine = new Enemy('turret', { x: mx, y: my }, null);
-            mine.hp = 1;
-            mine.maxHp = 1;
+            mine.hp = 5;
+            mine.maxHp = 5;
             mine.radius = 30;
             mine.despawnImmune = true;
             mine.owner = this;
@@ -124,10 +124,12 @@ export class CaveMonster1 extends CaveMonsterBase {
                         if (caveDeps.spawnFieryExplosion) caveDeps.spawnFieryExplosion(this.pos.x, this.pos.y, 2.0);
                         playSound('explosion');
 
-                        // AOE damage - 200px radius, respects shield penetration
+                        // AOE damage - 200px radius, bypasses shields
                         const explosionRadius = 200;
                         if (Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y) < explosionRadius) {
-                            if (caveDeps.applyAOEDamageToPlayer) caveDeps.applyAOEDamageToPlayer(this.pos.x, this.pos.y, explosionRadius, 5);
+                            if (GameContext.player && !GameContext.player.dead) {
+                                GameContext.player.takeHit(5, true); // true = bypass shields
+                            }
                         }
                     }
                 }
@@ -186,9 +188,11 @@ export class CaveMonster1 extends CaveMonsterBase {
 
                 if (Math.abs(dist - this.pulseRadius) < 30 && !this.pulseHit) {
                     this.pulseHit = true;
-                    // Use AOE damage that respects shield penetration
-                    const damage = dist > 400 ? 8 : 4;
-                    if (caveDeps.applyAOEDamageToPlayer) caveDeps.applyAOEDamageToPlayer(this.pos.x, this.pos.y, 60, damage);
+                    // Damage bypasses shields (true = ignoreShields)
+                    const damage = dist > 400 ? 2 : 5;
+                    if (GameContext.player && !GameContext.player.dead) {
+                        GameContext.player.takeHit(damage, true); // true = bypass shields
+                    }
                 }
             }
 

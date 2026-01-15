@@ -145,6 +145,7 @@ export function startGame() {
 
         deps.resetWarpState();
         deps.resetCaveState();
+        deps.resetDungeon1State();
         GameContext.warpCompletedOnce = false;
         deps.setMusicMode('normal');
         GameContext.gameMode = 'normal';

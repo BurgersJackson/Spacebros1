@@ -127,6 +127,7 @@ import {
     enterWarpMaze,
     resetWarpState,
     resetCaveState,
+    resetDungeon1State,
     enterDungeon1Internal as _enterDungeon1Internal
 } from './systems/sector-flow.js';
 import {
@@ -702,6 +703,7 @@ registerGameFlowDependencies({
     pixiCleanupObject,
     playSound,
     resetCaveState,
+    resetDungeon1State,
     resetProfileStats,
     resetWarpState,
     saveMetaProfile: saveMetaProfileSystem,
@@ -1016,6 +1018,13 @@ Cave.registerCaveDependencies({
     onBossDefeated: () => {
         if (GameContext.caveLevel) {
             GameContext.caveLevel.bossesDefeated++;
+            // Reset arena placement flag so next boss arena can be placed
+            GameContext.caveLevel.bossArenaPlaced = false;
+            // Deactivate the current arena
+            if (GameContext.caveBossArena) {
+                GameContext.caveBossArena.active = false;
+                GameContext.caveBossArena.bossSpawned = false;
+            }
         }
     }
 });
