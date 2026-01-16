@@ -762,11 +762,9 @@ export class WarpSentinelBoss extends Entity {
     }
 
     spawnCaveReinforcements() {
-        // Count total warp reinforcements (all enemies spawned by boss)
-        const aliveReinforcements = GameContext.enemies.filter(e =>
-            e && !e.dead && e.isWarpReinforcement
-        ).length;
-        const maxReinforcements = this.helperMax; // 10 max
+        // Count total enemies in the level (not just reinforcements)
+        const totalEnemies = GameContext.enemies.filter(e => e && !e.dead).length;
+        const maxEnemies = 10;
 
         // Count alive cave gunboats
         const aliveGunboats = GameContext.enemies.filter(e =>
@@ -774,15 +772,15 @@ export class WarpSentinelBoss extends Entity {
         ).length;
         const maxGunboats = 3;
 
-        // Don't spawn if at total reinforcement limit
-        if (aliveReinforcements >= maxReinforcements) {
+        // Don't spawn if at total enemy limit
+        if (totalEnemies >= maxEnemies) {
             return;
         }
 
         const enemyTypes = ['roamer', 'hunter', 'cave_gunboat1', 'cave_gunboat2'];
         const count = Math.min(
             2 + Math.floor(Math.random() * 2),
-            maxReinforcements - aliveReinforcements
+            maxEnemies - totalEnemies
         );
 
         for (let i = 0; i < count; i++) {
