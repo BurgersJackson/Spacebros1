@@ -310,7 +310,7 @@ export class WarpSentinelBoss extends Entity {
 
             if (this.dashFrames <= 0) {
                 this.dashFrames = 0;
-                GameContext.shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 2, 650, { damagePlayer: true, color: '#f0f', ignoreEntity: this }));
+                GameContext.shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 2, 650, { damagePlayer: true, damageEnemies: false, color: '#f0f', ignoreEntity: this }));
                 playSound('explode');
             }
         } else if (this.dashCooldown <= 0 && distToPlayer > 650 && distToPlayer < 2800) {
@@ -410,7 +410,7 @@ export class WarpSentinelBoss extends Entity {
         }
 
         if (this.screamCooldown <= 0 && distToPlayer < 2400) {
-            GameContext.shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 0, 1600, { damageAsteroids: true, color: '#f0f', ignoreEntity: this }));
+            GameContext.shockwaves.push(new Shockwave(this.pos.x, this.pos.y, 0, 1600, { damageAsteroids: true, damageEnemies: false, color: '#f0f', ignoreEntity: this }));
             if (distToPlayer < 1200) {
                 const nx = Math.cos(aimToPlayer);
                 const ny = Math.sin(aimToPlayer);
@@ -487,10 +487,16 @@ export class WarpSentinelBoss extends Entity {
         count = Math.min(count, slots);
 
         const phase2 = (this.phase >= 2);
-        let types = ['roamer', 'defender', 'roamer', 'elite_roamer'];
-        if (this.helperStrengthTier <= 0) types = ['roamer', 'roamer', 'defender'];
+        let types;
         if (phase2) {
+            // Phase 2: stronger enemies including hunters
             types = ['defender', 'defender', 'hunter', 'elite_roamer', 'hunter'];
+        } else if (this.helperStrengthTier <= 0) {
+            // Weak tier: only basic enemies
+            types = ['roamer', 'roamer', 'defender'];
+        } else {
+            // Phase 1: standard mix
+            types = ['roamer', 'defender', 'roamer', 'elite_roamer'];
         }
 
         for (let i = 0; i < count; i++) {
@@ -754,30 +760,16 @@ export class WarpSentinelBoss extends Entity {
     }
 
     spawnCaveReinforcements() {
-        const existingGunboats = GameContext.enemies.filter(e => e && e.isGunboat).length;
-        const maxGunboats = 3;
-        const gunboatSlots = Math.max(0, maxGunboats - existingGunboats);
-
         const count = 2 + Math.floor(Math.random() * 2);
         const enemyTypes = ['roamer', 'gunboat', 'pinwheel'];
-        let gunboatsSpawned = 0;
-
         for (let i = 0; i < count; i++) {
             const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
-
-            if (type === 'gunboat') {
-                if (gunboatsSpawned >= gunboatSlots) {
-                    continue;
-                }
-                gunboatsSpawned++;
-            }
-
             const angle = Math.random() * Math.PI * 2;
             const dist = 400 + Math.random() * 200;
             const ex = this.pos.x + Math.cos(angle) * dist;
             const ey = this.pos.y + Math.sin(angle) * dist;
-
             const enemy = new Enemy(type, { x: ex, y: ey }, null);
+            enemy.despawnImmune = true;
             GameContext.enemies.push(enemy);
         }
         playSound('powerup');

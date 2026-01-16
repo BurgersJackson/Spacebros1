@@ -84,7 +84,6 @@ export const GameContext = {
     gunboatsDestroyedTotal: 0,
     maxRoamers: 5,
     spaceNuggets: 0,
-    totalKills: 0,
     highScore: 0,
     totalPlayTimeMs: 0,
     roamerRespawnQueue: [],

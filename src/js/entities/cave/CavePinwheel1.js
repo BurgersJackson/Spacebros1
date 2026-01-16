@@ -88,7 +88,6 @@ export class CavePinwheel1 extends Pinwheel {
                 const a = pixiTextureAnchors[baseKey] || { x: 0.5, y: 0.5 };
                 this._pixiHullSpr.texture = tex;
                 this._pixiHullSpr.anchor.set((a && a.x != null) ? a.x : 0.5, (a && a.y != null) ? a.y : 0.5);
-                // Apply 20% size increase to sprite graphic (1.2x multiplier)
                 const baseScale = pixiTextureBaseScales[baseKey] || 1;
                 this._pixiHullSpr.scale.set(baseScale * 1.2);
             }
@@ -105,8 +104,8 @@ export class CavePinwheel1 extends Pinwheel {
 
             // Shields (Graphics) - standard cyan/magenta colors
             if (pixiVectorLayer) {
-                const shieldColor = 0x00ffff; // cyan
-                const innerColor = 0xff00ff; // magenta
+                const shieldColor = 0x00ff00; // bright green outer
+                const innerColor = 0x006400; // dark green inner
                 const hasOuter = (this.shieldSegments && this.shieldSegments.length > 0);
                 const hasInner = (this.innerShieldSegments && this.innerShieldSegments.length > 0);
                 const needs = !!(hasOuter || hasInner);

@@ -34,6 +34,7 @@ export class Shockwave extends Entity {
         this.damageBases = !!opts.damageBases;
         this.damageAsteroids = !!opts.damageAsteroids;
         this.damageMissiles = !!opts.damageMissiles;
+        this.damageEnemies = opts.damageEnemies !== false; // Default true for backward compatibility
         this.ignoreEntity = opts.ignoreEntity || null;
         this.color = opts.color || '#ff0';
         this.followPlayer = !!opts.followPlayer;
@@ -64,7 +65,8 @@ export class Shockwave extends Entity {
         this.currentRadius += this.speed * dtFactor;
         if (this.currentRadius >= this.maxRadius) this.dead = true;
 
-        const targets = [...GameContext.enemies];
+        const targets = [];
+        if (this.damageEnemies) targets.push(...GameContext.enemies);
         if (this.damageBases) targets.push(...GameContext.pinwheels);
         if (GameContext.boss && GameContext.bossActive && !GameContext.boss.dead) targets.push(GameContext.boss);
         if (this.damagePlayer && GameContext.player && !GameContext.player.dead) targets.push(GameContext.player);

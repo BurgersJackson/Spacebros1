@@ -695,7 +695,7 @@ export function resolveEntityCollision() {
                             // Update difficulty tier based on total pinwheels and gunboats destroyed
                             const totalDestroyed = GameContext.pinwheelsDestroyedTotal + GameContext.gunboatsDestroyedTotal;
                             GameContext.difficultyTier = 1 + Math.floor(totalDestroyed / 6);
-                            GameContext.score += 1000;
+                            GameContext.score += 10000;
                             const baseEl = document.getElementById('bases-display');
                             if (baseEl) baseEl.innerText = `${GameContext.pinwheelsDestroyedTotal}`;
                             GameContext.enemies.forEach(e => { if (e.assignedBase === b) e.type = 'roamer'; });
@@ -729,7 +729,7 @@ export function resolveEntityCollision() {
                             // Update difficulty tier based on total pinwheels and gunboats destroyed
                             const totalDestroyed = GameContext.pinwheelsDestroyedTotal + GameContext.gunboatsDestroyedTotal;
                             GameContext.difficultyTier = 1 + Math.floor(totalDestroyed / 6);
-                            GameContext.score += 1000;
+                            GameContext.score += 10000;
                             const baseEl = document.getElementById('bases-display');
                             if (baseEl) baseEl.innerText = `${GameContext.pinwheelsDestroyedTotal}`;
                             GameContext.enemies.forEach(e => { if (e.assignedBase === b) e.type = 'roamer'; });
@@ -750,7 +750,7 @@ export function resolveEntityCollision() {
                         if (_playSound) _playSound('explode');
                         if (GameContext.boss.hp <= 0) {
                             GameContext.boss.kill();
-                            GameContext.score += 10000;
+                            GameContext.score += 5000;
                         }
                     }
                     hitEntity = true;
@@ -1729,7 +1729,7 @@ export function processBulletCollisions() {
                                     if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
                                     if (GameContext.boss.hp <= 0) {
                                         GameContext.boss.kill();
-                                        GameContext.score += 5000;
+                                        GameContext.score += 10000;
                                     }
                                 }
                             }

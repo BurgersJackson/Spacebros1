@@ -35,6 +35,8 @@ export class Destroyer extends Entity {
         const angle = Math.random() * Math.PI * 2;
         const dist = 4000;
         super(GameContext.player.pos.x + Math.cos(angle) * dist, GameContext.player.pos.y + Math.sin(angle) * dist);
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
 
         this.displayName = "DESTROYER";
 
@@ -101,7 +103,7 @@ export class Destroyer extends Entity {
         this.escalationPhase = 1;
         this.escalationMultiplier = 1.0;
 
-        this._firstDraw = true;
+        // this._firstDraw = true; // No longer needed with prevPos init
     }
 
     getEscalationPhase() {

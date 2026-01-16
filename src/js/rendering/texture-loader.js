@@ -617,6 +617,14 @@ export function applyEnemyTexture(img, key) {
 roamerImage.addEventListener('load', () => {
     roamerLoaded = true;
     applyEnemyTexture(roamerImage, 'enemy_roamer');
+    // If hunter is already loaded, set its base scale now
+    if (hunterLoaded && roamerImage.naturalWidth > 0 && hunterImage.naturalWidth > 0) {
+        const roamerSize = Math.max(roamerImage.naturalWidth, roamerImage.naturalHeight);
+        const hunterSize = Math.max(hunterImage.naturalWidth, hunterImage.naturalHeight);
+        if (hunterSize > 0 && roamerSize > 0) {
+            pixiTextureBaseScales.enemy_hunter = roamerSize / hunterSize;
+        }
+    }
 });
 eliteRoamerImage.addEventListener('load', () => {
     eliteRoamerLoaded = true;
@@ -625,6 +633,15 @@ eliteRoamerImage.addEventListener('load', () => {
 hunterImage.addEventListener('load', () => {
     hunterLoaded = true;
     applyEnemyTexture(hunterImage, 'enemy_hunter');
+    // Compensate for texture size difference - if hunter texture is larger than roamer, scale it up
+    if (roamerLoaded && roamerImage.naturalWidth > 0 && hunterImage.naturalWidth > 0) {
+        const roamerSize = Math.max(roamerImage.naturalWidth, roamerImage.naturalHeight);
+        const hunterSize = Math.max(hunterImage.naturalWidth, hunterImage.naturalHeight);
+        if (hunterSize > 0 && roamerSize > 0) {
+            // Set base scale to compensate for size difference
+            pixiTextureBaseScales.enemy_hunter = roamerSize / hunterSize;
+        }
+    }
 });
 defenderImage.addEventListener('load', () => {
     defenderLoaded = true;

@@ -102,12 +102,15 @@ export class Enemy extends Entity {
             this.maxSpeed *= 1.05;
         } else if (this.type === 'hunter') {
             this.hp = 12 + (GameContext.difficultyTier * 3);
-            this.radius = Math.round(22 * 1.35 * 0.75); // reduced 25%
+            this.radius = 22; // Base radius (will be multiplied by 3 to get 66)
             this.maxSpeed = 13.0 + (GameContext.difficultyTier * 0.5); // doubled
             this.thrustPower = 1.2; // quadrupled (0.3 * 4)
             this.shieldSegments = new Array(4).fill(1);
-            this.shieldRadius = Math.round(30 * 1.35 * 0.75); // reduced 25%
+            this.shieldRadius = 30; // Base shield radius (will be multiplied by 3 to get 90)
             this.shootTimer = 20; // 40 / 2
+        } else if (this.type === 'defender') {
+            this.hp = 5 + (GameContext.difficultyTier - 1) * 2;
+            this.radius = 20; // Same base radius as roamer
         } else {
             this.hp = 5 + (GameContext.difficultyTier - 1) * 2;
         }
@@ -126,8 +129,15 @@ export class Enemy extends Entity {
             }
         }
 
+        // Apply size multiplier for small enemy types (roamer, elite_roamer, hunter, defender)
+        // This must happen before gunboat initialization to ensure correct sizing
         if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter' || this.type === 'defender') {
             const sizeMult = 3;
+            // Ensure radius is set before multiplying (safety check)
+            if (!this.radius || this.radius < 10) {
+                this.radius = this.type === 'roamer' || this.type === 'defender' ? 20 : 
+                             this.type === 'elite_roamer' ? 19 : 22;
+            }
             this.radius = Math.round(this.radius * sizeMult);
             if (this.shieldRadius) this.shieldRadius = Math.round(this.shieldRadius * sizeMult);
         }
@@ -729,14 +739,6 @@ export class Enemy extends Entity {
                     tex = pixiTextures[dungeonKey];
                     anchor = pixiTextureAnchors[dungeonKey] || 0.5;
                     key = dungeonKey;
-                } else if (this.type === 'cave_gunboat_2' || (this.type === 'cave_gunboat2' && this.gunboatLevel === 2)) {
-                    tex = pixiTextures.cave_gunboat_2;
-                    anchor = pixiTextureAnchors.cave_gunboat_2 || 0.5;
-                    key = 'cave_gunboat_2';
-                } else if (this.type === 'cave_gunboat1' || this.type === 'cave_gunboat_1') {
-                    tex = pixiTextures.cave_gunboat_1;
-                    anchor = pixiTextureAnchors.cave_gunboat_1 || 0.5;
-                    key = 'cave_gunboat_1';
                 } else if (this.gunboatLevel === 2) {
                     tex = pixiTextures.enemy_gunboat_2;
                     anchor = pixiTextureAnchors.enemy_gunboat_2 || 0.5;

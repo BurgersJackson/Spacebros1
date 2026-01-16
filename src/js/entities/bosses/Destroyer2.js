@@ -35,6 +35,8 @@ export class Destroyer2 extends Entity {
         const angle = Math.random() * Math.PI * 2;
         const dist = 4000; // Spawn somewhat far from player
         super(GameContext.player.pos.x + Math.cos(angle) * dist, GameContext.player.pos.y + Math.sin(angle) * dist);
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
 
         this.displayName = "DESTROYER II";
 

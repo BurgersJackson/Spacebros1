@@ -1,0 +1,31 @@
+NAME/TYPE,BASE HP,HP SCALING,SHIELD SEGMENTS,SHIELD HP,RADIUS,Movement Speed,Weapons,FIRE RATE,Bullet Damage,SPECIAL BEHAVIORS,Coin Drop,Nugget Drop,FILE LOCATION
+Roamer,1,None,"0","-",60 (20 * 3),"13.6 * speedMult","1 dmg bullet",40 frames,1,"Standoff at 320u, circle strafe 30%","2 * 4 = 8 total","Named only (12%)","src/js/entities/enemies/Enemy.js"
+Elite Roamer,6,"+2 per difficulty tier",6,1,"57 (19 * 3)","14.28 * speedMult","1 dmg bullet",30 frames,1,"Dodge bullets, lead targeting","3 * 5 = 15 total","1 (12% chance)","src/js/entities/enemies/Enemy.js"
+Hunter,12,"+3 per difficulty tier",4,1,"66 (22 * 1.35 * 0.75 * 3)","13.0 + 0.5/tier","1 dmg bullet",20 frames,1,"Dodge bullets, aggressive chase","4 * 7 = 28 total","-","src/js/entities/enemies/Enemy.js"
+Defender,5,"+2 per difficulty tier","0","-","~60","13.6 * speedMult","1 dmg bullet",30 frames,1,"Protects assigned base, retreats when low HP","3 * 4 = 12 total","-","src/js/entities/enemies/Enemy.js"
+Gunboat Level 1,10,Fixed,10,2,"90 (30 * 3)",8.0,"2 dmg bullet",11 frames,2,"Circle strafe, shield regen every 3s","+10 extra","25% in cave","src/js/entities/enemies/Enemy.js"
+Gunboat Level 2,16,Fixed,10,2,"90 (30 * 3)",8.0,"3 dmg bullet (x2)",9 frames,3,"Circle strafe, shield regen every 3s","+10 extra","25% in cave","src/js/entities/enemies/Enemy.js"
+Pinwheel Standard,10,"+5 per difficulty tier","Varies (12-24)","1-3 HP/tier",84,5.0,"3-sided star (2 dmg)","40-75 frames",2,"Rotating shields, chases player","+10 extra (5 nugs)","5 nuggets","src/js/entities/enemies/Pinwheel.js"
+Pinwheel Heavy,15,"+7.5 per difficulty tier","Varies (12-24)","1.5-4.5 HP/tier",84,2.5,"Triple spread (3 dmg)",60 frames,3,"Slower, tankier","+10 extra (5 nugs)","5 nuggets","src/js/entities/enemies/Pinwheel.js"
+Pinwheel Rapid,7,"+3.5 per difficulty tier","Varies (12-24)","1-2.4 HP/tier",84,7.5,"Single shot (1 dmg)",15 frames,1,"Fast, fragile","+10 extra (5 nugs)","5 nuggets","src/js/entities/enemies/Pinwheel.js"
+Cave Gunboat 1,10,Fixed,10,2,"90 (30 * 3)",8.0,"2 dmg bullet",11 frames,2,"Cave-specific, orbit strafe","Normal drops","25%","src/js/entities/cave/CaveGunboat.js"
+Cave Gunboat 2,16,Fixed,10,2,"90 (30 * 3)",8.0,"3 dmg bullet (x2)",9 frames,3,"Cave-specific, stronger","Normal drops","25%","src/js/entities/cave/CaveGunboat.js"
+Cruiser,100,"+35% per encounter index","12 segments (2+encounter HP)",1,"~170 (22 * 7.75)","5.8-8.2","5 phases: SALVO, CURTAIN, MINEFIELD, SWEEP, CHARGE","Varies by phase","Varies","5 hardpoints (2 cannons, sprayer, bay, shieldgen)","130 (13 * 10)","5","src/js/entities/bosses/Cruiser.js"
+Flagship,325+,"+35 per encounter","14 segments",1,"~194 (22 * 8.8)","5.4-8.4","Guided missiles, 5 phases","Varies by phase","Varies","Inherits from Cruiser + missile upgrades","500 (50 * 10)","16","src/js/entities/bosses/Flagship.js"
+Super Flagship,"~682+","+35% + 220","18 segments",1,"~229 (22 * 10.4)","Same + Cave Laser","Cave laser sweep, defender summons","Varies by phase","Varies","5 hardpoints + cave systems","800 (80 * 10)","24","src/js/entities/bosses/SuperFlagshipBoss.js"
+Destroyer,300,Fixed,"60 segments (30 active)","50 segments (25 active)","~338 (520 * 0.65)","1.5 roam","Turrets, ring attack, cluster bombs, napalm, tractor beam","Varies","Varies","None, hull-based","-","20","src/js/entities/bosses/Destroyer.js"
+Space Station,180,Fixed,"36 segments (10 HP)","32 segments (10 HP)","~338 (520 * 0.65)",Stationary,"4 turrets, laser beam, minefield, defender spawns","Varies","Varies","None, stationary","-","-","src/js/entities/bosses/SpaceStation.js"
+Final Boss,1000,Fixed,"48 segments (32 active)","38 segments (28 active)","330 (110 * 3)","6.0 dash, 0.75 orbit,"Flame breath, chitin barrage, scream, bio-pods, reinforcements, mines","Varies","Varies","None","-","-","src/js/entities/bosses/FinalBoss.js"
+Cave Monster 1 Cryptid,250,Fixed,"50 segments (25 active)","20 segments (10 active)","560 (350 * 1.6)",1.2 artillery,"Spread shot, reinforcement summons","Varies","Varies","Hull-based (7 circles)","180 (18 * 10)","7","src/js/entities/cave/CaveMonsterBase.js"
+Cave Monster 2 Horror,300,Fixed,"50 segments (25 active)","20 segments (10 active)",560,2.5 chase,"Spread shot, reinforcement summons","Varies","Varies","Hull-based (7 circles)","220 (22 * 10)","9","src/js/entities/cave/CaveMonsterBase.js"
+Cave Monster 3 Terror,350,Fixed,"50 segments (25 active)","20 segments (10 active)",560,1.2 artillery,"Spread shot, reinforcement summons","Varies","Varies","Hull-based (7 circles)","260 (26 * 10)","11","src/js/entities/cave/CaveMonsterBase.js"
+ELITE MODIFIERS,,,,,,,,,,,,,,
+Explosive,"+2 HP",,2,,-,-,"Death explosion: 8 bullets in all directions (2 dmg each)",,-,-,-,-,-
+Split,"+2 HP",,2,,-,-,"Fires additional split bullet",,-,-,-,-,-
+Stealth,"+2 HP",,2,,-,-,"40-80% visibility, harder to see",,-,-,-,-,-
+Named Nova/Shade/Viper,"+2 HP",,2,,-,-,"Gets one random modifier + name tag display",,-,-,-,-,-
+TIER/ELITE SCALING,,,,,,,,,,,,,,
+Difficulty Tier System,"Increases every 6 pinwheels + gunboats destroyed",,-,-,-,-,-,"Affects: Roamer HP, Elite HP, Hunter HP, Pinwheel HP/shields, gunboat level",,-,-,-,-,-
+Escalation Phases (Destroyer, Cave Monsters, Final Boss),"Phase 1: 0-80s (1.0x multiplier)","Phase 2: 80-120s (1.3-1.5x multiplier)","Phase 3: 120s+ (1.5-2.0x multiplier)",,-,-,-,-,-,-,-,-,-
+Cruiser Encounter Scaling,"Encounter 1: Base stats","Encounter 2: +25% HP, +25% shield strength, guided missiles enabled",,-,-,-,-,-,-,-,-,-
+Cave Monster Escalation,"Monster 1: 250 HP, artillery movement","Monster 2: 300 HP, chase movement","Monster 3: 350 HP, artillery movement",,-,-,-,-,-,-,-,-,-

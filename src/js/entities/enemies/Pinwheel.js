@@ -345,8 +345,8 @@ export class Pinwheel extends Entity {
 
             // Shields (Graphics)
             if (pixiVectorLayer) {
-                const shieldColor = (this.type === 'heavy') ? 0xffaa00 : (this.type === 'rapid' ? 0x0088ff : 0x00ffff);
-                const innerColor = (this.type === 'heavy') ? 0xff4444 : (this.type === 'rapid' ? 0x8888ff : 0xff00ff);
+                const shieldColor = 0x00ff00; // bright green outer
+                const innerColor = 0x006400; // dark green inner
                 const hasOuter = (this.shieldSegments && this.shieldSegments.length > 0);
                 const hasInner = (this.innerShieldSegments && this.innerShieldSegments.length > 0);
                 const needs = !!(hasOuter || hasInner);

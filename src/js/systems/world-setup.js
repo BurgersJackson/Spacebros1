@@ -76,7 +76,6 @@ export function setupGameWorld() {
     deps.initStars(deps.getWidth(), deps.getHeight());
 
     GameContext.maxRoamers = 3;
-    document.getElementById('bases-display').innerText = `0`;
     GameContext.shakeMagnitude = 0;
     deps.updateWarpUI();
     deps.updateTurboUI();
