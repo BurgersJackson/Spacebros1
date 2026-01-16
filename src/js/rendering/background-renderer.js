@@ -4,6 +4,7 @@
 
 import { GameContext } from '../core/game-context.js';
 import { ENABLE_NEBULA, NEBULA_ALPHA, ZOOM_LEVEL } from '../core/constants.js';
+import { isCrtFilterEnabled } from '../ui/crt-filter.js';
 import {
     pixiApp,
     pixiScreenRoot,
@@ -124,13 +125,20 @@ export function initStars(width, height) {
 
                     for (const L of nebulaLayers) {
                         const tex = makeNebulaTileTexture(L.tileSize, L.blobs, palette);
-                        const spr = new PIXI.TilingSprite(tex, (typeof width === 'number' && width > 0) ? width : 1, (typeof height === 'number' && height > 0) ? height : 1);
+                        // Create sprite with viewport dimensions (1920x1080) - will be resized by canvas-setup.js
+                        const spr = new PIXI.TilingSprite(tex, (typeof width === 'number' && width > 0) ? width : 1920, (typeof height === 'number' && height > 0) ? height : 1080);
                         const mult = (typeof L.alphaMult === 'number' && isFinite(L.alphaMult)) ? L.alphaMult : 1;
-                        spr.alpha = (typeof NEBULA_ALPHA === 'number' && isFinite(NEBULA_ALPHA)) ? (NEBULA_ALPHA * mult) : (0.12 * mult);
+                        const baseAlpha = (typeof NEBULA_ALPHA === 'number' && isFinite(NEBULA_ALPHA)) ? NEBULA_ALPHA : 0.12;
+                        // Reduce alpha when CRT/bloom filters are active to prevent over-brightening
+                        const crtEnabled = typeof isCrtFilterEnabled === 'function' ? isCrtFilterEnabled() : false;
+                        const filterMultiplier = crtEnabled ? 0.6 : 1.5; // Much lower when filters are active
+                        spr.alpha = baseAlpha * mult * filterMultiplier;
                         spr.tint = 0xffffff;
-                        spr.blendMode = PIXI.BLEND_MODES.NORMAL;
+                        spr.blendMode = PIXI.BLEND_MODES.ADD; // Use ADD blend mode for nebula to be visible
+                        spr.visible = true; // Explicitly set visible
                         pixiNebulaLayer.addChild(spr);
-                        pixiNebulaTiles.push({ spr, tex, parallax: L.parallax });
+                        // Store alphaMult for dynamic updates
+                        pixiNebulaTiles.push({ spr, tex, parallax: L.parallax, alphaMult: mult });
                     }
                     pixiNebulaPaletteIdx = paletteIdx;
                 }
@@ -189,14 +197,121 @@ export function initStars(width, height) {
     }
 }
 
-export function updatePixiBackground(camX, camY, viewportWidth, viewportHeight) {
+export function updatePixiBackground(camX, camY, viewportWidth, viewportHeight, pixiObjects = null) {
     // viewportWidth/Height are 1920x1080 (game viewport)
     // But sprites should be sized to internal resolution (handled by canvas-setup.js)
     // Tile positions use viewport size for correct parallax calculation
+    
+    // Use provided pixi objects or fall back to module imports
+    const actualPixiApp = (pixiObjects && pixiObjects.pixiApp) || pixiApp;
+    const actualPixiScreenRoot = (pixiObjects && pixiObjects.pixiScreenRoot) || pixiScreenRoot;
+    const actualPixiNebulaLayer = (pixiObjects && pixiObjects.pixiNebulaLayer) || pixiNebulaLayer;
+    
+    // Lazy initialization: create nebula tiles if PixiJS is ready but tiles don't exist
+    if (ENABLE_NEBULA && actualPixiNebulaLayer && (!pixiNebulaTiles || pixiNebulaTiles.length === 0) && actualPixiScreenRoot && actualPixiApp && actualPixiApp.renderer) {
+        // Call the nebula creation code from initStars
+        try {
+            const hexToRgb = (hex) => {
+                const h = (hex >>> 0).toString(16).padStart(6, '0');
+                return {
+                    r: parseInt(h.slice(0, 2), 16),
+                    g: parseInt(h.slice(2, 4), 16),
+                    b: parseInt(h.slice(4, 6), 16)
+                };
+            };
+            const makeNebulaTileTexture = (tileSize, blobCount, paletteHex) => {
+                const c = document.createElement('canvas');
+                c.width = tileSize;
+                c.height = tileSize;
+                const cctx = c.getContext('2d');
+                cctx.clearRect(0, 0, tileSize, tileSize);
+                cctx.globalCompositeOperation = 'lighter';
+                for (let i = 0; i < blobCount; i++) {
+                    const col = hexToRgb(paletteHex[i % paletteHex.length]);
+                    const cx = Math.random() * tileSize;
+                    const cy = Math.random() * tileSize;
+                    const r = tileSize * (0.20 + Math.random() * 0.55);
+                    const a = 0.03 + Math.random() * 0.08;
+                    for (const ox of [-tileSize, 0, tileSize]) {
+                        for (const oy of [-tileSize, 0, tileSize]) {
+                            const x = cx + ox;
+                            const y = cy + oy;
+                            const g = cctx.createRadialGradient(x, y, 0, x, y, r);
+                            g.addColorStop(0, `rgba(${col.r},${col.g},${col.b},${a.toFixed(3)})`);
+                            g.addColorStop(0.45, `rgba(${col.r},${col.g},${col.b},${(a * 0.35).toFixed(3)})`);
+                            g.addColorStop(1, `rgba(${col.r},${col.g},${col.b},0)`);
+                            cctx.fillStyle = g;
+                            cctx.fillRect(0, 0, tileSize, tileSize);
+                        }
+                    }
+                }
+                cctx.globalCompositeOperation = 'source-over';
+                const vign = cctx.createRadialGradient(tileSize * 0.5, tileSize * 0.5, tileSize * 0.10, tileSize * 0.5, tileSize * 0.5, tileSize * 0.75);
+                vign.addColorStop(0, 'rgba(0,0,0,0)');
+                vign.addColorStop(1, 'rgba(0,0,0,0.18)');
+                cctx.fillStyle = vign;
+                cctx.fillRect(0, 0, tileSize, tileSize);
+
+                const tex = PIXI.Texture.from(c);
+                try {
+                    tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+                    tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.OFF;
+                } catch (e) { }
+                return tex;
+            };
+
+            const palettes = [
+                [0x0b1020, 0x2a1a5e, 0x4b2ccf, 0x0a5bd6, 0x00c2ff],
+                [0x0b1020, 0x2a2a6e, 0x1c4cff, 0x00d6d6, 0x00aaff],
+                [0x0b1020, 0x3b1366, 0x6a2cff, 0x1c7cff, 0x00b6ff]
+            ];
+            const idxBase = (typeof GameContext.sectorIndex === 'number' && isFinite(GameContext.sectorIndex)) ? (Math.abs(GameContext.sectorIndex) | 0) : 0;
+            const paletteIdx = idxBase % palettes.length;
+            const palette = palettes[paletteIdx];
+
+            const nebulaLayers = [
+                { tileSize: 1024, blobs: 9, alphaMult: 1.00, parallax: 0.010 },
+                { tileSize: 768, blobs: 7, alphaMult: 0.66, parallax: 0.018 }
+            ];
+
+            if (!Array.isArray(pixiNebulaTiles)) pixiNebulaTiles = [];
+            
+            for (const L of nebulaLayers) {
+                const tex = makeNebulaTileTexture(L.tileSize, L.blobs, palette);
+                const spr = new PIXI.TilingSprite(tex, viewportWidth || 1920, viewportHeight || 1080);
+                const mult = (typeof L.alphaMult === 'number' && isFinite(L.alphaMult)) ? L.alphaMult : 1;
+                const baseAlpha = (typeof NEBULA_ALPHA === 'number' && isFinite(NEBULA_ALPHA)) ? NEBULA_ALPHA : 0.12;
+                // Reduce alpha when CRT/bloom filters are active to prevent over-brightening
+                const crtEnabled = typeof isCrtFilterEnabled === 'function' ? isCrtFilterEnabled() : false;
+                const filterMultiplier = crtEnabled ? 0.6 : 1.5; // Much lower when filters are active
+                spr.alpha = baseAlpha * mult * filterMultiplier;
+                spr.tint = 0xffffff;
+                spr.blendMode = PIXI.BLEND_MODES.ADD;
+                spr.visible = true;
+                actualPixiNebulaLayer.addChild(spr);
+                // Store alphaMult for dynamic updates
+                pixiNebulaTiles.push({ spr, tex, parallax: L.parallax, alphaMult: mult });
+            }
+            pixiNebulaPaletteIdx = paletteIdx;
+        } catch (e) {
+            console.error('[Nebula] Error in lazy initialization:', e);
+        }
+    }
+    
     if (pixiNebulaTiles && pixiNebulaTiles.length) {
+        // Adjust alpha based on CRT filter state
+        const crtEnabled = typeof isCrtFilterEnabled === 'function' ? isCrtFilterEnabled() : false;
+        const filterMultiplier = crtEnabled ? 0.6 : 1.5;
+        
         for (const t of pixiNebulaTiles) {
             const spr = t && (t.sprite || t.spr);
             if (!spr) continue;
+            
+            // Update alpha dynamically based on filter state
+            const mult = (typeof t.alphaMult === 'number' && isFinite(t.alphaMult)) ? t.alphaMult : 1;
+            const baseAlpha = (typeof NEBULA_ALPHA === 'number' && isFinite(NEBULA_ALPHA)) ? NEBULA_ALPHA : 0.12;
+            spr.alpha = baseAlpha * mult * filterMultiplier;
+            
             // Don't resize sprites here - they're sized to internal resolution in canvas-setup.js
             // Tile positions use viewport size for correct parallax
             const tx = -camX * (t.parallax || 0.012);

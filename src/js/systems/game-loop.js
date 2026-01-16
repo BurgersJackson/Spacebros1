@@ -930,7 +930,9 @@ export function gameLoopLogic(opts = null) {
                 pixiScreenRoot.position.set(0, 0);
                 pixiScreenRoot.visible = true;
                 // Enable Nebula/Stars in cave mode, disable grid
-                if (pixiNebulaLayer) pixiNebulaLayer.visible = !!ENABLE_NEBULA;
+                if (pixiNebulaLayer) {
+                    pixiNebulaLayer.visible = !!ENABLE_NEBULA;
+                }
                 if (pixiStarTilingLayer) pixiStarTilingLayer.visible = true;
                 if (pixiStarLayer) pixiStarLayer.visible = false; // legacy particle stars disabled
                 // Update cave grid - use viewport size (1920x1080) for calculations, but sprites are sized to internal resolution
@@ -941,7 +943,11 @@ export function gameLoopLogic(opts = null) {
         // Draw Stars (always enabled)
         // if (!caveActiveBg) { // REMOVED: Enable stars in cave
         if (pixiScreenRoot && pixiStarLayer) {
-            updatePixiBackground(camX, camY, width, height);
+            updatePixiBackground(camX, camY, width, height, {
+                pixiApp,
+                pixiScreenRoot,
+                pixiNebulaLayer
+            });
         } else {
             for (let s of GameContext.starfield) {
                 let x = (s.x - camX * s.parallax) % width;

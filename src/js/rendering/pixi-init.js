@@ -7,6 +7,7 @@ import {
 } from './texture-loader.js';
 import { setPixiContext } from './pixi-context.js';
 import { setStarTiles, setNebulaTiles } from './background-renderer.js';
+import { NEBULA_ALPHA } from '../core/constants.js';
 import {
     applyGunboatTextures,
     applyNuggetTexture,
@@ -362,17 +363,8 @@ export function initPixiOverlay(options) {
             pixiStarTilingLayer.addChild(layer.sprite);
         });
 
-        const nebulaTexFar = makeNebulaTexture(12, nebulaPalettes[pixiNebulaPaletteIdx]);
-        const nebulaTexNear = makeNebulaTexture(8, nebulaPalettes[pixiNebulaPaletteIdx]);
-        const nebulaTiles = [
-            { sprite: new PIXI.TilingSprite(nebulaTexFar, w, h), parallax: 0.01 },
-            { sprite: new PIXI.TilingSprite(nebulaTexNear, w, h), parallax: 0.03 }
-        ];
-        setNebulaTiles(nebulaTiles);
-        nebulaTiles.forEach(layer => {
-            layer.sprite.blendMode = PIXI.BLEND_MODES.ADD;
-            pixiNebulaLayer.addChild(layer.sprite);
-        });
+        // Nebula tiles are created by background-renderer.js in initStars()
+        // Don't create them here to avoid conflicts
     } catch (e) {
         console.warn('Backdrop initialization failed:', e);
     }

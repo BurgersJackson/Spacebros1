@@ -172,9 +172,11 @@ function setupCanvasResolution(internalW, internalH) {
     const nebulaTiles = typeof getNebulaTiles === 'function' ? getNebulaTiles() : null;
     if (nebulaTiles && nebulaTiles.length) {
         for (const t of nebulaTiles) {
-            if (!t || !t.spr) continue;
-            t.spr.width = viewportW;
-            t.spr.height = viewportH;
+            // Support both 'sprite' (from pixi-init.js) and 'spr' (from background-renderer.js)
+            const spr = t && (t.sprite || t.spr);
+            if (!spr) continue;
+            spr.width = viewportW;
+            spr.height = viewportH;
         }
     }
 }

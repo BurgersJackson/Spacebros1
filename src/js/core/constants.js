@@ -72,7 +72,7 @@ export const PLAYER_SHIELD_RADIUS_SCALE = 1.5;
 
 // --- Pixi/Canvas Toggle ---
 export const USE_PIXI_OVERLAY = true;
-export const ENABLE_NEBULA = true;
+export const ENABLE_NEBULA = false;
 export const NEBULA_ALPHA = 0.023;
 
 // --- Upgrade Data ---
