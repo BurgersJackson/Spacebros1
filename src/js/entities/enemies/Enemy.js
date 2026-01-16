@@ -739,6 +739,14 @@ export class Enemy extends Entity {
                     tex = pixiTextures[dungeonKey];
                     anchor = pixiTextureAnchors[dungeonKey] || 0.5;
                     key = dungeonKey;
+                } else if (this.type === 'cave_gunboat2') {
+                    tex = pixiTextures.cave_gunboat_2;
+                    anchor = pixiTextureAnchors.cave_gunboat_2 || 0.5;
+                    key = 'cave_gunboat_2';
+                } else if (this.type === 'cave_gunboat1') {
+                    tex = pixiTextures.cave_gunboat_1;
+                    anchor = pixiTextureAnchors.cave_gunboat_1 || 0.5;
+                    key = 'cave_gunboat_1';
                 } else if (this.gunboatLevel === 2) {
                     tex = pixiTextures.enemy_gunboat_2;
                     anchor = pixiTextureAnchors.enemy_gunboat_2 || 0.5;

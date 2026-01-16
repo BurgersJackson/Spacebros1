@@ -5,6 +5,8 @@ import { playSound } from '../../audio/audio-manager.js';
 import { Bullet } from '../projectiles/Bullet.js';
 import { Shockwave } from '../projectiles/Shockwave.js';
 import { Enemy } from '../enemies/Enemy.js';
+import { CaveGunboat1 } from '../cave/CaveGunboat1.js';
+import { CaveGunboat2 } from '../cave/CaveGunboat2.js';
 import { WarpBioPod } from '../zones/WarpBioPod.js';
 import { showOverlayMessage } from '../../utils/ui-helpers.js';
 import {
@@ -98,7 +100,7 @@ export class WarpSentinelBoss extends Entity {
         this.mineCooldown = 200;
         this.mineTimer = 60;
 
-        this.helperMax = 6;
+        this.helperMax = 10;
         this.helperCall70 = 2;
         this.helperCall40 = 3;
         this.helperBurst = 2;
@@ -760,15 +762,61 @@ export class WarpSentinelBoss extends Entity {
     }
 
     spawnCaveReinforcements() {
-        const count = 2 + Math.floor(Math.random() * 2);
-        const enemyTypes = ['roamer', 'gunboat', 'pinwheel'];
+        // Count total warp reinforcements (all enemies spawned by boss)
+        const aliveReinforcements = GameContext.enemies.filter(e =>
+            e && !e.dead && e.isWarpReinforcement
+        ).length;
+        const maxReinforcements = this.helperMax; // 10 max
+
+        // Count alive cave gunboats
+        const aliveGunboats = GameContext.enemies.filter(e =>
+            e && !e.dead && (e.type === 'cave_gunboat1' || e.type === 'cave_gunboat2')
+        ).length;
+        const maxGunboats = 3;
+
+        // Don't spawn if at total reinforcement limit
+        if (aliveReinforcements >= maxReinforcements) {
+            return;
+        }
+
+        const enemyTypes = ['roamer', 'hunter', 'cave_gunboat1', 'cave_gunboat2'];
+        const count = Math.min(
+            2 + Math.floor(Math.random() * 2),
+            maxReinforcements - aliveReinforcements
+        );
+
         for (let i = 0; i < count; i++) {
-            const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+            let type;
+            let attempts = 0;
+
+            // Try to pick a valid enemy type (respect gunboat limit)
+            do {
+                type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+                attempts++;
+            } while (
+                attempts < 10 &&
+                (type === 'cave_gunboat1' || type === 'cave_gunboat2') &&
+                aliveGunboats >= maxGunboats
+            );
+
+            // Skip if we still picked a gunboat type but at max capacity
+            if ((type === 'cave_gunboat1' || type === 'cave_gunboat2') && aliveGunboats >= maxGunboats) {
+                continue;
+            }
+
             const angle = Math.random() * Math.PI * 2;
             const dist = 400 + Math.random() * 200;
             const ex = this.pos.x + Math.cos(angle) * dist;
             const ey = this.pos.y + Math.sin(angle) * dist;
-            const enemy = new Enemy(type, { x: ex, y: ey }, null);
+            let enemy;
+            if (type === 'cave_gunboat1') {
+                enemy = new CaveGunboat1(ex, ey);
+            } else if (type === 'cave_gunboat2') {
+                enemy = new CaveGunboat2(ex, ey);
+            } else {
+                enemy = new Enemy(type, { x: ex, y: ey }, null);
+            }
+            enemy.isWarpReinforcement = true;
             enemy.despawnImmune = true;
             GameContext.enemies.push(enemy);
         }

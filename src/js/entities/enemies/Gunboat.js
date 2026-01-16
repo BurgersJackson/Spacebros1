@@ -11,7 +11,9 @@ import { SIM_STEP_MS } from '../../core/constants.js';
 export class Gunboat extends Enemy {
     constructor(x, y, level = 1, opts = {}) {
         // Call parent constructor with gunboat type
-        super('gunboat', x, y, null, opts);
+        // Position must be an object for Enemy constructor
+        const startPos = (x != null && y != null) ? { x, y } : null;
+        super('gunboat', startPos, null, opts);
         
         // Override gunboat-specific properties
         this.isGunboat = true;
