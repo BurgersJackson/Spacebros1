@@ -140,9 +140,16 @@ export class Enemy extends Entity {
         this.freezeTimer = 0;
         this.freezeCooldown = 0;
         this.flankSide = 1;
+        // Check if this is a gunboat (either by type string or by being a Gunboat instance)
+        // Gunboat class will override these properties, so we only initialize if not already a Gunboat instance
         this.isGunboat = (type === 'gunboat' || type === 'cave_gunboat1' || type === 'cave_gunboat2');
         this.gunboatLevel = 1;
-        if (this.isGunboat) {
+        // Check if this instance is already a Gunboat subclass (to avoid duplicate initialization)
+        // We check constructor name since instanceof check would require importing Gunboat here (circular dependency)
+        const isGunboatClass = this.constructor.name === 'Gunboat' || this.constructor.name === 'CaveGunboat1' || this.constructor.name === 'CaveGunboat2';
+        if (this.isGunboat && !isGunboatClass) {
+            // Only initialize gunboat properties if this is not already a Gunboat instance
+            // (Gunboat class will handle its own initialization)
             // Determine gunboat level: cave_gunboat2 is level 2, others use difficulty/level check
             if (type === 'cave_gunboat2') {
                 this.gunboatLevel = 2;
@@ -267,6 +274,12 @@ export class Enemy extends Entity {
 
         if (this.type === 'roamer' || this.type === 'elite_roamer' || this.type === 'hunter') GameContext.roamerRespawnQueue.push(2000 + Math.floor(Math.random() * 2000));
         if (this.isGunboat) {
+            // Track gunboat deaths for difficulty tier system (all gunboats, cave and regular)
+            GameContext.gunboatsDestroyed++;
+            GameContext.gunboatsDestroyedTotal++;
+            // Update difficulty tier based on total pinwheels and gunboats destroyed
+            const totalDestroyed = GameContext.pinwheelsDestroyedTotal + GameContext.gunboatsDestroyedTotal;
+            GameContext.difficultyTier = 1 + Math.floor(totalDestroyed / 6);
             GameContext.gunboatRespawnAt = Date.now() + 20000;
         }
 

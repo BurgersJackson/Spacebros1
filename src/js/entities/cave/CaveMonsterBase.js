@@ -1,6 +1,7 @@
 
 import { Entity } from '../Entity.js';
 import { Enemy } from '../enemies/Enemy.js';
+import { CaveGunboat1, CaveGunboat2 } from './index.js';
 import { Vector } from '../../core/math.js';
 import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS, SIM_FPS, ZOOM_LEVEL } from '../../core/constants.js';
@@ -345,7 +346,15 @@ export class CaveMonsterBase extends Entity {
             const ex = this.pos.x + Math.cos(angle) * dist;
             const ey = this.pos.y + Math.sin(angle) * dist;
 
-            const enemy = new Enemy(type, { x: ex, y: ey }, null);
+            // Use CaveGunboat classes for cave gunboats (extends Gunboat for unified difficulty tier system)
+            let enemy;
+            if (type === 'cave_gunboat1') {
+                enemy = new CaveGunboat1(ex, ey);
+            } else if (type === 'cave_gunboat2') {
+                enemy = new CaveGunboat2(ex, ey);
+            } else {
+                enemy = new Enemy(type, { x: ex, y: ey }, null);
+            }
             GameContext.enemies.push(enemy);
 
             // Remove this type from available so we don't spawn it twice in one call

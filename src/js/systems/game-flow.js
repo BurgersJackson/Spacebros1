@@ -178,6 +178,7 @@ export function startGame() {
         GameContext.score = 0;
         GameContext.difficultyTier = 1;
         GameContext.pinwheelsDestroyedTotal = 0;
+        GameContext.gunboatsDestroyedTotal = 0;
         GameContext.bossActive = false;
         if (GameContext.boss) deps.pixiCleanupObject(GameContext.boss);
         GameContext.boss = null;

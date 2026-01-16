@@ -4,6 +4,7 @@ import { SIM_STEP_MS } from '../../core/constants.js';
 import { showOverlayMessage } from '../../utils/ui-helpers.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { Enemy } from '../enemies/Enemy.js';
+import { Gunboat } from '../enemies/Gunboat.js';
 import { Cruiser } from '../bosses/Cruiser.js';
 import { NecroticHive } from '../bosses/dungeon/NecroticHive.js';
 import { CerebralPsion } from '../bosses/dungeon/CerebralPsion.js';
@@ -82,7 +83,8 @@ export class Dungeon1Zone extends Entity {
             const spawnX = this.pos.x + spreadX;
             const spawnY = this.pos.y - this.boundaryRadius + 200; // Top edge, slightly inside
 
-            const gunboat = new Enemy('gunboat', { x: spawnX, y: spawnY }, null, { gunboatLevel: 2 });
+            // Use Gunboat class for unified difficulty tier system
+            const gunboat = new Gunboat(spawnX, spawnY, 2);
             gunboat.isDungeonEnemy = true;
             gunboat.despawnImmune = true;
 

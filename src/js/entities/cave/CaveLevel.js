@@ -626,7 +626,7 @@ export class CaveLevel {
 
         GameContext.caveBossArena.x = 0;
         GameContext.caveBossArena.y = arenaY;
-        GameContext.caveBossArena.radius = 2500;
+        GameContext.caveBossArena.radius = 3500;  // Increased from 2500 to trigger immediately
         GameContext.caveBossArena.active = false;
         GameContext.caveBossArena.bossSpawned = false;
 

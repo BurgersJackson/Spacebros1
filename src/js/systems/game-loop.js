@@ -13,7 +13,8 @@ import { drawMinimap } from '../rendering/minimap-renderer.js';
 import { setRenderAlpha } from '../rendering/pixi-context.js';
 import { formatTime } from '../utils/ui-helpers.js';
 import { updateCrtFilter } from '../ui/crt-filter.js';
-import { Enemy, WarpGate, SpaceStation, Destroyer, Destroyer2, Cruiser } from '../entities/index.js';
+import { Enemy, WarpGate, SpaceStation, Destroyer, Destroyer2, Cruiser, Gunboat } from '../entities/index.js';
+import { CaveGunboat1, CaveGunboat2 } from '../entities/cave/index.js';
 import {
     scheduleNextMiniEvent,
     scheduleNextRadiationStorm,
@@ -578,20 +579,30 @@ export function gameLoopLogic(opts = null) {
             const level2Alive = GameContext.enemies.some(e => e.isGunboat && e.gunboatLevel === 2);
             const level1Alive = GameContext.enemies.some(e => e.isGunboat && e.gunboatLevel === 1);
             if (GameContext.gunboatRespawnAt && now >= GameContext.gunboatRespawnAt) {
-                // Determine enemy type based on mode (cave mode uses cave_gunboat types)
-                const isCaveMode = GameContext.caveMode;
-                const gunboatType1 = isCaveMode ? 'cave_gunboat1' : 'gunboat';
-                const gunboatType2 = isCaveMode ? 'cave_gunboat2' : 'gunboat';
-
                 // Spawn rules: before warp, only level 1, one at a time. After warp, allow one level 1 and one level 2 simultaneously.
+                // Use Gunboat classes (cave variants extend Gunboat for unified difficulty tier system)
                 if (!GameContext.gunboatLevel2Unlocked) {
-                    if (!level1Alive) GameContext.enemies.push(new Enemy(gunboatType1, null, null, { gunboatLevel: 1 }));
+                    if (!level1Alive) {
+                        if (GameContext.caveMode) {
+                            GameContext.enemies.push(new CaveGunboat1(null, null));
+                        } else {
+                            GameContext.enemies.push(new Gunboat(null, null, 1));
+                        }
+                    }
                     GameContext.gunboatRespawnAt = null;
                 } else {
                     if (!level1Alive) {
-                        GameContext.enemies.push(new Enemy(gunboatType1, null, null, { gunboatLevel: 1 }));
+                        if (GameContext.caveMode) {
+                            GameContext.enemies.push(new CaveGunboat1(null, null));
+                        } else {
+                            GameContext.enemies.push(new Gunboat(null, null, 1));
+                        }
                     } else if (!level2Alive) {
-                        GameContext.enemies.push(new Enemy(gunboatType2, null, null, { gunboatLevel: 2 }));
+                        if (GameContext.caveMode) {
+                            GameContext.enemies.push(new CaveGunboat2(null, null));
+                        } else {
+                            GameContext.enemies.push(new Gunboat(null, null, 2));
+                        }
                     }
                     GameContext.gunboatRespawnAt = null;
                 }

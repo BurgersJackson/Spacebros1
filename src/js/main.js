@@ -1018,12 +1018,24 @@ Cave.registerCaveDependencies({
     onBossDefeated: () => {
         if (GameContext.caveLevel) {
             GameContext.caveLevel.bossesDefeated++;
+            const bossesDefeated = GameContext.caveLevel.bossesDefeated;
+
             // Reset arena placement flag so next boss arena can be placed
             GameContext.caveLevel.bossArenaPlaced = false;
             // Deactivate the current arena
             if (GameContext.caveBossArena) {
                 GameContext.caveBossArena.active = false;
                 GameContext.caveBossArena.bossSpawned = false;
+            }
+
+            // Check if all 3 cave bosses are defeated
+            if (bossesDefeated >= 3) {
+                console.log('[Cave] All 3 bosses defeated! Starting sector transition...');
+                showOverlayMessage("CAVE CLEARED! WARPING TO SECTOR 3 IN 10s", '#0f0', 10000);
+                // Start sector transition after a short delay to let the death animation play
+                setTimeout(() => {
+                    startSectorTransition();
+                }, 2000);
             }
         }
     }

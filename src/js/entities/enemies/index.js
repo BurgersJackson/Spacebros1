@@ -5,3 +5,4 @@
 
 export * from './Enemy.js';
 export * from './Pinwheel.js';
+export * from './Gunboat.js';

@@ -80,6 +80,8 @@ export const GameContext = {
     sectorIndex: 1,
     pinwheelsDestroyed: 0,
     pinwheelsDestroyedTotal: 0,
+    gunboatsDestroyed: 0,
+    gunboatsDestroyedTotal: 0,
     maxRoamers: 5,
     spaceNuggets: 0,
     totalKills: 0,
@@ -274,6 +276,8 @@ export const GameContext = {
         this.nextSpaceStationTime = null;
         this.pinwheelsDestroyed = 0;
         this.pinwheelsDestroyedTotal = 0;
+        this.gunboatsDestroyed = 0;
+        this.gunboatsDestroyedTotal = 0;
         this.maxRoamers = 5;
         this.roamerRespawnQueue = [];
         this.baseRespawnTimers = [];

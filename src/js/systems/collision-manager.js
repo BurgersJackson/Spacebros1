@@ -692,7 +692,9 @@ export function resolveEntityCollision() {
                             if (_awardNuggetsInstant) _awardNuggetsInstant(1, { noSound: false, sound: 'coin' });
                             GameContext.pinwheelsDestroyed++;
                             GameContext.pinwheelsDestroyedTotal++;
-                            GameContext.difficultyTier = 1 + Math.floor(GameContext.pinwheelsDestroyedTotal / 6);
+                            // Update difficulty tier based on total pinwheels and gunboats destroyed
+                            const totalDestroyed = GameContext.pinwheelsDestroyedTotal + GameContext.gunboatsDestroyedTotal;
+                            GameContext.difficultyTier = 1 + Math.floor(totalDestroyed / 6);
                             GameContext.score += 1000;
                             const baseEl = document.getElementById('bases-display');
                             if (baseEl) baseEl.innerText = `${GameContext.pinwheelsDestroyedTotal}`;
@@ -724,7 +726,9 @@ export function resolveEntityCollision() {
                             if (_awardNuggetsInstant) _awardNuggetsInstant(1, { noSound: false, sound: 'coin' });
                             GameContext.pinwheelsDestroyed++;
                             GameContext.pinwheelsDestroyedTotal++;
-                            GameContext.difficultyTier = 1 + Math.floor(GameContext.pinwheelsDestroyedTotal / 6);
+                            // Update difficulty tier based on total pinwheels and gunboats destroyed
+                            const totalDestroyed = GameContext.pinwheelsDestroyedTotal + GameContext.gunboatsDestroyedTotal;
+                            GameContext.difficultyTier = 1 + Math.floor(totalDestroyed / 6);
                             GameContext.score += 1000;
                             const baseEl = document.getElementById('bases-display');
                             if (baseEl) baseEl.innerText = `${GameContext.pinwheelsDestroyedTotal}`;

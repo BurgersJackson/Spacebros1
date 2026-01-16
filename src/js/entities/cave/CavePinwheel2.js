@@ -2,13 +2,12 @@
  * CavePinwheel2.js
  * Cave-specific pinwheel variant (heavy type).
  * Similar to 'heavy' Pinwheel: orange/red shields, triple shot spread, more HP, slower speed.
+ * Extends Pinwheel to inherit difficulty tier system and base functionality.
  */
 
-import { Entity } from '../Entity.js';
+import { Pinwheel } from '../enemies/Pinwheel.js';
 import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS } from '../../core/constants.js';
-import { playSound } from '../../audio/audio-manager.js';
-import { Bullet } from '../projectiles/Bullet.js';
 
 import {
     pixiBaseLayer,
@@ -16,149 +15,30 @@ import {
     pixiTextures,
     pixiTextureAnchors,
     pixiTextureBaseScales,
-    pixiCleanupObject,
     getRenderAlpha
 } from '../../rendering/pixi-context.js';
 
-// Dependency placeholders
-let _spawnParticles = null;
-let _checkDespawn = null;
-let _spawnSmoke = null;
-let _spawnBarrelSmoke = null;
-let _spawnLargeExplosion = null;
-let _awardNuggetsInstant = null;
-
-/**
- * Register dependencies from main.js logic.
- */
-export function registerCavePinwheel2Dependencies(deps) {
-    if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
-    if (deps.checkDespawn) _checkDespawn = deps.checkDespawn;
-    if (deps.spawnSmoke) _spawnSmoke = deps.spawnSmoke;
-    if (deps.spawnBarrelSmoke) _spawnBarrelSmoke = deps.spawnBarrelSmoke;
-    if (deps.spawnLargeExplosion) _spawnLargeExplosion = deps.spawnLargeExplosion;
-    if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
-}
-
-export class CavePinwheel2 extends Entity {
+export class CavePinwheel2 extends Pinwheel {
     constructor(x, y) {
-        super(0, 0);
-        this.pos.x = x;
-        this.pos.y = y;
+        // Call parent constructor with 'heavy' type to inherit all base functionality
+        super(x, y, 'heavy');
+        // Override type to identify as cave variant
         this.type = 'cave2';
-        this.radius = 84; // 70 * 1.2 (20% increase for collision sphere)
-        this.hp = 10 + (GameContext.difficultyTier - 1) * 5;
-        this.shootTimer = 60; // 120 / 2 (heavier fire rate)
-        this.angle = 0;
-        this.turretAngle = 0;
-        this.shieldRadius = 130; // outer shield
-        const BASE_SHIELD_GAP = 35;
-        // Keep inner shield radius unchanged
-        this.innerShieldRadius = 95;
-        this.aggro = false;
-
-        let outerCount = 24;
-        let outerHp = 1;
-        let innerCount = 0;
-        let innerHp = 0;
-
-        if (GameContext.difficultyTier === 1) { outerCount = 12; outerHp = 1; }
-        else if (GameContext.difficultyTier === 2) { outerCount = 16; outerHp = 1; }
-        else if (GameContext.difficultyTier === 3) { outerCount = 24; outerHp = 1; }
-        else if (GameContext.difficultyTier === 4) { outerCount = 24; outerHp = 2; innerCount = 8; innerHp = 1; }
-        else if (GameContext.difficultyTier === 5) { outerCount = 24; outerHp = 2; innerCount = 12; innerHp = 2; }
-        else if (GameContext.difficultyTier >= 6) {
-            outerCount = 24;
-            outerHp = 3 + (GameContext.difficultyTier - 6);
-            innerCount = 16 + (GameContext.difficultyTier - 6);
-            innerHp = 2 + Math.floor((GameContext.difficultyTier - 6) / 2);
-        }
-
-        // Heavy type: 1.5x HP multiplier
-        this.hp *= 1.5;
-        outerHp = Math.ceil(outerHp * 1.5);
-        innerHp = Math.ceil(innerHp * 1.5);
-
-        this.maxShieldHp = outerHp;
-        this.shieldSegments = new Array(outerCount).fill(outerHp);
-        this.shieldRotation = 0;
-
-        this.innerShieldSegments = [];
-        if (innerCount > 0) {
-            this.innerShieldSegments = new Array(innerCount).fill(innerHp);
-        }
-        this.innerShieldRotation = 0;
-
-        const angle = Math.random() * Math.PI * 2;
-        let speed = 0.2 + Math.random() * 0.3;
-        speed *= 0.5; // Heavy type: 0.5x speed
-
-        this.vel.x = Math.cos(angle) * speed;
-        this.vel.y = Math.sin(angle) * speed;
-
-        this.freezeTimer = 0;
-        this.freezeCooldown = 0;
-        this.shieldsDirty = true;
-        this._pixiInnerGfx = null;
-        this._pixiContainer = null;
-        this._pixiHullSpr = null;
-        this._pixiTurretContainer = null;
-        this._pixiTurretBaseSpr = null;
-        this._pixiBarrelSpr = null;
-        this._pixiGfx = null;
-        this._pixiDebugGfx = null;
+        // All initialization is handled by Pinwheel constructor
     }
 
     update(deltaTime = SIM_STEP_MS) {
+        // Call parent update first to get all base behavior
+        super.update(deltaTime);
+        
+        // Override avoidance to check cavePinwheels instead of pinwheels
         if (this.dead) return;
-
-        // Save previous position for interpolation (required for fixed timestep rendering)
-        this.prevPos.x = this.pos.x;
-        this.prevPos.y = this.pos.y;
-
+        if (this.freezeTimer > 0) return;
+        
         const dtFactor = deltaTime / 16.67;
-
-        // Stasis Field Logic (Freeze)
-        if (this.freezeTimer > 0) {
-            this.freezeTimer -= dtFactor;
-            this.vel.x = 0;
-            this.vel.y = 0;
-            // Skip logic when frozen
-        } else if (GameContext.player.stats.slowField > 0) {
-            if (this.freezeCooldown > 0) this.freezeCooldown -= dtFactor;
-
-            const dist = Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y);
-            if (dist < GameContext.player.stats.slowField && this.freezeCooldown <= 0) {
-                this.freezeTimer = GameContext.player.stats.slowFieldDuration;
-                this.freezeCooldown = this.freezeTimer + 120; // 2s immunity after freeze
-                if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 10, '#0ff');
-            }
-        }
-
-        if (this.freezeTimer > 0) {
-            super.update();
-            return;
-        }
-
+        
         if (GameContext.player && !GameContext.player.dead) {
-
-            const dx = GameContext.player.pos.x - this.pos.x;
-            const dy = GameContext.player.pos.y - this.pos.y;
-            const dist = Math.hypot(dx, dy);
-
-            // Keep distance from active cruiser boss
-            let dreadAvoidX = 0, dreadAvoidY = 0;
-            if (GameContext.bossActive && GameContext.boss && GameContext.boss.isCruiser && !GameContext.boss.dead) {
-                const bdx = GameContext.boss.pos.x - this.pos.x;
-                const bdy = GameContext.boss.pos.y - this.pos.y;
-                const bdist = Math.hypot(bdx, bdy);
-                if (bdist < 200) {
-                    dreadAvoidX = -(bdx / (bdist || 1)) * 0.2;
-                    dreadAvoidY = -(bdy / (bdist || 1)) * 0.2;
-                }
-            }
-
-            // Avoid bunching with other cave pinwheels
+            // Avoid bunching with other cave pinwheels (override parent's pinwheels check)
             for (let b of GameContext.cavePinwheels) {
                 if (b === this || b.dead) continue;
                 const bx = b.pos.x - this.pos.x;
@@ -170,92 +50,12 @@ export class CavePinwheel2 extends Entity {
                     this.vel.y -= (by / bdist) * repulse;
                 }
             }
-
-            // Aggression ramp: ease-in early, then match prior behavior.
-            let elapsed = Date.now() - GameContext.gameStartTime - GameContext.pausedAccumMs;
-            if (GameContext.pauseStartTime) elapsed = GameContext.pauseStartTime - GameContext.gameStartTime - GameContext.pausedAccumMs;
-            if (elapsed < 0) elapsed = 0;
-            const elapsedMinutes = elapsed / 60000;
-            const rampT = Math.max(0, Math.min(1, elapsedMinutes / 10));
-            const chaseAccel = (0.12 + 0.08 * rampT) * dtFactor;
-            const speedRamp = (0.85 + 0.15 * rampT);
-
-            if (dist > 250) {
-                const angle = Math.atan2(dy, dx);
-                this.vel.x += Math.cos(angle) * chaseAccel;
-                this.vel.y += Math.sin(angle) * chaseAccel;
-            }
-            this.vel.x += dreadAvoidX * dtFactor;
-            this.vel.y += dreadAvoidY * dtFactor;
-            const speed = this.vel.mag();
-            let maxSpeed = 3.0; // heavy type: slower speed
-            maxSpeed *= speedRamp;
-            if (speed > maxSpeed) this.vel.mult(maxSpeed / speed);
-        } else {
-            // Friction scaled by time
-            this.vel.mult(Math.pow(0.99, dtFactor));
-        }
-
-        this.pos.add(this.vel);
-        if (_checkDespawn) _checkDespawn(this, 6000);
-        this.shieldRotation += 0.015 * dtFactor; // 0.01 * 1.5 (50% increase)
-        this.innerShieldRotation -= 0.0225 * dtFactor; // 0.015 * 1.5 (50% increase)
-
-        if (this.hp <= 5 && Math.random() < 0.1 && _spawnSmoke) _spawnSmoke(this.pos.x, this.pos.y, 1);
-
-        if (GameContext.player && !GameContext.player.dead) {
-            // Start easier: bases ramp up aggression over the first minutes.
-            const now = Date.now();
-            let elapsed = now - GameContext.gameStartTime - GameContext.pausedAccumMs;
-            if (GameContext.pauseStartTime) elapsed = GameContext.pauseStartTime - GameContext.gameStartTime - GameContext.pausedAccumMs;
-            if (elapsed < 0) elapsed = 0;
-            const elapsedMinutes = elapsed / 60000;
-            const rampT = Math.max(0, Math.min(1, elapsedMinutes / 10));
-            const cooldownMult = 1.35 - 0.35 * rampT; // slower early, normal later
-
-            let px = GameContext.player.pos.x, py = GameContext.player.pos.y;
-            const dx = px - this.pos.x;
-            const dy = py - this.pos.y;
-            const dist = Math.hypot(dx, dy);
-            this.angle = Math.atan2(dy, dx);
-            this.turretAngle = Math.atan2(dy, dx);
-            this.angle += 0.002;
-
-            const fireRange = 1100 + 400 * rampT;
-            if (dist < fireRange) {
-                this.shootTimer -= dtFactor;
-                if (this.shootTimer <= 0) {
-                    const shootAngle = this.turretAngle;
-                    // Heavy type: triple shot with narrow spread
-                    for (let i = -1; i <= 1; i++) {
-                        const a = shootAngle + i * 0.15;
-                        const bx = this.pos.x + Math.cos(a) * 75;
-                        const by = this.pos.y + Math.sin(a) * 75;
-                        GameContext.bullets.push(new Bullet(bx, by, a, 8, { owner: 'enemy', damage: 3, life: 480, color: '#fa0' }));
-                        if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, a);
-                    }
-                    playSound('heavy_shoot');
-                    this.shootTimer = Math.round(60 * cooldownMult);
-                }
-            }
         }
     }
 
     draw(ctx) {
         if (this.dead) {
-            pixiCleanupObject(this);
-            if (this._pixiInnerGfx) {
-                try { this._pixiInnerGfx.destroy(true); } catch (e) { }
-                this._pixiInnerGfx = null;
-            }
-            if (this._pixiGfx) {
-                try { this._pixiGfx.destroy(true); } catch (e) { }
-                this._pixiGfx = null;
-            }
-            if (this._pixiDebugGfx) {
-                try { this._pixiDebugGfx.destroy(true); } catch (e) { }
-                this._pixiDebugGfx = null;
-            }
+            // Parent handles cleanup, but we need to return early
             return;
         }
 
@@ -263,7 +63,7 @@ export class CavePinwheel2 extends Entity {
         const currentAlpha = getRenderAlpha();
         const rPos = this.getRenderPos(currentAlpha);
 
-        // Pixi fast path (base hull + shields)
+        // Pixi fast path (base hull + shields) - override to use cave texture
         if (pixiBaseLayer && pixiTextures) {
             const baseKey = 'cave_pinwheel_2';
             let container = this._pixiContainer;
@@ -441,18 +241,9 @@ export class CavePinwheel2 extends Entity {
 
             return;
         }
-
     }
 
-    kill() {
-        if (this.dead) return;
-        this.dead = true;
-        pixiCleanupObject(this);
-        playSound('base_explode');
-
-        if (_spawnLargeExplosion) _spawnLargeExplosion(this.pos.x, this.pos.y, 2.0);
-
-        // Award nuggets directly: 5 nuggets
-        if (_awardNuggetsInstant) _awardNuggetsInstant(5, { noSound: false, sound: 'coin' });
-    }
+    // kill() method is inherited from Pinwheel
+    // All pinwheel deaths (cave and regular) are handled in collision-manager.js
+    // and will increment pinwheelsDestroyedTotal for difficulty tier calculation
 }

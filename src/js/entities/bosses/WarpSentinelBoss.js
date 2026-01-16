@@ -160,15 +160,47 @@ export class WarpSentinelBoss extends Entity {
         if (this.dead) return;
         this.dead = true;
 
-        pixiCleanupObject(this);
+        // Clean up custom graphics FIRST, ensuring they're removed from parent layers
+        // This prevents the purple inner shield graphics from remaining visible
         if (this._pixiInnerGfx) {
-            try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+            try {
+                this._pixiInnerGfx.visible = false;
+                if (typeof this._pixiInnerGfx.clear === 'function') this._pixiInnerGfx.clear();
+                if (this._pixiInnerGfx.parent) this._pixiInnerGfx.parent.removeChild(this._pixiInnerGfx);
+                this._pixiInnerGfx.destroy(true);
+            } catch (e) { }
             this._pixiInnerGfx = null;
         }
         if (this._pixiGfx) {
-            try { this._pixiGfx.destroy(true); } catch (e) { }
+            try {
+                this._pixiGfx.visible = false;
+                if (typeof this._pixiGfx.clear === 'function') this._pixiGfx.clear();
+                if (this._pixiGfx.parent) this._pixiGfx.parent.removeChild(this._pixiGfx);
+                this._pixiGfx.destroy(true);
+            } catch (e) { }
             this._pixiGfx = null;
         }
+        if (this._pixiDebugGfx) {
+            try {
+                this._pixiDebugGfx.visible = false;
+                if (typeof this._pixiDebugGfx.clear === 'function') this._pixiDebugGfx.clear();
+                if (this._pixiDebugGfx.parent) this._pixiDebugGfx.parent.removeChild(this._pixiDebugGfx);
+                this._pixiDebugGfx.destroy(true);
+            } catch (e) { }
+            this._pixiDebugGfx = null;
+        }
+        if (this._pixiContainer) {
+            try {
+                this._pixiContainer.visible = false;
+                if (this._pixiContainer.parent) this._pixiContainer.parent.removeChild(this._pixiContainer);
+                this._pixiContainer.destroy({ children: true });
+            } catch (e) { }
+            this._pixiContainer = null;
+            this._pixiSprite = null;
+        }
+
+        // Then do standard cleanup
+        pixiCleanupObject(this);
 
         const killStartTime = performance.now();
         const bombCount = GameContext.bossBombs.length;
@@ -507,7 +539,34 @@ export class WarpSentinelBoss extends Entity {
     }
 
     draw(ctx) {
-        if (this.dead) return;
+        if (this.dead) {
+            // Ensure graphics are hidden and cleaned up if draw is called after death
+            if (this._pixiInnerGfx) {
+                try {
+                    this._pixiInnerGfx.visible = false;
+                    if (this._pixiInnerGfx.parent) this._pixiInnerGfx.parent.removeChild(this._pixiInnerGfx);
+                } catch (e) { }
+            }
+            if (this._pixiGfx) {
+                try {
+                    this._pixiGfx.visible = false;
+                    if (this._pixiGfx.parent) this._pixiGfx.parent.removeChild(this._pixiGfx);
+                } catch (e) { }
+            }
+            if (this._pixiDebugGfx) {
+                try {
+                    this._pixiDebugGfx.visible = false;
+                    if (this._pixiDebugGfx.parent) this._pixiDebugGfx.parent.removeChild(this._pixiDebugGfx);
+                } catch (e) { }
+            }
+            if (this._pixiContainer) {
+                try {
+                    this._pixiContainer.visible = false;
+                    if (this._pixiContainer.parent) this._pixiContainer.parent.removeChild(this._pixiContainer);
+                } catch (e) { }
+            }
+            return;
+        }
 
         const rPos = this.getRenderPos(getRenderAlpha());
         const aim = (GameContext.player && !GameContext.player.dead) ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x) : 0;

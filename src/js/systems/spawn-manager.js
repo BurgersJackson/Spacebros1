@@ -175,10 +175,11 @@ export function spawnNewPinwheelRelative(initial = false) {
 
     let b;
     if (GameContext.caveMode) {
-        // Spawn cave pinwheels in cave mode
+        // Spawn cave pinwheels in cave mode - uses same difficulty tier system as regular pinwheels
+        // Since cave level comes after level 1, difficulty tier should naturally be higher
         const caveTypes = ['cave1'];
-        if (GameContext.difficultyTier >= 2) caveTypes.push('cave2');  // Rapid variant
-        if (GameContext.difficultyTier >= 3) caveTypes.push('cave3');  // Heavy variant
+        if (GameContext.difficultyTier >= 2) caveTypes.push('cave2');  // Heavy variant (matches 'rapid' unlock tier)
+        if (GameContext.difficultyTier >= 3) caveTypes.push('cave3');  // Rapid variant (matches 'heavy' unlock tier)
 
         const type = caveTypes[Math.floor(Math.random() * caveTypes.length)];
         if (type === 'cave1') b = new CavePinwheel1(bx, by);
