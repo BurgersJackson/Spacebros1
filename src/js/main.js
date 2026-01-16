@@ -346,9 +346,13 @@ function toggleMusic() {
     helperToggleMusic(audioToggleMusic);
 }
 
-let width = 1920;
-let height = 1080;
-let internalWidth = 1920;
+// Game viewport size - always 1920x1080 to prevent seeing more game world than intended
+const GAME_VIEWPORT_WIDTH = 1920;
+const GAME_VIEWPORT_HEIGHT = 1080;
+
+let width = GAME_VIEWPORT_WIDTH;  // Game logic viewport (always 1920x1080)
+let height = GAME_VIEWPORT_HEIGHT;
+let internalWidth = 1920;  // Canvas rendering resolution (can be higher for quality)
 let internalHeight = 1080;
 
 const {
@@ -367,12 +371,14 @@ const {
     getNebulaTiles,
     initStars,
     setSize: (w, h) => {
-        width = w;
-        height = h;
+        // Store internal resolution for canvas rendering quality
         internalWidth = w;
         internalHeight = h;
+        // But keep game viewport fixed at 1920x1080 to prevent seeing more game world
+        width = GAME_VIEWPORT_WIDTH;
+        height = GAME_VIEWPORT_HEIGHT;
     },
-    getSize: () => ({ width, height })
+    getSize: () => ({ width: internalWidth, height: internalHeight }) // Return internal resolution, not viewport
 });
 
 // PixiJS overlay (optional; falls back to Canvas if unavailable)
@@ -782,7 +788,8 @@ registerHudDependencies({
     pixiArrowsGraphics,
     pixiUiOverlayLayer,
     mouseScreen,
-    getViewportSize: () => ({ width, height })
+    getViewportSize: () => ({ width, height }),
+    getInternalSize: () => ({ width: internalWidth, height: internalHeight })
 });
 
 registerCollisionDependencies({
@@ -1215,6 +1222,7 @@ registerSpaceshipDependencies({
     getGameNowMs,
     getSuppressWarpInputUntil: () => suppressWarpInputUntil,
     getViewportSize: () => ({ width, height }),
+    getInternalSize: () => ({ width: internalWidth, height: internalHeight }),
     getPlayerHullExternalReady,
     getSlackerHullExternalReady
 });

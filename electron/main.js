@@ -5,27 +5,61 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 // Settings Persistence
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'settings.json');
-const defaultSettings = {
-  width: 1920,      // DEPRECATED: kept for backwards compatibility
-  height: 1080,      // DEPRECATED: kept for backwards compatibility
-  internalResolution: { width: 1920, height: 1080 },  // Internal render resolution (absolute)
-  fullscreen: false,
-  frameless: false,
-  vsync: true
-};
+
+// Get default settings based on primary display resolution
+// Note: screen module must be accessed after app is ready, so we'll get it lazily
+function getDefaultSettings() {
+  try {
+    const { screen } = require('electron');
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width, height } = primaryDisplay.size;
+    
+    return {
+      width: width,      // DEPRECATED: kept for backwards compatibility
+      height: height,      // DEPRECATED: kept for backwards compatibility
+      internalResolution: { width: width, height: height },  // Internal render resolution (absolute)
+      fullscreen: true,  // Default to fullscreen on first launch
+      frameless: false,
+      vsync: true
+    };
+  } catch (e) {
+    // Fallback if screen is not available yet
+    return {
+      width: 1920,
+      height: 1080,
+      internalResolution: { width: 1920, height: 1080 },
+      fullscreen: true,
+      frameless: false,
+      vsync: true
+    };
+  }
+}
+
+// Initialize default settings - will be updated when app is ready if needed
+let defaultSettings = getDefaultSettings();
 
 function loadSettings() {
   try {
+    // Update default settings with actual screen resolution if this is first launch
+    if (!fs.existsSync(settingsPath)) {
+      defaultSettings = getDefaultSettings();
+    }
+    
     if (fs.existsSync(settingsPath)) {
       const loaded = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
       // Migrate old width/height to internalResolution if needed
       if (!loaded.internalResolution && loaded.width && loaded.height) {
         loaded.internalResolution = { width: loaded.width, height: loaded.height };
       }
+      // Merge with defaults, but preserve user's existing settings
       return { ...defaultSettings, ...loaded };
     }
-  } catch (e) { console.error("Failed to load settings:", e); }
-  return defaultSettings;
+    // First launch - return defaults with desktop resolution and fullscreen
+    return defaultSettings;
+  } catch (e) { 
+    console.error("Failed to load settings:", e);
+    return defaultSettings;
+  }
 }
 
 function saveSettings(settings) {
@@ -74,6 +108,15 @@ function createWindow() {
 
   mainWindow = win;
 
+  // Emit fullscreen state changes to renderer
+  win.on('enter-full-screen', () => {
+    win.webContents.send('electron-fullscreen-changed', true);
+  });
+
+  win.on('leave-full-screen', () => {
+    win.webContents.send('electron-fullscreen-changed', false);
+  });
+
   if (process.env.ELECTRON_SMOKE !== "1") {
     win.once("ready-to-show", () => {
       win.show();
@@ -106,6 +149,9 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Update default settings with actual screen resolution now that app is ready
+  defaultSettings = getDefaultSettings();
+  
   createWindow();
 
   app.on("activate", () => {
@@ -128,7 +174,18 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("app:set-fullscreen", (event, flag) => {
-    if (mainWindow) mainWindow.setFullScreen(flag);
+    if (mainWindow) {
+      mainWindow.setFullScreen(flag);
+      // Emit the change immediately and also after a short delay to ensure it's applied
+      mainWindow.webContents.send('electron-fullscreen-changed', flag);
+      setTimeout(() => {
+        mainWindow.webContents.send('electron-fullscreen-changed', mainWindow.isFullScreen());
+      }, 100);
+    }
+  });
+
+  ipcMain.handle("app:is-fullscreen", () => {
+    return mainWindow ? mainWindow.isFullScreen() : false;
   });
 
   ipcMain.handle("app:relaunch", () => {

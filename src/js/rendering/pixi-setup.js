@@ -74,17 +74,16 @@ export function initPixi(width, height) {
     // Render manually in main loop to avoid double work
     try { pixiApp.stop(); } catch (e) { }
 
-    // CRITICAL: Set canvas to internal resolution size and enable CSS scaling
+    // CRITICAL: Set canvas to fill screen and stretch in fullscreen
     pixiApp.view.style.position = 'absolute';
     pixiApp.view.style.top = '0';
     pixiApp.view.style.left = '0';
     pixiApp.view.style.pointerEvents = 'none';
     pixiApp.view.style.zIndex = '1';
-
-    // CRITICAL: Enable CSS scaling for letterboxing/pillarboxing
-    pixiApp.view.style.width = '100%';
-    pixiApp.view.style.height = '100%';
-    pixiApp.view.style.objectFit = 'contain';  // Maintains aspect ratio with letterboxing
+    pixiApp.view.style.width = '100vw';
+    pixiApp.view.style.height = '100vh';
+    pixiApp.view.style.maxWidth = 'none';
+    pixiApp.view.style.maxHeight = 'none';
 
     document.body.appendChild(pixiApp.view);
 

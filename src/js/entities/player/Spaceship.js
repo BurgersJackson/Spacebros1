@@ -34,6 +34,7 @@ let _rayCast = null;
 let _getGameNowMs = null;
 let _getSuppressWarpInputUntil = null;
 let _getViewportSize = null;
+let _getInternalSize = null;
 let _getPlayerHullExternalReady = null;
 let _getSlackerHullExternalReady = null;
 
@@ -58,6 +59,7 @@ export function registerSpaceshipDependencies(deps) {
     if (deps.getGameNowMs) _getGameNowMs = deps.getGameNowMs;
     if (deps.getSuppressWarpInputUntil) _getSuppressWarpInputUntil = deps.getSuppressWarpInputUntil;
     if (deps.getViewportSize) _getViewportSize = deps.getViewportSize;
+    if (deps.getInternalSize) _getInternalSize = deps.getInternalSize;
     if (deps.getPlayerHullExternalReady) _getPlayerHullExternalReady = deps.getPlayerHullExternalReady;
     if (deps.getSlackerHullExternalReady) _getSlackerHullExternalReady = deps.getSlackerHullExternalReady;
 }
@@ -386,11 +388,12 @@ export class Spaceship extends Entity {
         // NEW: Slacker ship mouse movement
         if (this.shipType === 'slacker' && !GameContext.usingGamepad) {
             // Calculate direction from screen center to mouse cursor (Virtual Joystick)
-            const viewport = _getViewportSize ? _getViewportSize() : { width: 0, height: 0 };
-            const screenCenterX = viewport.width / 2;
-            const screenCenterY = viewport.height / 2;
+            // mouseScreen is in canvas internal resolution coordinates, so center must be too
+            const internal = _getInternalSize ? _getInternalSize() : { width: 1920, height: 1080 };
+            const screenCenterX = internal.width / 2;
+            const screenCenterY = internal.height / 2;
 
-            // Vector from center of screen to mouse pointer
+            // Vector from center of screen to mouse pointer (in canvas coordinates)
             const rawDx = mouseScreen.x - screenCenterX;
             const rawDy = mouseScreen.y - screenCenterY;
             const distSq = rawDx * rawDx + rawDy * rawDy;
@@ -400,7 +403,8 @@ export class Spaceship extends Entity {
             const isRotationMode = mouseState.leftDown;
 
             if (!isRotationMode) {
-                // Deadzone of 50 pixels from center
+                // Deadzone of 50 pixels from center (in canvas coordinates)
+                // This deadzone size is consistent across resolutions since it's in canvas pixels
                 if (distSq > 50 * 50) {
                     const dist = Math.sqrt(distSq);
                     const mouseMoveX = rawDx / dist;
@@ -485,7 +489,30 @@ export class Spaceship extends Entity {
 
         // Slacker ship always rotates toward mouse (when not using gamepad)
         if (this.shipType === 'slacker' && !GameContext.usingGamepad) {
-            const targetAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
+            let targetAngle;
+            // Calculate angle the same way the line does - in canvas coordinates
+            // This ensures the rotation matches the visual line direction
+            if (_getViewportSize && _getInternalSize && mouseScreen) {
+                const viewport = _getViewportSize();
+                const internal = _getInternalSize();
+                const z = GameContext.currentZoom || 0.4;
+                const camX = this.pos.x - viewport.width / (2 * z);
+                const camY = this.pos.y - viewport.height / (2 * z);
+                
+                // Calculate ship position in canvas coordinates (same as line code)
+                const viewportShipX = (this.pos.x - camX) * z;
+                const viewportShipY = (this.pos.y - camY) * z;
+                const renderScaleX = internal.width / viewport.width;
+                const renderScaleY = internal.height / viewport.height;
+                const screenShipX = viewportShipX * renderScaleX;
+                const screenShipY = viewportShipY * renderScaleY;
+                
+                // Calculate angle in canvas coordinates (same as line code)
+                targetAngle = Math.atan2(mouseScreen.y - screenShipY, mouseScreen.x - screenShipX);
+            } else {
+                // Fallback to world coordinates if dependencies not available
+                targetAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
+            }
             let angleDiff = targetAngle - this.angle;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;

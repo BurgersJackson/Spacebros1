@@ -189,13 +189,16 @@ export function initStars(width, height) {
     }
 }
 
-export function updatePixiBackground(camX, camY, width, height) {
+export function updatePixiBackground(camX, camY, viewportWidth, viewportHeight) {
+    // viewportWidth/Height are 1920x1080 (game viewport)
+    // But sprites should be sized to internal resolution (handled by canvas-setup.js)
+    // Tile positions use viewport size for correct parallax calculation
     if (pixiNebulaTiles && pixiNebulaTiles.length) {
         for (const t of pixiNebulaTiles) {
             const spr = t && (t.sprite || t.spr);
             if (!spr) continue;
-            if (spr.width !== width) spr.width = width;
-            if (spr.height !== height) spr.height = height;
+            // Don't resize sprites here - they're sized to internal resolution in canvas-setup.js
+            // Tile positions use viewport size for correct parallax
             const tx = -camX * (t.parallax || 0.012);
             const ty = -camY * (t.parallax || 0.012);
             spr.tilePosition.set(Math.round(tx), Math.round(ty));
@@ -205,8 +208,8 @@ export function updatePixiBackground(camX, camY, width, height) {
         for (const t of pixiStarTiles) {
             const spr = t && (t.sprite || t.spr);
             if (!spr) continue;
-            if (spr.width !== width) spr.width = width;
-            if (spr.height !== height) spr.height = height;
+            // Don't resize sprites here - they're sized to internal resolution in canvas-setup.js
+            // Tile positions use viewport size for correct parallax
             const tx = -camX * (t.parallax || 0.08);
             const ty = -camY * (t.parallax || 0.08);
             spr.tilePosition.set(Math.round(tx), Math.round(ty));
@@ -218,20 +221,21 @@ export function updatePixiBackground(camX, camY, width, height) {
         const spr = s && s._pixiSprite;
         if (!spr) continue;
         if (!spr.parent) pixiStarLayer.addChild(spr);
-        let x = (s.x - camX * s.parallax) % width;
-        let y = (s.y - camY * s.parallax) % height;
-        if (x < 0) x += width;
-        if (y < 0) y += height;
+        // Use viewport size for positioning calculations
+        let x = (s.x - camX * s.parallax) % viewportWidth;
+        let y = (s.y - camY * s.parallax) % viewportHeight;
+        if (x < 0) x += viewportWidth;
+        if (y < 0) y += viewportHeight;
         spr.position.set(x, y);
     }
 }
 
-export function updatePixiCaveGrid(camX, camY, zoom, caveActive, width, height) {
+export function updatePixiCaveGrid(camX, camY, zoom, caveActive, viewportWidth, viewportHeight) {
     if (!pixiCaveGridLayer || !pixiCaveGridSprite) return;
     pixiCaveGridLayer.visible = !!caveActive;
     if (!caveActive) return;
-    if (pixiCaveGridSprite.width !== width) pixiCaveGridSprite.width = width;
-    if (pixiCaveGridSprite.height !== height) pixiCaveGridSprite.height = height;
+    // Don't resize sprite here - it's sized to internal resolution in canvas-setup.js
+    // Tile scale and position use viewport size for correct rendering
     const z = (typeof zoom === 'number' && isFinite(zoom) && zoom > 0) ? zoom : (GameContext.currentZoom || ZOOM_LEVEL);
     pixiCaveGridSprite.tileScale.set(z);
     pixiCaveGridSprite.tilePosition.set(Math.round(-camX * z), Math.round(-camY * z));

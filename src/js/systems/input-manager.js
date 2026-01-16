@@ -611,10 +611,26 @@ export function initInputListeners() {
 
         if (GameContext.player) {
             const z = GameContext.currentZoom || ZOOM_LEVEL;
+            // Camera calculation centers player at viewport center (1920x1080)
+            // This matches the calculation used in drawSlackerMouseLine
             const camX = GameContext.player.pos.x - viewport.width / (2 * z);
             const camY = GameContext.player.pos.y - viewport.height / (2 * z);
-            mouseWorld.x = (scaledX / z) + camX;
-            mouseWorld.y = (scaledY / z) + camY;
+            
+            // Convert canvas internal resolution coordinates to viewport coordinates (1920x1080)
+            // This is the inverse of the scale used in drawSlackerMouseLine
+            // Line code: screenShipX = viewportShipX * (internal.width / viewport.width)
+            // So: viewportX = canvasX * (viewport.width / internal.width)
+            const renderScaleX = viewport.width / internal.width;
+            const renderScaleY = viewport.height / internal.height;
+            const viewportX = scaledX * renderScaleX;
+            const viewportY = scaledY * renderScaleY;
+            
+            // Convert viewport coordinates to world coordinates
+            // Viewport center (viewport.width/2, viewport.height/2) maps to player position
+            // Formula: worldX = (viewportX / z) + camX
+            // When viewportX = viewport.width/2: worldX = (viewport.width/(2*z)) + (player.pos.x - viewport.width/(2*z)) = player.pos.x ✓
+            mouseWorld.x = (viewportX / z) + camX;
+            mouseWorld.y = (viewportY / z) + camY;
 
             const deltaX = scaledX - mouseLastPos.x;
             const deltaY = scaledY - mouseLastPos.y;

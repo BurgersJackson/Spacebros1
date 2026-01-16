@@ -48,25 +48,30 @@ export function resize(
     // CRITICAL: Do NOT resize PixiJS renderer - it stays at internal resolution
     // The CSS scaling (set in pixi-setup.js) handles visual scaling
 
-    // Update background sprites to internal resolution
+    // Update background sprites to viewport size (1920x1080), not internal resolution
+    // They will be scaled to internal resolution by pixiScreenRoot.scale in the game loop
+    // This ensures the game world viewport is always 1920x1080 regardless of internal resolution
+    const viewportW = 1920;  // Fixed viewport size
+    const viewportH = 1080;
+    
     if (pixiCaveGridSprite) {
-        pixiCaveGridSprite.width = internalWidth;
-        pixiCaveGridSprite.height = internalHeight;
+        pixiCaveGridSprite.width = viewportW;
+        pixiCaveGridSprite.height = viewportH;
     }
     const starTiles = getStarTiles();
     if (starTiles && starTiles.length) {
         for (const t of starTiles) {
             if (!t || !t.spr) continue;
-            t.spr.width = internalWidth;
-            t.spr.height = internalHeight;
+            t.spr.width = viewportW;
+            t.spr.height = viewportH;
         }
     }
     const nebulaTiles = getNebulaTiles();
     if (nebulaTiles && nebulaTiles.length) {
         for (const t of nebulaTiles) {
             if (!t || !t.spr) continue;
-            t.spr.width = internalWidth;
-            t.spr.height = internalHeight;
+            t.spr.width = viewportW;
+            t.spr.height = viewportH;
         }
     }
     initStars(width, height);

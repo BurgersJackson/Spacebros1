@@ -6,6 +6,7 @@ let pixiArrowsGraphics = null;
 let pixiUiOverlayLayer = null;
 let mouseScreen = null;
 let getViewportSize = null;
+let getInternalSize = null;
 
 let pixiUiTextObjects = [];
 
@@ -15,6 +16,7 @@ export function registerHudDependencies(deps) {
     if (deps.pixiUiOverlayLayer) pixiUiOverlayLayer = deps.pixiUiOverlayLayer;
     if (deps.mouseScreen) mouseScreen = deps.mouseScreen;
     if (deps.getViewportSize) getViewportSize = deps.getViewportSize;
+    if (deps.getInternalSize) getInternalSize = deps.getInternalSize;
 }
 
 function transformPolygon(vertices, x, y, scale, rotation) {
@@ -394,22 +396,31 @@ export function drawMiniEventIndicator() {
 export function drawSlackerMouseLine() {
     if (!GameContext.player || GameContext.player.shipType !== 'slacker' || GameContext.usingGamepad || !pixiArrowsGraphics || !mouseScreen) return;
     if (GameContext.gamePaused || !GameContext.gameActive) return;
-    if (!getViewportSize) return;
+    if (!getViewportSize || !getInternalSize || !canvas) return;
 
     const viewport = getViewportSize();
+    const internal = getInternalSize();
     const z = GameContext.currentZoom || ZOOM_LEVEL;
     const camX = GameContext.player.pos.x - viewport.width / (2 * z);
     const camY = GameContext.player.pos.y - viewport.height / (2 * z);
 
-    const screenShipX = (GameContext.player.pos.x - camX) * z;
-    const screenShipY = (GameContext.player.pos.y - camY) * z;
+    // Calculate ship position in viewport coordinates (1920x1080)
+    const viewportShipX = (GameContext.player.pos.x - camX) * z;
+    const viewportShipY = (GameContext.player.pos.y - camY) * z;
+    
+    // Scale to canvas internal resolution coordinates to match mouseScreen
+    const renderScaleX = internal.width / viewport.width;
+    const renderScaleY = internal.height / viewport.height;
+    const screenShipX = viewportShipX * renderScaleX;
+    const screenShipY = viewportShipY * renderScaleY;
 
     const screenMouseX = mouseScreen.x;
     const screenMouseY = mouseScreen.y;
 
     const angle = Math.atan2(screenMouseY - screenShipY, screenMouseX - screenShipX);
 
-    const startDistScreen = (GameContext.player.outerShieldRadius + 10) * z;
+    // Scale the start distance to canvas coordinates
+    const startDistScreen = (GameContext.player.outerShieldRadius + 10) * z * renderScaleX;
     const screenStartX = screenShipX + Math.cos(angle) * startDistScreen;
     const screenStartY = screenShipY + Math.sin(angle) * startDistScreen;
 

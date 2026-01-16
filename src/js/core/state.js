@@ -47,15 +47,20 @@ export let shakeMagnitude = 0;
 export let shakeOffsetX = 0;
 export let shakeOffsetY = 0;
 
-// --- Dimensions ---
-export let width = typeof window !== 'undefined' ? window.innerWidth : 1920;
-export let height = typeof window !== 'undefined' ? window.innerHeight : 1080;
+// --- Game Viewport Dimensions (Fixed) ---
+// Always 1920x1080 to prevent seeing more game world than intended
+// Higher resolutions only affect rendering quality, not visible game area
+const GAME_VIEWPORT_WIDTH = 1920;
+const GAME_VIEWPORT_HEIGHT = 1080;
+export let width = GAME_VIEWPORT_WIDTH;
+export let height = GAME_VIEWPORT_HEIGHT;
 
 // --- Internal Resolution (Absolute) ---
-// Game renders at this fixed resolution, then scales to fit screen via CSS
+// Game renders at this fixed resolution for quality, then scales to fit screen via CSS
+// This can be higher than 1920x1080 for better rendering quality
 export let internalWidth = 1920;
 export let internalHeight = 1080;
-export let aspectRatio = internalWidth / internalHeight;
+export let aspectRatio = GAME_VIEWPORT_WIDTH / GAME_VIEWPORT_HEIGHT;
 
 // --- Input State ---
 export const keys = {
@@ -102,15 +107,20 @@ export function setGamePaused(paused) { gamePaused = paused; }
 export function setSectorIndex(idx) { sectorIndex = idx; }
 export function setMenuSelectionIndex(idx) { menuSelectionIndex = idx; }
 export function setCurrentZoom(zoom) { currentZoom = zoom; }
-export function setDimensions(w, h) { width = w; height = h; }
+export function setDimensions(w, h) { 
+    // Clamp to game viewport size to prevent seeing more game world
+    width = Math.min(w, GAME_VIEWPORT_WIDTH);
+    height = Math.min(h, GAME_VIEWPORT_HEIGHT);
+}
 
 // --- Internal Resolution Setter ---
 export function setInternalResolution(w, h) {
     internalWidth = w;
     internalHeight = h;
-    aspectRatio = w / h;
-    // Update game state dimensions to match internal resolution
-    setDimensions(w, h);
+    // Keep aspect ratio based on game viewport, not internal resolution
+    aspectRatio = GAME_VIEWPORT_WIDTH / GAME_VIEWPORT_HEIGHT;
+    // Don't update game dimensions - keep viewport fixed at 1920x1080
+    // Higher internal resolution only affects rendering quality
 }
 export function setUsingGamepad(val) { usingGamepad = val; }
 export function setGamepadIndex(idx) { gamepadIndex = idx; }

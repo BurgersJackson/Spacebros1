@@ -16,24 +16,35 @@
             user-select: none;
         }
 
-        /* Canvas container for letterboxing/pillarboxing */
+        /* Canvas container - fills screen, canvas stretches to fill */
         #canvas-container {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             background-color: #000;
             z-index: 0;
+            overflow: hidden;
         }
 
         canvas {
             display: block;
             /* These are now set via JavaScript for each canvas */
             /* max-width/max-height + object-fit is handled in JS */
+            max-width: none !important;
+            max-height: none !important;
+            /* Canvas size is controlled by JavaScript to allow stretching in fullscreen */
+            aspect-ratio: unset !important;
+            object-fit: fill !important;
+            /* Ensure canvas can stretch without maintaining aspect ratio */
+            image-rendering: pixelated;
+        }
+        
+        /* Force canvas to stretch in fullscreen */
+        body:has(#canvas-container canvas[style*="position: fixed"]) canvas {
+            width: 100vw !important;
+            height: 100vh !important;
         }
 
         #ui-layer {

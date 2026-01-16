@@ -856,6 +856,8 @@ export function gameLoopLogic(opts = null) {
     if (_setRenderAlphaLocal) _setRenderAlphaLocal(renderAlpha);
     const renderPos = GameContext.player.getRenderPos(alpha);
     // Camera always follows player - no arena locking
+    // Use viewport size (1920x1080) for camera calculation to ensure consistent viewport
+    // The scale transform will handle scaling to canvas internal resolution
     let camX = renderPos.x - width / (2 * zoom);
     let camY = renderPos.y - height / (2 * zoom);
     if (GameContext.shakeTimer > 0) {
@@ -892,28 +894,46 @@ export function gameLoopLogic(opts = null) {
         try { ctx.setLineDash([]); } catch (e) { }
 
         ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, width, height);
+        // Clear entire canvas (use canvas dimensions, not viewport)
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Calculate scale factor to render 1920x1080 viewport to canvas
+        // In fullscreen: canvas.width = internal resolution, CSS = window size
+        // In windowed: canvas.width = internal resolution, CSS = scaled down to fit window
+        // We need to scale the 1920x1080 viewport to fill the canvas internal resolution
+        const renderScaleX = canvas.width / width;
+        const renderScaleY = canvas.height / height;
+        
+        // Scale context so game world (1920x1080) fills the canvas internal resolution
+        // This ensures consistent rendering regardless of CSS display size
+        ctx.save();
+        ctx.scale(renderScaleX, renderScaleY);
 
         const caveActiveBg = (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active);
         if (pixiApp && pixiApp.renderer) {
-            if (pixiApp.renderer.width !== width || pixiApp.renderer.height !== height) {
-                pixiApp.renderer.resize(width, height);
+            // PixiJS renderer should use internal resolution for quality
+            if (pixiApp.renderer.width !== canvas.width || pixiApp.renderer.height !== canvas.height) {
+                pixiApp.renderer.resize(canvas.width, canvas.height);
             }
             if (pixiWorldRoot) {
-                pixiWorldRoot.scale.set(zoom);
+                // Scale for zoom, then scale to internal resolution
+                pixiWorldRoot.scale.set(zoom * renderScaleX, zoom * renderScaleY);
                 // Align to pixel grid to reduce shimmer/brightness flicker from subpixel sampling.
-                const px = -camX * zoom;
-                const py = -camY * zoom;
+                // Position needs to account for both zoom and render scale
+                const px = (-camX * zoom) * renderScaleX;
+                const py = (-camY * zoom) * renderScaleY;
                 pixiWorldRoot.position.set(Math.round(px), Math.round(py));
             }
             if (pixiScreenRoot) {
-                pixiScreenRoot.scale.set(1);
+                // Screen root scales to internal resolution to fill canvas
+                pixiScreenRoot.scale.set(renderScaleX, renderScaleY);
                 pixiScreenRoot.position.set(0, 0);
                 pixiScreenRoot.visible = true;
                 // Enable Nebula/Stars in cave mode, disable grid
                 if (pixiNebulaLayer) pixiNebulaLayer.visible = !!ENABLE_NEBULA;
                 if (pixiStarTilingLayer) pixiStarTilingLayer.visible = true;
                 if (pixiStarLayer) pixiStarLayer.visible = false; // legacy particle stars disabled
+                // Update cave grid - use viewport size (1920x1080) for calculations, but sprites are sized to internal resolution
                 updatePixiCaveGrid(camX, camY, zoom, false, width, height);
             }
         }
@@ -1488,6 +1508,10 @@ export function gameLoopLogic(opts = null) {
             GameContext.caveLevel.drawEntities(ctx, camX, camY, height, zoom);
         }
 
+        // Restore zoom transform
+        ctx.restore();
+        
+        // Restore viewport scale transform (1920x1080 -> internal resolution)
         ctx.restore();
 
         // Clear UI Canvas for this frame (still used for boss HUD and other elements)

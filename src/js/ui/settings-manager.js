@@ -745,20 +745,52 @@ export function initSettingsMenu() {
                 frameless: isFrameless
             });
 
+            const oldFullscreen = old.fullscreen || false;
+            const fullscreenChanged = oldFullscreen !== isFullscreen;
+
             window.SpacebrosApp.settings.setFullscreen(isFullscreen);
 
             if (!isFullscreen) {
                 window.SpacebrosApp.settings.setResolution(w, h);
             }
 
-            if (resolutionChanged) {
-                setupCanvasResolutionRef(w, h);
-                if (typeof getViewportSizeRef === 'function') {
-                    const size = getViewportSizeRef();
-                    initStarsRef(size.width, size.height);
-                } else {
-                    initStarsRef(w, h);
-                }
+            // Update canvas resolution when resolution OR fullscreen changes
+            if (resolutionChanged || fullscreenChanged) {
+                // Delay to ensure fullscreen state has been applied, then update canvas
+                const delay = fullscreenChanged ? 300 : 0;
+                setTimeout(async () => {
+                    // Verify fullscreen state before applying
+                    let actualFullscreen = isFullscreen;
+                    if (window.SpacebrosApp && window.SpacebrosApp.settings && window.SpacebrosApp.settings.isFullscreen) {
+                        try {
+                            actualFullscreen = await window.SpacebrosApp.settings.isFullscreen();
+                        } catch (e) {
+                            // Ignore errors, use expected value
+                        }
+                    }
+                    
+                    if (setupCanvasResolutionRef) {
+                        // Call setupCanvasResolution which will detect fullscreen state
+                        setupCanvasResolutionRef(w, h);
+                    }
+                    // Also trigger a window resize to ensure everything updates
+                    setTimeout(() => {
+                        window.dispatchEvent(new Event('resize'));
+                        if (typeof getViewportSizeRef === 'function') {
+                            const size = getViewportSizeRef();
+                            if (initStarsRef) {
+                                // Use window size in fullscreen, internal resolution in windowed
+                                const displayW = actualFullscreen ? window.innerWidth : size.width;
+                                const displayH = actualFullscreen ? window.innerHeight : size.height;
+                                initStarsRef(displayW, displayH);
+                            }
+                        } else if (initStarsRef) {
+                            const displayW = actualFullscreen ? window.innerWidth : w;
+                            const displayH = actualFullscreen ? window.innerHeight : h;
+                            initStarsRef(displayW, displayH);
+                        }
+                    }, 100);
+                }, delay);
             }
 
             if (framelessChanged || vsyncChanged) {
