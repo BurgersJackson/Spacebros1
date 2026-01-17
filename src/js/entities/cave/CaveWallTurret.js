@@ -197,7 +197,7 @@ export class CaveWallTurret extends Entity {
                     const a = Math.atan2(leadY - this.pos.y, leadX - this.pos.x);
                     const muzzleX = this.pos.x + Math.cos(a) * (this.radius + 6);
                     const muzzleY = this.pos.y + Math.sin(a) * (this.radius + 6);
-                    GameContext.bullets.push(new Bullet(muzzleX, muzzleY, a, 24, { owner: 'enemy', damage: 1, radius: 4, color: '#0ff' }));
+                    GameContext.bullets.push(new Bullet(muzzleX, muzzleY, a, 48, { owner: 'enemy', damage: 1, radius: 4, color: '#0ff', life: 37 }));
                     this.trackerBurst--;
                     this.trackerBurstCd = 6;
                     playSound('rapid_shoot');
@@ -225,7 +225,7 @@ export class CaveWallTurret extends Entity {
         if (this.mode === 'missile') {
             this.reload -= dtFactor;
             if (this.reload <= 0) {
-                GameContext.guidedMissiles.push(new CaveGuidedMissile(this, { hp: 5, maxDamage: 5, radius: 36, speed: 8.2, turnRate: 0.12 }));
+                GameContext.guidedMissiles.push(new CaveGuidedMissile(this, { hp: 5, maxDamage: 5, radius: 36, speed: 8.2, turnRate: 0.12, life: 540 }));
                 if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 8, '#fa0');
                 playSound('heavy_shoot');
                 // Slower missile turret cadence. 
@@ -307,9 +307,9 @@ export class CaveWallTurret extends Entity {
         if (this.reload <= 0) {
             const muzzleX = this.pos.x + Math.cos(aim) * (this.radius + 6);
             const muzzleY = this.pos.y + Math.sin(aim) * (this.radius + 6);
-            GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim, 21, { owner: 'enemy', damage: 1, radius: 4, color: '#8ff' }));
-            if (Math.random() < 0.25) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.08, 21, { owner: 'enemy', damage: 1, radius: 4, color: '#8ff' }));
-            if (Math.random() < 0.25) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.08, 21, { owner: 'enemy', damage: 1, radius: 4, color: '#8ff' }));
+            GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim, 42, { owner: 'enemy', damage: 1, radius: 4, color: '#8ff', life: 37 }));
+            if (Math.random() < 0.25) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim + 0.08, 42, { owner: 'enemy', damage: 1, radius: 4, color: '#8ff', life: 37 }));
+            if (Math.random() < 0.25) GameContext.bullets.push(new Bullet(muzzleX, muzzleY, aim - 0.08, 42, { owner: 'enemy', damage: 1, radius: 4, color: '#8ff', life: 37 }));
             this.reload = 26 + Math.floor(Math.random() * 18);
         }
     }

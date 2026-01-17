@@ -23,7 +23,7 @@ export class CaveLevel {
         this.startY = 0;
         this.endY = -220000; // ~10 minutes of flight at stock speeds
         this.stepY = 240;
-        this.baseWidth = 4902; // 5% narrower (5160 * 0.95)
+        this.baseWidth = 7000; // Fits cave boss arena ring (radius 3500) perfectly between walls
         // Pixi Rendering
         this._pixiContainer = null;
         this._pixiBackGfx = null;
@@ -675,7 +675,7 @@ export class CaveLevel {
             caveDeps.showOverlayMessage(`${bossName} ENGAGED - ARENA LOCKED`, "#f00", 3000);
         }
         if (caveDeps.playSound) {
-            caveDeps.playSound('boss_spawn');
+            caveDeps.playSound('station_spawn');
         }
     }
 
