@@ -2,7 +2,7 @@ import { Entity } from '../Entity.js';
 import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS } from '../../core/constants.js';
 import { showOverlayMessage } from '../../utils/ui-helpers.js';
-import { playSound } from '../../audio/audio-manager.js';
+import { playSound, setMusicMode, musicEnabled } from '../../audio/audio-manager.js';
 import { Enemy } from '../enemies/Enemy.js';
 import { Gunboat } from '../enemies/Gunboat.js';
 import { Pinwheel } from '../enemies/Pinwheel.js';
@@ -25,10 +25,11 @@ export class VerticalScrollingZone extends Entity {
         this.state = 'scrolling'; // 'scrolling' | 'boss_intro' | 'boss_battle' | 'warp_out'
         
         // Scrolling parameters
-        this.scrollSpeed = 2.0; // pixels per frame (scaled by dtFactor)
-        this.scrollProgress = 0; // current scroll distance
+        this.scrollSpeed = 2.0; // pixels per frame (scaled by dtFactor) - used for background/asteroid movement
+        this.scrollProgress = 0; // static camera position (doesn't change)
         this.scrollDuration = 300000; // 5 minutes in milliseconds
         this.startTime = Date.now();
+        this.elapsedScrollDistance = 0; // Track total distance scrolled for timing purposes
         
         // Wave system
         this.currentWave = 0;
@@ -150,14 +151,12 @@ export class VerticalScrollingZone extends Entity {
         // Shuffle and limit to waveSize
         const shuffled = enemyTypes.sort(() => Math.random() - 0.5).slice(0, waveSize);
         
-        // Get current camera position (from GameContext scrollProgress)
-        // scrollProgress is negative and decreasing as we scroll forward/downward
-        // Camera Y = scrollProgress - viewportHeight/2/zoom
-        // Viewport top is at camY, so to spawn above viewport, we need Y < camY (more negative)
+        // Camera is static, so use fixed camera position
+        // Spawn enemies above viewport (negative Y in world space)
         const z = GameContext.currentZoom || 0.4;
-        const camY = GameContext.scrollProgress - this.viewportHeight / (2 * z); // Camera Y position
-        const viewportTopY = camY; // Top of viewport is at camY
-        const spawnY = viewportTopY - 400; // Spawn 400 pixels above viewport top (off screen, more negative Y)
+        const staticCamY = this.scrollProgress; // Static camera center Y
+        const viewportTopY = staticCamY - this.viewportHeight / (2 * z); // Top of viewport
+        const spawnY = viewportTopY - 400; // Spawn 400 pixels above viewport top (off screen)
         
         // Spawn enemies across the width of the screen
         for (let i = 0; i < shuffled.length; i++) {
@@ -257,10 +256,11 @@ export class VerticalScrollingZone extends Entity {
         const now = Date.now();
         const elapsed = now - this.startTime;
         
-        // Update scroll progress continuously (even during boss intro and boss fight)
+        // Track elapsed scroll distance for timing (camera stays static, only background/asteroids move)
         if (this.state === 'scrolling' || this.state === 'boss_intro' || this.state === 'boss_battle') {
-            // Update scroll progress (negative to scroll downward/forward)
-            this.scrollProgress -= this.scrollSpeed * dtFactor;
+            // Track total distance scrolled (for timing boss spawn)
+            this.elapsedScrollDistance += this.scrollSpeed * dtFactor;
+            // Keep scrollProgress static (camera doesn't move)
             GameContext.scrollProgress = this.scrollProgress;
         }
         
@@ -273,8 +273,8 @@ export class VerticalScrollingZone extends Entity {
                 this.waveTimer = 1000 + Math.random() * 500;
             }
             
-            // Check if we've reached the boss (after 5 minutes)
-            if (elapsed >= this.scrollDuration) {
+            // Check if we've reached the boss (after 5 minutes of scrolling)
+            if (this.elapsedScrollDistance >= (this.scrollSpeed * 60 * 5 * 1000 / 16.67)) { // 5 minutes at scrollSpeed
                 this.state = 'boss_intro';
                 this.bossIntroAt = Date.now() + 5000; // 5 second intro
                 this.bossIntroLastSec = null;
@@ -309,6 +309,7 @@ export class VerticalScrollingZone extends Entity {
         if (this.state === 'boss_battle') {
             // Check if boss is defeated
             if (!GameContext.bossActive || !GameContext.boss || GameContext.boss.dead) {
+                if (musicEnabled) setMusicMode('normal');
                 this.state = 'warp_out';
                 this.warpCountdownAt = Date.now() + 10000; // 10 second countdown
                 this.warpCountdownLastSec = null;
@@ -350,12 +351,12 @@ export class VerticalScrollingZone extends Entity {
         }
         
         // Spawn boss at center of screen, above viewport initially
-        // Use current scroll position to determine boss spawn location
+        // Camera is static, so use fixed camera position
         const z = GameContext.currentZoom || 0.4;
         const bossX = this.levelCenterX;
-        const currentCamY = GameContext.scrollProgress;
-        const viewportCenterY = currentCamY; // Camera center Y
-        const bossY = currentCamY - this.viewportHeight / (2 * z) - 600; // Start above viewport
+        const staticCamY = this.scrollProgress; // Static camera center Y
+        const viewportCenterY = staticCamY; // Camera center Y
+        const bossY = staticCamY - this.viewportHeight / (2 * z) - 600; // Start above viewport
         
         // Create Destroyer in static mode
         GameContext.boss = new Destroyer();
@@ -376,7 +377,9 @@ export class VerticalScrollingZone extends Entity {
         
         GameContext.bossActive = true;
         this.bossSpawned = true;
-        
+
+        if (musicEnabled) setMusicMode('destroyer');
+
         showOverlayMessage("DESTROYER ENGAGED", '#f00', 3000, 3);
         playSound('boss_spawn');
     }

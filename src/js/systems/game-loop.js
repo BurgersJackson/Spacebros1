@@ -879,19 +879,14 @@ export function gameLoopLogic(opts = null) {
     if (_setRenderAlphaLocal) _setRenderAlphaLocal(renderAlpha);
     const renderPos = GameContext.player.getRenderPos(alpha);
     
-    // Vertical scrolling mode: lock camera to 1920x1080, center it, and scroll downward
+    // Vertical scrolling mode: lock camera to 1920x1080, center it (static camera, background/asteroids move)
     let camX, camY;
     if (GameContext.verticalScrollingMode && GameContext.verticalScrollingZone) {
         // Lock camera to level center horizontally
         camX = GameContext.verticalScrollingZone.levelCenterX - width / (2 * zoom);
         
-        // Scroll downward based on scroll progress (keep moving during boss battle)
-        if (GameContext.verticalScrollingZone.state === 'scrolling' || GameContext.verticalScrollingZone.state === 'boss_battle') {
-            camY = GameContext.scrollProgress - height / (2 * zoom);
-        } else {
-            // Boss intro or warp out - keep current scroll position
-            camY = GameContext.scrollProgress - height / (2 * zoom);
-        }
+        // Camera is static (doesn't move) - background and asteroids move instead
+        camY = GameContext.scrollProgress - height / (2 * zoom);
     } else {
         // Normal camera follows player
         // Camera always follows player - no arena locking

@@ -438,8 +438,8 @@ export function resolveEntityCollision() {
                         }
 
                         if (Date.now() - GameContext.player.lastAsteroidHitTime > 1000) {
-                            const asteroidDamage = GameContext.sectorIndex >= 2 ? 2 : 1;
-                            GameContext.player.takeHit(asteroidDamage);
+                            const asteroidDamage = isIndestructibleWall ? 2 : 1;
+                            GameContext.player.takeHit(asteroidDamage, true);
                             GameContext.player.lastAsteroidHitTime = Date.now();
                             if (!isIndestructibleWall) {
                                 ast.break();

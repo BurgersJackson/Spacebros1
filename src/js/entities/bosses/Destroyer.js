@@ -189,13 +189,13 @@ export class Destroyer extends Entity {
             }
             
             // Drift movement during boss fight (left/right and up/down)
-            // Update drift center to follow camera scroll so boss stays centered
+            // Camera is static, so use fixed camera position
             if (this._driftCenterX !== undefined && this._driftCenterY !== undefined) {
-                // Update drift center Y to follow camera scroll
+                // Use static camera position (doesn't change)
                 const z = GameContext.currentZoom || 0.4;
                 const viewportHeight = 1080;
-                const currentCamY = GameContext.scrollProgress;
-                const viewportCenterY = currentCamY; // Camera center Y
+                const staticCamY = GameContext.scrollProgress; // Static camera center Y
+                const viewportCenterY = staticCamY; // Camera center Y
                 // Keep boss in upper center of viewport
                 this._driftCenterY = viewportCenterY - viewportHeight / (4 * z);
                 this._driftCenterX = GameContext.verticalScrollingZone ? GameContext.verticalScrollingZone.levelCenterX : 0;
@@ -212,8 +212,8 @@ export class Destroyer extends Entity {
                 const levelCenterX = GameContext.verticalScrollingZone ? GameContext.verticalScrollingZone.levelCenterX : 0;
                 const leftBound = levelCenterX - viewportWidth / (2 * z);
                 const rightBound = levelCenterX + viewportWidth / (2 * z);
-                const topBound = currentCamY - viewportHeight / (2 * z);
-                const bottomBound = currentCamY + viewportHeight / (2 * z);
+                const topBound = staticCamY - viewportHeight / (2 * z);
+                const bottomBound = staticCamY + viewportHeight / (2 * z);
                 
                 // Calculate target position with drift
                 let targetX = this._driftCenterX + driftX;

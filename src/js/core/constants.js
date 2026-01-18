@@ -27,6 +27,7 @@ export const ASTEROID_GRID_CELL_SIZE = 300;
 
 // --- Audio ---
 export const BACKGROUND_MUSIC_URL = 'assets/sfx/background1.mp3';
+export const BOSS_MUSIC_URL = 'assets/sfx/interstellar_destroyer.mp3';
 export const ENABLE_PROJECTILE_IMPACT_SOUNDS = false;
 
 // --- Asset URLs ---

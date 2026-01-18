@@ -611,10 +611,18 @@ export function initInputListeners() {
 
         if (GameContext.player) {
             const z = GameContext.currentZoom || ZOOM_LEVEL;
-            // Camera calculation centers player at viewport center (1920x1080)
-            // This matches the calculation used in drawSlackerMouseLine
-            const camX = GameContext.player.pos.x - viewport.width / (2 * z);
-            const camY = GameContext.player.pos.y - viewport.height / (2 * z);
+            
+            // Use correct camera calculation for vertical scrolling mode (static camera) vs normal mode (follows player)
+            let camX, camY;
+            if (GameContext.verticalScrollingMode && GameContext.verticalScrollingZone) {
+                // Static camera in vertical scrolling mode
+                camX = GameContext.verticalScrollingZone.levelCenterX - viewport.width / (2 * z);
+                camY = GameContext.scrollProgress - viewport.height / (2 * z);
+            } else {
+                // Normal mode: camera follows player
+                camX = GameContext.player.pos.x - viewport.width / (2 * z);
+                camY = GameContext.player.pos.y - viewport.height / (2 * z);
+            }
             
             // Convert canvas internal resolution coordinates to viewport coordinates (1920x1080)
             // This is the inverse of the scale used in drawSlackerMouseLine
@@ -626,9 +634,8 @@ export function initInputListeners() {
             const viewportY = scaledY * renderScaleY;
             
             // Convert viewport coordinates to world coordinates
-            // Viewport center (viewport.width/2, viewport.height/2) maps to player position
+            // Viewport center (viewport.width/2, viewport.height/2) maps to camera center
             // Formula: worldX = (viewportX / z) + camX
-            // When viewportX = viewport.width/2: worldX = (viewport.width/(2*z)) + (player.pos.x - viewport.width/(2*z)) = player.pos.x ✓
             mouseWorld.x = (viewportX / z) + camX;
             mouseWorld.y = (viewportY / z) + camY;
 

@@ -204,7 +204,14 @@ export function updatePixiBackground(camX, camY, viewportWidth, viewportHeight, 
     
     // Enhanced parallax for vertical scrolling mode
     const isVerticalScrolling = (typeof GameContext !== 'undefined' && GameContext.verticalScrollingMode);
-    const parallaxMultiplier = isVerticalScrolling ? 11.0 : 1.0; // 11x faster parallax in vertical mode
+    const parallaxMultiplier = isVerticalScrolling ? 13.0 : 1.0; // 13x faster parallax in vertical mode
+    
+    // In vertical scrolling mode, use scroll offset for background movement (camera is static)
+    let effectiveCamY = camY;
+    if (isVerticalScrolling && GameContext.verticalScrollingZone) {
+        // Use the elapsed scroll distance to move background (camera stays static)
+        effectiveCamY = camY - GameContext.verticalScrollingZone.elapsedScrollDistance;
+    }
     
     // Use provided pixi objects or fall back to module imports
     const actualPixiApp = (pixiObjects && pixiObjects.pixiApp) || pixiApp;
@@ -320,7 +327,7 @@ export function updatePixiBackground(camX, camY, viewportWidth, viewportHeight, 
             // Tile positions use viewport size for correct parallax
             const parallax = (t.parallax || 0.012) * parallaxMultiplier;
             const tx = -camX * parallax;
-            const ty = -camY * parallax;
+            const ty = -effectiveCamY * parallax;
             spr.tilePosition.set(Math.round(tx), Math.round(ty));
         }
     }
@@ -332,7 +339,7 @@ export function updatePixiBackground(camX, camY, viewportWidth, viewportHeight, 
             // Tile positions use viewport size for correct parallax
             const parallax = (t.parallax || 0.08) * parallaxMultiplier;
             const tx = -camX * parallax;
-            const ty = -camY * parallax;
+            const ty = -effectiveCamY * parallax;
             spr.tilePosition.set(Math.round(tx), Math.round(ty));
         }
         return;
@@ -345,7 +352,7 @@ export function updatePixiBackground(camX, camY, viewportWidth, viewportHeight, 
         // Use viewport size for positioning calculations
         const parallax = s.parallax * parallaxMultiplier;
         let x = (s.x - camX * parallax) % viewportWidth;
-        let y = (s.y - camY * parallax) % viewportHeight;
+        let y = (s.y - effectiveCamY * parallax) % viewportHeight;
         if (x < 0) x += viewportWidth;
         if (y < 0) y += viewportHeight;
         spr.position.set(x, y);

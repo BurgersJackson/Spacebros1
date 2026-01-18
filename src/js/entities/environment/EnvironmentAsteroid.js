@@ -98,11 +98,13 @@ export class EnvironmentAsteroid extends Entity {
         const dtFactor = deltaTime / 16.67;
         
         // In vertical scrolling mode, move asteroids downward to match parallax background (continue during boss intro and boss fight)
+        // Camera is static, so asteroids move in world space to create scrolling effect
         if (typeof GameContext !== 'undefined' && GameContext.verticalScrollingMode && GameContext.verticalScrollingZone && (GameContext.verticalScrollingZone.state === 'scrolling' || GameContext.verticalScrollingZone.state === 'boss_intro' || GameContext.verticalScrollingZone.state === 'boss_battle')) {
             // Move downward at scroll speed * parallax multiplier to match background visual speed
             // Parallax multiplier is 11.0x, reduced by 50% for asteroid movement
-            const parallaxMultiplier = 11.0;
-            this.pos.y += GameContext.scrollSpeed * parallaxMultiplier * 0.5 * dtFactor;
+            const parallaxMultiplier = 13.0;
+            const scrollSpeed = GameContext.verticalScrollingZone.scrollSpeed;
+            this.pos.y += scrollSpeed * parallaxMultiplier * 0.6 * dtFactor;
             this.prevPos.y = this.pos.y;
         }
 

@@ -387,42 +387,32 @@ export class Spaceship extends Entity {
 
         // NEW: Slacker ship mouse movement
         if (this.shipType === 'slacker' && !GameContext.usingGamepad) {
-            // Calculate direction from screen center to mouse cursor (Virtual Joystick)
-            // mouseScreen is in canvas internal resolution coordinates, so center must be too
-            const internal = _getInternalSize ? _getInternalSize() : { width: 1920, height: 1080 };
-            const screenCenterX = internal.width / 2;
-            const screenCenterY = internal.height / 2;
-
-            // Vector from center of screen to mouse pointer (in canvas coordinates)
-            const rawDx = mouseScreen.x - screenCenterX;
-            const rawDy = mouseScreen.y - screenCenterY;
-            const distSq = rawDx * rawDx + rawDy * rawDy;
+            // Calculate direction from ship to mouse cursor in world space (matches other levels)
+            // This ensures movement is toward the mouse, not away from screen center
+            const dx = mouseWorld.x - this.pos.x;
+            const dy = mouseWorld.y - this.pos.y;
+            const distSq = dx * dx + dy * dy;
 
             // Rotation mode: if left mouse button is held, stop movement
             // and only rotate to face mouse cursor
             const isRotationMode = mouseState.leftDown;
 
             if (!isRotationMode) {
-                // Deadzone of 50 pixels from center (in canvas coordinates)
-                // This deadzone size is consistent across resolutions since it's in canvas pixels
-                if (distSq > 50 * 50) {
+                // Deadzone of 30 pixels in world space - smaller deadzone for more responsiveness
+                const deadzoneDist = 30;
+                if (distSq > deadzoneDist * deadzoneDist) {
                     const dist = Math.sqrt(distSq);
-                    // Use normalized direction, but scale by distance for more responsive movement
-                    // Max distance for full speed is 200 pixels from center
-                    const maxDist = 200;
-                    const speedScale = Math.min(1.0, dist / maxDist);
-                    const mouseMoveX = (rawDx / dist) * speedScale;
-                    const mouseMoveY = (rawDy / dist) * speedScale;
+                    // Use normalized direction for crisp, immediate movement (no distance scaling)
+                    // This matches the feel of other levels where movement is immediate
+                    const mouseMoveX = dx / dist;
+                    const mouseMoveY = dy / dist;
 
                     // Override keyboard input with mouse input (mouse takes priority for slacker)
                     moveX = mouseMoveX;
                     moveY = mouseMoveY;
                 } else {
-                    // Inside deadzone - no movement from mouse
-                    // Only use keyboard input if no mouse movement
-                    if (distSq <= 50 * 50) {
-                        // Keep existing keyboard input, don't add mouse
-                    }
+                    // Inside deadzone - no movement from mouse, use keyboard input
+                    // Don't override, just keep keyboard input
                 }
 
                 // Clamp to prevent overshoot
@@ -487,13 +477,17 @@ export class Spaceship extends Entity {
         const currentMaxSpeed = this.maxSpeed * this.stats.speedMult * turboMult * slowMult;
 
         if (moveMag > 0.06) {
-            // Update angle based on movement direction (works in all modes including vertical scrolling)
-            const targetAngle = Math.atan2(moveY, moveX);
-            let angleDiff = targetAngle - this.angle;
-            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-            if (Math.abs(angleDiff) > 0.05) {
-                this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), 0.15 * dtScale);
+            // For slacker with mouse, don't update angle based on movement (rotation is handled separately)
+            // This prevents the ship from rotating away from the mouse when moving
+            if (!(this.shipType === 'slacker' && !GameContext.usingGamepad)) {
+                // Update angle based on movement direction (for keyboard/gamepad)
+                const targetAngle = Math.atan2(moveY, moveX);
+                let angleDiff = targetAngle - this.angle;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                if (Math.abs(angleDiff) > 0.05) {
+                    this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), 0.15 * dtScale);
+                }
             }
             // Use normalized components for thrust calculation
             const normMoveX = moveX / moveMag;
@@ -508,14 +502,25 @@ export class Spaceship extends Entity {
         // Slacker ship always rotates toward mouse (when not using gamepad)
         if (this.shipType === 'slacker' && !GameContext.usingGamepad) {
             let targetAngle;
+            let distToMouse = 0;
             // Calculate angle the same way the line does - in canvas coordinates
             // This ensures the rotation matches the visual line direction
             if (_getViewportSize && _getInternalSize && mouseScreen) {
                 const viewport = _getViewportSize();
                 const internal = _getInternalSize();
                 const z = GameContext.currentZoom || 0.4;
-                const camX = this.pos.x - viewport.width / (2 * z);
-                const camY = this.pos.y - viewport.height / (2 * z);
+                
+                // Use correct camera calculation for vertical scrolling mode (static camera) vs normal mode (follows player)
+                let camX, camY;
+                if (GameContext.verticalScrollingMode && GameContext.verticalScrollingZone) {
+                    // Static camera in vertical scrolling mode
+                    camX = GameContext.verticalScrollingZone.levelCenterX - viewport.width / (2 * z);
+                    camY = GameContext.scrollProgress - viewport.height / (2 * z);
+                } else {
+                    // Normal mode: camera follows player
+                    camX = this.pos.x - viewport.width / (2 * z);
+                    camY = this.pos.y - viewport.height / (2 * z);
+                }
                 
                 // Calculate ship position in canvas coordinates (same as line code)
                 const viewportShipX = (this.pos.x - camX) * z;
@@ -525,11 +530,32 @@ export class Spaceship extends Entity {
                 const screenShipX = viewportShipX * renderScaleX;
                 const screenShipY = viewportShipY * renderScaleY;
                 
-                // Calculate angle in canvas coordinates (same as line code)
-                targetAngle = Math.atan2(mouseScreen.y - screenShipY, mouseScreen.x - screenShipX);
+                // Calculate distance to mouse in screen space
+                const dx = mouseScreen.x - screenShipX;
+                const dy = mouseScreen.y - screenShipY;
+                distToMouse = Math.sqrt(dx * dx + dy * dy);
+                
+                // Only update rotation if mouse is far enough away (deadzone to prevent spinning)
+                const rotationDeadzone = 40; // pixels in screen space
+                if (distToMouse > rotationDeadzone) {
+                    // Calculate angle in canvas coordinates (same as line code)
+                    targetAngle = Math.atan2(mouseScreen.y - screenShipY, mouseScreen.x - screenShipX);
+                } else {
+                    // Mouse too close - keep current angle (don't rotate)
+                    targetAngle = this.angle;
+                }
             } else {
                 // Fallback to world coordinates if dependencies not available
-                targetAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
+                const dx = mouseWorld.x - this.pos.x;
+                const dy = mouseWorld.y - this.pos.y;
+                distToMouse = Math.sqrt(dx * dx + dy * dy);
+                const rotationDeadzone = 30; // pixels in world space
+                if (distToMouse > rotationDeadzone) {
+                    targetAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
+                } else {
+                    // Mouse too close - keep current angle (don't rotate)
+                    targetAngle = this.angle;
+                }
             }
             let angleDiff = targetAngle - this.angle;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
@@ -846,11 +872,10 @@ export class Spaceship extends Entity {
             const leftBound = levelCenterX - viewportWidth / (2 * z);
             const rightBound = levelCenterX + viewportWidth / (2 * z);
             
-            // For vertical bounds, we need to account for scroll progress
-            // Camera Y = scrollProgress - viewportHeight/2/z, so viewport top = scrollProgress - viewportHeight/2/z
-            const currentCamY = GameContext.scrollProgress;
-            const topBound = currentCamY - viewportHeight / (2 * z);
-            const bottomBound = currentCamY + viewportHeight / (2 * z);
+            // Camera is static, so use fixed camera position for bounds
+            const staticCamY = GameContext.scrollProgress; // Static camera center Y
+            const topBound = staticCamY - viewportHeight / (2 * z);
+            const bottomBound = staticCamY + viewportHeight / (2 * z);
             
             // Only clamp position if actually outside bounds (soft push-back, don't interfere with normal movement)
             if (this.pos.x < leftBound) {

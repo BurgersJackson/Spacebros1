@@ -3,7 +3,7 @@
  * Handles background music and sound effects.
  */
 
-import { BACKGROUND_MUSIC_URL, ENABLE_PROJECTILE_IMPACT_SOUNDS } from '../core/constants.js';
+import { BACKGROUND_MUSIC_URL, BOSS_MUSIC_URL, ENABLE_PROJECTILE_IMPACT_SOUNDS } from '../core/constants.js';
 
 // --- Audio Context ---
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -49,9 +49,11 @@ function stopLegacyMusicNodes() {
     musicNodes = [];
 }
 
+let currentMusicUrl = null;
+
 /**
  * Set music mode and adjust volume.
- * @param {string} mode - 'normal' or 'cruiser'
+ * @param {string} mode - 'normal', 'cruiser', or 'destroyer'
  */
 export function setMusicMode(mode = null) {
     if (mode) musicMode = mode;
@@ -60,15 +62,21 @@ export function setMusicMode(mode = null) {
 
     if (musicNodes.length > 0) stopLegacyMusicNodes();
 
-    if (!backgroundMusicAudio) {
-        backgroundMusicAudio = new Audio(BACKGROUND_MUSIC_URL);
+    const musicUrl = (musicMode === 'destroyer') ? BOSS_MUSIC_URL : BACKGROUND_MUSIC_URL;
+
+    if (musicUrl !== currentMusicUrl) {
+        if (backgroundMusicAudio) {
+            try { backgroundMusicAudio.pause(); } catch (e) { }
+            try { backgroundMusicAudio.currentTime = 0; } catch (e) { }
+        }
+        backgroundMusicAudio = new Audio(musicUrl);
         backgroundMusicAudio.loop = true;
         backgroundMusicAudio.preload = 'auto';
+        currentMusicUrl = musicUrl;
     }
 
     backgroundMusicAudio.volume = ((musicMode === 'cruiser') ? 0.22 : 0.25) * musicVolume;
     if (!backgroundMusicAudio.paused && backgroundMusicAudio.readyState > 2) {
-        // Already playing
         return;
     }
     try {
