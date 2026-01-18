@@ -95,10 +95,20 @@ export class EnvironmentAsteroid extends Entity {
         // Save previous angle for interpolation
         this.prevAngle = this.angle;
 
+        const dtFactor = deltaTime / 16.67;
+        
+        // In vertical scrolling mode, move asteroids downward to match parallax background (continue during boss intro and boss fight)
+        if (typeof GameContext !== 'undefined' && GameContext.verticalScrollingMode && GameContext.verticalScrollingZone && (GameContext.verticalScrollingZone.state === 'scrolling' || GameContext.verticalScrollingZone.state === 'boss_intro' || GameContext.verticalScrollingZone.state === 'boss_battle')) {
+            // Move downward at scroll speed * parallax multiplier to match background visual speed
+            // Parallax multiplier is 11.0x, reduced by 50% for asteroid movement
+            const parallaxMultiplier = 11.0;
+            this.pos.y += GameContext.scrollSpeed * parallaxMultiplier * 0.5 * dtFactor;
+            this.prevPos.y = this.pos.y;
+        }
+
         // Use Entity.update for scaled movement
         super.update(deltaTime);
 
-        const dtFactor = deltaTime / 16.67;
         this.angle += this.rotSpeed * dtFactor;
 
         // Contract / maze walls should persist until cleaned up

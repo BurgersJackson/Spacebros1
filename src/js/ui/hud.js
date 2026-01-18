@@ -401,8 +401,28 @@ export function drawSlackerMouseLine() {
     const viewport = getViewportSize();
     const internal = getInternalSize();
     const z = GameContext.currentZoom || ZOOM_LEVEL;
-    const camX = GameContext.player.pos.x - viewport.width / (2 * z);
-    const camY = GameContext.player.pos.y - viewport.height / (2 * z);
+    
+    // Use vertical scrolling camera calculation if in that mode
+    let camX, camY;
+    if (GameContext.verticalScrollingMode && GameContext.verticalScrollingZone) {
+        // Lock camera to level center horizontally
+        camX = GameContext.verticalScrollingZone.levelCenterX - viewport.width / (2 * z);
+        
+        // Scroll downward based on scroll progress
+        if (GameContext.verticalScrollingZone.state === 'scrolling') {
+            camY = GameContext.scrollProgress - viewport.height / (2 * z);
+        } else if (GameContext.verticalScrollingZone.state === 'boss_battle' && GameContext.boss) {
+            // During boss battle, center on boss
+            camY = GameContext.boss.pos.y - viewport.height / (2 * z);
+        } else {
+            // Boss intro or warp out - keep current scroll position
+            camY = GameContext.scrollProgress - viewport.height / (2 * z);
+        }
+    } else {
+        // Normal camera follows player
+        camX = GameContext.player.pos.x - viewport.width / (2 * z);
+        camY = GameContext.player.pos.y - viewport.height / (2 * z);
+    }
 
     // Calculate ship position in viewport coordinates (1920x1080)
     const viewportShipX = (GameContext.player.pos.x - camX) * z;

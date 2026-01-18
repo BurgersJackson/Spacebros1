@@ -80,6 +80,7 @@ export function registerAllEntityDependencies(r) {
     r.registerGateRingDependencies(r.gateRingDeps);
     r.registerWallTurretDependencies(r.wallTurretDeps);
     r.registerWarpMazeZoneDependencies(r.warpMazeZoneDeps);
+    r.registerVerticalScrollingZoneDependencies(r.verticalScrollingZoneDeps);
     r.registerDungeon1ZoneDependencies(r.dungeon1ZoneDeps);
     r.registerRadiationStormDependencies(r.radiationStormDeps);
     r.registerAnomalyZoneDependencies(r.anomalyZoneDeps);

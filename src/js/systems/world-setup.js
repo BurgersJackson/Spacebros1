@@ -63,6 +63,8 @@ export function setupGameWorld() {
     GameContext.sectorTransitionActive = false;
     GameContext.warpCountdownAt = null;
     GameContext.warpGateUnlocked = false;
+    // Unlock vertical scrolling warp gate at game start (first level only)
+    GameContext.verticalScrollingWarpGateUnlocked = true;
     GameContext.gunboatRespawnAt = null;
     GameContext.gunboatLevel2Unlocked = false;
     GameContext.initialSpawnDone = false;

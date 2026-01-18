@@ -125,6 +125,7 @@ import {
     completeSectorWarp,
     startCaveSector2,
     enterWarpMaze,
+    enterVerticalScrollingZone,
     resetWarpState,
     resetCaveState,
     resetDungeon1State,
@@ -319,6 +320,8 @@ import {
     registerWallTurretDependencies,
     WarpMazeZone,
     registerWarpMazeZoneDependencies,
+    VerticalScrollingZone,
+    registerVerticalScrollingZoneDependencies,
     Dungeon1Zone,
     registerDungeon1ZoneDependencies,
     RadiationStorm,
@@ -741,6 +744,7 @@ registerSectorFlowDependencies({
     Cave,
     Dungeon1Zone,
     WarpMazeZone,
+    VerticalScrollingZone,
     clearArrayWithPixiCleanup,
     clearMiniEvent,
     clearOverlayMessageTimeout,
@@ -749,6 +753,7 @@ registerSectorFlowDependencies({
     getWidth: () => width,
     initStars,
     pixiCleanupObject,
+    playSound,
     resetPixiOverlaySprites,
     scheduleNextMiniEvent,
     scheduleNextRadiationStorm,
@@ -775,6 +780,7 @@ registerInputDependencies({
     startGame,
     completeSectorWarp,
     enterWarpMaze,
+    enterVerticalScrollingZone,
     showOverlayMessage,
     getGameNowMs,
     shiftPausedTimers,
@@ -880,6 +886,7 @@ registerGameLoopLogicDependencies({
     setMusicMode,
     isMusicEnabled,
     enterWarpMaze,
+    enterVerticalScrollingZone,
     completeSectorWarp,
     findSpawnPointRelative,
     resolveEntityCollision,
@@ -1179,6 +1186,11 @@ registerWallTurretDependencies({
 });
 
 registerWarpMazeZoneDependencies({
+    clearArrayWithPixiCleanup,
+    filterArrayWithPixiCleanup
+});
+
+registerVerticalScrollingZoneDependencies({
     clearArrayWithPixiCleanup,
     filterArrayWithPixiCleanup
 });

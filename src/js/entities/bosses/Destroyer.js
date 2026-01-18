@@ -6,6 +6,7 @@ import { Bullet } from '../projectiles/Bullet.js';
 import { FlagshipGuidedMissile } from '../projectiles/FlagshipGuidedMissile.js';
 import { ClusterBomb } from '../projectiles/ClusterBomb.js';
 import { NapalmZone } from '../projectiles/NapalmZone.js';
+import { Enemy } from '../enemies/Enemy.js';
 import { showOverlayMessage } from '../../utils/ui-helpers.js';
 import {
     pixiBossLayer,
@@ -103,6 +104,18 @@ export class Destroyer extends Entity {
         this.escalationPhase = 1;
         this.escalationMultiplier = 1.0;
 
+        // Reinforcement system (for vertical scrolling zone)
+        this.helperMax = 8;
+        this.helperCooldown = 0;
+        this.helperCooldownBase = 1200; // 20 seconds at 60fps
+        this.helperBurst = 3;
+        this.helperCall70 = 4;
+        this.helperCall40 = 5;
+        this.called70 = false;
+        this.called40 = false;
+        this.helperStrengthTier = 1;
+        this.helperHpMult = 1.0;
+
         // this._firstDraw = true; // No longer needed with prevPos init
     }
 
@@ -148,34 +161,112 @@ export class Destroyer extends Entity {
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
 
+        // Get player state (used in both static and normal modes)
         const playerAlive = GameContext.player && !GameContext.player.dead;
         const distToPlayer = playerAlive ? Math.hypot(GameContext.player.pos.x - this.pos.x, GameContext.player.pos.y - this.pos.y) : 0;
-        if (playerAlive && distToPlayer > this.chaseDistance) {
-            this.roamAngle = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
-            this.turnSpeed = this.farTurnSpeed;
-        } else {
-            this.turnSpeed = this.baseTurnSpeed;
-            if (this.roamTimer <= 0) {
-                const drift = (Math.random() - 0.5) * 0.35;
-                this.roamAngle = (this.angle || 0) + drift;
-                this.roamTimer = this.roamInterval;
+
+        // Static mode for vertical scrolling zone
+        if (this.staticMode) {
+            // Lock angle to face downward
+            this.angle = Math.PI / 2;
+            
+            // Move into view if needed
+            if (this._moveTargetY !== undefined && this._moveSpeed !== undefined) {
+                if (this.pos.y < this._moveTargetY) {
+                    this.pos.y += this._moveSpeed * dtFactor;
+                    if (this.pos.y >= this._moveTargetY) {
+                        this.pos.y = this._moveTargetY;
+                        this._moveTargetY = undefined;
+                        this._moveSpeed = undefined;
+                        // Initialize drift parameters when boss reaches position
+                        this._driftCenterX = this.pos.x;
+                        this._driftCenterY = this.pos.y;
+                        this._driftAngle = Math.random() * Math.PI * 2;
+                        this._driftSpeed = 0.5; // pixels per frame
+                        this._driftRadius = 150; // max drift distance
+                    }
+                }
             }
-        }
+            
+            // Drift movement during boss fight (left/right and up/down)
+            // Update drift center to follow camera scroll so boss stays centered
+            if (this._driftCenterX !== undefined && this._driftCenterY !== undefined) {
+                // Update drift center Y to follow camera scroll
+                const z = GameContext.currentZoom || 0.4;
+                const viewportHeight = 1080;
+                const currentCamY = GameContext.scrollProgress;
+                const viewportCenterY = currentCamY; // Camera center Y
+                // Keep boss in upper center of viewport
+                this._driftCenterY = viewportCenterY - viewportHeight / (4 * z);
+                this._driftCenterX = GameContext.verticalScrollingZone ? GameContext.verticalScrollingZone.levelCenterX : 0;
+                
+                // Update drift angle slowly
+                this._driftAngle += 0.01 * dtFactor;
+                
+                // Calculate drift offset
+                const driftX = Math.cos(this._driftAngle) * this._driftRadius;
+                const driftY = Math.sin(this._driftAngle * 0.7) * (this._driftRadius * 0.6); // Slightly less vertical movement
+                
+                // Apply drift, but keep boss on screen (within viewport bounds)
+                const viewportWidth = 1920;
+                const levelCenterX = GameContext.verticalScrollingZone ? GameContext.verticalScrollingZone.levelCenterX : 0;
+                const leftBound = levelCenterX - viewportWidth / (2 * z);
+                const rightBound = levelCenterX + viewportWidth / (2 * z);
+                const topBound = currentCamY - viewportHeight / (2 * z);
+                const bottomBound = currentCamY + viewportHeight / (2 * z);
+                
+                // Calculate target position with drift
+                let targetX = this._driftCenterX + driftX;
+                let targetY = this._driftCenterY + driftY;
+                
+                // Clamp to viewport bounds (with margin to keep boss visible)
+                const margin = 150; // Increased margin to keep boss more centered
+                targetX = Math.max(leftBound + margin, Math.min(rightBound - margin, targetX));
+                targetY = Math.max(topBound + margin, Math.min(bottomBound - margin, targetY));
+                
+                // Smooth movement toward target
+                const moveSpeed = 2.0 * dtFactor;
+                const dx = targetX - this.pos.x;
+                const dy = targetY - this.pos.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist > 0.1) {
+                    this.pos.x += (dx / dist) * Math.min(dist, moveSpeed);
+                    this.pos.y += (dy / dist) * Math.min(dist, moveSpeed);
+                }
+            }
+            
+            // Update prevPos for rendering
+            this.prevPos.x = this.pos.x;
+            this.prevPos.y = this.pos.y;
+        } else {
+            // Normal movement behavior
+            if (playerAlive && distToPlayer > this.chaseDistance) {
+                this.roamAngle = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
+                this.turnSpeed = this.farTurnSpeed;
+            } else {
+                this.turnSpeed = this.baseTurnSpeed;
+                if (this.roamTimer <= 0) {
+                    const drift = (Math.random() - 0.5) * 0.35;
+                    this.roamAngle = (this.angle || 0) + drift;
+                    this.roamTimer = this.roamInterval;
+                }
+            }
 
-        let angleDiff = this.roamAngle - (this.angle || 0);
-        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-        const turnStep = this.turnSpeed * dtFactor;
-        if (Math.abs(angleDiff) < turnStep) this.angle = this.roamAngle;
-        else this.angle += Math.sign(angleDiff) * turnStep;
+            let angleDiff = this.roamAngle - (this.angle || 0);
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+            const turnStep = this.turnSpeed * dtFactor;
+            if (Math.abs(angleDiff) < turnStep) this.angle = this.roamAngle;
+            else this.angle += Math.sign(angleDiff) * turnStep;
 
-        this.vel.x = Math.cos(this.angle || 0) * this.roamSpeed;
-        this.vel.y = Math.sin(this.angle || 0) * this.roamSpeed;
-        super.update(deltaTime);
+            this.vel.x = Math.cos(this.angle || 0) * this.roamSpeed;
+            this.vel.y = Math.sin(this.angle || 0) * this.roamSpeed;
+            super.update(deltaTime);
 
-        const distFromCenter = Math.hypot(this.pos.x, this.pos.y);
-        if (distFromCenter > 15000) {
-            this.roamAngle = Math.atan2(-this.pos.y, -this.pos.x);
+            const distFromCenter = Math.hypot(this.pos.x, this.pos.y);
+            if (distFromCenter > 15000) {
+                this.roamAngle = Math.atan2(-this.pos.y, -this.pos.x);
+            }
         }
 
         this.shieldRotation += 0.003 * dtFactor;
@@ -231,6 +322,11 @@ export class Destroyer extends Entity {
                     GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
                 }
                 this.guidedMissileTimer = 2000;
+            }
+            
+            // Call reinforcements in vertical scrolling mode
+            if (this.staticMode) {
+                this.maybeCallHelpers();
             }
         }
 
@@ -310,6 +406,55 @@ export class Destroyer extends Entity {
     spawnNapalmZone() {
         const zone = new NapalmZone(GameContext.player.pos.x, GameContext.player.pos.y, 180, 4500, 0.6);
         GameContext.napalmZones.push(zone);
+    }
+
+    maybeCallHelpers() {
+        if (!GameContext.bossActive) return;
+        if (!GameContext.player || GameContext.player.dead) return;
+
+        const aliveHelpers = GameContext.enemies.filter(e => e && !e.dead).length;
+        const maxHelpers = this.helperMax;
+
+        const hpPct = this.hp / this.maxHp;
+        if (!this.called70 && hpPct <= 0.7) {
+            this.called70 = true;
+            this.spawnHelpers(this.helperCall70);
+        }
+        if (!this.called40 && hpPct <= 0.4) {
+            this.called40 = true;
+            this.spawnHelpers(this.helperCall40);
+        }
+
+        this.helperCooldown -= 1; // Decrement by 1 per frame (60fps)
+        if (this.helperCooldown <= 0 && aliveHelpers < maxHelpers) {
+            const burst = Math.min(this.helperBurst, maxHelpers - aliveHelpers);
+            this.spawnHelpers(burst);
+            this.helperCooldown = this.helperCooldownBase;
+        }
+    }
+
+    spawnHelpers(count) {
+        const aliveHelpers = GameContext.enemies.filter(e => e && !e.dead).length;
+        const slots = Math.max(0, this.helperMax - aliveHelpers);
+        if (slots <= 0) return;
+        count = Math.min(count, slots);
+        let types = ['roamer', 'roamer', 'elite_roamer'];
+        if (this.helperStrengthTier <= 0) types = ['roamer', 'roamer', 'roamer'];
+        else if (this.helperStrengthTier >= 2) types = ['roamer', 'elite_roamer', 'hunter'];
+        for (let i = 0; i < count; i++) {
+            const type = types[Math.floor(Math.random() * types.length)];
+            const a = Math.random() * Math.PI * 2;
+            const d = 260 + Math.random() * 260;
+            const e = new Enemy(type, { x: this.pos.x + Math.cos(a) * d, y: this.pos.y + Math.sin(a) * d });
+            e.hp = Math.max(1, Math.round(e.hp * this.helperHpMult));
+            if (e.shieldSegments && e.shieldSegments.length > 0) {
+                const segMult = this.helperHpMult;
+                e.shieldSegments = e.shieldSegments.map(s => Math.max(0, Math.round(s * segMult)));
+            }
+            e.despawnImmune = true; // Don't despawn during boss fight
+            GameContext.enemies.push(e);
+        }
+        showOverlayMessage("DESTROYER CALLED REINFORCEMENTS", '#f00', 1100);
     }
 
     takeHit(dmg = 1) {

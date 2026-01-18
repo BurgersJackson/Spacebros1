@@ -202,6 +202,10 @@ export function updatePixiBackground(camX, camY, viewportWidth, viewportHeight, 
     // But sprites should be sized to internal resolution (handled by canvas-setup.js)
     // Tile positions use viewport size for correct parallax calculation
     
+    // Enhanced parallax for vertical scrolling mode
+    const isVerticalScrolling = (typeof GameContext !== 'undefined' && GameContext.verticalScrollingMode);
+    const parallaxMultiplier = isVerticalScrolling ? 11.0 : 1.0; // 11x faster parallax in vertical mode
+    
     // Use provided pixi objects or fall back to module imports
     const actualPixiApp = (pixiObjects && pixiObjects.pixiApp) || pixiApp;
     const actualPixiScreenRoot = (pixiObjects && pixiObjects.pixiScreenRoot) || pixiScreenRoot;
@@ -314,8 +318,9 @@ export function updatePixiBackground(camX, camY, viewportWidth, viewportHeight, 
             
             // Don't resize sprites here - they're sized to internal resolution in canvas-setup.js
             // Tile positions use viewport size for correct parallax
-            const tx = -camX * (t.parallax || 0.012);
-            const ty = -camY * (t.parallax || 0.012);
+            const parallax = (t.parallax || 0.012) * parallaxMultiplier;
+            const tx = -camX * parallax;
+            const ty = -camY * parallax;
             spr.tilePosition.set(Math.round(tx), Math.round(ty));
         }
     }
@@ -325,8 +330,9 @@ export function updatePixiBackground(camX, camY, viewportWidth, viewportHeight, 
             if (!spr) continue;
             // Don't resize sprites here - they're sized to internal resolution in canvas-setup.js
             // Tile positions use viewport size for correct parallax
-            const tx = -camX * (t.parallax || 0.08);
-            const ty = -camY * (t.parallax || 0.08);
+            const parallax = (t.parallax || 0.08) * parallaxMultiplier;
+            const tx = -camX * parallax;
+            const ty = -camY * parallax;
             spr.tilePosition.set(Math.round(tx), Math.round(ty));
         }
         return;
@@ -337,8 +343,9 @@ export function updatePixiBackground(camX, camY, viewportWidth, viewportHeight, 
         if (!spr) continue;
         if (!spr.parent) pixiStarLayer.addChild(spr);
         // Use viewport size for positioning calculations
-        let x = (s.x - camX * s.parallax) % viewportWidth;
-        let y = (s.y - camY * s.parallax) % viewportHeight;
+        const parallax = s.parallax * parallaxMultiplier;
+        let x = (s.x - camX * parallax) % viewportWidth;
+        let y = (s.y - camY * parallax) % viewportHeight;
         if (x < 0) x += viewportWidth;
         if (y < 0) y += viewportHeight;
         spr.position.set(x, y);

@@ -310,6 +310,113 @@ export function resetDungeon1State() {
     GameContext.dungeon1Zone = null;
 }
 
+export function enterVerticalScrollingZone() {
+    if (GameContext.verticalScrollingZone && GameContext.verticalScrollingZone.active) return;
+
+    deps.resetPixiOverlaySprites();
+    const detach = (arr) => {
+        if (!arr || arr.length === 0) return;
+        for (let i = 0; i < arr.length; i++) deps.pixiCleanupObject(arr[i]);
+    };
+    detach(GameContext.bullets);
+    detach(GameContext.bossBombs);
+    detach(GameContext.warpBioPods);
+    detach(GameContext.guidedMissiles);
+    detach(GameContext.enemies);
+    detach(GameContext.pinwheels);
+    detach(GameContext.particles);
+    detach(GameContext.explosions);
+    detach(GameContext.floatingTexts);
+    detach(GameContext.coins);
+    detach(GameContext.nuggets);
+    detach(GameContext.powerups);
+    detach(GameContext.shootingStars);
+    detach(GameContext.drones);
+    detach(GameContext.caches);
+    detach(GameContext.pois);
+    detach(GameContext.environmentAsteroids);
+
+    GameContext.bullets = [];
+    GameContext.bossBombs = [];
+    GameContext.warpBioPods = [];
+    GameContext.staggeredBombExplosions = [];
+    GameContext.staggeredParticleBursts = [];
+    GameContext.guidedMissiles = [];
+    GameContext.enemies = [];
+    GameContext.pinwheels = [];
+    GameContext.particles = [];
+    GameContext.explosions = [];
+    GameContext.floatingTexts = [];
+    GameContext.coins = [];
+    GameContext.nuggets = [];
+    GameContext.powerups = [];
+    GameContext.shootingStars = [];
+    GameContext.drones = [];
+    GameContext.caches = [];
+    GameContext.pois = [];
+    GameContext.environmentAsteroids = [];
+    GameContext.asteroidRespawnTimers = [];
+    GameContext.baseRespawnTimers = [];
+
+    GameContext.radiationStorm = null;
+    deps.clearMiniEvent();
+    
+    // Disable all level 1 timers and events
+    GameContext.dreadManager.timerActive = false;
+    GameContext.dreadManager.timerAt = null;
+    GameContext.nextRadiationStormAt = null;
+    GameContext.nextMiniEventAt = Date.now() + 999999999;
+    GameContext.nextSpaceStationTime = null;
+    GameContext.nextShootingStarTime = Date.now() + 999999999;
+    GameContext.nextIntensityBreakAt = Date.now() + 999999999;
+
+    resetCaveState();
+
+    GameContext.activeContract = null;
+    GameContext.contractEntities = { beacons: [], gates: [], anomalies: [], fortresses: [], wallTurrets: [] };
+    GameContext.nextContractAt = Date.now() + 999999999;
+
+    if (GameContext.destroyer) {
+        if (GameContext.destroyer.pixiCleanupObject && typeof GameContext.destroyer.pixiCleanupObject === 'function') {
+            GameContext.destroyer.pixiCleanupObject();
+        }
+        GameContext.destroyer = null;
+    }
+
+    if (GameContext.boss) deps.pixiCleanupObject(GameContext.boss);
+    GameContext.boss = null;
+    GameContext.bossActive = false;
+    GameContext.bossArena.active = false;
+    GameContext.bossArena.growing = false;
+
+    if (GameContext.spaceStation) deps.pixiCleanupObject(GameContext.spaceStation);
+    GameContext.spaceStation = null;
+    GameContext.stationHealthBarVisible = false;
+    GameContext.pendingStations = 0;
+    GameContext.nextSpaceStationTime = null;
+    GameContext.roamerRespawnQueue = [];
+    GameContext.maxRoamers = 0;
+    GameContext.gunboatRespawnAt = null;
+
+    // Initialize vertical scrolling zone
+    const originX = 0;
+    const originY = 0;
+    GameContext.verticalScrollingZone = new deps.VerticalScrollingZone(originX, originY);
+    GameContext.verticalScrollingMode = true;
+    GameContext.scrollProgress = 0;
+    GameContext.scrollSpeed = 2.0;
+
+    // Position player at center of screen, near bottom
+    GameContext.player.pos.x = originX;
+    GameContext.player.pos.y = originY + 300; // Start near bottom of viewport
+    GameContext.player.vel.x = 0;
+    GameContext.player.vel.y = 0;
+    // Allow normal rotation (no angle lock)
+
+    deps.showOverlayMessage("VERTICAL SCROLLING MODE - SURVIVE 5 MINUTES", '#0ff', 4000, 2);
+    if (deps.playSound) deps.playSound('contract');
+}
+
 export function enterDungeon1Internal() {
     if (GameContext.dungeon1Zone && GameContext.dungeon1Zone.active) return;
     if (GameContext.dungeon1CompletedOnce) {

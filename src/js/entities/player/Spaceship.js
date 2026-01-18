@@ -407,20 +407,32 @@ export class Spaceship extends Entity {
                 // This deadzone size is consistent across resolutions since it's in canvas pixels
                 if (distSq > 50 * 50) {
                     const dist = Math.sqrt(distSq);
-                    const mouseMoveX = rawDx / dist;
-                    const mouseMoveY = rawDy / dist;
+                    // Use normalized direction, but scale by distance for more responsive movement
+                    // Max distance for full speed is 200 pixels from center
+                    const maxDist = 200;
+                    const speedScale = Math.min(1.0, dist / maxDist);
+                    const mouseMoveX = (rawDx / dist) * speedScale;
+                    const mouseMoveY = (rawDy / dist) * speedScale;
 
-                    // Add to existing keyboard input (allows combining mouse + keyboard)
-                    moveX += mouseMoveX;
-                    moveY += mouseMoveY;
+                    // Override keyboard input with mouse input (mouse takes priority for slacker)
+                    moveX = mouseMoveX;
+                    moveY = mouseMoveY;
+                } else {
+                    // Inside deadzone - no movement from mouse
+                    // Only use keyboard input if no mouse movement
+                    if (distSq <= 50 * 50) {
+                        // Keep existing keyboard input, don't add mouse
+                    }
                 }
 
-                // Clamp to prevent overshoot when combining inputs
+                // Clamp to prevent overshoot
                 moveX = Math.max(-1, Math.min(1, moveX));
                 moveY = Math.max(-1, Math.min(1, moveY));
             }
             // In rotation mode, only rotate toward mouse (don't add to movement)
         }
+
+        // In vertical scrolling mode, allow normal rotation (no lock)
 
         const moveMag = Math.sqrt(moveX * moveX + moveY * moveY);
         let thrusting = false;
@@ -430,6 +442,7 @@ export class Spaceship extends Entity {
         const moveAimThresh = 0.08;
         if (this.shipType === 'slacker') {
             // SLACKER SPECIAL: Auto-target nearest enemy (prioritizes bosses)
+            // Works in both normal and vertical scrolling mode
             const target = this.findAutoTurretTarget();
             if (target) {
                 // Aim at the target, but slightly toward its front based on facing angle
@@ -445,9 +458,13 @@ export class Spaceship extends Entity {
 
                 this.turretAngle = Math.atan2(targetY - this.pos.y, targetX - this.pos.x);
             }
-            // If no target, keep last turretAngle (don't reset)
+            // If no target and in vertical scrolling mode, default to straight up
+            else if (GameContext.verticalScrollingMode) {
+                this.turretAngle = -Math.PI / 2;
+            }
+            // If no target in normal mode, keep last turretAngle (don't reset)
         } else {
-            // STANDARD: Manual turret control (existing behavior)
+            // STANDARD: Manual turret control (works in all modes including vertical scrolling)
             if (GameContext.usingGamepad) {
                 // In gamepad mode, never snap aim back to mouse when sticks go idle.
                 if (aimMag > aimThresh) {
@@ -470,6 +487,7 @@ export class Spaceship extends Entity {
         const currentMaxSpeed = this.maxSpeed * this.stats.speedMult * turboMult * slowMult;
 
         if (moveMag > 0.06) {
+            // Update angle based on movement direction (works in all modes including vertical scrolling)
             const targetAngle = Math.atan2(moveY, moveX);
             let angleDiff = targetAngle - this.angle;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
@@ -816,6 +834,43 @@ export class Spaceship extends Entity {
         this.vel.mult(Math.pow(this.friction * rotationModeBrake, dtScale));
 
         super.update(deltaTime);
+        
+        // Soft boundary constraints in vertical scrolling mode (only push back when outside, don't interfere with normal movement)
+        if (GameContext.verticalScrollingMode && GameContext.verticalScrollingZone) {
+            const viewportWidth = GameContext.verticalScrollingZone.viewportWidth;
+            const viewportHeight = GameContext.verticalScrollingZone.viewportHeight;
+            const levelCenterX = GameContext.verticalScrollingZone.levelCenterX;
+            const z = GameContext.currentZoom || 0.4;
+            
+            // Calculate viewport bounds (camera is centered at levelCenterX horizontally)
+            const leftBound = levelCenterX - viewportWidth / (2 * z);
+            const rightBound = levelCenterX + viewportWidth / (2 * z);
+            
+            // For vertical bounds, we need to account for scroll progress
+            // Camera Y = scrollProgress - viewportHeight/2/z, so viewport top = scrollProgress - viewportHeight/2/z
+            const currentCamY = GameContext.scrollProgress;
+            const topBound = currentCamY - viewportHeight / (2 * z);
+            const bottomBound = currentCamY + viewportHeight / (2 * z);
+            
+            // Only clamp position if actually outside bounds (soft push-back, don't interfere with normal movement)
+            if (this.pos.x < leftBound) {
+                this.pos.x = leftBound;
+                // Only reduce velocity if moving further out
+                if (this.vel.x < 0) this.vel.x *= 0.5;
+            } else if (this.pos.x > rightBound) {
+                this.pos.x = rightBound;
+                if (this.vel.x > 0) this.vel.x *= 0.5;
+            }
+            
+            if (this.pos.y < topBound) {
+                this.pos.y = topBound;
+                if (this.vel.y < 0) this.vel.y *= 0.5;
+            } else if (this.pos.y > bottomBound) {
+                this.pos.y = bottomBound;
+                if (this.vel.y > 0) this.vel.y *= 0.5;
+            }
+        }
+        
         _checkWallCollision(this, 0.0);
 
         if (this.invulnerable > 0) {

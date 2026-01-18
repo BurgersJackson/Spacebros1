@@ -45,6 +45,7 @@ export const GameContext = {
     radiationStorm: null,
     miniEvent: null,
     warpGate: null,
+    verticalScrollingWarpGate: null,
     warpZone: null,
     dungeon1Gate: null,
     dungeon1Zone: null,
@@ -67,6 +68,11 @@ export const GameContext = {
     warpGateUnlocked: false,
     warpCompletedOnce: false,
     warpCountdownAt: null,
+    verticalScrollingMode: false,
+    verticalScrollingWarpGateUnlocked: false,
+    verticalScrollingZone: null,
+    scrollProgress: 0,
+    scrollSpeed: 2.0, // pixels per frame (scaled by dtFactor)
     nextRadiationStormAt: 0,
     nextMiniEventAt: 0,
     nextShootingStarTime: 0,
@@ -265,6 +271,11 @@ export const GameContext = {
         this.warpGateUnlocked = false;
         this.warpCompletedOnce = false;
         this.warpCountdownAt = null;
+        this.verticalScrollingMode = false;
+        this.verticalScrollingWarpGateUnlocked = false;
+        this.verticalScrollingZone = null;
+        this.scrollProgress = 0;
+        this.scrollSpeed = 2.0;
         this.nextRadiationStormAt = 0;
         this.nextMiniEventAt = 0;
         this.nextShootingStarTime = 0;

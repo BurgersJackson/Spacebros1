@@ -138,6 +138,7 @@ let playSound = null;
 let setMusicMode = null;
 let isMusicEnabled = null;
 let enterWarpMaze = null;
+let enterVerticalScrollingZone = null;
 let completeSectorWarp = null;
 let findSpawnPointRelative = null;
 let resolveEntityCollision = null;
@@ -231,6 +232,7 @@ export function registerGameLoopLogicDependencies(deps) {
     if (deps.setMusicMode) setMusicMode = deps.setMusicMode;
     if (deps.isMusicEnabled) isMusicEnabled = deps.isMusicEnabled;
     if (deps.enterWarpMaze) enterWarpMaze = deps.enterWarpMaze;
+    if (deps.enterVerticalScrollingZone) enterVerticalScrollingZone = deps.enterVerticalScrollingZone;
     if (deps.completeSectorWarp) completeSectorWarp = deps.completeSectorWarp;
     if (deps.findSpawnPointRelative) findSpawnPointRelative = deps.findSpawnPointRelative;
     if (deps.resolveEntityCollision) resolveEntityCollision = deps.resolveEntityCollision;
@@ -447,6 +449,24 @@ export function gameLoopLogic(opts = null) {
             }
         }
 
+        // Vertical scrolling warp gate (appears at game start on first level).
+        if (!warpActive && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && !GameContext.verticalScrollingMode && !GameContext.caveMode && !GameContext.spaceStation && GameContext.verticalScrollingWarpGateUnlocked && GameContext.sectorIndex === 1) {
+            if (!GameContext.verticalScrollingWarpGate || GameContext.verticalScrollingWarpGate.mode !== 'vertical_scrolling') {
+                const gx = GameContext.player.pos.x - 900;
+                const gy = GameContext.player.pos.y;
+                GameContext.verticalScrollingWarpGate = new WarpGate(gx, gy);
+                GameContext.verticalScrollingWarpGate.mode = 'vertical_scrolling';
+                // Ensure warp gate is not suppressed when it spawns
+                GameContext.suppressWarpGateUntil = 0;
+                showOverlayMessage("VERTICAL SCROLLING GATE OPEN", '#0ff', 2000);
+            }
+        } else {
+            if (GameContext.verticalScrollingWarpGate && GameContext.verticalScrollingWarpGate.mode === 'vertical_scrolling') {
+                pixiCleanupObject(GameContext.verticalScrollingWarpGate);
+                GameContext.verticalScrollingWarpGate = null;
+            }
+        }
+
         // World warp gate (appears after space station is destroyed, once per sector).
         if (!warpActive && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && !GameContext.warpCompletedOnce && !GameContext.caveMode && !GameContext.spaceStation && GameContext.warpGateUnlocked) {
             if (!GameContext.warpGate || GameContext.warpGate.mode !== 'entry') {
@@ -494,7 +514,7 @@ export function gameLoopLogic(opts = null) {
         }
         // Arena countdown: start 10 seconds before cruiser spawns
         try {
-            if (!GameContext.sectorTransitionActive && !warpActive && !GameContext.caveMode && !inAnomaly && !inStationFight && !inTractorBeam && !waitingForResume && GameContext.dreadManager.timerActive && !GameContext.bossActive && GameContext.dreadManager.timerAt) {
+            if (!GameContext.sectorTransitionActive && !warpActive && !GameContext.caveMode && !GameContext.verticalScrollingMode && !inAnomaly && !inStationFight && !inTractorBeam && !waitingForResume && GameContext.dreadManager.timerActive && !GameContext.bossActive && GameContext.dreadManager.timerAt) {
                 const remainingMs = GameContext.dreadManager.timerAt - now;
                 if (remainingMs <= 10000 && remainingMs > 0) {
                     if (!isArenaCountdownActive()) {
@@ -520,7 +540,7 @@ export function gameLoopLogic(opts = null) {
         } catch (e) { }
         // Cruiser timed spawn: if timer active and no boss present, spawn a cruiser 
         try {
-            if (!GameContext.sectorTransitionActive && !warpActive && !GameContext.caveMode && !inAnomaly && !inStationFight && !inTractorBeam && !waitingForResume && GameContext.dreadManager.timerActive && !GameContext.bossActive && GameContext.dreadManager.timerAt && now >= GameContext.dreadManager.timerAt) {
+            if (!GameContext.sectorTransitionActive && !warpActive && !GameContext.caveMode && !GameContext.verticalScrollingMode && !inAnomaly && !inStationFight && !inTractorBeam && !waitingForResume && GameContext.dreadManager.timerActive && !GameContext.bossActive && GameContext.dreadManager.timerAt && now >= GameContext.dreadManager.timerAt) {
                 // Cruisers can spawn even if a station exists
                 GameContext.cruiserEncounterCount++;
                 // Arena boss fight: clear world threats; boss may call a few helpers.
@@ -618,8 +638,8 @@ export function gameLoopLogic(opts = null) {
         }
 
         // Single destroyer system: only 1 destroyer at a time, alternates between type 1 and 2
-        // Destroyers never spawn in sector 2 (cave mode) or in dungeon1
-        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && GameContext.sectorIndex !== 2 && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone && !GameContext.warpCompletedOnce) {
+        // Destroyers never spawn in sector 2 (cave mode), in dungeon1, or in vertical scrolling mode
+        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.verticalScrollingMode && GameContext.sectorIndex !== 2 && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone && !GameContext.warpCompletedOnce) {
             const destroyerAlive = GameContext.destroyer && !GameContext.destroyer.dead;
 
             if (!destroyerAlive) {
@@ -746,8 +766,11 @@ export function gameLoopLogic(opts = null) {
             GameContext.roamerRespawnQueue = [];
         }
 
-        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active) {
+        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.verticalScrollingMode) {
             while (GameContext.environmentAsteroids.length < 100) spawnOneAsteroidRelative();
+        } else if (GameContext.verticalScrollingMode) {
+            // 50% fewer asteroids in vertical scrolling mode
+            while (GameContext.environmentAsteroids.length < 50) spawnOneAsteroidRelative();
         } else if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active) {
             // Keep asteroids present but not overwhelming inside the cave.
             let tries = 0;
@@ -855,11 +878,28 @@ export function gameLoopLogic(opts = null) {
     renderAlpha = alpha; // Set global for entity draw methods
     if (_setRenderAlphaLocal) _setRenderAlphaLocal(renderAlpha);
     const renderPos = GameContext.player.getRenderPos(alpha);
-    // Camera always follows player - no arena locking
-    // Use viewport size (1920x1080) for camera calculation to ensure consistent viewport
-    // The scale transform will handle scaling to canvas internal resolution
-    let camX = renderPos.x - width / (2 * zoom);
-    let camY = renderPos.y - height / (2 * zoom);
+    
+    // Vertical scrolling mode: lock camera to 1920x1080, center it, and scroll downward
+    let camX, camY;
+    if (GameContext.verticalScrollingMode && GameContext.verticalScrollingZone) {
+        // Lock camera to level center horizontally
+        camX = GameContext.verticalScrollingZone.levelCenterX - width / (2 * zoom);
+        
+        // Scroll downward based on scroll progress (keep moving during boss battle)
+        if (GameContext.verticalScrollingZone.state === 'scrolling' || GameContext.verticalScrollingZone.state === 'boss_battle') {
+            camY = GameContext.scrollProgress - height / (2 * zoom);
+        } else {
+            // Boss intro or warp out - keep current scroll position
+            camY = GameContext.scrollProgress - height / (2 * zoom);
+        }
+    } else {
+        // Normal camera follows player
+        // Camera always follows player - no arena locking
+        // Use viewport size (1920x1080) for camera calculation to ensure consistent viewport
+        // The scale transform will handle scaling to canvas internal resolution
+        camX = renderPos.x - width / (2 * zoom);
+        camY = renderPos.y - height / (2 * zoom);
+    }
     if (GameContext.shakeTimer > 0) {
         if (doUpdate) {
             GameContext.shakeTimer -= deltaTime / 16.67;
@@ -997,7 +1037,23 @@ export function gameLoopLogic(opts = null) {
         });
         if (doDraw) wg.draw(ctx);
     }
+    
+    // Vertical scrolling warp gate
+    const vsg = GameContext.verticalScrollingWarpGate;
+    if (vsg && !vsg.dead) {
+        if (doUpdate) vsg.update(deltaTime, {
+            getGameNowMs: () => Date.now(),
+            suppressUntil: 0,
+            showMessage: showOverlayMessage,
+            enterWarp: enterVerticalScrollingZone
+        });
+        if (doDraw) vsg.draw(ctx);
+    }
     if (caveActive) { if (doUpdate) GameContext.caveLevel.update(deltaTime); }
+
+    // Vertical scrolling zone
+    const vsz = GameContext.verticalScrollingZone;
+    if (vsz && vsz.active) { if (doUpdate) vsz.update(deltaTime); if (doDraw) vsz.draw(ctx); }
 
     // Dungeon1 zone and gate
     const dz = GameContext.dungeon1Zone;

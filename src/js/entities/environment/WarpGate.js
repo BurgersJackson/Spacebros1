@@ -8,7 +8,7 @@ import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS } from '../../core/constants.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { pixiCleanupObject } from '../../utils/cleanup-utils.js';
-import { pixiWorldRoot } from '../../rendering/pixi-context.js';
+import { pixiWorldRoot, getRenderAlpha } from '../../rendering/pixi-context.js';
 
 /**
  * Warp gate portal entry/exit point.
@@ -42,6 +42,10 @@ export class WarpGate extends Entity {
             if (options.getGameNowMs() < options.suppressUntil) return;
         }
 
+        // Update previous position for interpolation (warp gate doesn't move, but still need this for rendering)
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
 
@@ -69,6 +73,7 @@ export class WarpGate extends Entity {
         }
 
         if (GameContext.warpZone && GameContext.warpZone.active) return;
+        if (GameContext.verticalScrollingZone && GameContext.verticalScrollingZone.active) return;
 
         // Only trigger once
         if (this._warpTriggered) return;
@@ -140,7 +145,13 @@ export class WarpGate extends Entity {
 
             // Text
             const t = this._pixiText;
-            t.text = this.mode === 'exit' ? 'EXIT' : 'WARP';
+            if (t) {
+                if (this.mode === 'vertical_scrolling') {
+                    t.text = 'SCROLL';
+                } else {
+                    t.text = this.mode === 'exit' ? 'EXIT' : 'WARP';
+                }
+            }
 
             return;
         }
