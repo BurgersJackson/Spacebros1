@@ -1098,6 +1098,7 @@ registerDestroyerDependencies({
     spawnLargeExplosion,
     spawnParticles,
     spawnBarrelSmoke,
+    canvas,
     awardNuggetsInstant
 });
 

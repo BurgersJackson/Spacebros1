@@ -21,6 +21,7 @@ let _spawnBossExplosion = null;
 let _spawnLargeExplosion = null;
 let _spawnParticles = null;
 let _spawnBarrelSmoke = null;
+let _canvas = null;
 let _awardNuggetsInstant = null;
 
 export function registerDestroyerDependencies(deps) {
@@ -28,6 +29,7 @@ export function registerDestroyerDependencies(deps) {
     if (deps.spawnLargeExplosion) _spawnLargeExplosion = deps.spawnLargeExplosion;
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
     if (deps.spawnBarrelSmoke) _spawnBarrelSmoke = deps.spawnBarrelSmoke;
+    if (deps.canvas) _canvas = deps.canvas;
     if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
 }
 
@@ -887,5 +889,29 @@ export class Destroyer extends Entity {
             ctx.fillText(this.displayName, this.pos.x, this.pos.y - this.visualRadius - 20);
             ctx.shadowBlur = 0;
         }
+    }
+
+    drawBossHud(ctx) {
+        if (!GameContext.bossActive || this.dead) return;
+        const w = _canvas ? _canvas.width : GameContext.width;
+        const barW = Math.min(560, w - 40);
+        const x = (w - barW) / 2;
+        const y = 14;
+        const pct = Math.max(0, this.hp / this.maxHp);
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(x - 4, y - 4, barW + 8, 20);
+        ctx.strokeStyle = '#ff8000';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x - 4, y - 4, barW + 8, 20);
+        ctx.fillStyle = '#ff8000';
+        ctx.fillRect(x, y, barW * pct, 12);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px Courier New';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`DESTROYER  HP: ${this.hp}/${this.maxHp}`, w / 2, y + 12);
+        ctx.restore();
     }
 }

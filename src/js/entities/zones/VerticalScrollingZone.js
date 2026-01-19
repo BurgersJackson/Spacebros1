@@ -297,10 +297,15 @@ export class VerticalScrollingZone extends Entity {
                 }
                 this.bossIntroLastSec = remainingSecs;
             }
+            // Start boss music when entering boss_intro state
+            if (!this.bossMusicStarted && musicEnabled) {
+                setMusicMode('destroyer');
+                this.bossMusicStarted = true;
+            }
             if (remainingMs <= 0) {
                 const el = document.getElementById('arena-countdown');
                 if (el) el.style.display = 'none';
-                
+
                 this.state = 'boss_battle';
                 this.spawnBoss();
             }
@@ -377,8 +382,6 @@ export class VerticalScrollingZone extends Entity {
         
         GameContext.bossActive = true;
         this.bossSpawned = true;
-
-        if (musicEnabled) setMusicMode('destroyer');
 
         showOverlayMessage("DESTROYER ENGAGED", '#f00', 3000, 3);
         playSound('boss_spawn');

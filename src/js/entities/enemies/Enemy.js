@@ -115,8 +115,8 @@ export class Enemy extends Entity {
             this.hp = 5 + (GameContext.difficultyTier - 1) * 2;
         }
 
-        this.shootTimer = 20; // 40 / 2 - faster fire rate for roamers
-        if (this.type === 'elite_roamer' || this.type === 'hunter') this.shootTimer = 15; // 30 / 2
+        this.shootTimer = 13; // 50% faster (20 * 2/3)
+        if (this.type === 'elite_roamer' || this.type === 'hunter') this.shootTimer = 10; // 50% faster (15 * 2/3)
 
         // Named elite modifiers
         if (this.type === 'elite_roamer' || this.type === 'hunter') {
@@ -613,7 +613,7 @@ export class Enemy extends Entity {
                         GameContext.bullets.push(new Bullet(bx, by, a2, 11, { owner: 'enemy', damage: 1, life: 300, color: '#f0f' }));
                     }
                     if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, angle);
-                    this.shootTimer = this.type === 'hunter' ? 10 : 15;
+                    this.shootTimer = this.type === 'hunter' ? 7 : 10; // 50% faster
                 } else if (GameContext.difficultyTier >= 5 && this.type === 'roamer') {
                     for (let i = -1; i <= 1; i++) {
                         const a = angle + i * 0.2;
@@ -622,13 +622,13 @@ export class Enemy extends Entity {
                         GameContext.bullets.push(new Bullet(bx, by, a, 16, { owner: 'enemy', damage: 1, life: 180 }));
                         if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, a);
                     }
-                    this.shootTimer = 20;
+                    this.shootTimer = 13; // 50% faster
                 } else {
                     const bx = this.pos.x + Math.cos(angle) * 20;
                     const by = this.pos.y + Math.sin(angle) * 20;
                     GameContext.bullets.push(new Bullet(bx, by, angle, 16, { owner: 'enemy', damage: 1, life: 180 }));
                     if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, angle);
-                    this.shootTimer = 20;
+                    this.shootTimer = 13; // 50% faster
                 }
                 playSound('shoot');
             }
