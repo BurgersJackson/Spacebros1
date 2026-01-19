@@ -387,19 +387,43 @@ export class Spaceship extends Entity {
 
         // NEW: Slacker ship mouse movement
         if (this.shipType === 'slacker' && !GameContext.usingGamepad) {
-            // Calculate direction from ship to mouse cursor in world space (matches other levels)
-            // This ensures movement is toward the mouse, not away from screen center
-            const dx = mouseWorld.x - this.pos.x;
-            const dy = mouseWorld.y - this.pos.y;
-            const distSq = dx * dx + dy * dy;
-
             // Rotation mode: if left mouse button is held, stop movement
             // and only rotate to face mouse cursor
             const isRotationMode = mouseState.leftDown;
 
             if (!isRotationMode) {
-                // Deadzone of 30 pixels in world space - smaller deadzone for more responsiveness
-                const deadzoneDist = 30;
+                let dx, dy, deadzoneDist;
+
+                if (GameContext.verticalScrollingMode && GameContext.verticalScrollingZone && _getViewportSize && _getInternalSize && mouseScreen) {
+                    // In vertical scrolling mode, use screen-relative movement
+                    // This ensures consistent feel like other levels
+                    const viewport = _getViewportSize();
+                    const internal = _getInternalSize();
+                    const z = GameContext.currentZoom || 0.4;
+
+                    // Calculate ship screen position
+                    const camX = GameContext.verticalScrollingZone.levelCenterX - viewport.width / (2 * z);
+                    const camY = GameContext.scrollProgress - viewport.height / (2 * z);
+                    const viewportShipX = (this.pos.x - camX) * z;
+                    const viewportShipY = (this.pos.y - camY) * z;
+                    const renderScaleX = internal.width / viewport.width;
+                    const renderScaleY = internal.height / viewport.height;
+                    const screenShipX = viewportShipX * renderScaleX;
+                    const screenShipY = viewportShipY * renderScaleY;
+
+                    // Calculate direction from ship to mouse in screen space
+                    dx = mouseScreen.x - screenShipX;
+                    dy = mouseScreen.y - screenShipY;
+                    deadzoneDist = 40;
+                } else {
+                    // Normal mode: use world-relative movement
+                    dx = mouseWorld.x - this.pos.x;
+                    dy = mouseWorld.y - this.pos.y;
+                    deadzoneDist = 30;
+                }
+
+                const distSq = dx * dx + dy * dy;
+
                 if (distSq > deadzoneDist * deadzoneDist) {
                     const dist = Math.sqrt(distSq);
                     // Use normalized direction for crisp, immediate movement (no distance scaling)
