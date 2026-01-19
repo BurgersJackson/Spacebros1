@@ -153,6 +153,7 @@ export function startGame() {
         deps.resetWarpState();
         deps.resetCaveState();
         deps.resetDungeon1State();
+        if (deps.resetVerticalScrollingState) deps.resetVerticalScrollingState();
         GameContext.warpCompletedOnce = false;
         deps.setMusicMode('normal');
         GameContext.gameMode = 'normal';
@@ -450,6 +451,7 @@ export function quitGame() {
 
     deps.stopArenaCountdown();
     deps.stopMusic();
+    if (deps.resetVerticalScrollingState) deps.resetVerticalScrollingState();
     GameContext.sectorIndex = 1;
 
     document.getElementById('pause-menu').style.display = 'none';

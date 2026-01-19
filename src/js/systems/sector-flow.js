@@ -310,6 +310,41 @@ export function resetDungeon1State() {
     GameContext.dungeon1Zone = null;
 }
 
+export function resetVerticalScrollingState() {
+    try {
+        if (GameContext.verticalScrollingZone) {
+            if (typeof GameContext.verticalScrollingZone.cleanup === 'function') {
+                GameContext.verticalScrollingZone.cleanup();
+            } else {
+                GameContext.verticalScrollingZone.active = false;
+            }
+        }
+    } catch (e) {
+        console.warn('[resetVerticalScrollingState] Error cleaning up vertical scrolling zone:', e);
+    }
+
+    try {
+        if (GameContext.verticalScrollingWarpGate) deps.pixiCleanupObject(GameContext.verticalScrollingWarpGate);
+    } catch (e) {
+        console.warn('[resetVerticalScrollingState] Error cleaning up vertical scrolling warp gate:', e);
+    }
+
+    // Defensive UI cleanup: VerticalScrollingZone may have shown the countdown directly.
+    try {
+        if (typeof document !== 'undefined') {
+            const el = document.getElementById('arena-countdown');
+            if (el) el.style.display = 'none';
+        }
+    } catch (e) { }
+
+    GameContext.verticalScrollingMode = false;
+    GameContext.verticalScrollingWarpGateUnlocked = false;
+    GameContext.verticalScrollingZone = null;
+    GameContext.verticalScrollingWarpGate = null;
+    GameContext.scrollProgress = 0;
+    GameContext.scrollSpeed = 2.0;
+}
+
 export function enterVerticalScrollingZone() {
     if (GameContext.verticalScrollingZone && GameContext.verticalScrollingZone.active) return;
 

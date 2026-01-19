@@ -249,6 +249,7 @@ export const GameContext = {
         this.radiationStorm = null;
         this.miniEvent = null;
         this.warpGate = null;
+        this.verticalScrollingWarpGate = null;
         this.warpZone = null;
         this.dungeon1Gate = null;
         this.dungeon1Zone = null;

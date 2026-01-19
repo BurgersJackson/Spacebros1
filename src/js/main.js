@@ -129,6 +129,7 @@ import {
     resetWarpState,
     resetCaveState,
     resetDungeon1State,
+    resetVerticalScrollingState,
     enterDungeon1Internal as _enterDungeon1Internal
 } from './systems/sector-flow.js';
 import {
@@ -714,6 +715,7 @@ registerGameFlowDependencies({
     playSound,
     resetCaveState,
     resetDungeon1State,
+    resetVerticalScrollingState,
     resetProfileStats,
     resetWarpState,
     saveMetaProfile: saveMetaProfileSystem,
