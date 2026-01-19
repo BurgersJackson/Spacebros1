@@ -430,16 +430,30 @@ export function drawSlackerMouseLine() {
     const screenMouseX = mouseScreen.x;
     const screenMouseY = mouseScreen.y;
 
-    const angle = Math.atan2(screenMouseY - screenShipY, screenMouseX - screenShipX);
+    // In vertical scrolling mode the camera is static and the ship can drift off-screen-center.
+    // Slacker movement uses a virtual joystick centered on screen center, so draw the aim line
+    // from the ship using the same screen-center deflection vector (matches feel on other levels).
+    let angle;
+    let dist;
+    if (GameContext.verticalScrollingMode && GameContext.verticalScrollingZone) {
+        const centerX = internal.width / 2;
+        const centerY = internal.height / 2;
+        const dx = screenMouseX - centerX;
+        const dy = screenMouseY - centerY;
+        dist = Math.sqrt(dx * dx + dy * dy);
+        angle = Math.atan2(dy, dx);
+    } else {
+        const dx = screenMouseX - screenShipX;
+        const dy = screenMouseY - screenShipY;
+        dist = Math.sqrt(dx * dx + dy * dy);
+        angle = Math.atan2(dy, dx);
+    }
 
     // Scale the start distance to canvas coordinates
     const startDistScreen = (GameContext.player.outerShieldRadius + 10) * z * renderScaleX;
     const screenStartX = screenShipX + Math.cos(angle) * startDistScreen;
     const screenStartY = screenShipY + Math.sin(angle) * startDistScreen;
 
-    const dx = screenMouseX - screenShipX;
-    const dy = screenMouseY - screenShipY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < startDistScreen) return;
 
     // Draw line to half the distance (clamped at max)
@@ -588,4 +602,31 @@ export function updateContractUI(state = GameContext) {
 export function updateNuggetUI(state = GameContext) {
     const el = document.getElementById('nugget-count');
     if (el) el.innerText = (state.metaProfile.bank || 0) + state.spaceNuggets;
+}
+
+export function updateInputSpeedUI(state = GameContext) {
+    const el = document.getElementById('input-speed');
+    if (!el) return;
+
+    let speed = 0;
+    const player = state ? state.player : null;
+
+    if (state.usingGamepad) {
+        const x = state.gpState.move.x || 0;
+        const y = state.gpState.move.y || 0;
+        speed = Math.sqrt(x * x + y * y);
+    } else if (player && player.shipType === 'slacker' && state.mouseState && state.mouseState.leftDown && state.mouseScreen && getInternalSize) {
+        const internal = getInternalSize();
+        const centerX = internal.width / 2;
+        const centerY = internal.height / 2;
+
+        const rawX = (state.mouseScreen.x - centerX) / centerX;
+        const rawY = (state.mouseScreen.y - centerY) / centerY;
+
+        const deadzone = 0.03;
+        const mag = Math.sqrt(rawX * rawX + rawY * rawY);
+        speed = (mag <= deadzone) ? 0 : 1;
+    }
+
+    el.innerText = speed.toFixed(2);
 }

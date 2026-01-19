@@ -26,6 +26,7 @@ let _showOverlayMessage = null;
 let _updateHealthUI = null;
 let _updateWarpUI = null;
 let _updateXpUI = null;
+let _updateInputSpeedUI = null;
 let _updateTurboUI = null;
 let _showLevelUpMenu = null;
 let _killPlayer = null;
@@ -51,6 +52,7 @@ export function registerSpaceshipDependencies(deps) {
     if (deps.updateHealthUI) _updateHealthUI = deps.updateHealthUI;
     if (deps.updateWarpUI) _updateWarpUI = deps.updateWarpUI;
     if (deps.updateXpUI) _updateXpUI = deps.updateXpUI;
+    if (deps.updateInputSpeedUI) _updateInputSpeedUI = deps.updateInputSpeedUI;
     if (deps.updateTurboUI) _updateTurboUI = deps.updateTurboUI;
     if (deps.showLevelUpMenu) _showLevelUpMenu = deps.showLevelUpMenu;
     if (deps.killPlayer) _killPlayer = deps.killPlayer;
@@ -225,6 +227,10 @@ export class Spaceship extends Entity {
         // Homing Missiles - track sources separately for stacking
         this.stats.homingFromUpgrade = 0;   // Tier from in-game upgrade (0-5)
         this.stats.homingFromMeta = 0;      // Tier from meta shop (0-3)
+
+        // Slacker mouse input smoothing (used only in certain modes)
+        this._slackerMouseMoveX = 0;
+        this._slackerMouseMoveY = 0;
     }
 
     respawn() {
@@ -340,6 +346,8 @@ export class Spaceship extends Entity {
 
         const dtScale = deltaTime / 16.67;
 
+        if (_updateInputSpeedUI) _updateInputSpeedUI();
+
         this.shieldRotation += 0.02 * dtScale;
         if (this.outerShieldSegments && this.outerShieldSegments.some(s => s > 0)) {
             this.outerShieldRotation -= 0.026 * dtScale;
@@ -401,29 +409,55 @@ export class Spaceship extends Entity {
                     const centerX = internal.width / 2;
                     const centerY = internal.height / 2;
 
-                    // Calculate mouse offset from screen center (-1 to +1 range)
+                    // Calculate mouse offset from screen center (-1 to +1 range per axis)
                     const rawX = (mouseScreen.x - centerX) / centerX;
                     const rawY = (mouseScreen.y - centerY) / centerY;
 
-                    // Very small deadzone for instant response
+                    // Vector deadzone: once outside deadzone, snap to full-strength input (mag=1)
+                    // while preserving exact direction. This makes Slacker hit full speed almost instantly.
                     const deadzone = 0.03;
-                    const applyDeadzone = (v) => {
-                        const a = Math.abs(v);
-                        if (a <= deadzone) return 0;
-                        const normalized = (a - deadzone) / (1 - deadzone);
-                        // Aggressive power curve for instant acceleration
-                        const scaled = Math.pow(normalized, 0.3);
-                        return Math.sign(v) * scaled;
-                    };
+                    const mag = Math.sqrt(rawX * rawX + rawY * rawY);
+                    let targetX = 0;
+                    let targetY = 0;
+                    if (mag > deadzone) {
+                        // Full-strength stick in the direction of the mouse
+                        targetX = rawX / mag;
+                        targetY = rawY / mag;
+                    }
 
-                    // Override keyboard input with mouse input (mouse takes priority for slacker)
-                    moveX = applyDeadzone(rawX);
-                    moveY = applyDeadzone(rawY);
+                    // In the vertical scrolling level, the locked/static camera means the ship can drift,
+                    // and instant full-strength direction flips feel too jarring. Add a small ramp/smoothing
+                    // only in that mode.
+                    if (GameContext.verticalScrollingMode && GameContext.verticalScrollingZone) {
+                        // Frame-rate independent smoothing (approx: reach ~80% in ~6-8 frames at 60fps)
+                        const response = 0.18;
+                        const t = 1 - Math.pow(1 - response, dtScale);
+                        this._slackerMouseMoveX += (targetX - this._slackerMouseMoveX) * t;
+                        this._slackerMouseMoveY += (targetY - this._slackerMouseMoveY) * t;
+
+                        // Clamp to unit magnitude (avoid any numerical drift)
+                        const sm = Math.sqrt(this._slackerMouseMoveX ** 2 + this._slackerMouseMoveY ** 2);
+                        if (sm > 1) {
+                            this._slackerMouseMoveX /= sm;
+                            this._slackerMouseMoveY /= sm;
+                        }
+
+                        moveX = this._slackerMouseMoveX;
+                        moveY = this._slackerMouseMoveY;
+                    } else {
+                        // Normal levels: instant response
+                        moveX = targetX;
+                        moveY = targetY;
+                        this._slackerMouseMoveX = targetX;
+                        this._slackerMouseMoveY = targetY;
+                    }
                 }
             } else {
                 // Left mouse released: ship stops
                 moveX = 0;
                 moveY = 0;
+                this._slackerMouseMoveX = 0;
+                this._slackerMouseMoveY = 0;
             }
         }
 
@@ -477,8 +511,8 @@ export class Spaceship extends Entity {
 
         // Removed acceleration stat multiplier, using base or 1.0 implicitly
         const turboMult = (this.turboBoost && this.turboBoost.activeFrames > 0) ? (this.turboBoost.speedMult || 1.5) : 1.0;
-        // Slacker ship with mouse: reach top speed 50% quicker
-        const slackerThrustMult = (this.shipType === 'slacker' && !GameContext.usingGamepad) ? 1.5 : 1.0;
+        // Slacker ship with mouse: reach top speed very quickly
+        const slackerThrustMult = (this.shipType === 'slacker' && !GameContext.usingGamepad) ? 2.6 : 1.0;
         const currentThrust = this.thrustPower * turboMult * slackerThrustMult * dtScale; // Scale thrust by time
         if (this.caveSlowFrames === undefined) this.caveSlowFrames = 0;
         if (this.caveSlowMult === undefined) this.caveSlowMult = 1.0;
@@ -513,9 +547,29 @@ export class Spaceship extends Entity {
         if (this.shipType === 'slacker' && !GameContext.usingGamepad) {
             let targetAngle;
             let distToMouse = 0;
+            // In vertical scrolling mode the camera is static, so the ship can drift off-screen-center.
+            // For Slacker controls we want the same "joystick deflection from screen center" feel as normal
+            // levels (where the camera follows the player and the ship is centered).
+            if (GameContext.verticalScrollingMode && GameContext.verticalScrollingZone && _getInternalSize && mouseScreen) {
+                const internal = _getInternalSize();
+                const centerX = internal.width / 2;
+                const centerY = internal.height / 2;
+
+                const dx = mouseScreen.x - centerX;
+                const dy = mouseScreen.y - centerY;
+                distToMouse = Math.sqrt(dx * dx + dy * dy);
+
+                // Only update rotation if mouse is far enough away (deadzone to prevent spinning)
+                const rotationDeadzone = 40; // pixels in screen space
+                if (distToMouse > rotationDeadzone) {
+                    targetAngle = Math.atan2(dy, dx);
+                } else {
+                    targetAngle = this.angle;
+                }
+            }
             // Calculate angle the same way the line does - in canvas coordinates
             // This ensures the rotation matches the visual line direction
-            if (_getViewportSize && _getInternalSize && mouseScreen) {
+            else if (_getViewportSize && _getInternalSize && mouseScreen) {
                 const viewport = _getViewportSize();
                 const internal = _getInternalSize();
                 const z = GameContext.currentZoom || 0.4;
