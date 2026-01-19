@@ -274,6 +274,11 @@ export class Spaceship extends Entity {
 
         // Pause and Show Menu
         playSound('levelup');
+        // Release mouse lock immediately so the player can use the level-up UI in windowed mode.
+        const canvas = document.getElementById('gameCanvas');
+        if (canvas && document.pointerLockElement === canvas) {
+            try { document.exitPointerLock(); } catch (e) { }
+        }
         GameContext.gameActive = false; // Soft pause logic required
         if (_showLevelUpMenu) _showLevelUpMenu();
     }
@@ -385,65 +390,41 @@ export class Spaceship extends Entity {
             if (keys.d) moveX += 1;
         }
 
-        // NEW: Slacker ship mouse movement
+        // NEW: Slacker ship mouse movement - gamepad-style joystick
+        // When left mouse button held: movement control via mouse position from center
+        // When left mouse button released: ship stops
         if (this.shipType === 'slacker' && !GameContext.usingGamepad) {
-            // Rotation mode: if left mouse button is held, stop movement
-            // and only rotate to face mouse cursor
-            const isRotationMode = mouseState.leftDown;
-
-            if (!isRotationMode) {
-                let dx, dy, deadzoneDist;
-
-                if (GameContext.verticalScrollingMode && GameContext.verticalScrollingZone && _getViewportSize && _getInternalSize && mouseScreen) {
-                    // In vertical scrolling mode, use screen-relative movement
-                    // This ensures consistent feel like other levels
-                    const viewport = _getViewportSize();
+            if (mouseState.leftDown) {
+                // Gamepad-style: screen center is joystick center, mouse position determines stick direction/magnitude
+                if (_getInternalSize && mouseScreen) {
                     const internal = _getInternalSize();
-                    const z = GameContext.currentZoom || 0.4;
+                    const centerX = internal.width / 2;
+                    const centerY = internal.height / 2;
 
-                    // Calculate ship screen position
-                    const camX = GameContext.verticalScrollingZone.levelCenterX - viewport.width / (2 * z);
-                    const camY = GameContext.scrollProgress - viewport.height / (2 * z);
-                    const viewportShipX = (this.pos.x - camX) * z;
-                    const viewportShipY = (this.pos.y - camY) * z;
-                    const renderScaleX = internal.width / viewport.width;
-                    const renderScaleY = internal.height / viewport.height;
-                    const screenShipX = viewportShipX * renderScaleX;
-                    const screenShipY = viewportShipY * renderScaleY;
+                    // Calculate mouse offset from screen center (-1 to +1 range)
+                    const rawX = (mouseScreen.x - centerX) / centerX;
+                    const rawY = (mouseScreen.y - centerY) / centerY;
 
-                    // Calculate direction from ship to mouse in screen space
-                    dx = mouseScreen.x - screenShipX;
-                    dy = mouseScreen.y - screenShipY;
-                    deadzoneDist = 40;
-                } else {
-                    // Normal mode: use world-relative movement
-                    dx = mouseWorld.x - this.pos.x;
-                    dy = mouseWorld.y - this.pos.y;
-                    deadzoneDist = 30;
-                }
-
-                const distSq = dx * dx + dy * dy;
-
-                if (distSq > deadzoneDist * deadzoneDist) {
-                    const dist = Math.sqrt(distSq);
-                    // Use normalized direction for crisp, immediate movement (no distance scaling)
-                    // This matches the feel of other levels where movement is immediate
-                    const mouseMoveX = dx / dist;
-                    const mouseMoveY = dy / dist;
+                    // Very small deadzone for instant response
+                    const deadzone = 0.03;
+                    const applyDeadzone = (v) => {
+                        const a = Math.abs(v);
+                        if (a <= deadzone) return 0;
+                        const normalized = (a - deadzone) / (1 - deadzone);
+                        // Aggressive power curve for instant acceleration
+                        const scaled = Math.pow(normalized, 0.3);
+                        return Math.sign(v) * scaled;
+                    };
 
                     // Override keyboard input with mouse input (mouse takes priority for slacker)
-                    moveX = mouseMoveX;
-                    moveY = mouseMoveY;
-                } else {
-                    // Inside deadzone - no movement from mouse, use keyboard input
-                    // Don't override, just keep keyboard input
+                    moveX = applyDeadzone(rawX);
+                    moveY = applyDeadzone(rawY);
                 }
-
-                // Clamp to prevent overshoot
-                moveX = Math.max(-1, Math.min(1, moveX));
-                moveY = Math.max(-1, Math.min(1, moveY));
+            } else {
+                // Left mouse released: ship stops
+                moveX = 0;
+                moveY = 0;
             }
-            // In rotation mode, only rotate toward mouse (don't add to movement)
         }
 
         // In vertical scrolling mode, allow normal rotation (no lock)
@@ -479,6 +460,7 @@ export class Spaceship extends Entity {
             // If no target in normal mode, keep last turretAngle (don't reset)
         } else {
             // STANDARD: Manual turret control (works in all modes including vertical scrolling)
+            // Only update aim when left mouse button is held
             if (GameContext.usingGamepad) {
                 // In gamepad mode, never snap aim back to mouse when sticks go idle.
                 if (aimMag > aimThresh) {
@@ -486,14 +468,18 @@ export class Spaceship extends Entity {
                 } else if (moveMag > moveAimThresh) {
                     this.turretAngle = Math.atan2(moveY, moveX);
                 }
-            } else {
+            } else if (mouseState.leftDown) {
+                // Mouse mode: only aim when left mouse button is held
                 this.turretAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
             }
+            // If left mouse not held, keep last turretAngle (don't update)
         }
 
         // Removed acceleration stat multiplier, using base or 1.0 implicitly
         const turboMult = (this.turboBoost && this.turboBoost.activeFrames > 0) ? (this.turboBoost.speedMult || 1.5) : 1.0;
-        const currentThrust = this.thrustPower * turboMult * dtScale; // Scale thrust by time
+        // Slacker ship with mouse: reach top speed 50% quicker
+        const slackerThrustMult = (this.shipType === 'slacker' && !GameContext.usingGamepad) ? 1.5 : 1.0;
+        const currentThrust = this.thrustPower * turboMult * slackerThrustMult * dtScale; // Scale thrust by time
         if (this.caveSlowFrames === undefined) this.caveSlowFrames = 0;
         if (this.caveSlowMult === undefined) this.caveSlowMult = 1.0;
         if (this.caveSlowFrames > 0) this.caveSlowFrames -= dtScale;
@@ -878,10 +864,9 @@ export class Spaceship extends Entity {
         }
 
         // Time-scaled friction
-        // friction^dtScale
-        // NEW: Slacker rotation mode - apply stronger braking when left mouse button held
-        const rotationModeBrake = (this.shipType === 'slacker' && !GameContext.usingGamepad && mouseState.leftDown) ? 0.85 : 1.0;
-        this.vel.mult(Math.pow(this.friction * rotationModeBrake, dtScale));
+        // Slacker ship: apply braking when mouse button released (stops movement)
+        const slackerBrake = (this.shipType === 'slacker' && !GameContext.usingGamepad && !mouseState.leftDown) ? 0.85 : 1.0;
+        this.vel.mult(Math.pow(this.friction * slackerBrake, dtScale));
 
         super.update(deltaTime);
         

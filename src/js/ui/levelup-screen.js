@@ -175,19 +175,50 @@ export function showLevelUpMenu() {
             updateMenuVisuals(active);
         };
 
-        card.onclick = () => {
-            applyUpgrade(choice.id, nextTier);
-            document.getElementById('levelup-screen').style.display = 'none';
+        card.onclick = (e) => {
+            e.stopPropagation(); // Prevent event bubbling to document click handler
 
-            requestAnimationFrame(() => {
-                if (typeof window !== 'undefined' && window.gc && typeof window.gc === 'function') {
-                    try { window.gc(); } catch (e) { }
+            const canvas = document.getElementById('gameCanvas');
+            if (canvas && document.body.contains(canvas)) {
+                // Apply upgrade FIRST
+                applyUpgrade(choice.id, nextTier);
+                document.getElementById('levelup-screen').style.display = 'none';
+
+                // Windowed mode: lock mouse back to the game window as we return to gameplay.
+                // Do it immediately (still within the click gesture) so it isn't blocked.
+                if (!document.pointerLockElement) {
+                    let isFullscreen = false;
+                    try {
+                        isFullscreen = window.getComputedStyle(canvas).position === 'fixed';
+                    } catch (err) {
+                        isFullscreen = canvas.style.position === 'fixed';
+                    }
+                    if (!isFullscreen) {
+                        canvas.focus();
+                        try {
+                            const request = canvas.requestPointerLock();
+                            if (request && typeof request.catch === 'function') {
+                                request.catch((err) => console.warn("Pointer lock failed after level-up selection:", err));
+                            }
+                        } catch (err) {
+                            console.warn("Pointer lock failed after level-up selection:", err);
+                        }
+                    }
                 }
 
-                setTimeout(() => {
-                    resumeGameFromLevelUp();
-                }, 100);
-            });
+                // Then resume game logic next frame
+                requestAnimationFrame(() => {
+                    if (typeof window !== 'undefined' && window.gc && typeof window.gc === 'function') {
+                        try { window.gc(); } catch (err) { }
+                    }
+
+                    setTimeout(() => {
+                        setTimeout(() => {
+                            resumeGameFromLevelUp();
+                        }, 50);
+                    }, 10);
+                }, 0);
+            }
         };
         container.appendChild(card);
     });

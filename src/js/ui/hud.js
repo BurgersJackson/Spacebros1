@@ -439,12 +439,18 @@ export function drawSlackerMouseLine() {
 
     const dx = screenMouseX - screenShipX;
     const dy = screenMouseY - screenShipY;
-    const distSq = dx * dx + dy * dy;
-    if (distSq < startDistScreen * startDistScreen) return;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < startDistScreen) return;
+
+    // Draw line to half the distance (clamped at max)
+    const maxDist = Math.min(dist, internal.width * 0.3);
+    const drawDist = startDistScreen + (maxDist - startDistScreen) * 0.5;
+    const drawX = screenShipX + Math.cos(angle) * drawDist;
+    const drawY = screenShipY + Math.sin(angle) * drawDist;
 
     pixiArrowsGraphics.lineStyle(2, 0xffffff, 0.5);
     pixiArrowsGraphics.moveTo(screenStartX, screenStartY);
-    pixiArrowsGraphics.lineTo(screenMouseX, screenMouseY);
+    pixiArrowsGraphics.lineTo(drawX, drawY);
     pixiArrowsGraphics.endFill(); // Clear lineStyle to prevent ghosting
 }
 

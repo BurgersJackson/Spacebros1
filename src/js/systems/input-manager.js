@@ -657,19 +657,61 @@ export function initInputListeners() {
     });
 
     if (_canvas) {
-        _canvas.addEventListener('click', () => {
-            if (GameContext.gameActive && !GameContext.gamePaused && !document.pointerLockElement) {
-                try {
-                    const request = _canvas.requestPointerLock();
-                    if (request && typeof request.catch === 'function') {
-                        request.catch(e => console.warn("Pointer lock failed:", e));
-                    }
-                } catch (e) {
-                    console.warn("Pointer lock failed:", e);
-                }
+        const canvas = _canvas;
+
+        const isCanvasFullscreen = () => {
+            // Browser Fullscreen API
+            if (document.fullscreenElement || document.webkitFullscreenElement ||
+                document.mozFullScreenElement || document.msFullscreenElement) return true;
+
+            // Electron fullscreen is reflected by canvas being positioned `fixed`
+            // (see `canvas-setup.js` + `index.html` fullscreen CSS).
+            try {
+                return window.getComputedStyle(canvas).position === 'fixed';
+            } catch (e) {
+                return canvas.style.position === 'fixed';
             }
-        });
+        };
+
+        const shouldLockPointer = () => {
+            // Only lock in WINDOWED mode; fullscreen already confines mouse.
+            if (isCanvasFullscreen()) return false;
+            if (!GameContext.gameActive) return false;
+            if (GameContext.gamePaused) return false;
+            return true;
+        };
+
+        const requestPointerLockForGameplay = () => {
+            if (!shouldLockPointer()) return;
+            if (document.pointerLockElement) return;
+            if (!document.body.contains(canvas)) return;
+
+            canvas.focus();
+            try {
+                const request = canvas.requestPointerLock();
+                if (request && typeof request.catch === 'function') {
+                    request.catch((e) => console.warn("Pointer lock failed:", e));
+                }
+            } catch (e) {
+                console.warn("Pointer lock failed:", e);
+            }
+        };
+
+        // Acquire pointer lock from actual player gestures on the playfield.
+        canvas.addEventListener('mousedown', () => requestPointerLockForGameplay());
+        canvas.addEventListener('click', () => requestPointerLockForGameplay());
     }
+
+    // Center mouse when pointer lock is activated (for joystick-style control)
+    document.addEventListener('pointerlockchange', () => {
+        const canvas = document.getElementById('gameCanvas');
+
+        if (document.pointerLockElement === canvas && _getInternalSize) {
+            const internal = _getInternalSize();
+            mouseScreen.x = internal.width / 2;
+            mouseScreen.y = internal.height / 2;
+        }
+    });
 
     const checkPointerLockState = () => {
         if ((!GameContext.gameActive || GameContext.gamePaused) && document.pointerLockElement === _canvas) {

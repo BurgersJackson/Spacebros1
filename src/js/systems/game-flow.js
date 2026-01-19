@@ -32,6 +32,13 @@ export function endGame(elapsedMs) {
     GameContext.gameActive = false;
     GameContext.gamePaused = false;
     GameContext.canResumeGame = false;
+
+    // Ensure menus can use the mouse.
+    const canvas = document.getElementById('gameCanvas');
+    if (canvas && document.pointerLockElement === canvas) {
+        try { document.exitPointerLock(); } catch (e) { }
+    }
+
     deps.stopMusic();
     try {
         deps.depositMetaNuggets();
@@ -268,6 +275,29 @@ export function startGame() {
         GameContext.gamePaused = false;
         GameContext.canResumeGame = false;
 
+        // Windowed mode: lock mouse to the game window (prevents cursor leaving the window mid-run).
+        // Fullscreen already confines the cursor, so we only do this in windowed.
+        const canvas = document.getElementById('gameCanvas');
+        if (canvas && document.body.contains(canvas) && !document.pointerLockElement) {
+            let isFullscreen = false;
+            try {
+                isFullscreen = window.getComputedStyle(canvas).position === 'fixed';
+            } catch (e) {
+                isFullscreen = canvas.style.position === 'fixed';
+            }
+            if (!isFullscreen) {
+                canvas.focus();
+                try {
+                    const request = canvas.requestPointerLock();
+                    if (request && typeof request.catch === 'function') {
+                        request.catch((err) => console.warn("Pointer lock failed on game start:", err));
+                    }
+                } catch (err) {
+                    console.warn("Pointer lock failed on game start:", err);
+                }
+            }
+        }
+
         if (window.updateResumeButtonState) {
             window.updateResumeButtonState();
         }
@@ -328,7 +358,7 @@ export function shiftPausedTimers(pauseMs) {
 }
 
 export function togglePause() {
-    if (!GameContext.gameActive) return;
+    if (!GameContext.gameActive) return; 
 
     if (document.getElementById('debug-menu').style.display === 'block') {
         deps.hideDebugMenu();
@@ -347,6 +377,12 @@ export function togglePause() {
     if (GameContext.gamePaused) {
         GameContext.pauseStartTime = deps.getGameNowMs();
         if (deps.isArenaCountdownActive && deps.isArenaCountdownActive()) deps.stopArenaCountdown();
+
+        // If the mouse was locked during gameplay, release it immediately for menu interaction.
+        const canvas = document.getElementById('gameCanvas');
+        if (canvas && document.pointerLockElement === canvas) {
+            try { document.exitPointerLock(); } catch (e) { }
+        }
     } else {
         if (GameContext.pauseStartTime) {
             const pauseMs = Math.max(0, deps.getGameNowMs() - GameContext.pauseStartTime);
@@ -365,6 +401,30 @@ export function togglePause() {
     } else if (deps.getMusicEnabled && deps.getMusicEnabled()) {
         deps.startMusic();
     }
+
+    // Windowed mode: re-lock mouse on unpause (in the same user gesture).
+    if (!GameContext.gamePaused) {
+        const canvas = document.getElementById('gameCanvas');
+        if (canvas && document.body.contains(canvas) && !document.pointerLockElement) {
+            let isFullscreen = false;
+            try {
+                isFullscreen = window.getComputedStyle(canvas).position === 'fixed';
+            } catch (e) {
+                isFullscreen = canvas.style.position === 'fixed';
+            }
+            if (!isFullscreen) {
+                canvas.focus();
+                try {
+                    const request = canvas.requestPointerLock();
+                    if (request && typeof request.catch === 'function') {
+                        request.catch((err) => console.warn("Pointer lock failed on unpause:", err));
+                    }
+                } catch (err) {
+                    console.warn("Pointer lock failed on unpause:", err);
+                }
+            }
+        }
+    }
 }
 
 export function quitGame() {
@@ -381,6 +441,13 @@ export function quitGame() {
 
     GameContext.gameActive = false;
     GameContext.gameEnded = true;
+
+    // Ensure menus can use the mouse.
+    const canvas = document.getElementById('gameCanvas');
+    if (canvas && document.pointerLockElement === canvas) {
+        try { document.exitPointerLock(); } catch (e) { }
+    }
+
     deps.stopArenaCountdown();
     deps.stopMusic();
     GameContext.sectorIndex = 1;

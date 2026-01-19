@@ -39,6 +39,8 @@
             object-fit: fill !important;
             /* Ensure canvas can stretch without maintaining aspect ratio */
             image-rendering: pixelated;
+            /* Hide focus ring when canvas is focused */
+            outline: none !important;
         }
         
         /* Force canvas to stretch in fullscreen */
@@ -809,7 +811,7 @@
 <body>
     <div id="root"></div>
     <div id="canvas-container">
-        <canvas id="gameCanvas"></canvas>
+        <canvas id="gameCanvas" tabindex="0"></canvas>
         <canvas id="uiCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 10;"></canvas>
     </div>
     <div id="xp-bar-container">
