@@ -558,23 +558,16 @@ export function gameLoopLogic(opts = null) {
                 // Clear all bullets to prevent immediate cruiser death
                 clearArrayWithPixiCleanup(bullets);
                 clearArrayWithPixiCleanup(bossBombs);
-                clearArrayWithPixiCleanup(guidedMissiles);
-                */
+                 clearArrayWithPixiCleanup(guidedMissiles);
+                 */
                 GameContext.boss = new Cruiser(GameContext.cruiserEncounterCount);
                 GameContext.bossActive = true;
-                GameContext.bossArena.x = (GameContext.player.pos.x + GameContext.boss.pos.x) / 2;
-                GameContext.bossArena.y = (GameContext.player.pos.y + GameContext.boss.pos.y) / 2;
-                GameContext.bossArena.radius = 2500;
-                GameContext.bossArena.active = true;
-                GameContext.bossArena.growing = false;
                 // Keep arena fights clean
                 GameContext.radiationStorm = null;
                 scheduleNextRadiationStorm(Date.now() + 60000);
-                clearMiniEvent();
-                scheduleNextMiniEvent(Date.now() + 90000);
                 GameContext.dreadManager.timerActive = false;
                 GameContext.dreadManager.firstSpawnDone = true;
-                showOverlayMessage("WARNING: CRUISER APPROACHING - ARENA LOCKED", '#f00', 4000);
+                showOverlayMessage("WARNING: CRUISER APPROACHING", '#f00', 4000);
                 playSound('boss_spawn');
                 if (isMusicEnabled && isMusicEnabled()) setMusicMode('cruiser');
             }
@@ -594,7 +587,7 @@ export function gameLoopLogic(opts = null) {
         }
 
         // Gunboat respawn (one at a time)
-        if (!warpActive && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone) {
+        if (!warpActive && !GameContext.dungeon1Active && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone) {
             const gunboatAlive = GameContext.enemies.some(e => e.isGunboat);
             const level2Alive = GameContext.enemies.some(e => e.isGunboat && e.gunboatLevel === 2);
             const level1Alive = GameContext.enemies.some(e => e.isGunboat && e.gunboatLevel === 1);
@@ -639,7 +632,7 @@ export function gameLoopLogic(opts = null) {
 
         // Single destroyer system: only 1 destroyer at a time, alternates between type 1 and 2
         // Destroyers never spawn in sector 2 (cave mode), in dungeon1, or in vertical scrolling mode
-        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.verticalScrollingMode && GameContext.sectorIndex !== 2 && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone && !GameContext.warpCompletedOnce) {
+        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.verticalScrollingMode && GameContext.sectorIndex !== 2 && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone && !GameContext.warpCompletedOnce) {
             const destroyerAlive = GameContext.destroyer && !GameContext.destroyer.dead;
 
             if (!destroyerAlive) {
@@ -661,7 +654,7 @@ export function gameLoopLogic(opts = null) {
             }
         }
 
-        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.bossActive && Date.now() > GameContext.nextShootingStarTime && _ShootingStar) {
+        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && Date.now() > GameContext.nextShootingStarTime && _ShootingStar) {
             // Fire a meteor shower: 10 comets from different directions, 1s apart
             for (let i = 0; i < 10; i++) {
                 const delay = i * 1000;
@@ -674,7 +667,7 @@ export function gameLoopLogic(opts = null) {
         }
 
         // Risk zones: Radiation Storms
-        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone) {
+        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone) {
             if (GameContext.radiationStorm && GameContext.radiationStorm.dead) GameContext.radiationStorm = null;
             if ((!GameContext.radiationStorm || GameContext.radiationStorm.dead) && GameContext.nextRadiationStormAt && now >= GameContext.nextRadiationStormAt) {
                 spawnRadiationStormRelative();
@@ -683,7 +676,7 @@ export function gameLoopLogic(opts = null) {
         }
 
         // Mini-events
-        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone) {
+        if (!warpActive && !GameContext.caveMode && !GameContext.dungeon1Active && !GameContext.sectorTransitionActive && GameContext.gameActive && !GameContext.gamePaused && GameContext.initialSpawnDone) {
             if (GameContext.miniEvent && GameContext.miniEvent.dead) clearMiniEvent();
             if (!GameContext.miniEvent && GameContext.nextMiniEventAt && now >= GameContext.nextMiniEventAt) {
                 spawnMiniEventRelative();
@@ -706,7 +699,7 @@ export function gameLoopLogic(opts = null) {
         }
 
         // Allow roamers to spawn in normal mode and cave mode (but not in warp/dungeon/boss)
-        if (!warpActive && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.initialSpawnDone) {
+        if (!warpActive && !GameContext.dungeon1Active && !GameContext.sectorTransitionActive && GameContext.initialSpawnDone) {
             // Time-based pacing for roamer count and strength 
             let elapsed = now - GameContext.gameStartTime - GameContext.pausedAccumMs;
             if (GameContext.pauseStartTime) elapsed = GameContext.pauseStartTime - GameContext.gameStartTime - GameContext.pausedAccumMs;
@@ -826,7 +819,7 @@ export function gameLoopLogic(opts = null) {
         globalProfiler.end('SpatialHash');
         globalProfiler.start('LevelLogic');
 
-        if (!warpActive && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && GameContext.initialSpawnDone) {
+        if (!warpActive && !GameContext.dungeon1Active && !GameContext.sectorTransitionActive && GameContext.initialSpawnDone) {
             // Ramp base count up over the first few minutes (start easier).
             let elapsed = now - GameContext.gameStartTime - GameContext.pausedAccumMs;
             if (GameContext.pauseStartTime) elapsed = GameContext.pauseStartTime - GameContext.gameStartTime - GameContext.pausedAccumMs;

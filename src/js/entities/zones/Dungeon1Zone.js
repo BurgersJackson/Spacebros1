@@ -183,13 +183,6 @@ export class Dungeon1Zone extends Entity {
         GameContext.boss.prevPos.x = GameContext.boss.pos.x;
         GameContext.boss.prevPos.y = GameContext.boss.pos.y;
 
-        // Activate boss arena for dungeon boss fight
-        GameContext.bossArena.x = this.pos.x;
-        GameContext.bossArena.y = this.pos.y;
-        GameContext.bossArena.radius = 2500;
-        GameContext.bossArena.active = true;
-        GameContext.bossArena.growing = false;
-
         showOverlayMessage(`DUNGEON BOSS: ${bossType.toUpperCase()}`, '#f00', 2200, 3);
         playSound('boss_spawn');
     }

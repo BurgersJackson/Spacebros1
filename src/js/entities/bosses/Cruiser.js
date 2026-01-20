@@ -223,14 +223,12 @@ export class Cruiser extends Enemy {
         if (_awardNuggetsInstant) _awardNuggetsInstant(5, { noSound: false, sound: 'coin' });
         GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
         GameContext.bossActive = false;
-        GameContext.bossArena.active = false;
-        GameContext.bossArena.growing = false;
         if (GameContext.cruiserEncounterCount === 2) {
             GameContext.pendingStations = 1;
             GameContext.nextSpaceStationTime = Date.now() + 30000;
             showOverlayMessage("CRUISER DESTROYED - SPACE STATION IN 30s", '#f80', 4000);
         } else {
-            showOverlayMessage("CRUISER DESTROYED - ARENA UNLOCKED", '#0f0', 3000);
+            showOverlayMessage("CRUISER DESTROYED", '#0f0', 3000);
         }
         if (musicEnabled) setMusicMode('normal');
         try {
@@ -240,8 +238,6 @@ export class Cruiser extends Enemy {
             GameContext.dreadManager.firstSpawnDone = true;
         } catch (e) { console.warn('failed to start cruiser timer', e); }
         GameContext.boss = null;
-        GameContext.bossArena.active = false;
-        GameContext.bossArena.growing = false;
         stopArenaCountdown();
     }
 
@@ -344,23 +340,23 @@ export class Cruiser extends Enemy {
             if (this.moveMode === 'SEEK') {
                 this.circleStrafePreferred = false;
                 this.aiState = 'SEEK';
-                this.thrustPower = 0.52;
-                this.maxSpeed = 7.8;
+                this.thrustPower = 0.8;
+                this.maxSpeed = 12;
             } else if (this.moveMode === 'ORBIT') {
                 this.circleStrafePreferred = false;
                 this.aiState = 'ORBIT';
-                this.thrustPower = 0.48;
-                this.maxSpeed = 6.6;
+                this.thrustPower = 0.75;
+                this.maxSpeed = 10;
             } else if (this.moveMode === 'FLANK') {
                 this.circleStrafePreferred = false;
                 this.aiState = 'FLANK';
-                this.thrustPower = 0.56;
-                this.maxSpeed = 8.2;
+                this.thrustPower = 0.85;
+                this.maxSpeed = 13;
             } else {
                 this.circleStrafePreferred = true;
                 this.aiState = 'CIRCLE';
-                this.thrustPower = 0.40;
-                this.maxSpeed = 5.8;
+                this.thrustPower = 0.65;
+                this.maxSpeed = 9;
             }
             this.gunboatRange = this.baseGunboatRange;
         }

@@ -108,7 +108,9 @@ export class CruiserMineBomb extends Entity {
         if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 40, '#fa0');
         GameContext.shockwaves.push(new Shockwave(this.pos.x, this.pos.y, this.damage, this.blastRadius, {
             damagePlayer: true,
-            damageBases: true,
+            damageEnemies: false,
+            damageBases: false,
+            damageAsteroids: false,
             ignoreEntity: this.owner,
             color: '#fa0'
         }));
