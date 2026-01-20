@@ -31,10 +31,9 @@ export class Cruiser extends Enemy {
         super('gunboat', null, null, { gunboatLevel: 2 });
         const boost = Math.max(0, encounterIndex - 1);
         const hpScale = 1 + boost * 0.35;
+        // Shield segment HP: 2 + (encounterIndex - 1) = increases by 1 per level
         let shieldStrength = 2 + boost;
-        const maxShieldHp = 5;
-        shieldStrength = Math.min(shieldStrength, maxShieldHp);
-        const baseCruiserHp = 100;
+        const baseCruiserHp = 150;
         this.type = 'cruiser';
         this.isCruiser = true;
         this.isGunboat = true;
@@ -46,13 +45,12 @@ export class Cruiser extends Enemy {
         let hp = Math.round(baseCruiserHp * hpScale);
         if (encounterIndex === 2) {
             hp = Math.round(hp * 1.25);
-            shieldStrength = Math.max(shieldStrength, Math.ceil(shieldStrength * 1.25));
         }
         this.hp = hp;
         this.maxHp = this.hp;
         this.shieldRadius = Math.round(34 * this.cruiserHullScale);
         this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
-        this.shieldSegments = new Array(12).fill(shieldStrength);
+        this.shieldSegments = new Array(22).fill(shieldStrength);
         this.innerShieldSegments = new Array(18).fill(shieldStrength);
         this.innerShieldRotation = 0;
         this.gunboatShieldRecharge = 90;
@@ -73,8 +71,21 @@ export class Cruiser extends Enemy {
         this.disableAutoFire = true;
 
         this.shieldStrength = shieldStrength;
-        this.vulnerableDurationFrames = 90;
-        this.vulnerableTimer = 0;
+        
+        // Invulnerability after CHARGE phase: 120 frames + 30 per level
+        this.invulnerableDurationFrames = 120 + boost * 30;
+        this.invulnerableTimer = 0;
+        
+        // Charge attack system
+        this.chargeTelegraphDuration = 60; // 1 second at 60fps
+        this.chargeTelegraphTimer = 0;
+        this.chargeDuration = 90; // 1.5 seconds charging
+        this.chargeTimer = 0;
+        this.chargeState = 'none'; // 'telegraph', 'charging', 'none'
+        this.chargeDirection = 0;
+        this.chargeStartPos = { x: 0, y: 0 };
+        this.chargeTargetPos = { x: 0, y: 0 };
+        
         this.phaseName = 'INTRO';
         this.phaseTimer = 45;
         this.phaseIndex = 0;
@@ -172,19 +183,19 @@ export class Cruiser extends Enemy {
             } catch (e) { }
             this._pixiGfx = null;
         }
-        if (this._pixiVulnerableGfx) {
-            try {
-                if (this._pixiVulnerableGfx.parent) this._pixiVulnerableGfx.parent.removeChild(this._pixiVulnerableGfx);
-                this._pixiVulnerableGfx.destroy(true);
-            } catch (e) { }
-            this._pixiVulnerableGfx = null;
-        }
         if (this._pixiHardpointsGfx) {
             try {
                 if (this._pixiHardpointsGfx.parent) this._pixiHardpointsGfx.parent.removeChild(this._pixiHardpointsGfx);
                 this._pixiHardpointsGfx.destroy(true);
             } catch (e) { }
             this._pixiHardpointsGfx = null;
+        }
+        if (this._pixiTelegraphGfx) {
+            try {
+                if (this._pixiTelegraphGfx.parent) this._pixiTelegraphGfx.parent.removeChild(this._pixiTelegraphGfx);
+                this._pixiTelegraphGfx.destroy(true);
+            } catch (e) { }
+            this._pixiTelegraphGfx = null;
         }
 
         // FIX: Ensure sprite is removed from its parent layer before cleanup
@@ -239,12 +250,18 @@ export class Cruiser extends Enemy {
         const dtFactor = deltaTime / 16.67;
 
         this.phaseTimer -= dtFactor;
-        if (this.vulnerableTimer > 0) this.vulnerableTimer -= dtFactor;
+        if (this.invulnerableTimer > 0) this.invulnerableTimer -= dtFactor;
 
         if (this.phaseTimer <= 0) {
             const prev = this.phaseName;
             if (prev === 'CHARGE') {
-                this.vulnerableTimer = this.vulnerableDurationFrames;
+                this.invulnerableTimer = this.invulnerableDurationFrames;
+            }
+            // Reset charge state when leaving CHARGE phase
+            if (this.phaseName === 'CHARGE') {
+                this.chargeState = 'none';
+                this.chargeTelegraphTimer = 0;
+                this.chargeTimer = 0;
             }
 
             for (let attempts = 0; attempts < this.phaseSeq.length; attempts++) {
@@ -257,17 +274,57 @@ export class Cruiser extends Enemy {
                 this.phaseTimer = next.duration;
                 this.phaseTick = 0;
                 showOverlayMessage(`BOSS: ${this.phaseName}`, '#f0f', 900);
+                
+                // Initialize charge telegraph when entering CHARGE phase
+                if (this.phaseName === 'CHARGE') {
+                    this.chargeState = 'telegraph';
+                    this.chargeTelegraphTimer = this.chargeTelegraphDuration;
+                    // Calculate charge direction toward player
+                    this.chargeDirection = Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x);
+                    // Store start position for telegraphic box
+                    this.chargeStartPos = { x: this.pos.x, y: this.pos.y };
+                    // Calculate target position (far in charge direction)
+                    const chargeDistance = 8000;
+                    this.chargeTargetPos = {
+                        x: this.pos.x + Math.cos(this.chargeDirection) * chargeDistance,
+                        y: this.pos.y + Math.sin(this.chargeDirection) * chargeDistance
+                    };
+                    // Face the charge direction
+                    this.angle = this.chargeDirection + (this.visualAngleOffset || 0);
+                }
                 break;
             }
         }
 
-        const charging = (this.phaseName === 'CHARGE');
-        if (charging) {
-            this.circleStrafePreferred = false;
-            this.aiState = 'SEEK';
-            this.thrustPower = 0.64;
-            this.maxSpeed = 8.4;
-            this.gunboatRange = this.baseGunboatRange + 350;
+        // Handle charge states
+        if (this.phaseName === 'CHARGE') {
+            if (this.chargeState === 'telegraph') {
+                this.chargeTelegraphTimer -= dtFactor;
+                // Stop movement during telegraph (don't accumulate slowdown)
+                this.vel.x = 0;
+                this.vel.y = 0;
+                this.aiState = 'IDLE';
+                
+                if (this.chargeTelegraphTimer <= 0) {
+                    this.chargeState = 'charging';
+                    this.chargeTimer = this.chargeDuration;
+                }
+            } else if (this.chargeState === 'charging') {
+                this.chargeTimer -= dtFactor;
+                // Move straight in charge direction
+                const chargeSpeed = 25;
+                this.vel.x = Math.cos(this.chargeDirection) * chargeSpeed;
+                this.vel.y = Math.sin(this.chargeDirection) * chargeSpeed;
+                // Override position interpolation for smooth movement
+                this.pos.x += this.vel.x * dtFactor;
+                this.pos.y += this.vel.y * dtFactor;
+                
+                if (this.chargeTimer <= 0) {
+                    // Charge complete
+                    this.chargeState = 'none';
+                    this.chargeTimer = 0;
+                }
+            }
         } else {
             const dx = GameContext.player.pos.x - this.pos.x;
             const dy = GameContext.player.pos.y - this.pos.y;
@@ -378,14 +435,8 @@ export class Cruiser extends Enemy {
             if (this.phaseTick % 40 === 0) {
                 this.fireRing(14, 8.4, 1, '#ff0');
             }
-        } else if (this.phaseName === 'CHARGE') {
-            if (this.phaseTick % 9 === 0) {
-                this.fireCannons(aim, 1, 0, 22, this.cruiserBaseDamage, '#f55');
-            }
-            if (this.phaseTick % 17 === 0) {
-                this.dropMine(aim + (Math.random() - 0.5) * 0.6, 4.0, 2, '#f80');
-            }
         }
+        // CHARGE phase now uses telegraph/charge system instead of projectile attacks
     }
 
     fireCannons(baseAngle, shots, spread, speed, dmg, color) {
@@ -548,13 +599,13 @@ export class Cruiser extends Enemy {
         ctx.strokeStyle = '#f00';
         ctx.lineWidth = 2;
         ctx.strokeRect(x - 4, y - 4, barW + 8, 20);
-        ctx.fillStyle = this.vulnerableTimer > 0 ? '#ff0' : '#f00';
+        ctx.fillStyle = this.invulnerableTimer > 0 ? '#ff0' : '#f00';
         ctx.fillRect(x, y, barW * pct, 12);
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 12px Courier New';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        const phaseText = this.vulnerableTimer > 0 ? `${this.phaseName} (CORE EXPOSED)` : this.phaseName;
+        const phaseText = this.invulnerableTimer > 0 ? `${this.phaseName} (INVULNERABLE)` : this.phaseName;
         const bossName = this.isFlagship ? 'FLAGSHIP' : 'CRUISER';
         ctx.fillText(`${bossName}  (PHASE: ${phaseText})`, w / 2, y + 12);
 
@@ -576,12 +627,19 @@ export class Cruiser extends Enemy {
                 } catch (e) { }
                 this._pixiHardpointsGfx = null;
             }
-            if (this._pixiVulnerableGfx) {
+            if (this._pixiInvulGfx) {
                 try {
-                    if (this._pixiVulnerableGfx.parent) this._pixiVulnerableGfx.parent.removeChild(this._pixiVulnerableGfx);
-                    this._pixiVulnerableGfx.destroy(true);
+                    if (this._pixiInvulGfx.parent) this._pixiInvulGfx.parent.removeChild(this._pixiInvulGfx);
+                    this._pixiInvulGfx.destroy(true);
                 } catch (e) { }
-                this._pixiVulnerableGfx = null;
+                this._pixiInvulGfx = null;
+            }
+            if (this._pixiTelegraphGfx) {
+                try {
+                    if (this._pixiTelegraphGfx.parent) this._pixiTelegraphGfx.parent.removeChild(this._pixiTelegraphGfx);
+                    this._pixiTelegraphGfx.destroy(true);
+                } catch (e) { }
+                this._pixiTelegraphGfx = null;
             }
             return;
         }
@@ -633,29 +691,80 @@ export class Cruiser extends Enemy {
             hpGfx.visible = true;
         }
 
-        // Vulnerable indicator - use PIXI Graphics for consistent positioning with other shields
-        if (this.vulnerableTimer > 0 && pixiVectorLayer) {
-            let vulnGfx = this._pixiVulnerableGfx;
-            if (!vulnGfx) {
-                vulnGfx = new PIXI.Graphics();
-                pixiVectorLayer.addChild(vulnGfx);
-                this._pixiVulnerableGfx = vulnGfx;
-            } else if (!vulnGfx.parent) {
-                pixiVectorLayer.addChild(vulnGfx);
+        // Invulnerable shield indicator - cyan pulsing ring
+        if (this.invulnerableTimer > 0 && pixiVectorLayer) {
+            let invulGfx = this._pixiInvulGfx;
+            if (!invulGfx) {
+                invulGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(invulGfx);
+                this._pixiInvulGfx = invulGfx;
+            } else if (!invulGfx.parent) {
+                pixiVectorLayer.addChild(invulGfx);
             }
 
-            // FIX: Position at the same rPos as the shields for perfect sync
-            vulnGfx.position.set(rPos.x, rPos.y);
-            vulnGfx.clear();
+            invulGfx.position.set(rPos.x, rPos.y);
+            invulGfx.clear();
 
             // Pulsing alpha effect
-            const alpha = 0.25 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.25;
-            vulnGfx.lineStyle(4, 0xffff00, alpha);
-            vulnGfx.drawCircle(0, 0, this.shieldRadius + 5);
-            vulnGfx.visible = true;
-        } else if (this._pixiVulnerableGfx) {
-            // Hide when not vulnerable
-            this._pixiVulnerableGfx.visible = false;
+            const alpha = 0.35 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.25;
+            invulGfx.lineStyle(4, 0xffff00, alpha);
+            invulGfx.drawCircle(0, 0, this.shieldRadius + 5);
+            invulGfx.visible = true;
+        } else if (this._pixiInvulGfx) {
+            this._pixiInvulGfx.visible = false;
+        }
+
+        // Charge telegraphic visualization - hollow box showing charge path
+        if (this.chargeState === 'telegraph' && pixiVectorLayer) {
+            let teleGfx = this._pixiTelegraphGfx;
+            if (!teleGfx) {
+                teleGfx = new PIXI.Graphics();
+                pixiVectorLayer.addChild(teleGfx);
+                this._pixiTelegraphGfx = teleGfx;
+            } else if (!teleGfx.parent) {
+                pixiVectorLayer.addChild(teleGfx);
+            }
+
+            teleGfx.clear();
+            teleGfx.lineStyle(3, 0xff0066, 0.8);
+            
+            // Position at ship start position
+            teleGfx.position.set(this.chargeStartPos.x, this.chargeStartPos.y);
+            
+            // Draw hollow box from start to target position
+            const boxWidth = this.radius * 1.8;
+            const halfW = boxWidth / 2;
+            
+            // Calculate perpendicular offset for box sides
+            const perpAngle = this.chargeDirection + Math.PI / 2;
+            const perpX = Math.cos(perpAngle) * halfW;
+            const perpY = Math.sin(perpAngle) * halfW;
+            
+            // Calculate box target relative to start
+            const chargeDistance = 4000;
+            const tx = Math.cos(this.chargeDirection) * chargeDistance;
+            const ty = Math.sin(this.chargeDirection) * chargeDistance;
+            
+            // Draw rectangle outline
+            teleGfx.moveTo(0 + perpX, 0 + perpY);
+            teleGfx.lineTo(tx + perpX, ty + perpY);
+            teleGfx.lineTo(tx - perpX, ty - perpY);
+            teleGfx.lineTo(0 - perpX, 0 - perpY);
+            teleGfx.closePath();
+            
+            // Draw arrow head at target
+            const arrowSize = 30;
+            const arrowX = Math.cos(this.chargeDirection) * arrowSize;
+            const arrowY = Math.sin(this.chargeDirection) * arrowSize;
+            
+            teleGfx.moveTo(tx - arrowX, ty - arrowY);
+            teleGfx.lineTo(tx + arrowX, ty + arrowY);
+            teleGfx.moveTo(tx - arrowX - perpX, ty - arrowY - perpY);
+            teleGfx.lineTo(tx + arrowX, ty + arrowY);
+            
+            teleGfx.visible = true;
+        } else if (this._pixiTelegraphGfx) {
+            this._pixiTelegraphGfx.visible = false;
         }
 
         // Debug visualization for Ctrl+H

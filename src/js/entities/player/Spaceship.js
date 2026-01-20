@@ -331,13 +331,13 @@ export class Spaceship extends Entity {
             if (this.hp <= 0) {
                 _killPlayer();
             } else {
-                this.invulnerable = 5;
+                this.invulnerable = 0;
             }
         } else {
             // Shield absorbed all damage
             playSound('shield_hit');
             _spawnParticles(this.pos.x, this.pos.y, 10, '#0ff');
-            this.invulnerable = 5;
+            this.invulnerable = 0;
         }
     }
 

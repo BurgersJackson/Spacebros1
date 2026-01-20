@@ -510,6 +510,24 @@ export function resolveEntityCollision() {
         // Check collision with Cruiser boss (stored in GameContext.boss)
         if (GameContext.bossActive && GameContext.boss && !GameContext.boss.dead && GameContext.boss instanceof Cruiser) {
             const dist = Math.hypot(GameContext.player.pos.x - GameContext.boss.pos.x, GameContext.player.pos.y - GameContext.boss.pos.y);
+            
+            // Skip all ram damage if Cruiser is invulnerable
+            if (GameContext.boss.invulnerableTimer > 0) return;
+            
+            // Check if Cruiser is charging (bypasses shields for 10 damage)
+            if (GameContext.boss.chargeState === 'charging') {
+                const collisionRadius = GameContext.boss.radius;
+                if (dist < GameContext.player.radius + collisionRadius) {
+                    // Deal 10 damage bypassing shields
+                    GameContext.player.hp -= 10;
+                    if (_updateHealthUI) _updateHealthUI();
+                    if (_spawnParticles) _spawnParticles((GameContext.player.pos.x + GameContext.boss.pos.x) / 2, (GameContext.player.pos.y + GameContext.boss.pos.y) / 2, 20, '#ff0066');
+                    if (_playSound) _playSound('hit');
+                    if (GameContext.player.hp <= 0 && _killPlayer) _killPlayer();
+                }
+                return;
+            }
+            
             // Use shield radius if shields are up, otherwise use hull radius
             const collisionRadius = (GameContext.boss.shieldSegments && GameContext.boss.shieldSegments.some(s => s > 0)) 
                 ? GameContext.boss.shieldRadius 
@@ -902,6 +920,8 @@ export function processBulletCollisions() {
                         }
                         if (e instanceof Enemy) {
                             if (GameContext.bossActive && GameContext.boss && e === GameContext.boss) continue;
+                            // Skip damage if Cruiser is invulnerable
+                            if (e instanceof Cruiser && e.invulnerableTimer > 0) continue;
 
                             const dx = b.pos.x - e.pos.x;
                             const dy = b.pos.y - e.pos.y;

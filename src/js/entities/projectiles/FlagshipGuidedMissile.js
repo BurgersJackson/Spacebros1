@@ -93,7 +93,7 @@ export class FlagshipGuidedMissile extends Entity {
             playSound('shield_hit');
             if (_spawnParticles) _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, '#0ff');
         }
-        GameContext.player.invulnerable = 5;
+        GameContext.player.invulnerable = 0;
     }
 
     takeHit(damage) {
