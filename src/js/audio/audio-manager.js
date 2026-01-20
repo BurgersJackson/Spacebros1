@@ -17,6 +17,47 @@ let backgroundMusicAudio = null;
 export let musicVolume = 0.5; // 0.0 to 1.0
 export let sfxVolume = 0.5; // 0.0 to 1.0
 
+// --- Persisted Audio Settings ---
+const AUDIO_SETTINGS_KEY = 'neon_space_audio_settings_v1';
+
+function clamp01(val) {
+    return Math.max(0, Math.min(1, val));
+}
+
+function loadAudioSettingsFromStorage() {
+    try {
+        if (typeof localStorage === 'undefined') return;
+        const raw = localStorage.getItem(AUDIO_SETTINGS_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (data && typeof data === 'object') {
+            if (typeof data.musicEnabled === 'boolean') musicEnabled = data.musicEnabled;
+            if (typeof data.musicVolume === 'number' && isFinite(data.musicVolume)) musicVolume = clamp01(data.musicVolume);
+            if (typeof data.sfxVolume === 'number' && isFinite(data.sfxVolume)) sfxVolume = clamp01(data.sfxVolume);
+        }
+    } catch (e) {
+        // Ignore corrupted/missing settings
+    }
+}
+
+function saveAudioSettingsToStorage() {
+    try {
+        if (typeof localStorage === 'undefined') return;
+        localStorage.setItem(AUDIO_SETTINGS_KEY, JSON.stringify({
+            version: 1,
+            updatedAt: Date.now(),
+            musicEnabled,
+            musicVolume,
+            sfxVolume
+        }));
+    } catch (e) {
+        // Ignore storage failures (quota, denied, etc)
+    }
+}
+
+// Load saved audio prefs immediately on module import.
+loadAudioSettingsFromStorage();
+
 // --- Sound Context ---
 let inProjectileImpactSoundContext = false;
 
@@ -94,6 +135,7 @@ export function setMusicVolume(volume) {
     if (backgroundMusicAudio) {
         backgroundMusicAudio.volume = ((musicMode === 'cruiser') ? 0.22 : 0.25) * musicVolume;
     }
+    saveAudioSettingsToStorage();
 }
 
 /**
@@ -102,6 +144,7 @@ export function setMusicVolume(volume) {
  */
 export function setSfxVolume(volume) {
     sfxVolume = Math.max(0, Math.min(1, volume));
+    saveAudioSettingsToStorage();
 }
 
 /**
@@ -143,6 +186,7 @@ export function toggleMusic(gameActive, gamePaused) {
         stopMusic();
     }
 
+    saveAudioSettingsToStorage();
     return musicEnabled;
 }
 

@@ -1275,6 +1275,12 @@ registerMenuDependencies({
 });
 initMenuUi();
 
+// Sync MUSIC button label with persisted setting (audio-manager loads it at import time).
+try {
+    const musicBtn = document.getElementById('music-btn');
+    if (musicBtn) musicBtn.innerText = musicEnabled ? "MUSIC: ON" : "MUSIC: OFF";
+} catch (e) { }
+
 initSettingsMenu();
 
 // Initialize CRT filter

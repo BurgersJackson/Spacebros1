@@ -226,7 +226,7 @@ export class Destroyer extends Entity {
                 targetX = Math.max(leftBound + margin, Math.min(rightBound - margin, targetX));
                 targetY = Math.max(topBound + margin, Math.min(bottomBound - margin, targetY));
                 
-                // Smooth movement toward target
+            // Smooth movement toward target
                 const moveSpeed = 2.0 * dtFactor;
                 const dx = targetX - this.pos.x;
                 const dy = targetY - this.pos.y;
@@ -236,10 +236,6 @@ export class Destroyer extends Entity {
                     this.pos.y += (dy / dist) * Math.min(dist, moveSpeed);
                 }
             }
-            
-            // Update prevPos for rendering
-            this.prevPos.x = this.pos.x;
-            this.prevPos.y = this.pos.y;
         } else {
             // Normal movement behavior
             if (playerAlive && distToPlayer > this.chaseDistance) {
@@ -554,12 +550,7 @@ export class Destroyer extends Entity {
 
             const rPos = this.getRenderPos(getRenderAlpha());
 
-            if (this._firstDraw) {
-                container.position.set(this.pos.x, this.pos.y);
-                this._firstDraw = false;
-            } else {
-                container.position.set(rPos.x, rPos.y);
-            }
+            container.position.set(rPos.x, rPos.y);
             container.rotation = this.angle || 0;
 
             const hullScale = (this.visualRadius && isFinite(this.visualRadius)) ? (this.visualRadius / 340) : 1;
