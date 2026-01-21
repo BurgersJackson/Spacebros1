@@ -280,7 +280,6 @@ function mainLoop() {
         let simAccMs = _getSimAccMs ? _getSimAccMs() : 0;
 
         if (!simLastPerfAt) {
-            console.log('[RESUME] First frame after resume - simLastPerfAt was 0, initializing');
             simLastPerfAt = frameStart;
             if (!simNowMs) simNowMs = Date.now();
             simAccMs = 0;
@@ -322,7 +321,6 @@ function mainLoop() {
 }
 
 function triggerFinalBattle() {
-    console.log('[FINAL BATTLE] 30 minutes reached. Teleporting to warp level.');
     if (showOverlayMessage) showOverlayMessage("TIME LIMIT REACHED - PREPARE FOR FINAL BATTLE", '#f00', 5000, 5);
     if (playSound) playSound('warp_scream');
 

@@ -209,7 +209,6 @@ export class WarpSentinelBoss extends Entity {
 
         const killStartTime = performance.now();
         const bombCount = GameContext.bossBombs.length;
-        console.log(`[BOSS KILL] Starting death sequence with ${bombCount} bombs`);
 
         if (_scheduleParticleBursts) _scheduleParticleBursts(this.pos.x, this.pos.y, 140, '#f0f', 20);
         if (_spawnLargeExplosion) _spawnLargeExplosion(this.pos.x, this.pos.y, 4.5);
@@ -227,7 +226,6 @@ export class WarpSentinelBoss extends Entity {
         GameContext.boss = null;
 
         const killDuration = performance.now() - killStartTime;
-        console.log(`[BOSS KILL] Death sequence setup completed in ${killDuration.toFixed(2)}ms`);
         if (killDuration > 16.67) {
             console.warn(`[BOSS KILL] Frame time spike detected (${killDuration.toFixed(2)}ms)`);
         }

@@ -94,9 +94,6 @@ export class Shockwave extends Entity {
                     }
 
                     e.hp -= damage;
-                    if (e === GameContext.destroyer) {
-                        console.log(`[DESTROYER DEBUG] SHOCKWAVE: ${damage} damage | HP: ${e.hp + damage} -> ${e.hp} | Source: ${this.damageType || 'unknown'}`);
-                    }
                     this.hitList.push(e);
                     playSound('hit');
                     if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 5, this.hasCrit ? '#ffd700' : '#ff0');
@@ -113,7 +110,6 @@ export class Shockwave extends Entity {
                                 if (other === GameContext.destroyer) {
                                     const hpBefore = other.hp;
                                     other.hp -= explodeDmg;
-                                    console.log(`[DESTROYER DEBUG] EXPLOSIVE SECONDARY: ${explodeDmg} damage | HP: ${hpBefore} -> ${other.hp}`);
                                 } else {
                                     other.hp -= explodeDmg;
                                 }

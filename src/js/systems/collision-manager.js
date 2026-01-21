@@ -1075,7 +1075,7 @@ export function processBulletCollisions() {
                                             if (nearestTarget === GameContext.destroyer) {
                                                 const hpBefore = nearestTarget.hp;
                                                 nearestTarget.hp -= chainDamage;
-                                                console.log(`[DESTROYER DEBUG] CHAIN LIGHTNING: ${chainDamage.toFixed(1)} damage | HP: ${hpBefore} -> ${nearestTarget.hp} | Chain: ${chain + 1}`);
+
                                             } else {
                                                 nearestTarget.hp -= chainDamage;
                                             }
@@ -1259,7 +1259,7 @@ export function processBulletCollisions() {
                                             if (nearestTarget === GameContext.destroyer) {
                                                 const hpBefore = nearestTarget.hp;
                                                 nearestTarget.hp -= chainDamage;
-                                                console.log(`[DESTROYER DEBUG] CHAIN LIGHTNING: ${chainDamage.toFixed(1)} damage | HP: ${hpBefore} -> ${nearestTarget.hp} | Chain: ${chain + 1}`);
+
                                             } else {
                                                 nearestTarget.hp -= chainDamage;
                                             }
@@ -1449,7 +1449,7 @@ export function processBulletCollisions() {
                                             if (nearestTarget === GameContext.destroyer) {
                                                 const hpBefore = nearestTarget.hp;
                                                 nearestTarget.hp -= chainDamage;
-                                                console.log(`[DESTROYER DEBUG] CHAIN LIGHTNING: ${chainDamage.toFixed(1)} damage | HP: ${hpBefore} -> ${nearestTarget.hp} | Chain: ${chain + 1}`);
+
                                             } else {
                                                 nearestTarget.hp -= chainDamage;
                                             }
@@ -1683,7 +1683,6 @@ export function processBulletCollisions() {
                     if (!hit && (typeof GameContext.destroyer.hitTestCircle === 'function' ? GameContext.destroyer.hitTestCircle(b.pos.x, b.pos.y, b.radius) : (dist < GameContext.destroyer.radius + b.radius))) {
                         const hpBefore = GameContext.destroyer.hp;
                         GameContext.destroyer.hp -= b.damage;
-                        console.log(`[DESTROYER DEBUG] BULLET HIT: ${b.damage} dmg | HP: ${hpBefore} -> ${GameContext.destroyer.hp} | isEnemy=${b.isEnemy} | color=${b.color} | owner=${b.owner?.displayName || b.owner?.constructor?.name || 'none'} | homing=${b.homing}`);
                         hit = true;
                         if (_playSound) _playSound('hit');
                         if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, '#ff0');
