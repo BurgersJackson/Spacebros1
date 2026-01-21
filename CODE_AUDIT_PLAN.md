@@ -110,25 +110,36 @@ Systematic, phased approach to identify and fix logic errors, bad code, and main
 
 ## Phase 3: Test Coverage Expansion
 **Target:** ~8-12 hours | **Impact:** 100% bug prevention
+**Status:** 🔜 IN PROGRESS - 2026-01-21
 
-### 3.1 Add Unit Tests for Core Math
+### Phase 3 Progress Log:
+- 2026-01-21: Phase 3 initiated, current test baseline: 2 files, 65 tests
+- 2026-01-21: Created GameContext tests (game-context.test.js) - 25 tests
+- 2026-01-21: Created Entity class tests (entity.test.js) - 30 tests
+- 2026-01-21: All tests passing (125/125)
+- 2026-01-21: Coverage report: 90.25% for tested files (4/154 JS files)
+- **Current status:** 4 test files, 125 tests total, ~2.6% overall codebase coverage
+- **Next:** Add tests for critical systems (collision, spawn, game-flow, input)
+
+### 3.1 Add Unit Tests for Core Math - ✅ COMPLETED
 - **Already exists:** `math.test.js`, `constants.test.js`
 - **Action:** Expand to cover edge cases
+- **Status:** Already comprehensive (47 tests for math, 18 for constants)
 
-### 3.2 Test Critical Systems
+### 3.2 Test Critical Systems - IN PROGRESS
 - **Priority systems:**
-  - `collision-manager.js` - Critical for gameplay
-  - `spawn-manager.js` - Entity creation
-  - `game-flow.js` - Level progression
-  - `input-manager.js` - User interaction
+  - `collision-manager.js` - Critical for gameplay ⏸ TODO
+  - `spawn-manager.js` - Entity creation ⏸ TODO
+  - `game-flow.js` - Level progression ⏸ TODO
+  - `input-manager.js` - User interaction ⏸ TODO
 
-### 3.3 Test Entity Lifecycle
-- Base `Entity.js` class
-- Player ship movement & shooting
-- Enemy behavior
-- Boss mechanics
+### 3.3 Test Entity Lifecycle - ✅ COMPLETED
+- Base `Entity.js` class ✅
+- Player ship movement & shooting ⏸ TODO
+- Enemy behavior ⏸ TODO
+- Boss mechanics ⏸ TODO
 
-### 3.4 Test Upgrade/Progression Systems
+### 3.4 Test Upgrade/Progression Systems - ⏸ TODO
 - `upgrade-manager.js`
 - `save-manager.js`
 - `meta-manager.js`
@@ -425,14 +436,15 @@ For each file, run through this checklist:
 2. **Set up dev environment** - ✅ Complete (Vitest already configured)
 3. **Start Phase 1** - ✅ Complete - Console statement cleanup + logic error checks
 4. **Start Phase 2** - ✅ Complete - ESLint + Prettier installed and configured
-5. **Start Phase 3** - 🔜 Next: Expand test coverage to 20-30%
+5. **Start Phase 3** - 🔜 In Progress: Expand test coverage to 20-30% overall
 6. **Document findings** - Track issues as they're found
 7. **Iterate** - Adjust plan based on actual findings
 
 ---
 
-**Status:** ✅ Phase 1 Complete | ✅ Phase 2 Complete | **Next:** Phase 3 (Test Coverage Expansion)
+**Status:** ✅ Phase 1 Complete | ✅ Phase 2 Complete | 🔜 Phase 3 In Progress
 **Timeline:** 6-8 weeks (estimated)
 **Total effort:** 60-80 hours (revised from 45-60 based on scope)
 **Phase 1 actual time:** ~2 hours (on target)
 **Phase 2 actual time:** ~1.5 hours (on target)
+**Phase 3 actual time (so far):** ~1 hour (GameContext + Entity tests)
