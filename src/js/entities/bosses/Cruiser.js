@@ -364,16 +364,14 @@ export class Cruiser extends Enemy {
         this.innerShieldRotation -= 0.08 * (deltaTime / 16.67);
         super.update(deltaTime);
 
-        if (this.hasHardpoint('shieldgen')) {
-            if (!this.lastShieldGenAt) this.lastShieldGenAt = now;
-            if (now - this.lastShieldGenAt >= 1500) {
-                const idx1 = this.shieldSegments.findIndex(s => s < this.shieldStrength);
-                if (idx1 !== -1) this.shieldSegments[idx1] = Math.min(this.shieldStrength, this.shieldSegments[idx1] + 1);
-                const idx2 = this.innerShieldSegments.findIndex(s => s < this.shieldStrength);
-                if (idx2 !== -1) this.innerShieldSegments[idx2] = Math.min(this.shieldStrength, this.innerShieldSegments[idx2] + 1);
-                this.lastShieldGenAt = now;
-                if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 6, '#0ff');
-            }
+        if (!this.lastShieldGenAt) this.lastShieldGenAt = now;
+        if (now - this.lastShieldGenAt >= 1500) {
+            const idx1 = this.shieldSegments.findIndex(s => s < this.shieldStrength);
+            if (idx1 !== -1) this.shieldSegments[idx1] = Math.min(this.shieldStrength, this.shieldSegments[idx1] + 1);
+            const idx2 = this.innerShieldSegments.findIndex(s => s < this.shieldStrength);
+            if (idx2 !== -1) this.innerShieldSegments[idx2] = Math.min(this.shieldStrength, this.innerShieldSegments[idx2] + 1);
+            this.lastShieldGenAt = now;
+            if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 6, '#0ff');
         }
 
         if (typeof this.phaseTickAccum === 'undefined') this.phaseTickAccum = 0;

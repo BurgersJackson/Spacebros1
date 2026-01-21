@@ -555,6 +555,12 @@ export function initInputListeners() {
                 _enterWarpMaze();
             }
         }
+        if (e.ctrlKey && e.shiftKey && (e.key === 'v' || e.key === 'V')) {
+            e.preventDefault();
+            if (!GameContext.gameActive || !GameContext.player) return;
+            GameContext.verticalScrollingWarpGateEnabled = !GameContext.verticalScrollingWarpGateEnabled;
+            if (_showOverlayMessage) _showOverlayMessage(GameContext.verticalScrollingWarpGateEnabled ? "VERTICAL WARP: ENABLED" : "VERTICAL WARP: DISABLED", '#0ff', 1000);
+        }
         if (e.ctrlKey && e.shiftKey && (e.key === 'q' || e.key === 'Q')) {
             e.preventDefault();
             if (!GameContext.gameActive || !GameContext.player) return;

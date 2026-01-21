@@ -70,6 +70,7 @@ export const GameContext = {
     warpCountdownAt: null,
     verticalScrollingMode: false,
     verticalScrollingWarpGateUnlocked: false,
+    verticalScrollingWarpGateEnabled: false,
     verticalScrollingZone: null,
     scrollProgress: 0,
     scrollSpeed: 2.0, // pixels per frame (scaled by dtFactor)

@@ -449,8 +449,8 @@ export function gameLoopLogic(opts = null) {
             }
         }
 
-        // Vertical scrolling warp gate (appears at game start on first level).
-        if (!warpActive && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && !GameContext.verticalScrollingMode && !GameContext.caveMode && !GameContext.spaceStation && GameContext.verticalScrollingWarpGateUnlocked && GameContext.sectorIndex === 1) {
+        // Vertical scrolling warp gate (disabled by default).
+        if (!warpActive && !GameContext.dungeon1Active && !GameContext.bossActive && !GameContext.sectorTransitionActive && !GameContext.verticalScrollingMode && !GameContext.caveMode && !GameContext.spaceStation && GameContext.verticalScrollingWarpGateUnlocked && GameContext.sectorIndex !== 1 && GameContext.verticalScrollingWarpGateEnabled) {
             if (!GameContext.verticalScrollingWarpGate || GameContext.verticalScrollingWarpGate.mode !== 'vertical_scrolling') {
                 const gx = GameContext.player.pos.x - 900;
                 const gy = GameContext.player.pos.y;
