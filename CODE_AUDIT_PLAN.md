@@ -118,8 +118,18 @@ Systematic, phased approach to identify and fix logic errors, bad code, and main
 - 2026-01-21: Created Entity class tests (entity.test.js) - 30 tests
 - 2026-01-21: All tests passing (125/125)
 - 2026-01-21: Coverage report: 90.25% for tested files (4/154 JS files)
-- **Current status:** 4 test files, 125 tests total, ~2.6% overall codebase coverage
-- **Next:** Add tests for critical systems (collision, spawn, game-flow, input)
+- 2026-01-21: Created staggered-cleanup tests (staggered-cleanup.test.js) - 40 tests
+- 2026-01-21: All tests passing (165/165)
+- 2026-01-21: Coverage report: 91.54% statements, 76.53% branches, 95.74% functions, 92.09% lines (6/154 JS files tested)
+- **Current status:** 5 test files, 165 tests total, ~3.9% overall codebase coverage
+- **Files tested:** constants.js, game-context.js, math.js, staggered-cleanup.js, Entity.js
+- **Coverage highlights:**
+  - constants.js: 100% coverage
+  - game-context.js: 100% coverage
+  - Entity.js: 100% coverage
+  - staggered-cleanup.js: 96.15% statements, 86.53% branches
+  - math.js: 76.31% statements, 50% branches
+- **Next:** Add tests for critical systems (collision, spawn, game-flow, input) to reach 20-30% target
 
 ### 3.1 Add Unit Tests for Core Math - ✅ COMPLETED
 - **Already exists:** `math.test.js`, `constants.test.js`
