@@ -2,6 +2,7 @@
   "name": "spacebros",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Neon Space Cave (Electron wrapper)",
   "main": "electron/main.js",
   "author": "",
@@ -16,7 +17,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint src/**/*.js tests/**/*.js",
+    "lint:fix": "eslint src/**/*.js tests/**/*.js --fix",
+    "format": "prettier --write src/**/*.js tests/**/*.js",
+    "format:check": "prettier --check src/**/*.js tests/**/*.js"
   },
   "dependencies": {
     "phaser": "^3.90.0"
@@ -26,6 +31,10 @@
     "@vitest/ui": "^4.0.17",
     "electron": "^35.0.0",
     "electron-builder": "^24.13.3",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "prettier": "^3.8.1",
     "vitest": "^4.0.17"
   },
   "build": {

@@ -1,4 +1,5 @@
-const { spawn } = require("child_process");
+import { spawn } from "child_process";
+import electronBinary from "electron";
 
 function hasFlag(flag) {
   return process.argv.includes(flag);
@@ -11,7 +12,6 @@ if (hasFlag("--devtools")) env.ELECTRON_DEVTOOLS = "1";
 if (hasFlag("--smoke")) env.ELECTRON_SMOKE = "1";
 if (hasFlag("--no-gpu")) env.ELECTRON_NO_GPU = "1";
 
-const electronBinary = require("electron");
 const child = spawn(electronBinary, ["."], { stdio: "inherit", env });
 
 child.on("exit", (code) => process.exit(code ?? 0));

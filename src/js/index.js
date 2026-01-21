@@ -4,13 +4,13 @@
  */
 
 // Core
-export * from './core/index.js';
+export * from "./core/index.js";
 
 // Rendering
-export * from './rendering/index.js';
+export * from "./rendering/index.js";
 
 // Audio
-export * from './audio/index.js';
+export * from "./audio/index.js";
 
 // Entities
-export * from './entities/index.js';
+export * from "./entities/index.js";

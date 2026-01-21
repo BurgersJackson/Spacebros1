@@ -1,6 +1,11 @@
-const path = require("path");
-const fs = require("fs");
-const { app, BrowserWindow, ipcMain } = require("electron");
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import { app, BrowserWindow, ipcMain, screen } from "electron";
+
+// ES module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Settings Persistence
 const userDataPath = app.getPath('userData');
@@ -10,15 +15,14 @@ const settingsPath = path.join(userDataPath, 'settings.json');
 // Note: screen module must be accessed after app is ready, so we'll get it lazily
 function getDefaultSettings() {
   try {
-    const { screen } = require('electron');
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width, height } = primaryDisplay.size;
-    
+
     return {
-      width: width,      // DEPRECATED: kept for backwards compatibility
-      height: height,      // DEPRECATED: kept for backwards compatibility
-      internalResolution: { width: width, height: height },  // Internal render resolution (absolute)
-      fullscreen: true,  // Default to fullscreen on first launch
+      width: width,
+      height: height,
+      internalResolution: { width: width, height: height },
+      fullscreen: true,
       frameless: false,
       vsync: true
     };
@@ -215,7 +219,6 @@ app.whenReady().then(() => {
   });
 
   // Get all supported resolutions for the current display
-  const { screen } = require('electron');
   ipcMain.handle("app:get-supported-resolutions", () => {
     try {
       const primaryDisplay = screen.getPrimaryDisplay();
