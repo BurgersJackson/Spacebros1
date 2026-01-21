@@ -69,7 +69,7 @@ export class EnvironmentAsteroid extends Entity {
         this.sprite = null;
         this._pixiAsteroidIndex = Math.floor(Math.random() * 12);
 
-        const speed = (Math.random() * 0.4) + 0.2;
+        const speed = ((Math.random() * 0.4) + 0.35) * 2.0;
         const angle = Math.random() * Math.PI * 2;
         this.vel.x = Math.cos(angle) * speed;
         this.vel.y = Math.sin(angle) * speed;

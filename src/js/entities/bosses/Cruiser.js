@@ -79,7 +79,7 @@ export class Cruiser extends Enemy {
         // Charge attack system
         this.chargeTelegraphDuration = 60; // 1 second at 60fps
         this.chargeTelegraphTimer = 0;
-        this.chargeDuration = 90; // 1.5 seconds charging
+        this.chargeDuration = 160; // 2.67 seconds charging (full charge distance)
         this.chargeTimer = 0;
         this.chargeState = 'none'; // 'telegraph', 'charging', 'none'
         this.chargeDirection = 0;
@@ -280,7 +280,7 @@ export class Cruiser extends Enemy {
                     // Store start position for telegraphic box
                     this.chargeStartPos = { x: this.pos.x, y: this.pos.y };
                     // Calculate target position (far in charge direction)
-                    const chargeDistance = 8000;
+                    const chargeDistance = 4000;
                     this.chargeTargetPos = {
                         x: this.pos.x + Math.cos(this.chargeDirection) * chargeDistance,
                         y: this.pos.y + Math.sin(this.chargeDirection) * chargeDistance
@@ -340,23 +340,23 @@ export class Cruiser extends Enemy {
             if (this.moveMode === 'SEEK') {
                 this.circleStrafePreferred = false;
                 this.aiState = 'SEEK';
-                this.thrustPower = 0.8;
-                this.maxSpeed = 12;
+                this.thrustPower = 0.92;
+                this.maxSpeed = 13.8;
             } else if (this.moveMode === 'ORBIT') {
                 this.circleStrafePreferred = false;
                 this.aiState = 'ORBIT';
-                this.thrustPower = 0.75;
-                this.maxSpeed = 10;
+                this.thrustPower = 0.8625;
+                this.maxSpeed = 11.5;
             } else if (this.moveMode === 'FLANK') {
                 this.circleStrafePreferred = false;
                 this.aiState = 'FLANK';
-                this.thrustPower = 0.85;
-                this.maxSpeed = 13;
+                this.thrustPower = 0.9775;
+                this.maxSpeed = 14.95;
             } else {
                 this.circleStrafePreferred = true;
                 this.aiState = 'CIRCLE';
-                this.thrustPower = 0.65;
-                this.maxSpeed = 9;
+                this.thrustPower = 0.7475;
+                this.maxSpeed = 10.35;
             }
             this.gunboatRange = this.baseGunboatRange;
         }
@@ -560,6 +560,7 @@ export class Cruiser extends Enemy {
 
     applyPlayerBulletHit(b) {
         if (!b || b.isEnemy) return false;
+        if (this.invulnerableTimer > 0) return false;
         for (let i = 0; i < this.hardpoints.length; i++) {
             const hp = this.hardpoints[i];
             if (hp.hp <= 0) continue;

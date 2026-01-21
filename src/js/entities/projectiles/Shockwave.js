@@ -9,6 +9,7 @@ import { SIM_STEP_MS } from '../../core/constants.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { pixiVectorLayer, pixiCleanupObject, getRenderAlpha } from '../../rendering/pixi-context.js';
 import { colorToPixi } from '../../rendering/colors.js';
+import { Cruiser } from '../bosses/Cruiser.js';
 
 // Dependency placeholders
 let _spawnParticles = null;
@@ -80,6 +81,10 @@ export class Shockwave extends Entity {
                     if (GameContext.player.takeHit) GameContext.player.takeHit(this.damage);
                     this.hitList.push(e);
                 } else {
+                    if (e instanceof Cruiser && e.invulnerableTimer > 0) {
+                        this.hitList.push(e);
+                        continue;
+                    }
                     // Critical Strike
                     let damage = this.damage;
                     if (!this.isEnemy && GameContext.player.stats.critChance > 0 && Math.random() < GameContext.player.stats.critChance) {

@@ -61,9 +61,11 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
     if (GameContext.player && !GameContext.player.dead) {
         const px = warpActive ? ((GameContext.player.pos.x - refX) * scale) : 0;
         const py = warpActive ? ((GameContext.player.pos.y - refY) * scale) : 0;
-        pixiMinimapGraphics.beginFill(0x00ff00);
-        pixiMinimapGraphics.drawCircle(centerX + px, centerY + py, 3);
-        pixiMinimapGraphics.endFill();
+        if (inBounds(px, py)) {
+            pixiMinimapGraphics.beginFill(0x00ff00);
+            pixiMinimapGraphics.drawCircle(centerX + px, centerY + py, 3);
+            pixiMinimapGraphics.endFill();
+        }
     }
 
     if (warpActive && GameContext.warpZone) {
@@ -125,6 +127,16 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
     });
     pixiMinimapGraphics.endFill();
 
+    if (GameContext.bossActive && GameContext.boss && !GameContext.boss.dead && GameContext.player) {
+        const dx = (GameContext.boss.pos.x - refX) * scale;
+        const dy = (GameContext.boss.pos.y - refY) * scale;
+        if (inBounds(dx, dy)) {
+            pixiMinimapGraphics.beginFill(0xff0000);
+            pixiMinimapGraphics.drawCircle(centerX + dx, centerY + dy, 8);
+            pixiMinimapGraphics.endFill();
+        }
+    }
+
     pixiMinimapGraphics.beginFill(0xff00ff);
     GameContext.pinwheels.forEach(b => {
         if (GameContext.player) {
@@ -140,9 +152,11 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
     if (GameContext.bossActive && GameContext.boss && !GameContext.boss.dead && GameContext.player) {
         const dx = (GameContext.boss.pos.x - refX) * scale;
         const dy = (GameContext.boss.pos.y - refY) * scale;
-        pixiMinimapGraphics.beginFill(0xff0000);
-        pixiMinimapGraphics.drawCircle(centerX + dx, centerY + dy, 8);
-        pixiMinimapGraphics.endFill();
+        if (inBounds(dx, dy)) {
+            pixiMinimapGraphics.beginFill(0xff0000);
+            pixiMinimapGraphics.drawCircle(centerX + dx, centerY + dy, 8);
+            pixiMinimapGraphics.endFill();
+        }
     }
 
     if (!warpActive && GameContext.radiationStorm && !GameContext.radiationStorm.dead && GameContext.player) {
