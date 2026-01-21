@@ -42,7 +42,7 @@ export class WarpBioPod extends Entity {
         const pelletCount = 10;
         for (let i = 0; i < pelletCount; i++) {
             const a = Math.random() * Math.PI * 2;
-            const b = new Bullet(this.pos.x, this.pos.y, a, 3, {
+            const b = new Bullet(this.pos.x, this.pos.y, a, 6, {
                 owner: 'enemy',
                 damage: 1,
                 radius: 3,

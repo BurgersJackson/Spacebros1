@@ -51,15 +51,15 @@ export class WarpSentinelBoss extends Entity {
         this.maxHp = this.hp;
 
         this.maxShieldHp = 999;
-        // Shield segments count (doubled)
-        this.shieldSegments = new Array(48).fill(0);
-        this.innerShieldSegments = new Array(40).fill(0);
-        // Fill alternating shield segments (roughly 50-67% coverage)
-        for (let i = 0; i < 48; i++) {
-            if (i % 2 === 0) this.shieldSegments[i] = 999;
+        // Shield segments count (reduced by 20%)
+        this.shieldSegments = new Array(58).fill(0);
+        this.innerShieldSegments = new Array(48).fill(0);
+        // Fill 3 out of 4 segments for larger shards than gaps
+        for (let i = 0; i < 58; i++) {
+            if (i % 4 !== 3) this.shieldSegments[i] = 999;
         }
-        for (let i = 0; i < 40; i++) {
-            if (i % 2 === 0) this.innerShieldSegments[i] = 999;
+        for (let i = 0; i < 48; i++) {
+            if (i % 4 !== 3) this.innerShieldSegments[i] = 999;
         }
         this.shieldRadius = 950;
         this.innerShieldRadius = 850;
@@ -640,8 +640,8 @@ export class WarpSentinelBoss extends Entity {
                         graphics.lineStyle(8 / z, color, 0.8);
                         for (let i = 0; i < count; i++) {
                             if (segments[i] <= 0) continue;
-                            const a0 = i * arcLen + 0.03;
-                            const a1 = (i + 1) * arcLen - 0.03;
+                            const a0 = i * arcLen + 0.01;
+                            const a1 = (i + 1) * arcLen - 0.01;
                             graphics.moveTo(Math.cos(a0) * radius, Math.sin(a0) * radius);
                             graphics.arc(0, 0, radius, a0, a1);
                         }
