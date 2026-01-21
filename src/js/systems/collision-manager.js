@@ -410,12 +410,16 @@ export function resolveEntityCollision() {
                 }
 
                 if (validCollision) {
-                    entity.pos.x += nx * overlap;
-                    entity.pos.y += ny * overlap;
+                    // Cruisers charging should smash through asteroids without being pushed back
+                    const isChargingCruiser = (entity instanceof Cruiser) && (entity.chargeState === 'charging' || entity.chargeState === 'telegraph');
+                    if (!isChargingCruiser) {
+                        entity.pos.x += nx * overlap;
+                        entity.pos.y += ny * overlap;
 
-                    if (entity !== GameContext.player) {
-                        entity.vel.x += nx * 1;
-                        entity.vel.y += ny * 1;
+                        if (entity !== GameContext.player) {
+                            entity.vel.x += nx * 1;
+                            entity.vel.y += ny * 1;
+                        }
                     }
                 }
 

@@ -51,15 +51,15 @@ export class WarpSentinelBoss extends Entity {
         this.maxHp = this.hp;
 
         this.maxShieldHp = 999;
+        // Shield segments count (doubled)
         this.shieldSegments = new Array(48).fill(0);
-        this.innerShieldSegments = new Array(38).fill(0);
-        const outerFillEvery = 3;
-        const innerFillEvery = 4;
+        this.innerShieldSegments = new Array(40).fill(0);
+        // Fill alternating shield segments (roughly 50-67% coverage)
         for (let i = 0; i < 48; i++) {
-            if (i % outerFillEvery < 2) this.shieldSegments[i] = 999;
+            if (i % 2 === 0) this.shieldSegments[i] = 999;
         }
-        for (let i = 0; i < 38; i++) {
-            if (i % innerFillEvery < 3) this.innerShieldSegments[i] = 999;
+        for (let i = 0; i < 40; i++) {
+            if (i % 2 === 0) this.innerShieldSegments[i] = 999;
         }
         this.shieldRadius = 950;
         this.innerShieldRadius = 850;
@@ -74,6 +74,8 @@ export class WarpSentinelBoss extends Entity {
         this.coreRot = 0;
 
         this.orbitOffset = Math.random() * Math.PI * 2;
+        // Store initial position as orbit center fallback when zone is null
+        this.orbitCenter = { x: this.pos.x, y: this.pos.y };
         this.maxSpeed = 5.5;
         this.dashCooldown = 240;
         this.dashWarmup = 0;
@@ -97,8 +99,6 @@ export class WarpSentinelBoss extends Entity {
         this.podCooldown = 240;
         this.reinforcementCooldown = 300;
         this.reinforcementTimer = 300;
-        this.mineCooldown = 200;
-        this.mineTimer = 60;
 
         this.helperMax = 10;
         this.helperCall70 = 2;
@@ -112,6 +112,9 @@ export class WarpSentinelBoss extends Entity {
         this.phase2Started = false;
         this.phase3Started = false;
         this.helperStrengthTier = 1;
+
+        // Cache for enemy filtering (performance optimization)
+        this._cachedAliveHelpers = 0;
 
         this.shieldsDirty = true;
         this._pixiInnerGfx = null;
@@ -246,13 +249,23 @@ export class WarpSentinelBoss extends Entity {
         this.shieldRotation += this.baseRingSpeed * ringMult * dtFactor;
         this.innerShieldRotation -= this.baseRingSpeed * ringMult * 1.2 * dtFactor;
 
+        // Update cached helper count once per frame (performance optimization)
+        this._cachedAliveHelpers = GameContext.enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
+
         if (now - this.lastShieldRegenAt >= this.shieldRegenMs) {
             const idx1 = this.shieldSegments.findIndex(s => s < this.shieldStrength);
-            if (idx1 !== -1) { this.shieldSegments[idx1] = Math.min(this.shieldStrength, this.shieldSegments[idx1] + 1); this.shieldsDirty = true; }
+            if (idx1 !== -1) {
+                this.shieldSegments[idx1] = Math.min(this.shieldStrength, this.shieldSegments[idx1] + 1);
+                this.shieldsDirty = true;
+            }
             const idx2 = this.innerShieldSegments.findIndex(s => s < this.shieldStrength);
-            if (idx2 !== -1) { this.innerShieldSegments[idx2] = Math.min(this.shieldStrength, this.innerShieldSegments[idx2] + 1); this.shieldsDirty = true; }
+            if (idx2 !== -1) {
+                this.innerShieldSegments[idx2] = Math.min(this.shieldStrength, this.innerShieldSegments[idx2] + 1);
+                this.shieldsDirty = true;
+            }
             this.lastShieldRegenAt = now;
-            if (Math.random() < 0.5 && _spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 4, '#0ff');
+            // Reduce particle frequency for performance - only spawn every 3rd regen
+            if (Math.random() < 0.25 && _spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 4, '#0ff');
         }
 
         if (this.reinforcementTimer > 0) {
@@ -260,13 +273,6 @@ export class WarpSentinelBoss extends Entity {
         } else {
             this.reinforcementTimer = this.reinforcementCooldown;
             this.spawnCaveReinforcements();
-        }
-
-        if (this.mineTimer > 0) {
-            this.mineTimer -= dtFactor;
-        } else {
-            this.mineTimer = this.mineCooldown;
-            this.dropExplodingMines();
         }
 
         const hpPct = this.maxHp > 0 ? this.hp / this.maxHp : 0;
@@ -286,8 +292,8 @@ export class WarpSentinelBoss extends Entity {
             showOverlayMessage("SENTINEL PHASE 3", '#f0f', 1800, 3);
         }
 
-        const cx = this.zone ? this.zone.pos.x : this.pos.x;
-        const cy = this.zone ? this.zone.pos.y : this.pos.y;
+        const cx = this.zone ? this.zone.pos.x : this.orbitCenter.x;
+        const cy = this.zone ? this.zone.pos.y : this.orbitCenter.y;
         const orbitR = this.phase === 2 ? 560 : 720;
         const orbitSpeed = this.phase === 2 ? 0.01 : 0.0075;
         const orbitAng = this.orbitOffset + this.t * orbitSpeed;
@@ -451,7 +457,6 @@ export class WarpSentinelBoss extends Entity {
                     if (_updateHealthUI) _updateHealthUI();
                     if (GameContext.player.hp <= 0 && _killPlayer) _killPlayer();
                 }
-                GameContext.player.invulnerable = 0;
             }
         }
     }
@@ -462,7 +467,7 @@ export class WarpSentinelBoss extends Entity {
         if (!GameContext.player || GameContext.player.dead) return;
 
         const hpPct = this.maxHp > 0 ? this.hp / this.maxHp : 0;
-        const aliveHelpers = GameContext.enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
+        const aliveHelpers = this._cachedAliveHelpers;
         const maxHelpers = this.helperMax;
 
         if (!this.called70 && hpPct <= 0.7) {
@@ -483,7 +488,7 @@ export class WarpSentinelBoss extends Entity {
     }
 
     spawnHelpers(count) {
-        const aliveHelpers = GameContext.enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
+        const aliveHelpers = this._cachedAliveHelpers;
         const slots = Math.max(0, this.helperMax - aliveHelpers);
         if (slots <= 0) return;
         count = Math.min(count, slots);
@@ -522,7 +527,7 @@ export class WarpSentinelBoss extends Entity {
     }
 
     spawnDefenders(count) {
-        const aliveHelpers = GameContext.enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
+        const aliveHelpers = this._cachedAliveHelpers;
         const slots = Math.max(0, this.helperMax - aliveHelpers);
         if (slots <= 0) return;
         count = Math.min(count, slots);
@@ -645,6 +650,9 @@ export class WarpSentinelBoss extends Entity {
                     drawShieldRing(innerGfx, this.innerShieldSegments, this.innerShieldRadius, 0xff00ff);
                     this.shieldsDirty = false;
                 }
+
+                gfx.visible = true;
+                innerGfx.visible = true;
             }
 
             if ((this.flameCharge && this.flameCharge > 0) || (this.flameFire && this.flameFire > 0)) {
@@ -762,7 +770,7 @@ export class WarpSentinelBoss extends Entity {
     }
 
     spawnCaveReinforcements() {
-        // Count total enemies in the level (not just reinforcements)
+        // Count total enemies in level (not just reinforcements)
         const totalEnemies = GameContext.enemies.filter(e => e && !e.dead).length;
         const maxEnemies = 10;
 
@@ -817,64 +825,6 @@ export class WarpSentinelBoss extends Entity {
             enemy.isWarpReinforcement = true;
             enemy.despawnImmune = true;
             GameContext.enemies.push(enemy);
-        }
-        playSound('powerup');
-    }
-
-    dropExplodingMines() {
-        const count = 3 + Math.floor(Math.random() * 3);
-        for (let i = 0; i < count; i++) {
-            const offsetAngle = Math.random() * Math.PI * 2;
-            const offsetDist = 100 + Math.random() * 150;
-            const mx = this.pos.x + Math.cos(offsetAngle) * offsetDist;
-            const my = this.pos.y + Math.sin(offsetAngle) * offsetDist;
-
-            const mine = new Enemy('turret', { x: mx, y: my }, null);
-            mine.hp = 1;
-            mine.maxHp = 1;
-            mine.radius = 30;
-            mine.despawnImmune = true;
-            mine.owner = this;
-            mine.noDrops = true;
-            mine.t = 0;
-            mine.pulsePhase = Math.random() * Math.PI * 2;
-
-            mine.update = (deltaTime = 16.67) => {
-                const dtScale = deltaTime / 16.67;
-                mine.t += 1 * dtScale;
-
-                if (GameContext.player && !GameContext.player.dead) {
-                    const dist = Math.hypot(GameContext.player.pos.x - mine.pos.x, GameContext.player.pos.y - mine.pos.y);
-                    if (dist < 100) {
-                        mine.dead = true;
-                        if (_spawnFieryExplosion) _spawnFieryExplosion(mine.pos.x, mine.pos.y, 2.0);
-                        playSound('explosion');
-                        if (_applyAOEDamageToPlayer) _applyAOEDamageToPlayer(mine.pos.x, mine.pos.y, 200, 5);
-                    }
-                }
-            };
-
-            mine.draw = (ctx) => {
-                ctx.save();
-                ctx.translate(mine.pos.x, mine.pos.y);
-                const pulseScale = 1.0 + Math.sin(mine.t * 0.1 + mine.pulsePhase) * 0.15;
-                const pulseAlpha = 0.5 + Math.sin(mine.t * 0.1 + mine.pulsePhase) * 0.3;
-                ctx.fillStyle = `rgba(255, 100, 0, ${pulseAlpha * 0.6})`;
-                ctx.beginPath();
-                ctx.arc(0, 0, 25 * pulseScale, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = '#f50';
-                ctx.beginPath();
-                ctx.arc(0, 0, 15, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = '#fff';
-                ctx.beginPath();
-                ctx.arc(0, 0, 8, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.restore();
-            };
-
-            GameContext.enemies.push(mine);
         }
         playSound('powerup');
     }

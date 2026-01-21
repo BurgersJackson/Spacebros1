@@ -210,12 +210,20 @@ export class Enemy extends Entity {
 
         // FIX: Clean up shield graphics BEFORE calling pixiCleanupObject
         // This prevents pixiCleanupObject from missing these
+        // Clean up base graphics (shield circles) BEFORE calling pixiCleanupObject
+        // This prevents pixiCleanupObject from missing these
         if (this._pixiInnerGfx) {
-            try { this._pixiInnerGfx.destroy(true); } catch (e) { }
+            try {
+                if (this._pixiInnerGfx.parent) this._pixiInnerGfx.parent.removeChild(this._pixiInnerGfx);
+                this._pixiInnerGfx.destroy(true);
+            } catch (e) { }
             this._pixiInnerGfx = null;
         }
         if (this._pixiGfx) {
-            try { this._pixiGfx.destroy(true); } catch (e) { }
+            try {
+                if (this._pixiGfx.parent) this._pixiGfx.parent.removeChild(this._pixiGfx);
+                this._pixiGfx.destroy(true);
+            } catch (e) { }
             this._pixiGfx = null;
         }
         if (this._pixiNameText) {

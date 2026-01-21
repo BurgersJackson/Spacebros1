@@ -168,7 +168,13 @@ export class Cruiser extends Enemy {
         if (this.dead) return;
         this.dead = true;
         
-        // Clean up all graphics, ensuring they're removed from parent first
+        if (this._pixiInvulGfx) {
+            try {
+                if (this._pixiInvulGfx.parent) this._pixiInvulGfx.parent.removeChild(this._pixiInvulGfx);
+                this._pixiInvulGfx.destroy(true);
+            } catch (e) { }
+            this._pixiInvulGfx = null;
+        }
         if (this._pixiInnerGfx) {
             try {
                 if (this._pixiInnerGfx.parent) this._pixiInnerGfx.parent.removeChild(this._pixiInnerGfx);
@@ -196,6 +202,12 @@ export class Cruiser extends Enemy {
                 this._pixiTelegraphGfx.destroy(true);
             } catch (e) { }
             this._pixiTelegraphGfx = null;
+        }
+        if (this._pixiNameText) {
+            try {
+                this._pixiNameText.destroy(true);
+            } catch (e) { }
+            this._pixiNameText = null;
         }
 
         // FIX: Ensure sprite is removed from its parent layer before cleanup
