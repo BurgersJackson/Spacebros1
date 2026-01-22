@@ -1,6 +1,7 @@
 import { GameContext } from '../core/game-context.js';
 import { Enemy, Pinwheel, Destroyer, Destroyer2, SpaceStation, Cruiser } from '../entities/index.js';
 import { CavePinwheel1, CavePinwheel2, CavePinwheel3 } from '../entities/cave/index.js';
+import { WarpShieldDrone } from '../entities/bosses/index.js';
 
 let _spawnParticles = null;
 let _playSound = null;
@@ -466,22 +467,25 @@ export function resolveEntityCollision() {
             const isRoamer = (e.type === 'roamer' || e.type === 'elite_roamer');
             const isDefender = (e.type === 'defender');
             const isHunter = (e.type === 'hunter');
+            const isShieldDrone = (e instanceof WarpShieldDrone || e.isWarpShieldDrone);
 
-            if (isRoamer || isDefender || isHunter) {
+            if (isRoamer || isDefender || isHunter || isShieldDrone) {
                 const dist = Math.hypot(GameContext.player.pos.x - e.pos.x, GameContext.player.pos.y - e.pos.y);
                 if (dist < GameContext.player.radius + e.radius) {
-                    if (isRoamer || isDefender) {
+                    if (isRoamer || isDefender || isShieldDrone) {
                         const angle = Math.atan2(GameContext.player.pos.y - e.pos.y, GameContext.player.pos.x - e.pos.x);
                         const nx = Math.cos(angle);
                         const ny = Math.sin(angle);
 
-                        const pushForce = 5;
+                        const pushForce = isShieldDrone ? 7 : 5;  // Stronger push for shield drones
                         GameContext.player.vel.x += nx * pushForce;
                         GameContext.player.vel.y += ny * pushForce;
-                        e.vel.x -= nx * pushForce;
-                        e.vel.y -= ny * pushForce;
+                        if (e.vel) {  // Shield drones don't have velocity, so check first
+                            e.vel.x -= nx * pushForce;
+                            e.vel.y -= ny * pushForce;
+                        }
 
-                        if (_spawnParticles) _spawnParticles((GameContext.player.pos.x + e.pos.x) / 2, (GameContext.player.pos.y + e.pos.y) / 2, 5, '#fff');
+                        if (_spawnParticles) _spawnParticles((GameContext.player.pos.x + e.pos.x) / 2, (GameContext.player.pos.y + e.pos.y) / 2, 5, isShieldDrone ? '#0af' : '#fff');
                         continue;
                     }
 
@@ -919,6 +923,89 @@ export function processBulletCollisions() {
                                 hit = true;
                                 b.dead = true;
                                 if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 4, '#fff');
+                                break;
+                            }
+                        }
+                        if (e instanceof WarpShieldDrone || e.isWarpShieldDrone) {
+                            if (b.isEnemy) continue;
+                            const dx = b.pos.x - e.pos.x;
+                            const dy = b.pos.y - e.pos.y;
+                            const distSq = dx * dx + dy * dy;
+                            const hitRadius = e.radius + b.radius;
+                            if (distSq < hitRadius * hitRadius) {
+                                e.hp -= b.damage;
+                                hit = true;
+                                b.dead = true;
+                                // Stop bullet movement immediately
+                                b.vel.x = 0;
+                                b.vel.y = 0;
+                                // Clamp bullet position to collision point to prevent visual pass-through
+                                const dist = Math.sqrt(distSq);
+                                if (dist > 0) {
+                                    const overlap = hitRadius - dist;
+                                    const nx = dx / dist;
+                                    const ny = dy / dist;
+                                    b.pos.x = e.pos.x + nx * (e.radius + b.radius);
+                                    b.pos.y = e.pos.y + ny * (e.radius + b.radius);
+                                    b.prevPos.x = b.pos.x;
+                                    b.prevPos.y = b.pos.y;
+                                }
+                                if (_playSound) _playSound('hit');
+                                if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, '#0af');
+                                
+                                // Chain lightning support
+                                if (GameContext.player.chainLightningCount && GameContext.player.chainLightningCount > 0 && GameContext.player.chainLightningRange && !b.isEnemy) {
+                                    let chainCount = GameContext.player.chainLightningCount;
+                                    let chainSource = e;
+                                    let chainTargets = new Set();
+                                    chainTargets.add(e);
+                                    
+                                    for (let chain = 0; chain < chainCount; chain++) {
+                                        let nearestTarget = null;
+                                        let nearestDist = GameContext.player.chainLightningRange;
+                                        
+                                        for (let other of nearby) {
+                                            if (other.dead) continue;
+                                            const isEnemy = other instanceof Enemy;
+                                            const isPinwheel = other instanceof Pinwheel;
+                                            const isCavePinwheel = other instanceof CavePinwheel1 || other instanceof CavePinwheel2 || other instanceof CavePinwheel3;
+                                            const isShieldDrone = other instanceof WarpShieldDrone || other.isWarpShieldDrone;
+                                            if (!isEnemy && !isPinwheel && !isCavePinwheel && !isShieldDrone) continue;
+                                            if (other === GameContext.boss) continue;
+                                            if (chainTargets.has(other)) continue;
+                                            
+                                            const d = Math.hypot(other.pos.x - chainSource.pos.x, other.pos.y - chainSource.pos.y);
+                                            if (d < nearestDist) {
+                                                nearestDist = d;
+                                                nearestTarget = other;
+                                            }
+                                        }
+                                        
+                                        if (nearestTarget) {
+                                            const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                                            nearestTarget.hp -= chainDamage;
+                                            chainTargets.add(nearestTarget);
+                                            
+                                            if (_spawnLightningArc) _spawnLightningArc(chainSource.pos.x, chainSource.pos.y, nearestTarget.pos.x, nearestTarget.pos.y, '#0ff');
+                                            if (_spawnParticles) _spawnParticles(nearestTarget.pos.x, nearestTarget.pos.y, 3, '#0ff');
+                                            if (_playSound) _playSound('hit');
+                                            
+                                            if (nearestTarget.hp <= 0) {
+                                                nearestTarget.kill();
+                                                GameContext.score += 100;
+                                            }
+                                            
+                                            chainSource = nearestTarget;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                if (e.hp <= 0) {
+                                    e.kill();
+                                    GameContext.score += 100;
+                                }
                                 break;
                             }
                         }

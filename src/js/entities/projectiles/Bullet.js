@@ -70,6 +70,7 @@ export class Bullet extends Entity {
     }
 
     update(deltaTime = SIM_STEP_MS) {
+        if (this.dead) return;
         if (this.homing > 0 && !this.isEnemy) {
             let target = null;
             let minDist = Infinity;

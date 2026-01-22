@@ -1126,7 +1126,8 @@ registerDungeonDroneDependencies({
 });
 
 registerWarpShieldDroneDependencies({
-  spawnParticles
+  spawnParticles,
+  spawnLargeExplosion
 });
 
 registerWarpSentinelBossDependencies({
