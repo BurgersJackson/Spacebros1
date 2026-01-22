@@ -22,6 +22,5 @@ Mobility,turbo_boost,Turbo Boost," +50% speed for 2s"," +50% speed for 3.5s"," +
 Specials,area_nuke,Area Nuke,"Auto-fire 500u blast (5 dmg)","600u range, 10 dmg","800u range, 15 dmg","1000u range, 20 dmg","1200u range, 25 dmg","Auto-activates when ready"
 Specials,invincibility,Phase Shield,"3s Active / 20s CD","5s Active / 15s CD","7s Active / 10s CD + Regen","9s Active / 8s CD + Regen","12s Active / 6s CD + Regen","Auto-cycling invulnerability"
 Specials,slow_field,Stasis Field,"Stops roamers 3s","Stops 5s, +25% Area","Stops 8s, +25% Area","Stops 10s, +25% Area","Stops 12s, +50% Area","Freezes enemies"
-Specials,time_dilation,Time Dilation,"Enemies move 20% slower near you","40% slow, 300u radius","60% slow, 450u radius","80% slow, 600u radius","100% slow (freeze), 750u radius","Passive danger zone. Easier dodging."
-Specials,momentum,Momentum,"Moving increases fire rate (+10%)"," +20% fire rate, +15% damage"," +30% fire rate, +25% damage"," +40% fire rate, +35% damage"," +50% fire rate, +50% damage","Keep moving to maximize DPS. Hit-and-run style."
+Specials,momentum,Momentum,"Moving increases fire rate (+10%)","+20% fire rate, +15% damage","+30% fire rate, +25% damage","+40% fire rate, +35% damage","+50% fire rate, +50% damage","Keep moving to maximize DPS. Hit-and-run style."
 Drones,companion_drones,Companion Drones,"Unlock Shooter Drone","Add Shield Drone","Add Heal Drone","Add 2nd Shooter Drone","Add 2nd Shield Drone","Orbiting support bots"

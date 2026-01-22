@@ -120,7 +120,6 @@ export const UPGRADE_DATA = {
                 { id: "area_nuke", name: "Area Nuke", tier1: "Auto-fire 500u blast (5 dmg)", tier2: "600u range, 10 dmg", tier3: "800u range, 15 dmg", tier4: "1000u range, 20 dmg", tier5: "1200u range, 25 dmg", notes: "Auto-activates when ready." },
                 { id: "invincibility", name: "Phase Shield", tier1: "3s Active / 20s CD", tier2: "5s Active / 15s CD", tier3: "7s Active / 10s CD + Regen", tier4: "9s Active / 8s CD + Regen", tier5: "12s Active / 6s CD + Regen", notes: "Auto-cycling invulnerability." },
                 { id: "slow_field", name: "Stasis Field", tier1: "Stops roamers 3s", tier2: "Stops 5s, +25% Area", tier3: "Stops 8s, +25% Area", tier4: "Stops 10s, +25% Area", tier5: "Stops 12s, +50% Area", notes: "Freezes enemies." },
-                { id: "time_dilation", name: "Time Dilation", tier1: "Enemies move 20% slower near you", tier2: "40% slow, 300u radius", tier3: "60% slow, 450u radius", tier4: "80% slow, 600u radius", tier5: "100% slow (freeze), 750u radius", notes: "Passive danger zone. Easier dodging." },
                 { id: "momentum", name: "Momentum", tier1: "Moving increases fire rate (+10%)", tier2: "+20% fire rate, +15% damage", tier3: "+30% fire rate, +25% damage", tier4: "+40% fire rate, +35% damage", tier5: "+50% fire rate, +50% damage", notes: "Keep moving to maximize DPS. Hit-and-run style." }
             ]
         },

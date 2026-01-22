@@ -249,13 +249,6 @@ export function applyUpgrade(id, tier) {
             if (tier === 4) { GameContext.player.stats.damageMitigation = 0.6; GameContext.player.stats.speedBonusFromMit = 1.20; }
             if (tier === 5) { GameContext.player.stats.damageMitigation = 0.5; GameContext.player.stats.speedBonusFromMit = 1.25; }
             break;
-        case 'time_dilation':
-            if (tier === 1) { GameContext.player.stats.timeDilation = 0.8; GameContext.player.stats.timeDilationRange = 200; }
-            if (tier === 2) { GameContext.player.stats.timeDilation = 0.6; GameContext.player.stats.timeDilationRange = 300; }
-            if (tier === 3) { GameContext.player.stats.timeDilation = 0.4; GameContext.player.stats.timeDilationRange = 450; }
-            if (tier === 4) { GameContext.player.stats.timeDilation = 0.2; GameContext.player.stats.timeDilationRange = 600; }
-            if (tier === 5) { GameContext.player.stats.timeDilation = 0.0; GameContext.player.stats.timeDilationRange = 750; }
-            break;
         case 'momentum':
             if (tier === 1) { GameContext.player.stats.momentumFireRate = 1.10; GameContext.player.stats.momentumDamage = 1.0; }
             if (tier === 2) { GameContext.player.stats.momentumFireRate = 1.20; GameContext.player.stats.momentumDamage = 1.15; }
