@@ -49,10 +49,12 @@ export class WarpShieldDrone extends Entity {
   }
 
   update(deltaTime = SIM_STEP_MS) {
-    if (this.dead) return;
-
     if (!this.parentBoss || this.parentBoss.dead) {
-      this.kill();
+      if (!this.dead) this.kill();
+    }
+
+    if (this.dead) {
+      this.hideLightning();
       return;
     }
 
@@ -65,6 +67,99 @@ export class WarpShieldDrone extends Entity {
     // Rotate in place
     this.rotationAngle += this.rotationSpeed * dtFactor;
     if (this.rotationAngle > Math.PI * 2) this.rotationAngle -= Math.PI * 2;
+
+    // Update lightning bolt graphics (must be done in update since draw may not be called when off-screen)
+    this.updateLightning();
+  }
+
+  hideLightning() {
+    if (this._pixiLightningGfx) {
+      this._pixiLightningGfx.clear();
+      this._pixiLightningGfx.visible = false;
+    }
+  }
+
+  updateLightning() {
+    if (!pixiVectorLayer) return;
+
+    let lightningGfx = this._pixiLightningGfx;
+    if (!lightningGfx) {
+      lightningGfx = new PIXI.Graphics();
+      pixiVectorLayer.addChild(lightningGfx);
+      this._pixiLightningGfx = lightningGfx;
+    } else if (!lightningGfx.parent) {
+      pixiVectorLayer.addChild(lightningGfx);
+    }
+
+    if (!this.parentBoss || this.parentBoss.dead || this.dead) {
+      lightningGfx.clear();
+      lightningGfx.visible = false;
+      return;
+    }
+
+    lightningGfx.clear();
+    lightningGfx.visible = true;
+    lightningGfx.position.set(0, 0);
+
+    const flicker = Math.sin(this.t * 0.8) * 0.3 + 0.7;
+
+    const droneX = this.pos.x;
+    const droneY = this.pos.y;
+    const bossX = this.parentBoss.pos.x;
+    const bossY = this.parentBoss.pos.y;
+
+    const distToBoss = Math.hypot(bossX - droneX, bossY - droneY);
+    const safeDist = Math.max(distToBoss, 1);
+
+    const droneSeed = this.orbitAngle * 1000;
+    const timeSeed = Math.floor(this.t * 10);
+
+    lightningGfx.lineStyle(2, 0x88ddff, flicker);
+    lightningGfx.moveTo(droneX, droneY);
+
+    const segments = Math.max(8, Math.floor(distToBoss / 200));
+    let currentX = droneX;
+    let currentY = droneY;
+
+    for (let i = 1; i < segments; i++) {
+      const t = i / segments;
+      const targetX = droneX + (bossX - droneX) * t;
+      const targetY = droneY + (bossY - droneY) * t;
+
+      const perpX = -(bossY - droneY) / safeDist;
+      const perpY = (bossX - droneX) / safeDist;
+
+      const jitterSeed = (droneSeed + timeSeed + i * 17) % 1000;
+      const jitterAmount = 25 * (1 - Math.abs(t - 0.5) * 2);
+      const jitter = (jitterSeed / 1000 - 0.5) * jitterAmount;
+
+      currentX = targetX + perpX * jitter;
+      currentY = targetY + perpY * jitter;
+      lightningGfx.lineTo(currentX, currentY);
+    }
+    lightningGfx.lineTo(bossX, bossY);
+    lightningGfx.endFill();
+
+    lightningGfx.lineStyle(4, 0x44aaff, flicker * 0.5);
+    lightningGfx.moveTo(droneX, droneY);
+    currentX = droneX;
+    currentY = droneY;
+
+    for (let i = 1; i < segments; i++) {
+      const t = i / segments;
+      const targetX = droneX + (bossX - droneX) * t;
+      const targetY = droneY + (bossY - droneY) * t;
+      const perpX = -(bossY - droneY) / safeDist;
+      const perpY = (bossX - droneX) / safeDist;
+      const jitterSeed = (droneSeed + timeSeed + i * 17) % 1000;
+      const jitterAmount = 25 * (1 - Math.abs(t - 0.5) * 2);
+      const jitter = (jitterSeed / 1000 - 0.5) * jitterAmount;
+      currentX = targetX + perpX * jitter;
+      currentY = targetY + perpY * jitter;
+      lightningGfx.lineTo(currentX, currentY);
+    }
+    lightningGfx.lineTo(bossX, bossY);
+    lightningGfx.endFill();
   }
 
   draw(ctx) {
@@ -80,11 +175,7 @@ export class WarpShieldDrone extends Entity {
           this._pixiHealthBar.visible = false;
         } catch (e) {}
       }
-      if (this._pixiLightningGfx) {
-        try {
-          this._pixiLightningGfx.visible = false;
-        } catch (e) {}
-      }
+      // Note: Lightning is hidden by update() via hideLightning()
       if (this._pixiDebugGfx) {
         try {
           this._pixiDebugGfx.visible = false;
@@ -161,117 +252,6 @@ export class WarpShieldDrone extends Entity {
         hpBar.drawRect(-hpBarWidth / 2, 0, hpBarWidth, hpBarHeight);
       }
 
-      // Draw lightning bolt effect from drone to boss (only if drone is alive)
-      if (pixiVectorLayer && this.parentBoss && !this.parentBoss.dead && !this.dead) {
-        let lightningGfx = this._pixiLightningGfx;
-        if (!lightningGfx) {
-          lightningGfx = new PIXI.Graphics();
-          pixiVectorLayer.addChild(lightningGfx);
-          this._pixiLightningGfx = lightningGfx;
-        } else if (!lightningGfx.parent) {
-          pixiVectorLayer.addChild(lightningGfx);
-        }
-
-        // Always clear before redrawing to prevent ghosting
-        lightningGfx.clear();
-        lightningGfx.visible = true;
-        // Set graphics position to origin - we'll draw in world coordinates
-        lightningGfx.position.set(0, 0);
-
-        // Animate lightning: flicker effect using time (deterministic, not random)
-        const flicker = Math.sin(this.t * 0.8) * 0.3 + 0.7; // 0.4 to 1.0 alpha
-
-        // Drone stays in fixed position, lightning connects to boss center
-        // Lightning automatically adjusts length and angle as boss moves
-        // Use world positions directly (pixiVectorLayer is in world space via pixiWorldRoot)
-        // Always get current positions to ensure accuracy even when far away
-        const droneX = this.pos.x;  // Fixed drone world position
-        const droneY = this.pos.y;  // Fixed drone world position
-        // Always get current boss position (not cached) to ensure lightning is accurate
-        const bossX = this.parentBoss.pos.x;  // Current boss world position (can move)
-        const bossY = this.parentBoss.pos.y;  // Current boss world position (can move)
-
-        // Start point: at drone center (world coordinates)
-        const startX = droneX;
-        const startY = droneY;
-        // End point: at boss center (world coordinates, always connected)
-        const endX = bossX;
-        const endY = bossY;
-
-        // Distance from drone to boss center
-        const distToBoss = Math.hypot(bossX - droneX, bossY - droneY);
-        // Prevent division by zero
-        const safeDist = Math.max(distToBoss, 1);
-
-        // Use deterministic jitter based on time and drone index to prevent flickering
-        const droneSeed = this.orbitAngle * 1000; // Use orbit angle as seed
-        const timeSeed = Math.floor(this.t * 10); // Change every 0.1 seconds
-
-        // Draw main lightning bolt with jagged path that always connects
-        lightningGfx.lineStyle(2, 0x88ddff, flicker);
-        lightningGfx.moveTo(startX, startY);
-
-        // Create jagged lightning path with deterministic jitter
-        // Use more segments for longer distances to keep it smooth
-        const segments = Math.max(8, Math.floor(distToBoss / 200));
-        let currentX = startX;
-        let currentY = startY;
-
-        for (let i = 1; i < segments; i++) {
-          const t = i / segments;
-          // Calculate point along the line from start to end
-          const targetX = startX + (endX - startX) * t;
-          const targetY = startY + (endY - startY) * t;
-
-          // Add perpendicular offset for jagged effect (deterministic)
-          const perpX = -(endY - startY) / safeDist;
-          const perpY = (endX - startX) / safeDist;
-
-          // Use deterministic pseudo-random based on time and position
-          // Jitter is stronger in the middle, weaker at the ends to ensure connection
-          const jitterSeed = (droneSeed + timeSeed + i * 17) % 1000;
-          const jitterAmount = 25 * (1 - Math.abs(t - 0.5) * 2); // Max jitter in middle, zero at ends
-          const jitter = (jitterSeed / 1000 - 0.5) * jitterAmount;
-
-          currentX = targetX + perpX * jitter;
-          currentY = targetY + perpY * jitter;
-          lightningGfx.lineTo(currentX, currentY);
-        }
-        // Always end at boss center to ensure connection
-        lightningGfx.lineTo(endX, endY);
-        lightningGfx.endFill(); // CRITICAL: prevents ghosting
-
-        // Draw second arc for glow effect (same path, thicker and dimmer)
-        lightningGfx.lineStyle(4, 0x44aaff, flicker * 0.5);
-        lightningGfx.moveTo(startX, startY);
-        currentX = startX;
-        currentY = startY;
-
-        for (let i = 1; i < segments; i++) {
-          const t = i / segments;
-          const targetX = startX + (endX - startX) * t;
-          const targetY = startY + (endY - startY) * t;
-          const perpX = -(endY - startY) / safeDist;
-          const perpY = (endX - startX) / safeDist;
-          // Use same deterministic jitter for consistency
-          const jitterSeed = (droneSeed + timeSeed + i * 17) % 1000;
-          const jitterAmount = 25 * (1 - Math.abs(t - 0.5) * 2);
-          const jitter = (jitterSeed / 1000 - 0.5) * jitterAmount;
-          currentX = targetX + perpX * jitter;
-          currentY = targetY + perpY * jitter;
-          lightningGfx.lineTo(currentX, currentY);
-        }
-        // Always end at boss center to ensure connection
-        lightningGfx.lineTo(endX, endY);
-        lightningGfx.endFill(); // CRITICAL: prevents ghosting
-      } else {
-        // Hide lightning if drone is dead or boss is dead
-        if (this._pixiLightningGfx) {
-          this._pixiLightningGfx.clear();
-          this._pixiLightningGfx.visible = false;
-        }
-      }
-
       if (
         typeof GameContext.DEBUG_COLLISION !== "undefined" &&
         GameContext.DEBUG_COLLISION &&
@@ -294,6 +274,10 @@ export class WarpShieldDrone extends Entity {
       } else if (this._pixiDebugGfx) {
         this._pixiDebugGfx.visible = false;
       }
+
+      // Note: Lightning bolt drawing moved to updateLightning() method in update()
+      // This ensures lightning updates correctly even when drone is off-screen
+      return;
 
       return;
     }
@@ -366,6 +350,9 @@ export class WarpShieldDrone extends Entity {
       } catch (e) {}
       this._pixiDebugGfx = null;
     }
+
+    // Hide lightning before cleanup
+    this.hideLightning();
 
     pixiCleanupObject(this);
 

@@ -149,13 +149,34 @@ export class WarpSentinelBoss extends Entity {
 
     onShieldDroneDestroyed() {
         this.shieldDronesAlive--;
-        if (this.shieldDronesAlive <= 0 && !this.shieldEverDown) {
+        
+        // Phase transitions based on shield drones destroyed
+        const prevPhase = this.phase;
+        if (this.shieldDronesAlive <= 2 && this.phase < 2) {
+            this.phase = 2;
+        }
+        if (this.shieldDronesAlive <= 0 && this.phase < 3) {
+            this.phase = 3;
             this.shieldEverDown = true;
             // Clear all shield segments
             this.shieldSegments.fill(0);
             this.innerShieldSegments.fill(0);
             this.shieldsDirty = true;
             showOverlayMessage("SENTINEL SHIELD DOWN!", '#f00', 2000, 3);
+        }
+        
+        // Trigger phase start logic if phase changed
+        if (this.phase === 2 && prevPhase < 2 && !this.phase2Started) {
+            this.phase2Started = true;
+            this.helperMax = 10;
+            this.helperBurst = 3;
+            this.helperCooldownBase = 320;
+            this.spawnDefenders(6);
+            showOverlayMessage("SENTINEL PHASE 2", '#f0f', 1800, 3);
+        }
+        if (this.phase === 3 && prevPhase < 3 && !this.phase3Started) {
+            this.phase3Started = true;
+            showOverlayMessage("SENTINEL PHASE 3", '#f0f', 1800, 3);
         }
     }
 
@@ -252,6 +273,15 @@ export class WarpSentinelBoss extends Entity {
         GameContext.bossArena.active = false;
         GameContext.bossArena.growing = false;
         playSound('warp_flame_stop');
+        
+        // Make all bioPods explode when boss dies
+        for (let i = GameContext.warpBioPods.length - 1; i >= 0; i--) {
+            const pod = GameContext.warpBioPods[i];
+            if (pod && !pod.dead) {
+                pod.explode();
+            }
+        }
+        
         clearArrayWithPixiCleanup(GameContext.warpBioPods);
         clearArrayWithPixiCleanup(this.shieldDrones);
         if (GameContext.boss) pixiCleanupObject(GameContext.boss);
@@ -309,23 +339,6 @@ export class WarpSentinelBoss extends Entity {
         } else {
             this.reinforcementTimer = this.reinforcementCooldown;
             this.spawnCaveReinforcements();
-        }
-
-        const hpPct = this.maxHp > 0 ? this.hp / this.maxHp : 0;
-        const nextPhase = hpPct > 0.7 ? 1 : (hpPct > 0.4 ? 2 : 3);
-        if (nextPhase !== this.phase) this.phase = nextPhase;
-
-        if (this.phase >= 2 && !this.phase2Started) {
-            this.phase2Started = true;
-            this.helperMax = 10;
-            this.helperBurst = 3;
-            this.helperCooldownBase = 320;
-            this.spawnDefenders(6);
-            showOverlayMessage("SENTINEL PHASE 2", '#f0f', 1800, 3);
-        }
-        if (this.phase === 3 && !this.phase3Started) {
-            this.phase3Started = true;
-            showOverlayMessage("SENTINEL PHASE 3", '#f0f', 1800, 3);
         }
 
         const cx = this.zone ? this.zone.pos.x : this.orbitCenter.x;
