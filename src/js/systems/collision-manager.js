@@ -46,6 +46,9 @@ export function registerCollisionDependencies(deps) {
  */
 export function checkWallCollision(entity, elasticity = 0) {
     if (!entity || entity.dead) return;
+    
+    // Shield drones are fixed-position entities and should not collide with walls/asteroids
+    if (entity instanceof WarpShieldDrone || entity.isWarpShieldDrone) return;
 
     if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active) {
         GameContext.caveLevel.applyWallCollisions(entity);
@@ -284,6 +287,9 @@ export function resolveEntityCollision() {
             // Cave bosses only collide with player, skip cave boss vs other enemies
             if (e1.isCaveBoss && e2 !== GameContext.player) continue;
             if (e2.isCaveBoss && e1 !== GameContext.player) continue;
+            // Shield drones only collide with player, skip shield drone vs other entities
+            if ((e1 instanceof WarpShieldDrone || e1.isWarpShieldDrone) && e2 !== GameContext.player) continue;
+            if ((e2 instanceof WarpShieldDrone || e2.isWarpShieldDrone) && e1 !== GameContext.player) continue;
 
             let r1 = (e1 instanceof Destroyer || e1 instanceof Destroyer2) ? (e1.shieldRadius || e1.radius) : e1.radius;
             let r2 = (e2 instanceof Destroyer || e2 instanceof Destroyer2) ? (e2.shieldRadius || e2.radius) : e2.radius;
