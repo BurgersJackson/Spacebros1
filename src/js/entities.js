@@ -1,5 +1,6 @@
 import { state } from "./constants.js";
 import { Vector } from "./utils.js";
+import { releasePixiSprite } from "./rendering/pixi-context.js";
 
 export class Entity {
   constructor(x, y) {
