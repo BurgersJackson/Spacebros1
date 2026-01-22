@@ -41,6 +41,8 @@ export const pixiTextures = {
     destroyer_turret: null,
     destroyer2_hull: null,
 
+    shield_drone: null,
+
     asteroids: []
 };
 
@@ -939,6 +941,39 @@ finalBossImage.addEventListener('error', () => {
     finalBossLoaded = false;
 });
 
+const SHIELD_DRONE_URL = 'assets/shield_drone.png';
+const shieldDroneImage = new Image();
+shieldDroneImage.decoding = 'async';
+shieldDroneImage.src = SHIELD_DRONE_URL;
+let shieldDroneTexture = null;
+let shieldDroneLoaded = false;
+
+export function applyShieldDroneTexture() {
+    if (!shieldDroneLoaded || shieldDroneTexture || !window.PIXI) return;
+    try {
+        const tex = PIXI.Texture.from(shieldDroneImage);
+        try { tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR; } catch (e) { }
+        try { tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON; } catch (e) { }
+
+        shieldDroneTexture = tex;
+        pixiTextures.shield_drone = tex;
+        pixiTextureAnchors.shield_drone = 0.5;
+        pixiTextureRotOffsets.shield_drone = Math.PI / 2;
+        pixiTextureScaleToRadius.shield_drone = true;
+        pixiTextureBaseScales.shield_drone = 1.5;
+    } catch (e) {
+        console.error('Error loading shield drone texture:', e);
+    }
+}
+
+shieldDroneImage.addEventListener('load', () => {
+    shieldDroneLoaded = true;
+    applyShieldDroneTexture();
+});
+shieldDroneImage.addEventListener('error', () => {
+    shieldDroneLoaded = false;
+});
+
 export function loadAllTextures() {
     applyGunboatTextures();
     applyCaveGunboatTextures();
@@ -958,4 +993,5 @@ export function loadAllTextures() {
     applyCruiserTexture();
     applyWarpBossTexture();
     applyFinalBossTexture();
+    applyShieldDroneTexture();
 }

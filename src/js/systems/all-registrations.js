@@ -64,6 +64,7 @@ export function registerAllEntityDependencies(r) {
     r.Cave.registerCaveDependencies(r.caveDeps);
     r.registerWarpBioPodDependencies(r.warpBioPodDeps);
     r.registerDungeonDroneDependencies(r.dungeonDroneDeps);
+    r.registerWarpShieldDroneDependencies(r.warpShieldDroneDeps);
     r.registerWarpSentinelBossDependencies(r.warpSentinelBossDeps);
     r.registerSpaceStationDependencies(r.spaceStationDeps);
     r.registerDestroyerDependencies(r.destroyerDeps);

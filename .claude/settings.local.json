@@ -23,7 +23,12 @@
       "Bash(npm install:*)",
       "Bash(dir:*)",
       "Bash(findstr:*)",
-      "Bash(npm run test)"
+      "Bash(npm run test)",
+      "Bash(git diff:*)",
+      "Bash(git config:*)",
+      "Bash(git restore:*)",
+      "Bash(npx eslint src/js/entities/bosses/WarpShieldDrone.js src/js/entities/bosses/WarpSentinelBoss.js src/js/rendering/texture-loader.js --format compact)",
+      "Bash(echo \"Exit code: $?\")"
     ]
   },
   "outputStyle": "default"

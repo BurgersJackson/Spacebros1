@@ -8,6 +8,7 @@ import { Enemy } from '../enemies/Enemy.js';
 import { CaveGunboat1 } from '../cave/CaveGunboat1.js';
 import { CaveGunboat2 } from '../cave/CaveGunboat2.js';
 import { WarpBioPod } from '../zones/WarpBioPod.js';
+import { WarpShieldDrone } from './WarpShieldDrone.js';
 import { showOverlayMessage } from '../../utils/ui-helpers.js';
 import {
     pixiBossLayer,
@@ -51,6 +52,7 @@ export class WarpSentinelBoss extends Entity {
         this.maxHp = this.hp;
 
         this.maxShieldHp = 999;
+        this.shieldStrength = this.maxShieldHp;
         // Shield segments count (reduced by 20%)
         this.shieldSegments = new Array(58).fill(0);
         this.innerShieldSegments = new Array(48).fill(0);
@@ -126,6 +128,35 @@ export class WarpSentinelBoss extends Entity {
         this.collisionRadius = 800;
 
         this._pixiSprite = null;
+
+        // Shield drones - protector ships that orbit the boss
+        this.shieldDrones = [];
+        this.shieldDronesAlive = 4;
+        this.shieldEverDown = false;
+    }
+
+    spawnShieldDrones() {
+        // Only spawn once
+        if (this.shieldDrones.length > 0) return;
+
+        const corners = [Math.PI / 4, 3 * Math.PI / 4, 5 * Math.PI / 4, 7 * Math.PI / 4]; // NW, NE, SW, SE
+        for (const angle of corners) {
+            const drone = new WarpShieldDrone(this, angle);
+            GameContext.enemies.push(drone);
+            this.shieldDrones.push(drone);
+        }
+    }
+
+    onShieldDroneDestroyed() {
+        this.shieldDronesAlive--;
+        if (this.shieldDronesAlive <= 0 && !this.shieldEverDown) {
+            this.shieldEverDown = true;
+            // Clear all shield segments
+            this.shieldSegments.fill(0);
+            this.innerShieldSegments.fill(0);
+            this.shieldsDirty = true;
+            showOverlayMessage("SENTINEL SHIELD DOWN!", '#f00', 2000, 3);
+        }
     }
 
     hitTestCircle(x, y, r) {
@@ -222,6 +253,7 @@ export class WarpSentinelBoss extends Entity {
         GameContext.bossArena.growing = false;
         playSound('warp_flame_stop');
         clearArrayWithPixiCleanup(GameContext.warpBioPods);
+        clearArrayWithPixiCleanup(this.shieldDrones);
         if (GameContext.boss) pixiCleanupObject(GameContext.boss);
         GameContext.boss = null;
 
@@ -237,6 +269,11 @@ export class WarpSentinelBoss extends Entity {
 
         super.update(deltaTime);
 
+        // Spawn shield drones on first update
+        if (this.shieldDrones.length === 0) {
+            this.spawnShieldDrones();
+        }
+
         const now = Date.now();
         const dtFactor = deltaTime / 16.67;
         this.t += dtFactor;
@@ -250,7 +287,8 @@ export class WarpSentinelBoss extends Entity {
         // Update cached helper count once per frame (performance optimization)
         this._cachedAliveHelpers = GameContext.enemies.filter(e => e && !e.dead && e.isWarpReinforcement).length;
 
-        if (now - this.lastShieldRegenAt >= this.shieldRegenMs) {
+        // Shield regen only if shield hasn't been permanently disabled
+        if (!this.shieldEverDown && this.shieldDronesAlive >= 4 && now - this.lastShieldRegenAt >= this.shieldRegenMs) {
             const idx1 = this.shieldSegments.findIndex(s => s < this.shieldStrength);
             if (idx1 !== -1) {
                 this.shieldSegments[idx1] = Math.min(this.shieldStrength, this.shieldSegments[idx1] + 1);

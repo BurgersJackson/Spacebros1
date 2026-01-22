@@ -303,6 +303,8 @@ import {
   registerSuperFlagshipDependencies,
   WarpSentinelBoss,
   registerWarpSentinelBossDependencies,
+  WarpShieldDrone,
+  registerWarpShieldDroneDependencies,
   SpaceStation,
   registerSpaceStationDependencies,
   Destroyer,
@@ -1120,6 +1122,10 @@ Cave.registerCaveWallTurretDependencies({
 });
 
 registerDungeonDroneDependencies({
+  spawnParticles
+});
+
+registerWarpShieldDroneDependencies({
   spawnParticles
 });
 

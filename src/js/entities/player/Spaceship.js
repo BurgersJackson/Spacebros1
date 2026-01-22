@@ -1153,7 +1153,22 @@ export class Spaceship extends Entity {
         let minDist = Infinity;
         const range = 2000; // Same as main turret range with rangeMult
 
-        // First priority: Boss ships (Cruiser or Destroyer)
+        // First priority: Warp Shield Drones (protector ships that shield the boss)
+        // These should be targeted before the boss itself
+        for (let e of GameContext.enemies) {
+            if (e.dead) continue;
+            if (e.isWarpShieldDrone) {
+                const dist = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
+                if (dist <= range && dist < minDist) {
+                    minDist = dist;
+                    nearestTarget = e;
+                }
+            }
+        }
+        // If we found shield drones, target them immediately
+        if (nearestTarget) return nearestTarget;
+
+        // Next priority: Boss ships (Cruiser or Destroyer)
         // Check global boss variable (Cruiser)
         if (GameContext.boss && !GameContext.boss.dead) {
             const dist = Math.hypot(GameContext.boss.pos.x - this.pos.x, GameContext.boss.pos.y - this.pos.y);
