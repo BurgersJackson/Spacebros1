@@ -399,10 +399,10 @@ export class Spaceship extends Entity {
         }
 
         // NEW: Slacker ship mouse movement - gamepad-style joystick
-        // When left mouse button held: movement control via mouse position from center
+        // Move when left mouse button is NOT held (reverse of normal behavior)
         // When left mouse button released: ship stops
         if (this.shipType === 'slacker' && !GameContext.usingGamepad) {
-            if (mouseState.leftDown) {
+            if (!mouseState.leftDown) {
                 // Gamepad-style: screen center is joystick center, mouse position determines stick direction/magnitude
                 if (_getInternalSize && mouseScreen) {
                     const internal = _getInternalSize();
@@ -453,7 +453,7 @@ export class Spaceship extends Entity {
                     }
                 }
             } else {
-                // Left mouse released: ship stops
+                // Left mouse button IS held: ship stops
                 moveX = 0;
                 moveY = 0;
                 this._slackerMouseMoveX = 0;
@@ -502,7 +502,7 @@ export class Spaceship extends Entity {
                 } else if (moveMag > moveAimThresh) {
                     this.turretAngle = Math.atan2(moveY, moveX);
                 }
-            } else if (mouseState.leftDown) {
+            } else if (!mouseState.leftDown) {
                 // Mouse mode: only aim when left mouse button is held
                 this.turretAngle = Math.atan2(mouseWorld.y - this.pos.y, mouseWorld.x - this.pos.x);
             }
@@ -919,7 +919,7 @@ export class Spaceship extends Entity {
 
         // Time-scaled friction
         // Slacker ship: apply braking when mouse button released (stops movement)
-        const slackerBrake = (this.shipType === 'slacker' && !GameContext.usingGamepad && !mouseState.leftDown) ? 0.85 : 1.0;
+        const slackerBrake = (this.shipType === 'slacker' && !GameContext.usingGamepad && mouseState.leftDown) ? 0.85 : 1.0;
         this.vel.mult(Math.pow(this.friction * slackerBrake, dtScale));
 
         super.update(deltaTime);

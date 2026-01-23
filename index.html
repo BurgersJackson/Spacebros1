@@ -1,1151 +1,1449 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
     <title>Neon Space Cave</title>
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #000;
-            color: #fff;
-            font-family: 'Courier New', Courier, monospace;
-            touch-action: none;
-            user-select: none;
-        }
-
-        /* Canvas container - fills screen, canvas stretches to fill */
-        #canvas-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: #000;
-            z-index: 0;
-            overflow: hidden;
-        }
-
-        canvas {
-            display: block;
-            /* These are now set via JavaScript for each canvas */
-            /* max-width/max-height + object-fit is handled in JS */
-            max-width: none !important;
-            max-height: none !important;
-            /* Canvas size is controlled by JavaScript to allow stretching in fullscreen */
-            aspect-ratio: unset !important;
-            object-fit: fill !important;
-            /* Ensure canvas can stretch without maintaining aspect ratio */
-            image-rendering: pixelated;
-            /* Hide focus ring when canvas is focused */
-            outline: none !important;
-        }
-        
-        /* Force canvas to stretch in fullscreen */
-        body:has(#canvas-container canvas[style*="position: fixed"]) canvas {
-            width: 100vw !important;
-            height: 100vh !important;
-        }
-
-        #ui-layer {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 20;
-        }
-
-        #hud {
-            padding: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 20px;
-            font-weight: bold;
-            color: #0f0;
-            text-shadow: 0 0 5px #0f0;
-            letter-spacing: 2px;
-            width: 95%;
-            pointer-events: none;
-        }
-
-        .hud-left {
-            display: flex;
-            gap: 30px;
-            align-items: center;
-        }
-
-        /* Status Bars */
-        .status-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .bar-container {
-            width: 150px;
-            height: 15px;
-            border: 2px solid #fff;
-            background: #222;
-            position: relative;
-        }
-
-        .nugget-display {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .nugget-icon {
-            width: 14px;
-            height: 14px;
-            background: linear-gradient(135deg, #ff0, #f90 50%, #0ff);
-            border: 1px solid #fff;
-            box-shadow: 0 0 8px #ff0;
-            transform: rotate(45deg);
-        }
-
-        .nugget-display .hp-value {
-            color: #ff0;
-            text-shadow: 0 0 5px #ff0;
-        }
-
-        .hp-value {
-            margin-left: 8px;
-            color: #0f0;
-            font-weight: bold;
-            font-size: 14px;
-            text-shadow: 0 0 5px #0f0;
-            align-self: center;
-        }
-
-        .hud-timer {
-            margin-left: 16px;
-            color: #0ff;
-            font-weight: bold;
-            font-size: 16px;
-            text-shadow: 0 0 6px #0ff;
-            align-self: center;
-            pointer-events: none;
-        }
-
-        #fps-counter {
-            position: absolute;
-            top: 10px;
-            right: 16px;
-            font-size: 14px;
-            color: #0f0;
-            text-shadow: 0 0 5px #0f0;
-            opacity: 0.75;
-            letter-spacing: 1px;
-            pointer-events: none;
-            user-select: none;
-        }
-
-        #health-fill {
-            width: 100%;
-            height: 100%;
-            background-color: #0f0;
-            transition: width 0.2s, background-color 0.2s;
-        }
-
-        #xp-bar-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 5px;
-            background: #222;
-            z-index: 5;
-        }
-
-        #xp-fill {
-            width: 0%;
-            height: 100%;
-            background-color: #ff0;
-            transition: width 0.2s;
-            box-shadow: 0 0 5px #ff0;
-        }
-
-        /* Warp Cooldown Bar */
-        #warp-status {
-            display: none;
-            /* Hidden until unlocked */
-            align-items: center;
-            gap: 10px;
-        }
-
-        #warp-fill {
-            width: 100%;
-            height: 100%;
-            background-color: #0ff;
-            transition: width 0.1s linear;
-        }
-
-        /* Turbo Cooldown Bar */
-        #turbo-status {
-            display: none;
-            /* Hidden until unlocked */
-            align-items: center;
-            gap: 10px;
-        }
-
-        #turbo-fill {
-            width: 0%;
-            height: 100%;
-            background: linear-gradient(90deg, #f00, #ff0);
-            box-shadow: 0 0 10px rgba(255, 200, 0, 0.8);
-            transition: width 0.1s linear, background-color 0.1s linear;
-        }
-
-        #minimap-container {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            width: 200px;
-            height: 200px;
-            border: 2px solid #0f0;
-            background: rgba(0, 20, 0, 0.9);
-            box-shadow: 0 0 10px #0f0;
-            border-radius: 50%;
-            overflow: hidden;
-            z-index: 20;
-            /* always above canvas + Pixi overlay */
-            pointer-events: none;
-            /* never blocks gameplay input */
-        }
-
-        #minimap {
-            width: 100%;
-            height: 100%;
-            display: block;
-        }
-
-        .menu-screen {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            pointer-events: auto;
-            background: rgba(0, 0, 0, 0.95);
-            padding: 40px;
-            border: 2px solid #0f0;
-            box-shadow: 0 0 20px #0f0;
-            display: none;
-            z-index: 100;
-            min-width: 300px;
-        }
-
-        #levelup-screen {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.85);
-            display: none;
-            z-index: 100;
-            pointer-events: auto;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
-
-        #upgrade-container {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            flex-wrap: wrap;
-            margin-top: 20px;
-        }
-
-        .upgrade-card {
-            width: 220px;
-            height: 300px;
-            border: 2px solid #0f0;
-            background: rgba(0, 20, 0, 0.9);
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s;
-        }
-
-        .upgrade-card.selected {
-            transform: scale(1.05);
-            box-shadow: 0 0 20px #ff0;
-            background: #040;
-            border-color: #ff0;
-        }
-
-        .upgrade-title {
-            font-size: 18px;
-            font-weight: bold;
-            color: #ff0;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-        }
-
-        .upgrade-desc {
-            font-size: 14px;
-            color: #fff;
-            margin-bottom: auto;
-            line-height: 1.4;
-        }
-
-        .upgrade-tier {
-            font-size: 12px;
-            color: #0ff;
-            margin-top: 10px;
-        }
-
-        #start-screen {
-            display: block;
-        }
-
-        .ship-select-btn {
-            background: transparent;
-            color: #0f0;
-            border: 2px solid #0f0;
-            padding: 8px 16px;
-            margin: 4px;
-            cursor: pointer;
-            font-family: inherit;
-            font-size: 14px;
-            font-weight: bold;
-            transition: all 0.2s;
-            text-transform: uppercase;
-        }
-        .ship-select-btn.selected {
-            background: #0f0;
-            color: #000;
-            box-shadow: 0 0 10px #0f0;
-        }
-        .ship-select-btn:hover {
-            background: rgba(0, 255, 0, 0.2);
-        }
-        .ship-select-btn.selected:hover {
-            background: #0f0;
-            color: #000;
-        }
-
-        #end-screen {
-            display: none;
-        }
-
-        #overlay-message {
-            position: absolute;
-            top: 30%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            font-size: 32px;
-            color: #0ff;
-            text-shadow: 0 0 10px #0ff;
-            font-weight: bold;
-            letter-spacing: 3px;
-            display: none;
-            width: 100%;
-            z-index: 5;
-        }
-
-        #arena-countdown {
-            position: absolute;
-            top: 15%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            font-size: 48px;
-            font-weight: bold;
-            letter-spacing: 4px;
-            display: none;
-            width: 100%;
-            z-index: 6;
-            will-change: transform; /* Hint browser for animation optimization */
-        }
-
-        /* Base countdown state (10-6 seconds) */
-        #arena-countdown.countdown-normal {
-            color: #f80;
-            text-shadow: 0 0 20px #f80;
-            font-size: 48px;
-        }
-
-        /* Warning state (5-4 seconds) */
-        #arena-countdown.countdown-warning {
-            color: #ff0;
-            text-shadow: 0 0 25px #ff0;
-            font-size: 56px;
-        }
-
-        /* Critical state (3-1 seconds) */
-        #arena-countdown.countdown-critical {
-            color: #f00;
-            text-shadow: 0 0 30px #f00;
-            font-size: 64px;
-            animation: pulse 0.5s ease-in-out infinite alternate;
-        }
-
-        @keyframes pulse {
-            from { transform: translate(-50%, -50%) scale(1); }
-            to { transform: translate(-50%, -50%) scale(1.1); }
-        }
-
-        h1 {
-            font-size: 48px;
-            margin-bottom: 20px;
-            text-transform: uppercase;
-            letter-spacing: 5px;
-            color: #0f0;
-            text-shadow: 0 0 10px #0f0;
-        }
-
-        p {
-            margin-bottom: 30px;
-            font-size: 16px;
-            color: #afa;
-            line-height: 1.5;
-        }
-
-        button {
-            background: transparent;
-            color: #0f0;
-            border: 2px solid #0f0;
-            padding: 15px 40px;
-            font-family: inherit;
-            font-size: 18px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-transform: uppercase;
-            margin: 10px;
-            outline: none;
-        }
-
-        .no-cursor {
-            cursor: none;
-        }
-
-        button:hover,
-        button:focus,
-        button.selected {
-            background: #0f0;
-            color: #000;
-            box-shadow: 0 0 15px #0f0;
-        }
-
-        /* Settings menu gamepad selection styles */
-        #res-select.selected,
-        #fullscreen-check.selected,
-        #vsync-check.selected,
-        #frameless-check.selected,
-        #crt-check.selected {
-            outline: 2px solid #0ff;
-            outline-offset: 2px;
-            box-shadow: 0 0 10px #0ff;
-        }
-
-        /* Settings menu label highlighting */
-        label:has(.selected) {
-            color: #0ff !important;
-            text-shadow: 0 0 8px #0ff;
-        }
-
-        /* Volume slider styles */
-        #music-volume.selected,
-        #sfx-volume.selected {
-            outline: 2px solid #0ff;
-            outline-offset: 2px;
-        }
-
-        input[type="range"] {
-            -webkit-appearance: none;
-            appearance: none;
-            height: 8px;
-            background: #003300;
-            border-radius: 4px;
-            outline: none;
-        }
-
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 20px;
-            height: 20px;
-            background: #0ff;
-            border-radius: 50%;
-            cursor: pointer;
-            box-shadow: 0 0 10px #0ff;
-        }
-
-        input[type="range"]::-moz-range-thumb {
-            width: 20px;
-            height: 20px;
-            background: #0ff;
-            border-radius: 50%;
-            cursor: pointer;
-            border: none;
-            box-shadow: 0 0 10px #0ff;
-        }
-
-        .meta-shop {
-            margin-top: 20px;
-            font-size: 14px;
-            color: #0f0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-            max-height: calc(80vh - 120px); /* Account for header and padding */
-            overflow-y: auto;
-            overflow-x: hidden;
-            padding-right: 10px; /* Space for scrollbar */
-        }
-
-        .meta-shop::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        .meta-shop::-webkit-scrollbar-track {
-            background: rgba(0, 20, 0, 0.3);
-            border-radius: 4px;
-        }
-
-        .meta-shop::-webkit-scrollbar-thumb {
-            background: #0f0;
-            border-radius: 4px;
-        }
-
-        .meta-shop::-webkit-scrollbar-thumb:hover {
-            background: #4f4;
-        }
-
-        .meta-grid {
-            display: grid;
-            grid-template-columns: repeat(5, minmax(0, 1fr));
-            gap: 10px;
-            width: 100%;
-        }
-
-        .meta-item button {
-            width: 100%;
-            box-sizing: border-box;
-            text-align: center;
-        }
-
-        .meta-item.selected {
-            background: rgba(0, 255, 0, 0.2);
-            border: 2px solid #0f0;
-            box-shadow: 0 0 10px #0f0;
-            overflow: hidden;
-        }
-
-        .meta-item span {
-            display: block;
-            margin-top: 4px;
-            font-size: 12px;
-            color: #9f9;
-            text-align: center;
-        }
-
-        .objective-text {
-            color: #f0f;
-        }
-        #pos-debug {
-            color: #0ff;
-            text-shadow: 0 0 6px #0ff;
-        }
-
-        /* Station Boss Bar */
-        #station-health-container {
-            position: absolute;
-            top: 60px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 400px;
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            z-index: 4;
-            pointer-events: none;
-        }
-
-        #station-name {
-            color: #f00;
-            font-size: 18px;
-            font-weight: bold;
-            text-shadow: 0 0 10px #f00;
-            margin-bottom: 4px;
-            letter-spacing: 2px;
-        }
-
-        #station-bar-border {
-            width: 100%;
-            height: 15px;
-            border: 2px solid #f00;
-            background: rgba(50, 0, 0, 0.5);
-            box-shadow: 0 0 10px #f00;
-        }
-
-        #station-health-fill {
-            width: 100%;
-            height: 100%;
-            background-color: #f00;
-            transition: width 0.1s linear;
-        }
-
-        /* Abort Modal Styles */
-        #abort-confirm {
-            border-color: #ff0;
-            color: #ff0;
-            min-width: 120px;
-            font-weight: bold;
-        }
-        #abort-cancel {
-            border-color: #0f0;
-            min-width: 120px;
-        }
-
-        /* Profile Card Styles */
-        .profile-item {
-            background: rgba(0, 20, 0, 0.9);
-            border: 2px solid #0f0;
-            padding: 15px;
-            margin: 10px 0;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .profile-item:hover,
-        .profile-item.selected {
-            background: rgba(0, 40, 0, 0.95);
-            border-color: #ff0;
-            box-shadow: 0 0 10px #ff0;
-        }
-        .profile-item-name {
-            font-size: 18px;
-            font-weight: bold;
-            color: #ff0;
-            margin-bottom: 8px;
-        }
-        .profile-item-detail {
-            font-size: 13px;
-            color: #fff;
-            margin: 4px 0;
-        }
-        .profile-item-last-saved {
-            font-size: 11px;
-            color: #888;
-            margin-top: 8px;
-        }
-
-        /* CRT Filter Effect */
-        #crt-filter {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 1000;
-            display: none;
-            overflow: hidden;
-        }
-
-        #crt-filter.active {
-            display: block;
-        }
-
-        /* Scanline effect - stronger and more visible */
-        #crt-filter::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: repeating-linear-gradient(
-                0deg,
-                rgba(0, 0, 0, 0.3),
-                rgba(0, 0, 0, 0.3) 1px,
-                transparent 1px,
-                transparent 3px
-            );
-            pointer-events: none;
-        }
-
-        /* Screen curvature/vignette effect - more dramatic */
-        #crt-filter::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: radial-gradient(
-                ellipse at center,
-                transparent 0%,
-                transparent 50%,
-                rgba(0, 0, 0, 0.3) 75%,
-                rgba(0, 0, 0, 0.7) 100%
-            );
-            pointer-events: none;
-            box-shadow: inset 0 0 150px rgba(0, 0, 0, 0.5);
-        }
-
-        /* Photon Bloom Overlay - creates glow effect */
-        #photon-bloom {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 5;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-            background: transparent;
-        }
-
-        body.crt-active #photon-bloom {
-            opacity: 1;
-            background: 
-                radial-gradient(circle at 20% 30%, rgba(0, 255, 0, 0.15) 0%, transparent 50%),
-                radial-gradient(circle at 80% 70%, rgba(0, 255, 255, 0.12) 0%, transparent 50%),
-                radial-gradient(circle at 50% 50%, rgba(255, 255, 0, 0.1) 0%, transparent 60%);
-            filter: blur(20px);
-            mix-blend-mode: screen;
-        }
-
-        /* Apply color enhancement when active */
-        body.crt-active #canvas-container,
-        body.crt-active #ui-layer {
-            filter: contrast(1.15) saturate(1.2) brightness(1.05);
-        }
-
-        /* Photon glow effect - creates bloom on bright pixels */
-        body.crt-active #gameCanvas {
-            filter: contrast(1.3) saturate(1.5) brightness(1.2);
-            will-change: filter;
-            box-shadow: 
-                0 0 20px rgba(0, 255, 0, 0.5),
-                0 0 40px rgba(0, 255, 0, 0.3),
-                0 0 60px rgba(0, 255, 0, 0.2),
-                0 0 100px rgba(0, 255, 0, 0.1),
-                inset 0 0 50px rgba(0, 255, 0, 0.1);
-        }
-
-        /* Additional glow for UI overlay */
-        body.crt-active #uiCanvas {
-            filter: brightness(1.25) contrast(1.2) saturate(1.3);
-            box-shadow: 
-                0 0 15px rgba(0, 255, 0, 0.6),
-                0 0 30px rgba(0, 255, 0, 0.4),
-                0 0 50px rgba(0, 255, 0, 0.3);
-        }
-
-        /* Create bloom effect using pseudo-element overlay */
-        body.crt-active #canvas-container::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: 
-                radial-gradient(ellipse at center, rgba(0, 255, 0, 0.2) 0%, transparent 70%),
-                radial-gradient(ellipse at 30% 40%, rgba(0, 255, 255, 0.15) 0%, transparent 60%),
-                radial-gradient(ellipse at 70% 60%, rgba(255, 255, 0, 0.12) 0%, transparent 60%);
-            filter: blur(25px) brightness(1.5);
-            mix-blend-mode: screen;
-            opacity: 0.7;
-            z-index: 3;
-            pointer-events: none;
-        }
-
-        /* Subtle screen glow - more visible */
-        #crt-filter .crt-glow {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: radial-gradient(
-                ellipse at center,
-                rgba(0, 255, 0, 0.08) 0%,
-                rgba(0, 255, 0, 0.03) 50%,
-                transparent 80%
-            );
-            pointer-events: none;
-            animation: crtGlow 4s ease-in-out infinite;
-        }
-
-        @keyframes crtGlow {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-
-        /* Add subtle RGB shift via text-shadow for more retro feel */
-        body.crt-active * {
-            text-shadow: 0.05em 0 0 rgba(255, 0, 0, 0.3), -0.05em 0 0 rgba(0, 255, 255, 0.3);
-        }
+      body {
+        margin: 0;
+        overflow: hidden;
+        background-color: #000;
+        color: #fff;
+        font-family: "Courier New", Courier, monospace;
+        touch-action: none;
+        user-select: none;
+      }
+
+      /* Canvas container - fills screen, canvas stretches to fill */
+      #canvas-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #000;
+        z-index: 0;
+        overflow: hidden;
+      }
+
+      canvas {
+        display: block;
+        /* These are now set via JavaScript for each canvas */
+        /* max-width/max-height + object-fit is handled in JS */
+        max-width: none !important;
+        max-height: none !important;
+        /* Canvas size is controlled by JavaScript to allow stretching in fullscreen */
+        aspect-ratio: unset !important;
+        object-fit: fill !important;
+        /* Ensure canvas can stretch without maintaining aspect ratio */
+        image-rendering: pixelated;
+        /* Hide focus ring when canvas is focused */
+        outline: none !important;
+      }
+
+      /* Force canvas to stretch in fullscreen */
+      body:has(#canvas-container canvas[style*="position: fixed"]) canvas {
+        width: 100vw !important;
+        height: 100vh !important;
+      }
+
+      #ui-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 20;
+      }
+
+      #hud {
+        padding: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 20px;
+        font-weight: bold;
+        color: #0f0;
+        text-shadow: 0 0 5px #0f0;
+        letter-spacing: 2px;
+        width: 95%;
+        pointer-events: none;
+      }
+
+      .hud-left {
+        display: flex;
+        gap: 30px;
+        align-items: center;
+      }
+
+      /* Status Bars */
+      .status-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .bar-container {
+        width: 150px;
+        height: 15px;
+        border: 2px solid #fff;
+        background: #222;
+        position: relative;
+      }
+
+      .nugget-display {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .nugget-icon {
+        width: 14px;
+        height: 14px;
+        background: linear-gradient(135deg, #ff0, #f90 50%, #0ff);
+        border: 1px solid #fff;
+        box-shadow: 0 0 8px #ff0;
+        transform: rotate(45deg);
+      }
+
+      .nugget-display .hp-value {
+        color: #ff0;
+        text-shadow: 0 0 5px #ff0;
+      }
+
+      .hp-value {
+        margin-left: 8px;
+        color: #0f0;
+        font-weight: bold;
+        font-size: 14px;
+        text-shadow: 0 0 5px #0f0;
+        align-self: center;
+      }
+
+      .hud-timer {
+        margin-left: 16px;
+        color: #0ff;
+        font-weight: bold;
+        font-size: 16px;
+        text-shadow: 0 0 6px #0ff;
+        align-self: center;
+        pointer-events: none;
+      }
+
+      #fps-counter {
+        position: absolute;
+        top: 10px;
+        right: 16px;
+        font-size: 14px;
+        color: #0f0;
+        text-shadow: 0 0 5px #0f0;
+        opacity: 0.75;
+        letter-spacing: 1px;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      #health-fill {
+        width: 100%;
+        height: 100%;
+        background-color: #0f0;
+        transition:
+          width 0.2s,
+          background-color 0.2s;
+      }
+
+      #xp-bar-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 5px;
+        background: #222;
+        z-index: 5;
+      }
+
+      #xp-fill {
+        width: 0%;
+        height: 100%;
+        background-color: #ff0;
+        transition: width 0.2s;
+        box-shadow: 0 0 5px #ff0;
+      }
+
+      /* Warp Cooldown Bar */
+      #warp-status {
+        display: none;
+        /* Hidden until unlocked */
+        align-items: center;
+        gap: 10px;
+      }
+
+      #warp-fill {
+        width: 100%;
+        height: 100%;
+        background-color: #0ff;
+        transition: width 0.1s linear;
+      }
+
+      /* Turbo Cooldown Bar */
+      #turbo-status {
+        display: none;
+        /* Hidden until unlocked */
+        align-items: center;
+        gap: 10px;
+      }
+
+      #turbo-fill {
+        width: 0%;
+        height: 100%;
+        background: linear-gradient(90deg, #f00, #ff0);
+        box-shadow: 0 0 10px rgba(255, 200, 0, 0.8);
+        transition:
+          width 0.1s linear,
+          background-color 0.1s linear;
+      }
+
+      #minimap-container {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        width: 200px;
+        height: 200px;
+        border: 2px solid #0f0;
+        background: rgba(0, 20, 0, 0.9);
+        box-shadow: 0 0 10px #0f0;
+        border-radius: 50%;
+        overflow: hidden;
+        z-index: 20;
+        /* always above canvas + Pixi overlay */
+        pointer-events: none;
+        /* never blocks gameplay input */
+      }
+
+      #minimap {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .menu-screen {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        pointer-events: auto;
+        background: rgba(0, 0, 0, 0.95);
+        padding: 40px;
+        border: 2px solid #0f0;
+        box-shadow: 0 0 20px #0f0;
+        display: none;
+        z-index: 100;
+        min-width: 300px;
+      }
+
+      #levelup-screen {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        display: none;
+        z-index: 100;
+        pointer-events: auto;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+      }
+
+      #upgrade-container {
+        display: flex;
+        gap: 20px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-top: 20px;
+      }
+
+      .upgrade-card {
+        width: 220px;
+        height: 300px;
+        border: 2px solid #0f0;
+        background: rgba(0, 20, 0, 0.9);
+        padding: 15px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        cursor: pointer;
+        transition:
+          transform 0.2s,
+          box-shadow 0.2s,
+          background-color 0.2s;
+      }
+
+      .upgrade-card.selected {
+        transform: scale(1.05);
+        box-shadow: 0 0 20px #ff0;
+        background: #040;
+        border-color: #ff0;
+      }
+
+      .upgrade-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #ff0;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+      }
+
+      .upgrade-desc {
+        font-size: 14px;
+        color: #fff;
+        margin-bottom: auto;
+        line-height: 1.4;
+      }
+
+      .upgrade-tier {
+        font-size: 12px;
+        color: #0ff;
+        margin-top: 10px;
+      }
+
+      #start-screen {
+        display: block;
+      }
+
+      .ship-select-btn {
+        background: transparent;
+        color: #0f0;
+        border: 2px solid #0f0;
+        padding: 8px 16px;
+        margin: 4px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: bold;
+        transition: all 0.2s;
+        text-transform: uppercase;
+      }
+      .ship-select-btn.selected {
+        background: #0f0;
+        color: #000;
+        box-shadow: 0 0 10px #0f0;
+      }
+      .ship-select-btn:hover {
+        background: rgba(0, 255, 0, 0.2);
+      }
+      .ship-select-btn.selected:hover {
+        background: #0f0;
+        color: #000;
+      }
+
+      #end-screen {
+        display: none;
+      }
+
+      #overlay-message {
+        position: absolute;
+        top: 30%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        font-size: 32px;
+        color: #0ff;
+        text-shadow: 0 0 10px #0ff;
+        font-weight: bold;
+        letter-spacing: 3px;
+        display: none;
+        width: 100%;
+        z-index: 5;
+      }
+
+      #arena-countdown {
+        position: absolute;
+        top: 15%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        font-size: 48px;
+        font-weight: bold;
+        letter-spacing: 4px;
+        display: none;
+        width: 100%;
+        z-index: 6;
+        will-change: transform; /* Hint browser for animation optimization */
+      }
+
+      /* Base countdown state (10-6 seconds) */
+      #arena-countdown.countdown-normal {
+        color: #f80;
+        text-shadow: 0 0 20px #f80;
+        font-size: 48px;
+      }
+
+      /* Warning state (5-4 seconds) */
+      #arena-countdown.countdown-warning {
+        color: #ff0;
+        text-shadow: 0 0 25px #ff0;
+        font-size: 56px;
+      }
+
+      /* Critical state (3-1 seconds) */
+      #arena-countdown.countdown-critical {
+        color: #f00;
+        text-shadow: 0 0 30px #f00;
+        font-size: 64px;
+        animation: pulse 0.5s ease-in-out infinite alternate;
+      }
+
+      @keyframes pulse {
+        from {
+          transform: translate(-50%, -50%) scale(1);
+        }
+        to {
+          transform: translate(-50%, -50%) scale(1.1);
+        }
+      }
+
+      h1 {
+        font-size: 48px;
+        margin-bottom: 20px;
+        text-transform: uppercase;
+        letter-spacing: 5px;
+        color: #0f0;
+        text-shadow: 0 0 10px #0f0;
+      }
+
+      p {
+        margin-bottom: 30px;
+        font-size: 16px;
+        color: #afa;
+        line-height: 1.5;
+      }
+
+      button {
+        background: transparent;
+        color: #0f0;
+        border: 2px solid #0f0;
+        padding: 15px 40px;
+        font-family: inherit;
+        font-size: 18px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-transform: uppercase;
+        margin: 10px;
+        outline: none;
+      }
+
+      .no-cursor {
+        cursor: none;
+      }
+
+      button:hover,
+      button:focus,
+      button.selected {
+        background: #0f0;
+        color: #000;
+        box-shadow: 0 0 15px #0f0;
+      }
+
+      /* Settings menu gamepad selection styles */
+      #res-select.selected,
+      #fullscreen-check.selected,
+      #vsync-check.selected,
+      #frameless-check.selected,
+      #crt-check.selected {
+        outline: 2px solid #0ff;
+        outline-offset: 2px;
+        box-shadow: 0 0 10px #0ff;
+      }
+
+      /* Settings menu label highlighting */
+      label:has(.selected) {
+        color: #0ff !important;
+        text-shadow: 0 0 8px #0ff;
+      }
+
+      /* Volume slider styles */
+      #music-volume.selected,
+      #sfx-volume.selected {
+        outline: 2px solid #0ff;
+        outline-offset: 2px;
+      }
+
+      input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        height: 8px;
+        background: #003300;
+        border-radius: 4px;
+        outline: none;
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        background: #0ff;
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 0 10px #0ff;
+      }
+
+      input[type="range"]::-moz-range-thumb {
+        width: 20px;
+        height: 20px;
+        background: #0ff;
+        border-radius: 50%;
+        cursor: pointer;
+        border: none;
+        box-shadow: 0 0 10px #0ff;
+      }
+
+      .meta-shop {
+        margin-top: 20px;
+        font-size: 14px;
+        color: #0f0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        max-height: calc(80vh - 120px); /* Account for header and padding */
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding-right: 10px; /* Space for scrollbar */
+      }
+
+      .meta-shop::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .meta-shop::-webkit-scrollbar-track {
+        background: rgba(0, 20, 0, 0.3);
+        border-radius: 4px;
+      }
+
+      .meta-shop::-webkit-scrollbar-thumb {
+        background: #0f0;
+        border-radius: 4px;
+      }
+
+      .meta-shop::-webkit-scrollbar-thumb:hover {
+        background: #4f4;
+      }
+
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        width: 100%;
+      }
+
+      .meta-item button {
+        width: 100%;
+        box-sizing: border-box;
+        text-align: center;
+      }
+
+      .meta-item.selected {
+        background: rgba(0, 255, 0, 0.2);
+        border: 2px solid #0f0;
+        box-shadow: 0 0 10px #0f0;
+        overflow: hidden;
+      }
+
+      .meta-item span {
+        display: block;
+        margin-top: 4px;
+        font-size: 12px;
+        color: #9f9;
+        text-align: center;
+      }
+
+      .objective-text {
+        color: #f0f;
+      }
+      #pos-debug {
+        color: #0ff;
+        text-shadow: 0 0 6px #0ff;
+      }
+
+      /* Station Boss Bar */
+      #station-health-container {
+        position: absolute;
+        top: 60px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 400px;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        z-index: 4;
+        pointer-events: none;
+      }
+
+      #station-name {
+        color: #f00;
+        font-size: 18px;
+        font-weight: bold;
+        text-shadow: 0 0 10px #f00;
+        margin-bottom: 4px;
+        letter-spacing: 2px;
+      }
+
+      #station-bar-border {
+        width: 100%;
+        height: 15px;
+        border: 2px solid #f00;
+        background: rgba(50, 0, 0, 0.5);
+        box-shadow: 0 0 10px #f00;
+      }
+
+      #station-health-fill {
+        width: 100%;
+        height: 100%;
+        background-color: #f00;
+        transition: width 0.1s linear;
+      }
+
+      /* Abort Modal Styles */
+      #abort-confirm {
+        border-color: #ff0;
+        color: #ff0;
+        min-width: 120px;
+        font-weight: bold;
+      }
+      #abort-cancel {
+        border-color: #0f0;
+        min-width: 120px;
+      }
+
+      /* Profile Card Styles */
+      .profile-item {
+        background: rgba(0, 20, 0, 0.9);
+        border: 2px solid #0f0;
+        padding: 15px;
+        margin: 10px 0;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .profile-item:hover,
+      .profile-item.selected {
+        background: rgba(0, 40, 0, 0.95);
+        border-color: #ff0;
+        box-shadow: 0 0 10px #ff0;
+      }
+      .profile-item-name {
+        font-size: 18px;
+        font-weight: bold;
+        color: #ff0;
+        margin-bottom: 8px;
+      }
+      .profile-item-detail {
+        font-size: 13px;
+        color: #fff;
+        margin: 4px 0;
+      }
+      .profile-item-last-saved {
+        font-size: 11px;
+        color: #888;
+        margin-top: 8px;
+      }
+
+      /* CRT Filter Effect */
+      #crt-filter {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 1000;
+        display: none;
+        overflow: hidden;
+      }
+
+      #crt-filter.active {
+        display: block;
+      }
+
+      /* Scanline effect - stronger and more visible */
+      #crt-filter::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: repeating-linear-gradient(
+          0deg,
+          rgba(0, 0, 0, 0.3),
+          rgba(0, 0, 0, 0.3) 1px,
+          transparent 1px,
+          transparent 3px
+        );
+        pointer-events: none;
+      }
+
+      /* Screen curvature/vignette effect - more dramatic */
+      #crt-filter::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(
+          ellipse at center,
+          transparent 0%,
+          transparent 50%,
+          rgba(0, 0, 0, 0.3) 75%,
+          rgba(0, 0, 0, 0.7) 100%
+        );
+        pointer-events: none;
+        box-shadow: inset 0 0 150px rgba(0, 0, 0, 0.5);
+      }
+
+      /* Photon Bloom Overlay - creates glow effect */
+      #photon-bloom {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 5;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        background: transparent;
+      }
+
+      body.crt-active #photon-bloom {
+        opacity: 1;
+        background:
+          radial-gradient(circle at 20% 30%, rgba(0, 255, 0, 0.15) 0%, transparent 50%),
+          radial-gradient(circle at 80% 70%, rgba(0, 255, 255, 0.12) 0%, transparent 50%),
+          radial-gradient(circle at 50% 50%, rgba(255, 255, 0, 0.1) 0%, transparent 60%);
+        filter: blur(20px);
+        mix-blend-mode: screen;
+      }
+
+      /* Apply color enhancement when active */
+      body.crt-active #canvas-container,
+      body.crt-active #ui-layer {
+        filter: contrast(1.15) saturate(1.2) brightness(1.05);
+      }
+
+      /* Photon glow effect - creates bloom on bright pixels */
+      body.crt-active #gameCanvas {
+        filter: contrast(1.3) saturate(1.5) brightness(1.2);
+        will-change: filter;
+        box-shadow:
+          0 0 20px rgba(0, 255, 0, 0.5),
+          0 0 40px rgba(0, 255, 0, 0.3),
+          0 0 60px rgba(0, 255, 0, 0.2),
+          0 0 100px rgba(0, 255, 0, 0.1),
+          inset 0 0 50px rgba(0, 255, 0, 0.1);
+      }
+
+      /* Additional glow for UI overlay */
+      body.crt-active #uiCanvas {
+        filter: brightness(1.25) contrast(1.2) saturate(1.3);
+        box-shadow:
+          0 0 15px rgba(0, 255, 0, 0.6),
+          0 0 30px rgba(0, 255, 0, 0.4),
+          0 0 50px rgba(0, 255, 0, 0.3);
+      }
+
+      /* Create bloom effect using pseudo-element overlay */
+      body.crt-active #canvas-container::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background:
+          radial-gradient(ellipse at center, rgba(0, 255, 0, 0.2) 0%, transparent 70%),
+          radial-gradient(ellipse at 30% 40%, rgba(0, 255, 255, 0.15) 0%, transparent 60%),
+          radial-gradient(ellipse at 70% 60%, rgba(255, 255, 0, 0.12) 0%, transparent 60%);
+        filter: blur(25px) brightness(1.5);
+        mix-blend-mode: screen;
+        opacity: 0.7;
+        z-index: 3;
+        pointer-events: none;
+      }
+
+      /* Subtle screen glow - more visible */
+      #crt-filter .crt-glow {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(
+          ellipse at center,
+          rgba(0, 255, 0, 0.08) 0%,
+          rgba(0, 255, 0, 0.03) 50%,
+          transparent 80%
+        );
+        pointer-events: none;
+        animation: crtGlow 4s ease-in-out infinite;
+      }
+
+      @keyframes crtGlow {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.7;
+        }
+      }
+
+      /* Add subtle RGB shift via text-shadow for more retro feel */
+      body.crt-active * {
+        text-shadow:
+          0.05em 0 0 rgba(255, 0, 0, 0.3),
+          -0.05em 0 0 rgba(0, 255, 255, 0.3);
+      }
     </style>
     <script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "react/": "https://aistudiocdn.com/react@^19.2.1/"
-  }
-}
-</script>
+      {
+        "imports": {
+          "react": "https://aistudiocdn.com/react@^19.2.1",
+          "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+          "react/": "https://aistudiocdn.com/react@^19.2.1/"
+        }
+      }
+    </script>
     <!-- Single-file build: keep everything in this HTML (no external assets). -->
-</head>
+  </head>
 
-<body>
+  <body>
     <div id="root"></div>
     <div id="canvas-container">
-        <canvas id="gameCanvas" tabindex="0"></canvas>
-        <canvas id="uiCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 10;"></canvas>
+      <canvas id="gameCanvas" tabindex="0"></canvas>
+      <canvas
+        id="uiCanvas"
+        style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 150"
+      ></canvas>
     </div>
     <div id="xp-bar-container">
-        <div id="xp-fill"></div>
+      <div id="xp-fill"></div>
     </div>
 
     <div id="ui-layer">
-        <div id="fps-counter">FPS --</div>
-        <div id="hud">
-            <div class="hud-left">
-                <div>SCORE: <span id="score">0</span></div>
+      <div id="fps-counter">FPS --</div>
+      <div id="hud">
+        <div class="hud-left">
+          <div>SCORE: <span id="score">0</span></div>
 
-                <div class="status-group">
-                    <span>HP:</span>
-                    <div class="bar-container">
-                        <div id="health-fill"></div>
-                    </div>
-                    <div class="hp-value" id="health-text">0 / 0</div>
-                </div>
-
-                <div class="status-group" id="warp-status">
-                    <span>WARP:</span>
-                    <div class="bar-container">
-                        <div id="warp-fill"></div>
-                    </div>
-                </div>
-
-                <div class="status-group" id="turbo-status">
-                    <span>TURBO:</span>
-                    <div class="bar-container">
-                        <div id="turbo-fill"></div>
-                    </div>
-                </div>
-
-                <div class="status-group" id="battery-ui" style="display: none;">
-                    <span style="color: #0ff;">BATTERY:</span>
-                    <div class="bar-container">
-                        <div id="battery-fill" style="width: 0%; height: 100%; background: #0ff; transition: width 0.1s;"></div>
-                    </div>
-                    <div class="hp-value" id="battery-text" style="color: #0ff;">0%</div>
-                </div>
-
-                <div class="status-group nugget-display">
-                    <span>NUGS:</span>
-                    <div class="nugget-icon"></div>
-                    <div class="hp-value" id="nugget-count">0</div>
-                </div>
-
-                <div class="status-group">
-                    <span style="color: #ff0;">INPUT:</span>
-                    <div class="hp-value" id="input-speed" style="color: #ff0;">0.00</div>
-                </div>
+          <div class="status-group">
+            <span>HP:</span>
+            <div class="bar-container">
+              <div id="health-fill"></div>
             </div>
+            <div class="hp-value" id="health-text">0 / 0</div>
+          </div>
 
-            <div id="overlay-message"></div>
-            <div id="arena-countdown"></div>
-
-            <div class="hud-left">
-                <div>LVL: <span id="level-display">1</span></div>
-                <div id="game-timer" class="hud-timer">00:00</div>
-                <div class="objective-text" id="contract-display" style="color:#0f0; text-shadow:0 0 6px #0f0;">
-                    CONTRACT: NONE</div>
-                <div class="objective-text" id="event-display"
-                    style="color:#ff0; text-shadow:0 0 6px #ff0; display:none;">EVENT: NONE</div>
+          <div class="status-group" id="warp-status">
+            <span>WARP:</span>
+            <div class="bar-container">
+              <div id="warp-fill"></div>
             </div>
+          </div>
+
+          <div class="status-group" id="turbo-status">
+            <span>TURBO:</span>
+            <div class="bar-container">
+              <div id="turbo-fill"></div>
+            </div>
+          </div>
+
+          <div class="status-group" id="battery-ui" style="display: none">
+            <span style="color: #0ff">BATTERY:</span>
+            <div class="bar-container">
+              <div
+                id="battery-fill"
+                style="width: 0%; height: 100%; background: #0ff; transition: width 0.1s"
+              ></div>
+            </div>
+            <div class="hp-value" id="battery-text" style="color: #0ff">0%</div>
+          </div>
+
+          <div class="status-group nugget-display">
+            <span>NUGS:</span>
+            <div class="nugget-icon"></div>
+            <div class="hp-value" id="nugget-count">0</div>
+          </div>
+
+          <div class="status-group">
+            <span style="color: #ff0">INPUT:</span>
+            <div class="hp-value" id="input-speed" style="color: #ff0">0.00</div>
+          </div>
         </div>
 
-        <div id="station-health-container">
-            <div id="station-name">SPACE STATION OMEGA</div>
-            <div id="station-bar-border">
-                <div id="station-health-fill"></div>
-            </div>
-        </div>
+        <div id="overlay-message"></div>
+        <div id="arena-countdown"></div>
 
-        <div id="minimap-container" style="display: none;">
-            <!-- Old Canvas minimap hidden - now rendered via PixiJS -->
-            <canvas id="minimap"></canvas>
+        <div class="hud-left">
+          <div>LVL: <span id="level-display">1</span></div>
+          <div id="game-timer" class="hud-timer">00:00</div>
+          <div
+            class="objective-text"
+            id="contract-display"
+            style="color: #0f0; text-shadow: 0 0 6px #0f0"
+          >
+            CONTRACT: NONE
+          </div>
+          <div
+            class="objective-text"
+            id="event-display"
+            style="color: #ff0; text-shadow: 0 0 6px #ff0; display: none"
+          >
+            EVENT: NONE
+          </div>
         </div>
+      </div>
+
+      <div id="station-health-container">
+        <div id="station-name">SPACE STATION OMEGA</div>
+        <div id="station-bar-border">
+          <div id="station-health-fill"></div>
+        </div>
+      </div>
+
+      <div id="minimap-container" style="display: none">
+        <!-- Old Canvas minimap hidden - now rendered via PixiJS -->
+        <canvas id="minimap"></canvas>
+      </div>
     </div>
 
     <div id="start-screen" class="menu-screen">
-        <h1>NEON SPACE</h1>
-        <p>MOUSE: Aim • WASD/L-STICK: Move<br>Collect Coins to Upgrade Ship!</p>
-        <div id="current-profile-display" style="color: #ff0; margin-bottom: 10px; font-size: 14px;">Current: None</div>
+      <h1>NEON SPACE</h1>
+      <p>MOUSE: Aim • WASD/L-STICK: Move<br />Collect Coins to Upgrade Ship!</p>
+      <div id="current-profile-display" style="color: #ff0; margin-bottom: 10px; font-size: 14px">
+        Current: None
+      </div>
 
-        <!-- NEW: Ship Selection -->
-        <div style="margin-bottom: 15px; border: 1px solid #0ff; padding: 10px;">
-            <div style="color: #0ff; font-size: 14px; margin-bottom: 8px;">SHIP TYPE</div>
-            <button id="ship-standard-btn" class="ship-select-btn">STANDARD</button>
-            <button id="ship-slacker-btn" class="ship-select-btn">SLACKER SPECIAL</button>
-            <div id="ship-description" style="color: #888; font-size: 11px; margin-top: 8px; min-height: 40px;">
-                Manual turret control • Mouse/Gamepad aiming
-            </div>
+      <!-- NEW: Ship Selection -->
+      <div style="margin-bottom: 15px; border: 1px solid #0ff; padding: 10px">
+        <div style="color: #0ff; font-size: 14px; margin-bottom: 8px">SHIP TYPE</div>
+        <button id="ship-standard-btn" class="ship-select-btn">STANDARD</button>
+        <button id="ship-slacker-btn" class="ship-select-btn">SLACKER SPECIAL</button>
+        <div
+          id="ship-description"
+          style="color: #888; font-size: 11px; margin-top: 8px; min-height: 40px"
+        >
+          Manual turret control • Mouse/Gamepad aiming
         </div>
+      </div>
 
-        <button id="resume-btn-start">RESUME GAME</button>
-        <button id="start-btn">INITIATE LAUNCH</button>
-        <button id="profile-btn">SELECT PROFILE</button>
-        <button id="upgrades-btn" style="margin-top: 10px;">UPGRADES STORE</button>
-        <button id="settings-btn" style="margin-top: 10px;">SETTINGS</button>
-        <button id="desktop-quit-start-btn" style="margin-top: 10px;">QUIT TO DESKTOP</button>
+      <button id="resume-btn-start">RESUME GAME</button>
+      <button id="start-btn">INITIATE LAUNCH</button>
+      <button id="profile-btn">SELECT PROFILE</button>
+      <button id="upgrades-btn" style="margin-top: 10px">UPGRADES STORE</button>
+      <button id="settings-btn" style="margin-top: 10px">SETTINGS</button>
+      <button id="desktop-quit-start-btn" style="margin-top: 10px">QUIT TO DESKTOP</button>
     </div>
 
-    <div id="settings-menu"
-        style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; background: rgba(0, 10, 20, 0.95); border: 2px solid #0ff; padding: 20px; z-index: 200; text-align: center;">
-        <h2 style="color: #0ff; margin-top: 0; font-family: 'Courier New', monospace;">SYSTEM CONFIG</h2>
+    <div
+      id="settings-menu"
+      style="
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 400px;
+        background: rgba(0, 10, 20, 0.95);
+        border: 2px solid #0ff;
+        padding: 20px;
+        z-index: 200;
+        text-align: center;
+      "
+    >
+      <h2 style="color: #0ff; margin-top: 0; font-family: &quot;Courier New&quot;, monospace">
+        SYSTEM CONFIG
+      </h2>
 
-        <div style="margin: 15px 0;">
-            <label style="color: #fff; display: block; margin-bottom: 5px;">INTERNAL RESOLUTION</label>
-            <select id="res-select"
-                style="background: #000; color: #0f0; border: 1px solid #0f0; padding: 5px; width: 100%; font-family: inherit;">
-                <!-- Options populated dynamically by JavaScript -->
-            </select>
-            <div style="color: #888; font-size: 10px; margin-top: 2px;">Renders at this resolution, scales to fit screen</div>
+      <div style="margin: 15px 0">
+        <label style="color: #fff; display: block; margin-bottom: 5px">INTERNAL RESOLUTION</label>
+        <select
+          id="res-select"
+          style="
+            background: #000;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 5px;
+            width: 100%;
+            font-family: inherit;
+          "
+        >
+          <!-- Options populated dynamically by JavaScript -->
+        </select>
+        <div style="color: #888; font-size: 10px; margin-top: 2px">
+          Renders at this resolution, scales to fit screen
         </div>
+      </div>
 
-        <div style="margin: 15px 0;">
-            <label
-                style="color: #fff; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-                FULLSCREEN
-                <input type="checkbox" id="fullscreen-check">
-            </label>
-            <div style="color: #888; font-size: 10px; margin-top: 2px;">Resolution still applies in fullscreen</div>
+      <div style="margin: 15px 0">
+        <label
+          style="
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+          "
+        >
+          FULLSCREEN
+          <input type="checkbox" id="fullscreen-check" />
+        </label>
+        <div style="color: #888; font-size: 10px; margin-top: 2px">
+          Resolution still applies in fullscreen
         </div>
+      </div>
 
-        <div style="margin: 15px 0;">
-            <label
-                style="color: #fff; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-                VSYNC
-                <input type="checkbox" id="vsync-check">
-            </label>
-            <div style="color: #f00; font-size: 10px; margin-top: 2px;">(REQUIRES RESTART)</div>
-        </div>
+      <div style="margin: 15px 0">
+        <label
+          style="
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+          "
+        >
+          VSYNC
+          <input type="checkbox" id="vsync-check" />
+        </label>
+        <div style="color: #f00; font-size: 10px; margin-top: 2px">(REQUIRES RESTART)</div>
+      </div>
 
-        <div style="margin: 15px 0;">
-            <label
-                style="color: #fff; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-                FRAMELESS WINDOW
-                <input type="checkbox" id="frameless-check">
-            </label>
-            <div style="color: #f00; font-size: 10px; margin-top: 2px;">(REQUIRES RESTART)</div>
-        </div>
+      <div style="margin: 15px 0">
+        <label
+          style="
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+          "
+        >
+          FRAMELESS WINDOW
+          <input type="checkbox" id="frameless-check" />
+        </label>
+        <div style="color: #f00; font-size: 10px; margin-top: 2px">(REQUIRES RESTART)</div>
+      </div>
 
-        <div style="margin: 15px 0;">
-            <label style="color: #fff; display: block; margin-bottom: 5px;">MUSIC VOLUME</label>
-            <input type="range" id="music-volume" min="0" max="100" value="50"
-                style="width: 100%; background: #000; accent-color: #0ff;">
-            <div style="color: #0ff; font-size: 12px; margin-top: 2px;" id="music-volume-label">50%</div>
-        </div>
+      <div style="margin: 15px 0">
+        <label style="color: #fff; display: block; margin-bottom: 5px">MUSIC VOLUME</label>
+        <input
+          type="range"
+          id="music-volume"
+          min="0"
+          max="100"
+          value="50"
+          style="width: 100%; background: #000; accent-color: #0ff"
+        />
+        <div style="color: #0ff; font-size: 12px; margin-top: 2px" id="music-volume-label">50%</div>
+      </div>
 
-        <div style="margin: 15px 0;">
-            <label style="color: #fff; display: block; margin-bottom: 5px;">SFX VOLUME</label>
-            <input type="range" id="sfx-volume" min="0" max="100" value="50"
-                style="width: 100%; background: #000; accent-color: #0ff;">
-            <div style="color: #0ff; font-size: 12px; margin-top: 2px;" id="sfx-volume-label">50%</div>
-        </div>
+      <div style="margin: 15px 0">
+        <label style="color: #fff; display: block; margin-bottom: 5px">SFX VOLUME</label>
+        <input
+          type="range"
+          id="sfx-volume"
+          min="0"
+          max="100"
+          value="50"
+          style="width: 100%; background: #000; accent-color: #0ff"
+        />
+        <div style="color: #0ff; font-size: 12px; margin-top: 2px" id="sfx-volume-label">50%</div>
+      </div>
 
-        <div style="margin: 15px 0;">
-            <label
-                style="color: #fff; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-                CRT FILTER
-                <input type="checkbox" id="crt-check">
-            </label>
-            <div style="color: #888; font-size: 10px; margin-top: 2px;">Retro CRT display effect</div>
-        </div>
+      <div style="margin: 15px 0">
+        <label
+          style="
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+          "
+        >
+          CRT FILTER
+          <input type="checkbox" id="crt-check" />
+        </label>
+        <div style="color: #888; font-size: 10px; margin-top: 2px">Retro CRT display effect</div>
+      </div>
 
-        <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
-            <button id="settings-close-btn" style="padding: 5px 15px;">BACK</button>
-            <button id="settings-apply-btn"
-                style="padding: 5px 15px; border-color: #0f0; color: #0f0;">APPLY</button>
-        </div>
+      <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center">
+        <button id="settings-close-btn" style="padding: 5px 15px">BACK</button>
+        <button id="settings-apply-btn" style="padding: 5px 15px; border-color: #0f0; color: #0f0">
+          APPLY
+        </button>
+      </div>
     </div>
 
-    <div id="upgrades-menu"
-        style="display: none; position: absolute; top: 10%; left: 50%; transform: translateX(-50%); width: 800px; max-height: 80vh; background: rgba(0, 10, 20, 0.95); border: 2px solid #ff0; padding: 20px; z-index: 100; text-align: center;">
-        <h2 style="color: #ff0; margin-top: 0; font-family: 'Courier New', monospace;">META SHOP</h2>
-        <button id="upgrades-back-btn" style="position: absolute; top: 10px; right: 10px; padding: 5px 15px; border-color: #ff0; color: #fff; background: rgba(255, 0, 0, 0.3); z-index: 101;">BACK</button>
-        <div id="meta-shop" class="meta-shop">
-            <div>Meta Nuggets: <span id="meta-bank">0</span></div>
-            <div class="meta-grid">
-                <div class="meta-item"><button id="buy-start-dmg">START DAMAGE BOOST</button><span
-                        id="meta-start-dmg"></span></div>
-                <div class="meta-item"><button id="buy-passive-hp">PASSIVE +HP</button><span
-                        id="meta-passive-hp"></span></div>
-                <div class="meta-item"><button id="buy-reroll">REROLL TOKEN</button><span>Tokens: <span
-                            id="meta-reroll-count">0</span></span></div>
-                <div class="meta-item"><button id="buy-reroll-pack">+5 REROLL TOKENS</button></div>
-                <div class="meta-item"><button id="buy-hull">HULL PLATING</button><span id="meta-hull"></span></div>
-                <div class="meta-item"><button id="buy-shield-core">SHIELD CORE</button><span
-                        id="meta-shield-core"></span></div>
-                <div class="meta-item"><button id="buy-static">STATIC BLUEPRINT</button><span id="meta-static"></span>
-                </div>
-                <div class="meta-item"><button id="buy-missile">MISSILE PRIMER</button><span id="meta-missile"></span>
-                </div>
-                <div class="meta-item"><button id="buy-magnet">MAGNET BOOSTER</button><span id="meta-magnet"></span>
-                </div>
-                <div class="meta-item"><button id="buy-nuke">GLOBAL DEFENSE RING</button><span id="meta-nuke"></span></div>
-                <div class="meta-item"><button id="buy-speed">SPEED TUNING</button><span id="meta-speed"></span></div>
-                <div class="meta-item"><button id="buy-bank-mult">BANK MULTIPLIER</button><span
-                        id="meta-bank-mult"></span></div>
-                <div class="meta-item"><button id="buy-discount">SHOP DISCOUNT</button><span id="meta-discount"></span>
-                </div>
-                <div class="meta-item"><button id="buy-extra-life">EXTRA LIFE</button><span id="meta-extra-life"></span>
-                </div>
-                <div class="meta-item"><button id="buy-drone">DRONE FABRICATOR</button><span id="meta-drone"></span>
-                </div>
-                <!-- New Upgrades -->
-                <div class="meta-item"><button id="buy-piercing">PIERCING ROUNDS</button><span id="meta-piercing"></span></div>
-                <div class="meta-item"><button id="buy-explosive">EXPLOSIVE ROUNDS</button><span id="meta-explosive"></span></div>
-                <div class="meta-item"><button id="buy-crit">CRITICAL STRIKE</button><span id="meta-crit"></span></div>
-                <div class="meta-item"><button id="buy-split">SPLIT SHOT</button><span id="meta-split"></span></div>
-                <div class="meta-item"><button id="buy-thorn">THORN ARMOR</button><span id="meta-thorn"></span></div>
-                <div class="meta-item"><button id="buy-lifesteal">LIFESTEAL</button><span id="meta-lifesteal"></span></div>
-                <div class="meta-item"><button id="buy-evasion">EVASION BOOST</button><span id="meta-evasion"></span></div>
-                <div class="meta-item"><button id="buy-shieldregen">SHIELD RECHARGE</button><span id="meta-shieldregen"></span></div>
-                <div class="meta-item"><button id="buy-dashcd">DASH COOLDOWN</button><span id="meta-dashcd"></span></div>
-                <div class="meta-item"><button id="buy-dashdur">DASH DURATION</button><span id="meta-dashdur"></span></div>
-                <div class="meta-item"><button id="buy-xpmag">XP MAGNET+</button><span id="meta-xpmag"></span></div>
-                <div class="meta-item"><button id="buy-autoreroll">AUTO-REROLL</button><span id="meta-autoreroll"></span></div>
-                <div class="meta-item"><button id="buy-nuggetmag">NUGGET MAGNET</button><span id="meta-nuggetmag"></span></div>
-                <div class="meta-item"><button id="buy-contractspeed">CONTRACT SPEED</button><span id="meta-contractspeed"></span></div>
-                <div class="meta-item"><button id="buy-startreroll">STARTING REROLLS</button><span id="meta-startreroll"></span></div>
-                <div class="meta-item"><button id="buy-lucky">LUCKY DROP</button><span id="meta-lucky"></span></div>
-                <div class="meta-item"><button id="buy-bounty">BOUNTY HUNTER</button><span id="meta-bounty"></span></div>
-                <div class="meta-item"><button id="buy-combo">COMBO METER</button><span id="meta-combo"></span></div>
-                <div class="meta-item"><button id="buy-startweapon">STARTING WEAPON</button><span id="meta-startweapon"></span></div>
-                <div class="meta-item"><button id="buy-secondwind">SECOND WIND</button><span id="meta-secondwind"></span></div>
-                <div class="meta-item"><button id="buy-battery">BATTERY CAPACITOR</button><span id="meta-battery"></span></div>
-            </div>
-            <div id="upgrade-description-panel" class="upgrade-description-panel">
-                <h3 id="desc-panel-title" style="color: #ff0; margin: 0 0 10px 0;">SELECT AN UPGRADE</h3>
-                <div id="desc-panel-content" style="color: #9f9; font-size: 14px; line-height: 1.6;">
-                    Click any upgrade button to see details
-                </div>
-                <div id="desc-panel-tier-info" style="color: #ff0; font-size: 12px; margin-top: 10px;"></div>
-            </div>
+    <div
+      id="upgrades-menu"
+      style="
+        display: none;
+        position: absolute;
+        top: 10%;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 800px;
+        max-height: 80vh;
+        background: rgba(0, 10, 20, 0.95);
+        border: 2px solid #ff0;
+        padding: 20px;
+        z-index: 100;
+        text-align: center;
+      "
+    >
+      <h2 style="color: #ff0; margin-top: 0; font-family: &quot;Courier New&quot;, monospace">
+        META SHOP
+      </h2>
+      <button
+        id="upgrades-back-btn"
+        style="
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          padding: 5px 15px;
+          border-color: #ff0;
+          color: #fff;
+          background: rgba(255, 0, 0, 0.3);
+          z-index: 101;
+        "
+      >
+        BACK
+      </button>
+      <div id="meta-shop" class="meta-shop">
+        <div>Meta Nuggets: <span id="meta-bank">0</span></div>
+        <div class="meta-grid">
+          <div class="meta-item">
+            <button id="buy-start-dmg">START DAMAGE BOOST</button><span id="meta-start-dmg"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-passive-hp">PASSIVE +HP</button><span id="meta-passive-hp"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-reroll">REROLL TOKEN</button
+            ><span>Tokens: <span id="meta-reroll-count">0</span></span>
+          </div>
+          <div class="meta-item"><button id="buy-reroll-pack">+5 REROLL TOKENS</button></div>
+          <div class="meta-item">
+            <button id="buy-hull">HULL PLATING</button><span id="meta-hull"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-shield-core">SHIELD CORE</button><span id="meta-shield-core"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-static">STATIC BLUEPRINT</button><span id="meta-static"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-missile">MISSILE PRIMER</button><span id="meta-missile"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-magnet">MAGNET BOOSTER</button><span id="meta-magnet"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-nuke">GLOBAL DEFENSE RING</button><span id="meta-nuke"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-speed">SPEED TUNING</button><span id="meta-speed"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-bank-mult">BANK MULTIPLIER</button><span id="meta-bank-mult"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-discount">SHOP DISCOUNT</button><span id="meta-discount"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-extra-life">EXTRA LIFE</button><span id="meta-extra-life"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-drone">DRONE FABRICATOR</button><span id="meta-drone"></span>
+          </div>
+          <!-- New Upgrades -->
+          <div class="meta-item">
+            <button id="buy-piercing">PIERCING ROUNDS</button><span id="meta-piercing"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-explosive">EXPLOSIVE ROUNDS</button><span id="meta-explosive"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-crit">CRITICAL STRIKE</button><span id="meta-crit"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-split">SPLIT SHOT</button><span id="meta-split"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-thorn">THORN ARMOR</button><span id="meta-thorn"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-lifesteal">LIFESTEAL</button><span id="meta-lifesteal"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-evasion">EVASION BOOST</button><span id="meta-evasion"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-shieldregen">SHIELD RECHARGE</button><span id="meta-shieldregen"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-dashcd">DASH COOLDOWN</button><span id="meta-dashcd"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-dashdur">DASH DURATION</button><span id="meta-dashdur"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-xpmag">XP MAGNET+</button><span id="meta-xpmag"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-autoreroll">AUTO-REROLL</button><span id="meta-autoreroll"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-nuggetmag">NUGGET MAGNET</button><span id="meta-nuggetmag"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-contractspeed">CONTRACT SPEED</button
+            ><span id="meta-contractspeed"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-startreroll">STARTING REROLLS</button
+            ><span id="meta-startreroll"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-lucky">LUCKY DROP</button><span id="meta-lucky"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-bounty">BOUNTY HUNTER</button><span id="meta-bounty"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-combo">COMBO METER</button><span id="meta-combo"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-startweapon">STARTING WEAPON</button><span id="meta-startweapon"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-secondwind">SECOND WIND</button><span id="meta-secondwind"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-battery">BATTERY CAPACITOR</button><span id="meta-battery"></span>
+          </div>
         </div>
+        <div id="upgrade-description-panel" class="upgrade-description-panel">
+          <h3 id="desc-panel-title" style="color: #ff0; margin: 0 0 10px 0">SELECT AN UPGRADE</h3>
+          <div id="desc-panel-content" style="color: #9f9; font-size: 14px; line-height: 1.6">
+            Click any upgrade button to see details
+          </div>
+          <div
+            id="desc-panel-tier-info"
+            style="color: #ff0; font-size: 12px; margin-top: 10px"
+          ></div>
+        </div>
+      </div>
     </div>
 
     <!-- Meta Shop Upgrade Detail Modal -->
-    <div id="meta-shop-modal" class="menu-screen" style="display: none; width: 600px; padding: 30px; border-color: #ff0;">
-        <h2 id="meta-modal-title" style="color: #ff0; margin-top: 0; font-family: 'Courier New', monospace;">UPGRADE DETAILS</h2>
-        <div id="meta-modal-content" style="color: #9f9; font-size: 16px; line-height: 1.8; margin: 20px 0; text-align: left;"></div>
-        <div id="meta-modal-cost" style="color: #ff0; font-size: 18px; margin: 15px 0;"></div>
-        <div id="meta-modal-tier-info" style="color: #0ff; font-size: 14px; margin: 10px 0;"></div>
-        <div style="display: flex; gap: 20px; justify-content: center; margin-top: 25px;">
-            <button id="meta-modal-back">BACK</button>
-            <button id="meta-modal-buy">BUY</button>
-        </div>
+    <div
+      id="meta-shop-modal"
+      class="menu-screen"
+      style="display: none; width: 600px; padding: 30px; border-color: #ff0"
+    >
+      <h2
+        id="meta-modal-title"
+        style="color: #ff0; margin-top: 0; font-family: &quot;Courier New&quot;, monospace"
+      >
+        UPGRADE DETAILS
+      </h2>
+      <div
+        id="meta-modal-content"
+        style="color: #9f9; font-size: 16px; line-height: 1.8; margin: 20px 0; text-align: left"
+      ></div>
+      <div id="meta-modal-cost" style="color: #ff0; font-size: 18px; margin: 15px 0"></div>
+      <div id="meta-modal-tier-info" style="color: #0ff; font-size: 14px; margin: 10px 0"></div>
+      <div style="display: flex; gap: 20px; justify-content: center; margin-top: 25px">
+        <button id="meta-modal-back">BACK</button>
+        <button id="meta-modal-buy">BUY</button>
+      </div>
     </div>
 
     <div id="end-screen" class="menu-screen">
-        <h1>MISSION COMPLETE</h1>
-        <p>Time: <span id="end-time">00:00</span><br>Score: <span id="end-score">0</span><br>Nuggets: <span
-                id="end-nuggets">0</span></p>
-        <button id="restart-btn">RESTART</button>
+      <h1>MISSION COMPLETE</h1>
+      <p>
+        Time: <span id="end-time">00:00</span><br />Score: <span id="end-score">0</span
+        ><br />Nuggets: <span id="end-nuggets">0</span>
+      </p>
+      <button id="restart-btn">RESTART</button>
     </div>
 
     <div id="pause-menu" class="menu-screen">
-        <h1>PAUSED</h1>
-        <button id="resume-btn">RESUME</button>
-        <button id="pause-upgrades-btn">UPGRADES</button>
-        <button id="pause-settings-btn">SETTINGS</button>
-        <button id="restart-btn-pause">RESTART</button>
-        <button id="music-btn">MUSIC: ON</button>
-        <button id="crt-toggle-btn">CRT: OFF</button>
-        <button id="quit-btn">ABORT RUN</button>
-        <button id="debug-btn" style="display: none;">DEBUG</button>
-        <button id="desktop-quit-pause-btn" style="margin-top: 10px; border-color: #f00; color: #f00;">QUIT TO
-            DESKTOP</button>
+      <h1>PAUSED</h1>
+      <button id="resume-btn">RESUME</button>
+      <button id="pause-upgrades-btn">UPGRADES</button>
+      <button id="pause-settings-btn">SETTINGS</button>
+      <button id="restart-btn-pause">RESTART</button>
+      <button id="music-btn">MUSIC: ON</button>
+      <button id="crt-toggle-btn">CRT: OFF</button>
+      <button id="quit-btn">ABORT RUN</button>
+      <button id="debug-btn" style="display: none">DEBUG</button>
+      <button id="desktop-quit-pause-btn" style="margin-top: 10px; border-color: #f00; color: #f00">
+        QUIT TO DESKTOP
+      </button>
     </div>
 
-    <div id="prompt-modal" class="menu-screen" style="display: none; width: 400px; padding: 30px; border-color: #0ff;">
-        <h2 id="prompt-message" style="color: #0ff; margin-top: 0;">INPUT REQUIRED</h2>
-        <input type="text" id="prompt-input" style="width: 100%; padding: 10px; background: #000; border: 2px solid #0f0; color: #0f0; font-family: inherit; font-size: 18px; margin: 20px 0; outline: none;">
-        <div style="display: flex; justify-content: space-around;">
-            <button id="prompt-cancel">CANCEL</button>
-            <button id="prompt-confirm">CONFIRM</button>
-        </div>
+    <div
+      id="prompt-modal"
+      class="menu-screen"
+      style="display: none; width: 400px; padding: 30px; border-color: #0ff"
+    >
+      <h2 id="prompt-message" style="color: #0ff; margin-top: 0">INPUT REQUIRED</h2>
+      <input
+        type="text"
+        id="prompt-input"
+        style="
+          width: 100%;
+          padding: 10px;
+          background: #000;
+          border: 2px solid #0f0;
+          color: #0f0;
+          font-family: inherit;
+          font-size: 18px;
+          margin: 20px 0;
+          outline: none;
+        "
+      />
+      <div style="display: flex; justify-content: space-around">
+        <button id="prompt-cancel">CANCEL</button>
+        <button id="prompt-confirm">CONFIRM</button>
+      </div>
     </div>
 
-    <div id="abort-modal" class="menu-screen" style="display: none; width: 450px; padding: 30px; border-color: #ff0;">
-        <h2 style="color: #ff0; margin-top: 0; font-family: 'Courier New', monospace;">ABORT RUN?</h2>
-        <p style="color: #ccc; margin: 20px 0; line-height: 1.6;">Are you sure?</p>
-        <div style="display: flex; gap: 20px; justify-content: center; margin-top: 25px;">
-            <button id="abort-confirm">YES</button>
-            <button id="abort-cancel">NO</button>
-        </div>
+    <div
+      id="abort-modal"
+      class="menu-screen"
+      style="display: none; width: 450px; padding: 30px; border-color: #ff0"
+    >
+      <h2 style="color: #ff0; margin-top: 0; font-family: &quot;Courier New&quot;, monospace">
+        ABORT RUN?
+      </h2>
+      <p style="color: #ccc; margin: 20px 0; line-height: 1.6">Are you sure?</p>
+      <div style="display: flex; gap: 20px; justify-content: center; margin-top: 25px">
+        <button id="abort-confirm">YES</button>
+        <button id="abort-cancel">NO</button>
+      </div>
     </div>
 
     <!-- Run Upgrades Display Modal -->
-    <div id="run-upgrades-screen" class="menu-screen" style="display: none; width: 700px; max-width: 90vw; background: rgba(0, 10, 20, 0.95); border: 2px solid #0ff; padding: 20px;">
-        <h2 style="color: #0ff; margin-top: 0; font-family: 'Courier New', monospace;">CURRENT RUN UPGRADES</h2>
-        <button id="run-upgrades-back-btn" style="margin-bottom: 15px;">← BACK</button>
-        <div id="run-upgrades-container" style="max-height: 60vh; overflow-y: auto; text-align: left; padding: 10px;">
-            <!-- Upgrades will be dynamically inserted here -->
-        </div>
+    <div
+      id="run-upgrades-screen"
+      class="menu-screen"
+      style="
+        display: none;
+        width: 700px;
+        max-width: 90vw;
+        background: rgba(0, 10, 20, 0.95);
+        border: 2px solid #0ff;
+        padding: 20px;
+      "
+    >
+      <h2 style="color: #0ff; margin-top: 0; font-family: &quot;Courier New&quot;, monospace">
+        CURRENT RUN UPGRADES
+      </h2>
+      <button id="run-upgrades-back-btn" style="margin-bottom: 15px">← BACK</button>
+      <div
+        id="run-upgrades-container"
+        style="max-height: 60vh; overflow-y: auto; text-align: left; padding: 10px"
+      >
+        <!-- Upgrades will be dynamically inserted here -->
+      </div>
     </div>
 
     <!-- Debug Menu Modal -->
-    <div id="debug-menu" class="menu-screen" style="display: none; width: 800px; max-width: 95vw; max-height: 90vh; overflow-y: auto; border-color: #ff0;">
-        <h2 style="color: #ff0; margin-top: 0;">DEBUG UPGRADE MENU</h2>
-        <button id="debug-back-btn">← BACK TO PAUSE</button>
-        <div id="debug-upgrades-container" style="text-align: left; padding: 10px;"></div>
+    <div
+      id="debug-menu"
+      class="menu-screen"
+      style="
+        display: none;
+        width: 800px;
+        max-width: 95vw;
+        max-height: 90vh;
+        overflow-y: auto;
+        border-color: #ff0;
+      "
+    >
+      <h2 style="color: #ff0; margin-top: 0">DEBUG UPGRADE MENU</h2>
+      <button id="debug-back-btn">← BACK TO PAUSE</button>
+      <div id="debug-upgrades-container" style="text-align: left; padding: 10px"></div>
     </div>
 
-    <div id="rename-prompt-modal" class="menu-screen" style="display: none; width: 450px; padding: 30px; border-color: #ff0;">
-        <h2 style="color: #ff0; margin-top: 0; font-family: 'Courier New', monospace;">RENAME PROFILE</h2>
-        <p style="color: #ccc; margin: 20px 0; line-height: 1.6;">Enter new name:</p>
-        <input type="text" id="rename-input" style="width: 100%; padding: 10px; font-size: 16px; background: #111; color: #fff; border: 2px solid #ff0; font-family: 'Courier New', monospace; margin-bottom: 20px;" />
-        <div style="display: flex; gap: 20px; justify-content: center; margin-top: 25px;">
-            <button id="rename-confirm">OK</button>
-            <button id="rename-cancel">CANCEL</button>
-        </div>
+    <div
+      id="rename-prompt-modal"
+      class="menu-screen"
+      style="display: none; width: 450px; padding: 30px; border-color: #ff0"
+    >
+      <h2 style="color: #ff0; margin-top: 0; font-family: &quot;Courier New&quot;, monospace">
+        RENAME PROFILE
+      </h2>
+      <p style="color: #ccc; margin: 20px 0; line-height: 1.6">Enter new name:</p>
+      <input
+        type="text"
+        id="rename-input"
+        style="
+          width: 100%;
+          padding: 10px;
+          font-size: 16px;
+          background: #111;
+          color: #fff;
+          border: 2px solid #ff0;
+          font-family: &quot;Courier New&quot;, monospace;
+          margin-bottom: 20px;
+        "
+      />
+      <div style="display: flex; gap: 20px; justify-content: center; margin-top: 25px">
+        <button id="rename-confirm">OK</button>
+        <button id="rename-cancel">CANCEL</button>
+      </div>
     </div>
 
-    <div id="save-menu" class="menu-screen" style="display: none; width: 600px; max-height: 80vh; overflow-y: auto; border-color: #ff0;">
-        <h2 style="color: #ff0; margin-top: 0; font-family: 'Courier New', monospace;">SELECT PROFILE</h2>
-        <div id="profile-list" style="max-height: 50vh; overflow-y: auto; margin-bottom: 20px;"></div>
-        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-            <button id="create-new-profile">CREATE NEW</button>
-            <button id="rename-profile">RENAME SELECTED</button>
-            <button id="delete-profile">DELETE SELECTED</button>
-            <button id="select-profile">SELECT</button>
-            <button id="close-save-menu" style="border-color: #0f0; color: #0f0;">CLOSE</button>
-        </div>
+    <div
+      id="save-menu"
+      class="menu-screen"
+      style="display: none; width: 600px; max-height: 80vh; overflow-y: auto; border-color: #ff0"
+    >
+      <h2 style="color: #ff0; margin-top: 0; font-family: &quot;Courier New&quot;, monospace">
+        SELECT PROFILE
+      </h2>
+      <div id="profile-list" style="max-height: 50vh; overflow-y: auto; margin-bottom: 20px"></div>
+      <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap">
+        <button id="create-new-profile">CREATE NEW</button>
+        <button id="rename-profile">RENAME SELECTED</button>
+        <button id="delete-profile">DELETE SELECTED</button>
+        <button id="select-profile">SELECT</button>
+        <button id="close-save-menu" style="border-color: #0f0; color: #0f0">CLOSE</button>
+      </div>
     </div>
 
     <div id="levelup-screen">
-        <h1>SYSTEM UPGRADE</h1>
-        <p>Select an enhancement module</p>
-        <div id="upgrade-container">
-            <!-- Cards go here -->
-        </div>
+      <h1>SYSTEM UPGRADE</h1>
+      <p>Select an enhancement module</p>
+      <div id="upgrade-container">
+        <!-- Cards go here -->
+      </div>
     </div>
 
     <!-- PixiJS for high-performance sprite rendering (used for bullets/particles) -->
@@ -1154,34 +1452,34 @@
     <script src="https://cdn.jsdelivr.net/npm/pixi-filters@latest/dist/browser/pixi-filters.min.js"></script>
 
     <script>
-        // Phaser is used for the Electron-packaged build (local `node_modules`), with a CDN fallback for browser runs.
-        (function loadPhaser() {
-            const localSrc = "./node_modules/phaser/dist/phaser.min.js";
-            const cdnSrc = "https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js";
+      // Phaser is used for the Electron-packaged build (local `node_modules`), with a CDN fallback for browser runs.
+      (function loadPhaser() {
+        const localSrc = "./node_modules/phaser/dist/phaser.min.js";
+        const cdnSrc = "https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js";
 
-            const script = document.createElement("script");
-            script.src = localSrc;
-            script.defer = true;
-            script.onload = () => {
-                if (window.Phaser && window.Phaser.VERSION) console.info(`[Phaser] Loaded v${window.Phaser.VERSION}`);
-            };
-            script.onerror = () => {
-                const fallback = document.createElement("script");
-                fallback.src = cdnSrc;
-                fallback.defer = true;
-                fallback.onload = () => {
-                    if (window.Phaser && window.Phaser.VERSION) console.info(`[Phaser] Loaded v${window.Phaser.VERSION} (CDN)`);
-                };
-                document.head.appendChild(fallback);
-            };
-            document.head.appendChild(script);
-        })();
+        const script = document.createElement("script");
+        script.src = localSrc;
+        script.defer = true;
+        script.onload = () => {
+          if (window.Phaser && window.Phaser.VERSION)
+            console.info(`[Phaser] Loaded v${window.Phaser.VERSION}`);
+        };
+        script.onerror = () => {
+          const fallback = document.createElement("script");
+          fallback.src = cdnSrc;
+          fallback.defer = true;
+          fallback.onload = () => {
+            if (window.Phaser && window.Phaser.VERSION)
+              console.info(`[Phaser] Loaded v${window.Phaser.VERSION} (CDN)`);
+          };
+          document.head.appendChild(fallback);
+        };
+        document.head.appendChild(script);
+      })();
     </script>
-
 
     <!-- Main Game Script (ES6 Module) -->
     <script type="module" src="src/js/main.js"></script>
     <!-- (intentionally no external module entry) -->
-</body>
-
+  </body>
 </html>

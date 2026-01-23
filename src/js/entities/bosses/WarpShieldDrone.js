@@ -9,6 +9,7 @@ import {
   pixiCleanupObject,
   getRenderAlpha
 } from "../../rendering/pixi-context.js";
+import { isInView } from "../../core/performance.js";
 
 let _spawnParticles = null;
 let _spawnLargeExplosion = null;
@@ -42,6 +43,8 @@ export class WarpShieldDrone extends Entity {
     this.rotationSpeed = 0.03; // Rotation speed (radians per frame at 60fps)
     // Force updates even when off-screen (boss-related entities need to stay synchronized)
     this.alwaysUpdate = true;
+    // Always draw so lightning positions update correctly even when off-screen
+    this.alwaysDraw = true;
     this._pixiSprite = null;
     this._pixiHealthBar = null;
     this._pixiLightningGfx = null;
@@ -102,14 +105,19 @@ export class WarpShieldDrone extends Entity {
     // Since prevPos = pos, getRenderPos() will always return pos (no interpolation)
     const rPos = this.getRenderPos(getRenderAlpha());
 
-    if (pixiBossLayer && pixiTextures.shield_drone && pixiTextures.shield_drone.valid) {
+    // ALWAYS render drone sprite - don't cull for shield drones
+    // This prevents lightning snapping issues when player is far away
+    const spriteReady =
+      pixiBossLayer && pixiTextures.shield_drone && pixiTextures.shield_drone.valid;
+
+    if (spriteReady) {
       let sprite = this._pixiSprite;
       if (!sprite) {
         sprite = new PIXI.Sprite(pixiTextures.shield_drone);
         sprite.anchor.set(0.5);
         this._pixiSprite = sprite;
       }
-      
+
       // Ensure sprite is in the correct layer (only add if not already there)
       if (!sprite.parent) {
         pixiBossLayer.addChild(sprite);
@@ -128,8 +136,8 @@ export class WarpShieldDrone extends Entity {
       sprite.scale.set(1.125);
       sprite.rotation = Math.PI / 2 + this.rotationAngle; // Rotate in place
 
-      // Draw HP bar above the drone
-      if (pixiVectorLayer) {
+      // Draw HP bar above the drone (always render)
+      if (pixiVectorLayer && spriteReady) {
         const hpBarWidth = 120; // 4x larger (30 * 4)
         const hpBarHeight = 16; // 4x larger (4 * 4)
         const hpPercent = Math.max(0, this.hp / this.maxHp);
@@ -159,143 +167,149 @@ export class WarpShieldDrone extends Entity {
         // Border (thicker for larger bar)
         hpBar.lineStyle(2, 0xffffff);
         hpBar.drawRect(-hpBarWidth / 2, 0, hpBarWidth, hpBarHeight);
+      } else if (this._pixiHealthBar) {
+        // Hide HP bar
+        this._pixiHealthBar.visible = false;
+      } else if (this._pixiSprite) {
+        // Hide sprite
+        this._pixiSprite.visible = false;
       }
 
-      // Draw lightning bolt effect from drone to boss (only if drone is alive)
-      if (pixiVectorLayer && this.parentBoss && !this.parentBoss.dead && !this.dead) {
-        let lightningGfx = this._pixiLightningGfx;
-        if (!lightningGfx) {
-          lightningGfx = new PIXI.Graphics();
-          pixiVectorLayer.addChild(lightningGfx);
-          this._pixiLightningGfx = lightningGfx;
-        } else if (!lightningGfx.parent) {
-          pixiVectorLayer.addChild(lightningGfx);
-        }
+      // Draw lightning bolt effect from drone to boss (always draw)
+      if (!this.parentBoss || this.parentBoss.dead) return;
 
-        // Always clear before redrawing to prevent ghosting
-        lightningGfx.clear();
-        lightningGfx.visible = true;
-        // Set graphics position to origin - we'll draw in world coordinates
-        lightningGfx.position.set(0, 0);
-
-        // Animate lightning: flicker effect using time (deterministic, not random)
-        const flicker = Math.sin(this.t * 0.8) * 0.3 + 0.7; // 0.4 to 1.0 alpha
-
-        // Drone stays in fixed position, lightning connects to boss center
-        // Lightning automatically adjusts length and angle as boss moves
-        // Use world positions directly (pixiVectorLayer is in world space via pixiWorldRoot)
-        // Always get current positions to ensure accuracy even when far away
-        const droneX = this.pos.x;  // Fixed drone world position
-        const droneY = this.pos.y;  // Fixed drone world position
-        // Always get current boss position (not cached) to ensure lightning is accurate
-        const bossX = this.parentBoss.pos.x;  // Current boss world position (can move)
-        const bossY = this.parentBoss.pos.y;  // Current boss world position (can move)
-
-        // Start point: at drone center (world coordinates)
-        const startX = droneX;
-        const startY = droneY;
-        // End point: at boss center (world coordinates, always connected)
-        const endX = bossX;
-        const endY = bossY;
-
-        // Distance from drone to boss center
-        const distToBoss = Math.hypot(bossX - droneX, bossY - droneY);
-        // Prevent division by zero
-        const safeDist = Math.max(distToBoss, 1);
-
-        // Use deterministic jitter based on time and drone index to prevent flickering
-        const droneSeed = this.orbitAngle * 1000; // Use orbit angle as seed
-        const timeSeed = Math.floor(this.t * 10); // Change every 0.1 seconds
-
-        // Draw main lightning bolt with jagged path that always connects
-        lightningGfx.lineStyle(2, 0x88ddff, flicker);
-        lightningGfx.moveTo(startX, startY);
-
-        // Create jagged lightning path with deterministic jitter
-        // Use more segments for longer distances to keep it smooth
-        const segments = Math.max(8, Math.floor(distToBoss / 200));
-        let currentX = startX;
-        let currentY = startY;
-
-        for (let i = 1; i < segments; i++) {
-          const t = i / segments;
-          // Calculate point along the line from start to end
-          const targetX = startX + (endX - startX) * t;
-          const targetY = startY + (endY - startY) * t;
-
-          // Add perpendicular offset for jagged effect (deterministic)
-          const perpX = -(endY - startY) / safeDist;
-          const perpY = (endX - startX) / safeDist;
-
-          // Use deterministic pseudo-random based on time and position
-          // Jitter is stronger in the middle, weaker at the ends to ensure connection
-          const jitterSeed = (droneSeed + timeSeed + i * 17) % 1000;
-          const jitterAmount = 25 * (1 - Math.abs(t - 0.5) * 2); // Max jitter in middle, zero at ends
-          const jitter = (jitterSeed / 1000 - 0.5) * jitterAmount;
-
-          currentX = targetX + perpX * jitter;
-          currentY = targetY + perpY * jitter;
-          lightningGfx.lineTo(currentX, currentY);
-        }
-        // Always end at boss center to ensure connection
-        lightningGfx.lineTo(endX, endY);
-        lightningGfx.endFill(); // CRITICAL: prevents ghosting
-
-        // Draw second arc for glow effect (same path, thicker and dimmer)
-        lightningGfx.lineStyle(4, 0x44aaff, flicker * 0.5);
-        lightningGfx.moveTo(startX, startY);
-        currentX = startX;
-        currentY = startY;
-
-        for (let i = 1; i < segments; i++) {
-          const t = i / segments;
-          const targetX = startX + (endX - startX) * t;
-          const targetY = startY + (endY - startY) * t;
-          const perpX = -(endY - startY) / safeDist;
-          const perpY = (endX - startX) / safeDist;
-          // Use same deterministic jitter for consistency
-          const jitterSeed = (droneSeed + timeSeed + i * 17) % 1000;
-          const jitterAmount = 25 * (1 - Math.abs(t - 0.5) * 2);
-          const jitter = (jitterSeed / 1000 - 0.5) * jitterAmount;
-          currentX = targetX + perpX * jitter;
-          currentY = targetY + perpY * jitter;
-          lightningGfx.lineTo(currentX, currentY);
-        }
-        // Always end at boss center to ensure connection
-        lightningGfx.lineTo(endX, endY);
-        lightningGfx.endFill(); // CRITICAL: prevents ghosting
-      } else {
-        // Hide lightning if drone is dead or boss is dead
-        if (this._pixiLightningGfx) {
-          this._pixiLightningGfx.clear();
-          this._pixiLightningGfx.visible = false;
-        }
+      let lightningGfx = this._pixiLightningGfx;
+      if (!lightningGfx) {
+        lightningGfx = new PIXI.Graphics();
+        pixiVectorLayer.addChild(lightningGfx);
+        this._pixiLightningGfx = lightningGfx;
+      } else if (!lightningGfx.parent) {
+        pixiVectorLayer.addChild(lightningGfx);
       }
 
-      if (
-        typeof GameContext.DEBUG_COLLISION !== "undefined" &&
-        GameContext.DEBUG_COLLISION &&
-        pixiVectorLayer
-      ) {
-        let debugGfx = this._pixiDebugGfx;
-        if (!debugGfx) {
-          debugGfx = new PIXI.Graphics();
-          pixiVectorLayer.addChild(debugGfx);
-          this._pixiDebugGfx = debugGfx;
-        } else if (!debugGfx.parent) {
-          pixiVectorLayer.addChild(debugGfx);
-        }
+      // Always clear before redrawing to prevent ghosting
+      lightningGfx.clear();
+      lightningGfx.visible = true;
+      lightningGfx.renderable = true;
+      // Set graphics position to origin - we'll draw in world coordinates
+      lightningGfx.position.set(0, 0);
 
-        debugGfx.visible = true;
-        debugGfx.clear();
-        debugGfx.position.set(rPos.x, rPos.y);
-        debugGfx.lineStyle(2, 0x00ff00, 1);
-        debugGfx.drawCircle(0, 0, this.collisionRadius);
-      } else if (this._pixiDebugGfx) {
-        this._pixiDebugGfx.visible = false;
+      // Animate lightning: flicker effect using time (deterministic, not random)
+      const flicker = Math.sin(this.t * 0.8) * 0.3 + 0.7; // 0.4 to 1.0 alpha
+
+      // Drone stays in fixed position, lightning connects to boss center
+      // Lightning automatically adjusts length and angle as boss moves
+      // Use world positions directly (pixiVectorLayer is in world space via pixiWorldRoot)
+      // Always get current positions to ensure accuracy even when far away
+      const droneX = this.pos.x; // Fixed drone world position
+      const droneY = this.pos.y; // Fixed drone world position
+      // Always get current boss position (not cached) to ensure lightning is accurate
+      const bossX = this.parentBoss.pos.x; // Current boss world position (can move)
+      const bossY = this.parentBoss.pos.y; // Current boss world position (can move)
+
+      // Start point: at drone center (world coordinates)
+      const startX = droneX;
+      const startY = droneY;
+      // End point: at boss center (world coordinates, always connected)
+      const endX = bossX;
+      const endY = bossY;
+
+      // Distance from drone to boss center
+      const distToBoss = Math.hypot(bossX - droneX, bossY - droneY);
+      // Prevent division by zero
+      const safeDist = Math.max(distToBoss, 1);
+
+      // Use deterministic jitter based on time and drone index to prevent flickering
+      const droneSeed = this.orbitAngle * 1000; // Use orbit angle as seed
+      const timeSeed = Math.floor(this.t * 10); // Change every 0.1 seconds
+
+      // Draw main lightning bolt with jagged path that always connects
+      lightningGfx.lineStyle(2, 0x88ddff, flicker);
+      lightningGfx.moveTo(startX, startY);
+
+      // Create jagged lightning path with deterministic jitter
+      // Use more segments for longer distances to keep it smooth
+      const segments = Math.max(8, Math.floor(distToBoss / 200));
+      let currentX = startX;
+      let currentY = startY;
+
+      for (let i = 1; i < segments; i++) {
+        const t = i / segments;
+        // Calculate point along the line from start to end
+        const targetX = startX + (endX - startX) * t;
+        const targetY = startY + (endY - startY) * t;
+
+        // Add perpendicular offset for jagged effect (deterministic)
+        const perpX = -(endY - startY) / safeDist;
+        const perpY = (endX - startX) / safeDist;
+
+        // Use deterministic pseudo-random based on time and position
+        // Jitter is stronger in the middle, weaker at the ends to ensure connection
+        const jitterSeed = (droneSeed + timeSeed + i * 17) % 1000;
+        const jitterAmount = 25 * (1 - Math.abs(t - 0.5) * 2); // Max jitter in middle, zero at ends
+        const jitter = (jitterSeed / 1000 - 0.5) * jitterAmount;
+
+        currentX = targetX + perpX * jitter;
+        currentY = targetY + perpY * jitter;
+        lightningGfx.lineTo(currentX, currentY);
+      }
+      // Always end at boss center to ensure connection
+      lightningGfx.lineTo(endX, endY);
+      lightningGfx.endFill(); // CRITICAL: prevents ghosting
+
+      // Draw second arc for glow effect (same path, thicker and dimmer)
+      lightningGfx.lineStyle(4, 0x44aaff, flicker * 0.5);
+      lightningGfx.moveTo(startX, startY);
+      currentX = startX;
+      currentY = startY;
+
+      for (let i = 1; i < segments; i++) {
+        const t = i / segments;
+        const targetX = startX + (endX - startX) * t;
+        const targetY = startY + (endY - startY) * t;
+        const perpX = -(endY - startY) / safeDist;
+        const perpY = (endX - startX) / safeDist;
+        // Use same deterministic jitter for consistency
+        const jitterSeed = (droneSeed + timeSeed + i * 17) % 1000;
+        const jitterAmount = 25 * (1 - Math.abs(t - 0.5) * 2);
+        const jitter = (jitterSeed / 1000 - 0.5) * jitterAmount;
+        currentX = targetX + perpX * jitter;
+        currentY = targetY + perpY * jitter;
+        lightningGfx.lineTo(currentX, currentY);
+      }
+      // Always end at boss center to ensure connection
+      lightningGfx.lineTo(endX, endY);
+      lightningGfx.endFill(); // CRITICAL: prevents ghosting
+    } else {
+      // Hide lightning if drone is dead or boss is dead
+      if (this._pixiLightningGfx) {
+        this._pixiLightningGfx.clear();
+        this._pixiLightningGfx.visible = false;
+      }
+    }
+
+    // Debug collision hitbox rendering
+    if (
+      typeof GameContext.DEBUG_COLLISION !== "undefined" &&
+      GameContext.DEBUG_COLLISION &&
+      pixiVectorLayer
+    ) {
+      let debugGfx = this._pixiDebugGfx;
+      if (!debugGfx) {
+        debugGfx = new PIXI.Graphics();
+        pixiVectorLayer.addChild(debugGfx);
+        this._pixiDebugGfx = debugGfx;
+      } else if (!debugGfx.parent) {
+        pixiVectorLayer.addChild(debugGfx);
       }
 
-      return;
+      debugGfx.visible = true;
+      debugGfx.clear();
+      debugGfx.position.set(rPos.x, rPos.y);
+      debugGfx.lineStyle(2, 0x00ff00, 1);
+      debugGfx.drawCircle(0, 0, this.collisionRadius);
+    } else if (this._pixiDebugGfx) {
+      this._pixiDebugGfx.visible = false;
     }
 
     // Fallback rendering if texture not loaded
