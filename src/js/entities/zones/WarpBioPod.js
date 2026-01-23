@@ -23,6 +23,7 @@ export class WarpBioPod extends Entity {
         this.vel.x = Math.cos(this.angle) * speed;
         this.vel.y = Math.sin(this.angle) * speed;
         this._pixiGfx = null;
+        this.alwaysUpdate = true;
     }
     takeHit(damage) {
         if (this.dead) return;
@@ -55,6 +56,11 @@ export class WarpBioPod extends Entity {
     }
     update(deltaTime = SIM_STEP_MS) {
         if (this.dead) return;
+
+        if (this.owner && this.owner.dead) {
+            this.explode();
+            return;
+        }
 
         const dtFactor = deltaTime / 16.67;
 

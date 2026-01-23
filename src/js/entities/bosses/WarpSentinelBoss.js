@@ -54,10 +54,8 @@ export class WarpSentinelBoss extends Entity {
 
     this.maxShieldHp = 999;
     this.shieldStrength = this.maxShieldHp;
-    // Shield segments count (reduced by 20%)
     this.shieldSegments = new Array(58).fill(0);
     this.innerShieldSegments = new Array(48).fill(0);
-    // Fill 3 out of 4 segments for larger shards than gaps
     for (let i = 0; i < 58; i++) {
       if (i % 4 !== 3) this.shieldSegments[i] = 999;
     }
@@ -77,7 +75,6 @@ export class WarpSentinelBoss extends Entity {
     this.coreRot = 0;
 
     this.orbitOffset = Math.random() * Math.PI * 2;
-    // Store initial position as orbit center fallback when zone is null
     this.orbitCenter = { x: this.pos.x, y: this.pos.y };
     this.maxSpeed = 5.5;
     this.dashCooldown = 240;
@@ -116,33 +113,24 @@ export class WarpSentinelBoss extends Entity {
     this.phase3Started = false;
     this.helperStrengthTier = 1;
 
-    // Cache for enemy filtering (performance optimization)
     this._cachedAliveHelpers = 0;
-
     this.shieldsDirty = true;
     this._pixiInnerGfx = null;
     this.ramInvulnerable = 0;
-
     this.collisionHull = [{ x: 0, y: 0, r: 800 }];
     this.collisionRadius = 800;
-
     this._pixiSprite = null;
-
-    // Shield drones - protector ships that orbit the boss
     this.shieldDrones = [];
     this.shieldDronesAlive = 4;
     this.shieldEverDown = false;
 
-    // Spawn shield drones immediately (safe to do so as constructor completes)
-    // This prevents race conditions with state changes
     this.spawnShieldDrones();
   }
 
   spawnShieldDrones() {
-    // Only spawn once
     if (this.shieldDrones.length > 0) return;
 
-    const corners = [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4]; // NW, NE, SW, SE
+    const corners = [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4];
     for (const angle of corners) {
       const drone = new WarpShieldDrone(this, angle);
       GameContext.enemies.push(drone);
@@ -152,13 +140,31 @@ export class WarpSentinelBoss extends Entity {
 
   onShieldDroneDestroyed() {
     this.shieldDronesAlive--;
-    if (this.shieldDronesAlive <= 0 && !this.shieldEverDown) {
+
+    const prevPhase = this.phase;
+    if (this.shieldDronesAlive <= 2 && this.phase < 2) {
+      this.phase = 2;
+    }
+    if (this.shieldDronesAlive <= 0 && this.phase < 3) {
+      this.phase = 3;
       this.shieldEverDown = true;
-      // Clear all shield segments
       this.shieldSegments.fill(0);
       this.innerShieldSegments.fill(0);
       this.shieldsDirty = true;
       showOverlayMessage("SENTINEL SHIELD DOWN!", "#f00", 2000, 3);
+    }
+
+    if (this.phase === 2 && prevPhase < 2 && !this.phase2Started) {
+      this.phase2Started = true;
+      this.helperMax = 10;
+      this.helperBurst = 3;
+      this.helperCooldownBase = 320;
+      this.spawnDefenders(6);
+      showOverlayMessage("SENTINEL PHASE 2", "#f0f", 1800, 3);
+    }
+    if (this.phase === 3 && prevPhase < 3 && !this.phase3Started) {
+      this.phase3Started = true;
+      showOverlayMessage("SENTINEL PHASE 3", "#f0f", 1800, 3);
     }
   }
 
@@ -199,8 +205,6 @@ export class WarpSentinelBoss extends Entity {
     if (this.dead) return;
     this.dead = true;
 
-    // Clean up custom graphics FIRST, ensuring they're removed from parent layers
-    // This prevents the purple inner shield graphics from remaining visible
     if (this._pixiInnerGfx) {
       try {
         this._pixiInnerGfx.visible = false;
@@ -238,11 +242,9 @@ export class WarpSentinelBoss extends Entity {
       this._pixiSprite = null;
     }
 
-    // Then do standard cleanup
     pixiCleanupObject(this);
 
     const killStartTime = performance.now();
-    const bombCount = GameContext.bossBombs.length;
 
     if (_scheduleParticleBursts) _scheduleParticleBursts(this.pos.x, this.pos.y, 140, "#f0f", 20);
     if (_spawnLargeExplosion) _spawnLargeExplosion(this.pos.x, this.pos.y, 4.5);
@@ -255,6 +257,14 @@ export class WarpSentinelBoss extends Entity {
     GameContext.bossArena.active = false;
     GameContext.bossArena.growing = false;
     playSound("warp_flame_stop");
+
+    for (let i = GameContext.warpBioPods.length - 1; i >= 0; i--) {
+      const pod = GameContext.warpBioPods[i];
+      if (pod && !pod.dead) {
+        pod.explode();
+      }
+    }
+
     clearArrayWithPixiCleanup(GameContext.warpBioPods);
     clearArrayWithPixiCleanup(this.shieldDrones);
     if (GameContext.boss) pixiCleanupObject(GameContext.boss);
@@ -272,8 +282,6 @@ export class WarpSentinelBoss extends Entity {
 
     super.update(deltaTime);
 
-    // Spawn shield drones if not yet spawned (defensive check)
-    // Drones should be spawned in constructor, but this ensures they exist
     if (this.shieldDrones.length === 0) {
       this.spawnShieldDrones();
     }
@@ -288,12 +296,10 @@ export class WarpSentinelBoss extends Entity {
     this.shieldRotation += this.baseRingSpeed * ringMult * dtFactor;
     this.innerShieldRotation -= this.baseRingSpeed * ringMult * 1.2 * dtFactor;
 
-    // Update cached helper count once per frame (performance optimization)
     this._cachedAliveHelpers = GameContext.enemies.filter(
       e => e && !e.dead && e.isWarpReinforcement
     ).length;
 
-    // Shield regen only if shield hasn't been permanently disabled
     if (
       !this.shieldEverDown &&
       this.shieldDronesAlive >= 4 &&
@@ -313,7 +319,6 @@ export class WarpSentinelBoss extends Entity {
         this.shieldsDirty = true;
       }
       this.lastShieldRegenAt = now;
-      // Reduce particle frequency for performance - only spawn every 3rd regen
       if (Math.random() < 0.25 && _spawnParticles)
         _spawnParticles(this.pos.x, this.pos.y, 4, "#0ff");
     }
@@ -323,23 +328,6 @@ export class WarpSentinelBoss extends Entity {
     } else {
       this.reinforcementTimer = this.reinforcementCooldown;
       this.spawnCaveReinforcements();
-    }
-
-    const hpPct = this.maxHp > 0 ? this.hp / this.maxHp : 0;
-    const nextPhase = hpPct > 0.7 ? 1 : hpPct > 0.4 ? 2 : 3;
-    if (nextPhase !== this.phase) this.phase = nextPhase;
-
-    if (this.phase >= 2 && !this.phase2Started) {
-      this.phase2Started = true;
-      this.helperMax = 10;
-      this.helperBurst = 3;
-      this.helperCooldownBase = 320;
-      this.spawnDefenders(6);
-      showOverlayMessage("SENTINEL PHASE 2", "#f0f", 1800, 3);
-    }
-    if (this.phase === 3 && !this.phase3Started) {
-      this.phase3Started = true;
-      showOverlayMessage("SENTINEL PHASE 3", "#f0f", 1800, 3);
     }
 
     const cx = this.zone ? this.zone.pos.x : this.orbitCenter.x;
@@ -580,13 +568,10 @@ export class WarpSentinelBoss extends Entity {
     const phase2 = this.phase >= 2;
     let types;
     if (phase2) {
-      // Phase 2: stronger enemies including hunters
       types = ["defender", "defender", "hunter", "elite_roamer", "hunter"];
     } else if (this.helperStrengthTier <= 0) {
-      // Weak tier: only basic enemies
       types = ["roamer", "roamer", "defender"];
     } else {
-      // Phase 1: standard mix
       types = ["roamer", "defender", "roamer", "elite_roamer"];
     }
 
@@ -637,7 +622,6 @@ export class WarpSentinelBoss extends Entity {
 
   draw(ctx) {
     if (this.dead) {
-      // Ensure graphics are hidden and cleaned up if draw is called after death
       if (this._pixiInnerGfx) {
         try {
           this._pixiInnerGfx.visible = false;
@@ -858,17 +842,14 @@ export class WarpSentinelBoss extends Entity {
   }
 
   spawnCaveReinforcements() {
-    // Count total enemies in level (not just reinforcements)
     const totalEnemies = GameContext.enemies.filter(e => e && !e.dead).length;
     const maxEnemies = 10;
 
-    // Count alive cave gunboats
     const aliveGunboats = GameContext.enemies.filter(
       e => e && !e.dead && (e.type === "cave_gunboat1" || e.type === "cave_gunboat2")
     ).length;
     const maxGunboats = 3;
 
-    // Don't spawn if at total enemy limit
     if (totalEnemies >= maxEnemies) {
       return;
     }
@@ -880,7 +861,6 @@ export class WarpSentinelBoss extends Entity {
       let type;
       let attempts = 0;
 
-      // Try to pick a valid enemy type (respect gunboat limit)
       do {
         type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
         attempts++;
@@ -890,7 +870,6 @@ export class WarpSentinelBoss extends Entity {
         aliveGunboats >= maxGunboats
       );
 
-      // Skip if we still picked a gunboat type but at max capacity
       if ((type === "cave_gunboat1" || type === "cave_gunboat2") && aliveGunboats >= maxGunboats) {
         continue;
       }
