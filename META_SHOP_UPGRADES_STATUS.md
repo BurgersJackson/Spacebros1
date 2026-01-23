@@ -6,8 +6,8 @@ Analysis of which meta shop upgrades actually work when purchased in Spacebros1.
 
 ## Summary
 
-- **17 upgrades** fully functional
-- **13 upgrades** partially or completely non-functional
+- **18 upgrades** fully functional
+- **12 upgrades** partially or completely non-functional
 - **1 upgrade** has implementation bugs
 
 ---
@@ -26,6 +26,7 @@ Analysis of which meta shop upgrades actually work when purchased in Spacebros1.
 | `speedTuning` | Speed Tuning | ✅ Works | `stats.speedMult` used in max speed calculation |
 | `bankMultiplier` | Bank Multiplier | ✅ Works | Used in `depositMetaNuggets()` |
 | `shopDiscount` | Shop Discount | ✅ Works | Used in `getMetaUpgradeCost()` |
+| `extraLife` | Extra Life | ✅ Works (Fixed) | `GameContext.metaExtraLifeCount` checked in `killPlayer()` - revives with full HP |
 | `droneFabricator` | Drone Fabricator | ✅ Works | Spawns drones via `spawnDroneFn` |
 | `splitShot` | Split Shot | ✅ Works | `stats.splitChance` used in shoot() |
 | `shieldRecharge` | Shield Recharge | ✅ Works | `stats.shieldRechargeInterval` used in update() |
@@ -40,7 +41,6 @@ Analysis of which meta shop upgrades actually work when purchased in Spacebros1.
 
 | Upgrade ID | Name | Issue | Details |
 |------------|------|-------|---------|
-| `extraLife` | Extra Life | ❌ NOT USED | Stats set but never checked when player dies in `_killPlayer()` |
 | `piercingRounds` | Piercing Rounds | ❌ NOT USED | `stats.pierceCount` set but never passed to Bullet constructor |
 | `explosiveRounds` | Explosive Rounds | ❌ NOT USED | `stats.explosiveChance/explosiveDamage` set but never applied to bullets |
 | `criticalStrike` | Critical Strike | ❌ NOT USED | `stats.critChance` set but only used for Shockwaves, not regular bullets |

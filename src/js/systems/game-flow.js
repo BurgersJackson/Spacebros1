@@ -75,7 +75,7 @@ export function killPlayer() {
     if (GameContext.metaExtraLifeCount > 0) {
         GameContext.metaExtraLifeCount--;
         GameContext.player.dead = false;
-        GameContext.player.hp = Math.max(1, Math.floor(GameContext.player.maxHp * 0.5));
+        GameContext.player.hp = GameContext.player.maxHp;
         GameContext.player.invulnerable = 180;
         deps.spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 20, '#0f0');
         deps.showOverlayMessage(`SECOND CHANCE! (${GameContext.metaExtraLifeCount} remaining)`, '#0f0', 1500);

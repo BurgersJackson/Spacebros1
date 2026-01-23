@@ -286,7 +286,7 @@ export const META_SHOP_UPGRADE_DATA = {
     },
     extraLife: {
         name: "Extra Life",
-        description: "Revive with 50% HP once per run",
+        description: "Revive with full HP once per run",
         tier1: "1 extra life",
         tier2: "2 extra lives",
         tier3: "3 extra lives",
