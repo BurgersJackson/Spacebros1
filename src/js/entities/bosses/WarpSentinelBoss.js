@@ -9,6 +9,7 @@ import { CaveGunboat1 } from "../cave/CaveGunboat1.js";
 import { CaveGunboat2 } from "../cave/CaveGunboat2.js";
 import { WarpBioPod } from "../zones/WarpBioPod.js";
 import { WarpShieldDrone } from "./WarpShieldDrone.js";
+import { Particle } from "../particles/Particle.js";
 import { showOverlayMessage } from "../../utils/ui-helpers.js";
 import {
   pixiBossLayer,
@@ -28,6 +29,20 @@ let _applyAOEDamageToPlayer = null;
 let _updateHealthUI = null;
 let _killPlayer = null;
 let _canvas = null;
+
+/**
+ * Spawns larger particles (3x size) but fewer (1/3 count) for warp boss effects
+ */
+function _spawnLargeParticles(x, y, count = 10, color = '#fff') {
+  // Spawn 1/3 as many particles (round to nearest int, minimum 1)
+  const actualCount = Math.max(1, Math.round(count / 3));
+  // Create particles manually with 3x size
+  for (let i = 0; i < actualCount; i++) {
+    const p = new Particle(x, y, null, null, color);
+    p.size = 6; // 3x normal size (2 * 3 = 6)
+    GameContext.particles.push(p);
+  }
+}
 
 export function registerWarpSentinelBossDependencies(deps) {
   if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
@@ -54,19 +69,9 @@ export class WarpSentinelBoss extends Entity {
 
     this.maxShieldHp = 999;
     this.shieldStrength = this.maxShieldHp;
-    this.shieldSegments = new Array(58).fill(0);
-    this.innerShieldSegments = new Array(48).fill(0);
-    for (let i = 0; i < 58; i++) {
-      if (i % 4 !== 3) this.shieldSegments[i] = 999;
-    }
-    for (let i = 0; i < 48; i++) {
-      if (i % 4 !== 3) this.innerShieldSegments[i] = 999;
-    }
+    this.shieldSegments = new Array(72).fill(999);
     this.shieldRadius = 950;
-    this.innerShieldRadius = 850;
-    this.baseRingSpeed = 0.007;
-    this.shieldRotation = 0;
-    this.innerShieldRotation = 0;
+    this.shieldRotation = 0; // Stationary shield (doesn't rotate)
     this.lastShieldRegenAt = Date.now();
     this.shieldRegenMs = 500;
 
@@ -80,6 +85,7 @@ export class WarpSentinelBoss extends Entity {
     this.dashCooldown = 240;
     this.dashWarmup = 0;
     this.dashFrames = 0;
+    this.baseDashFrames = 60; // Base charge duration
     this.dashDir = { x: 0, y: 0 };
     this.dashSpeed = 11.25;
 
@@ -115,10 +121,23 @@ export class WarpSentinelBoss extends Entity {
 
     this._cachedAliveHelpers = 0;
     this.shieldsDirty = true;
-    this._pixiInnerGfx = null;
     this.ramInvulnerable = 0;
-    this.collisionHull = [{ x: 0, y: 0, r: 800 }];
-    this.collisionRadius = 800;
+    this.collisionHull = [
+      // Main body - central core
+      { x: 0, y: 0, r: 120 * this.sizeScale },
+      // Head section (front, facing player)
+      { x: 100 * this.sizeScale, y: 0, r: 115 * this.sizeScale },
+      // Tail section (back)
+      { x: -100 * this.sizeScale, y: 0, r: 115 * this.sizeScale },
+      // Upper wings
+      { x: 20 * this.sizeScale, y: -80 * this.sizeScale, r: 70 * this.sizeScale },
+      { x: -20 * this.sizeScale, y: -80 * this.sizeScale, r: 70 * this.sizeScale },
+      // Lower wings
+      { x: 20 * this.sizeScale, y: 80 * this.sizeScale, r: 70 * this.sizeScale },
+      { x: -20 * this.sizeScale, y: 80 * this.sizeScale, r: 70 * this.sizeScale }
+    ];
+    // Broad phase radius for quick rejection (covers all circles)
+    this.collisionRadius = 250 * this.sizeScale;
     this._pixiSprite = null;
     this.shieldDrones = [];
     this.shieldDronesAlive = 4;
@@ -149,9 +168,11 @@ export class WarpSentinelBoss extends Entity {
       this.phase = 3;
       this.shieldEverDown = true;
       this.shieldSegments.fill(0);
-      this.innerShieldSegments.fill(0);
       this.shieldsDirty = true;
-      showOverlayMessage("SENTINEL SHIELD DOWN!", "#f00", 2000, 3);
+
+      // Increase charge distance by 50% when all shield drones are destroyed
+      this.baseDashFrames = Math.round(this.baseDashFrames * 1.5);
+      showOverlayMessage("SENTINEL SHIELD DOWN! CHARGE RANGE INCREASED!", "#f00", 2500, 3);
     }
 
     if (this.phase === 2 && prevPhase < 2 && !this.phase2Started) {
@@ -170,10 +191,35 @@ export class WarpSentinelBoss extends Entity {
 
   hitTestCircle(x, y, r) {
     if (this.dead) return false;
+
+    // Broad phase: quick rejection check against overall radius
     const dx = x - this.pos.x;
     const dy = y - this.pos.y;
     const distSq = dx * dx + dy * dy;
-    return distSq < (this.collisionRadius + r) * (this.collisionRadius + r);
+    if (distSq > (this.collisionRadius + r) * (this.collisionRadius + r)) {
+      return false;
+    }
+
+    // Narrow phase: check each circle in the collision hull
+    // The boss rotates to face the player, so we need to transform the bullet position
+    // into local coordinates
+    const aim =
+      GameContext.player && !GameContext.player.dead
+        ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x)
+        : 0;
+    const cos = Math.cos(-aim);
+    const sin = Math.sin(-aim);
+    const localX = dx * cos - dy * sin;
+    const localY = dx * sin + dy * cos;
+
+    for (const circle of this.collisionHull) {
+      const cdx = localX - circle.x;
+      const cdy = localY - circle.y;
+      if (cdx * cdx + cdy * cdy < (circle.r + r) * (circle.r + r)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   drawBossHud(ctx) {
@@ -293,8 +339,7 @@ export class WarpSentinelBoss extends Entity {
     if (this.ramInvulnerable > 0) this.ramInvulnerable -= dtFactor;
 
     const ringMult = 1.0;
-    this.shieldRotation += this.baseRingSpeed * ringMult * dtFactor;
-    this.innerShieldRotation -= this.baseRingSpeed * ringMult * 1.2 * dtFactor;
+    // Shield is stationary - doesn't rotate
 
     this._cachedAliveHelpers = GameContext.enemies.filter(
       e => e && !e.dead && e.isWarpReinforcement
@@ -310,17 +355,9 @@ export class WarpSentinelBoss extends Entity {
         this.shieldSegments[idx1] = Math.min(this.shieldStrength, this.shieldSegments[idx1] + 1);
         this.shieldsDirty = true;
       }
-      const idx2 = this.innerShieldSegments.findIndex(s => s < this.shieldStrength);
-      if (idx2 !== -1) {
-        this.innerShieldSegments[idx2] = Math.min(
-          this.shieldStrength,
-          this.innerShieldSegments[idx2] + 1
-        );
-        this.shieldsDirty = true;
-      }
       this.lastShieldRegenAt = now;
       if (Math.random() < 0.25 && _spawnParticles)
-        _spawnParticles(this.pos.x, this.pos.y, 4, "#0ff");
+        _spawnLargeParticles(this.pos.x, this.pos.y, 4, "#0ff");
     }
 
     if (this.reinforcementTimer > 0) {
@@ -352,7 +389,7 @@ export class WarpSentinelBoss extends Entity {
       this.vel.mult(Math.pow(0.92, dtFactor));
       if (this.dashWarmup <= 0) {
         this.dashWarmup = 0;
-        this.dashFrames = 60;
+        this.dashFrames = this.baseDashFrames;
       }
     } else if (this.dashFrames > 0) {
       this.dashFrames -= dtFactor;
@@ -378,7 +415,7 @@ export class WarpSentinelBoss extends Entity {
       this.dashDir = { x: dx, y: dy };
       this.dashWarmup = 9;
       this.dashCooldown = this.phase === 2 ? 180 : 240;
-      if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 14, "#f0f");
+      if (_spawnLargeParticles) _spawnLargeParticles(this.pos.x, this.pos.y, 14, "#f0f");
       showOverlayMessage("SENTINEL CHARGING", "#f0f", 700);
     }
 
@@ -457,15 +494,17 @@ export class WarpSentinelBoss extends Entity {
     if (this.chitinCooldown <= 0 && distToPlayer < 2600) {
       const count = this.phase === 1 ? 16 : this.phase === 2 ? 22 : 28;
       const spread = 1.1;
-      for (let i = 0; i < count; i++) {
-        const t = count === 1 ? 0 : i / (count - 1) - 0.5;
+      // Spawn 1/3 as many bullets (round to nearest int, minimum 1)
+      const actualCount = Math.max(1, Math.round(count / 3));
+      for (let i = 0; i < actualCount; i++) {
+        const t = actualCount === 1 ? 0 : i / (actualCount - 1) - 0.5;
         const a = aimToPlayer + t * spread;
         const bx = this.pos.x + Math.cos(a) * (this.radius + 10);
         const by = this.pos.y + Math.sin(a) * (this.radius + 10);
         const shot = new Bullet(bx, by, a, 12, {
           owner: "enemy",
           damage: 1,
-          radius: 4,
+          radius: 12, // 3x larger (4 * 3 = 12)
           color: "#f6f"
         });
         shot.owner = this;
@@ -523,8 +562,8 @@ export class WarpSentinelBoss extends Entity {
           GameContext.player.shieldsDirty = true;
         } else {
           GameContext.player.hp -= 2;
-          if (_spawnParticles)
-            _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, "#f00");
+          if (_spawnLargeParticles)
+            _spawnLargeParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, "#f00");
           playSound("hit");
           if (_updateHealthUI) _updateHealthUI();
           if (GameContext.player.hp <= 0 && _killPlayer) _killPlayer();
@@ -588,7 +627,7 @@ export class WarpSentinelBoss extends Entity {
         e.despawnImmune = true;
         e.isWarpReinforcement = true;
         GameContext.enemies.push(e);
-        if (_spawnParticles) _spawnParticles(x, y, 10, "#f0f");
+        if (_spawnLargeParticles) _spawnLargeParticles(x, y, 10, "#f0f");
         break;
       }
     }
@@ -613,7 +652,7 @@ export class WarpSentinelBoss extends Entity {
         e.despawnImmune = true;
         e.isWarpReinforcement = true;
         GameContext.enemies.push(e);
-        if (_spawnParticles) _spawnParticles(x, y, 10, "#f0f");
+        if (_spawnLargeParticles) _spawnLargeParticles(x, y, 10, "#f0f");
         break;
       }
     }
@@ -622,12 +661,6 @@ export class WarpSentinelBoss extends Entity {
 
   draw(ctx) {
     if (this.dead) {
-      if (this._pixiInnerGfx) {
-        try {
-          this._pixiInnerGfx.visible = false;
-          if (this._pixiInnerGfx.parent) this._pixiInnerGfx.parent.removeChild(this._pixiInnerGfx);
-        } catch (e) {}
-      }
       if (this._pixiGfx) {
         try {
           this._pixiGfx.visible = false;
@@ -690,41 +723,36 @@ export class WarpSentinelBoss extends Entity {
           this.shieldsDirty = true;
         } else if (!gfx.parent) pixiVectorLayer.addChild(gfx);
 
-        let innerGfx = this._pixiInnerGfx;
-        if (!innerGfx) {
-          innerGfx = new PIXI.Graphics();
-          pixiVectorLayer.addChild(innerGfx);
-          this._pixiInnerGfx = innerGfx;
-          this.shieldsDirty = true;
-        } else if (!innerGfx.parent) pixiVectorLayer.addChild(innerGfx);
-
         gfx.position.set(rPos.x, rPos.y);
-        gfx.rotation = aim + this.shieldRotation;
-        innerGfx.position.set(rPos.x, rPos.y);
-        innerGfx.rotation = aim + this.innerShieldRotation;
+        // Shield is stationary - no rotation
 
         if (this.shieldsDirty) {
-          const drawShieldRing = (graphics, segments, radius, color) => {
-            if (!segments || segments.length === 0) return;
-            graphics.clear();
-            const count = segments.length;
-            const arcLen = (Math.PI * 2) / count;
-            graphics.lineStyle(8 / z, color, 0.8);
-            for (let i = 0; i < count; i++) {
-              if (segments[i] <= 0) continue;
-              const a0 = i * arcLen + 0.01;
-              const a1 = (i + 1) * arcLen - 0.01;
-              graphics.moveTo(Math.cos(a0) * radius, Math.sin(a0) * radius);
-              graphics.arc(0, 0, radius, a0, a1);
-            }
-          };
-          drawShieldRing(gfx, this.shieldSegments, this.shieldRadius, 0x00ffff);
-          drawShieldRing(innerGfx, this.innerShieldSegments, this.innerShieldRadius, 0xff00ff);
+          gfx.clear();
+          // Check if shield is active (any segments > 0)
+          const hasShield = this.shieldSegments.some(s => s > 0);
+          if (hasShield) {
+            // Draw glowing shield matching shield drone lightning color (0x88ddff)
+            const shieldRadius = this.shieldRadius;
+
+            // Outer glow layer
+            gfx.lineStyle(16 / z, 0x88ddff, 0.3);
+            gfx.drawCircle(0, 0, shieldRadius + 20);
+            gfx.endFill();
+
+            // Main shield ring - bright cyan with glow
+            gfx.lineStyle(12 / z, 0x88ddff, 0.9);
+            gfx.drawCircle(0, 0, shieldRadius);
+            gfx.endFill();
+
+            // Inner glow for extra radiance
+            gfx.lineStyle(6 / z, 0xaaffff, 0.5);
+            gfx.drawCircle(0, 0, shieldRadius - 10);
+            gfx.endFill();
+          }
           this.shieldsDirty = false;
         }
 
         gfx.visible = true;
-        innerGfx.visible = true;
       }
 
       if ((this.flameCharge && this.flameCharge > 0) || (this.flameFire && this.flameFire > 0)) {

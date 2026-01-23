@@ -3,9 +3,24 @@ import { GameContext } from '../../core/game-context.js';
 import { SIM_STEP_MS, USE_PIXI_OVERLAY } from '../../core/constants.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { Bullet } from '../projectiles/Bullet.js';
+import { Particle } from '../particles/Particle.js';
 import { pixiVectorLayer, getRenderAlpha } from '../../rendering/pixi-context.js';
 
 let _spawnParticles = null;
+
+/**
+ * Spawns larger particles (3x size) but fewer (1/3 count) for warp boss effects
+ */
+function _spawnLargeParticles(x, y, count = 10, color = '#fff') {
+  // Spawn 1/3 as many particles (round to nearest int, minimum 1)
+  const actualCount = Math.max(1, Math.round(count / 3));
+  // Create particles manually with 3x size
+  for (let i = 0; i < actualCount; i++) {
+    const p = new Particle(x, y, null, null, color);
+    p.size = 6; // 3x normal size (2 * 3 = 6)
+    GameContext.particles.push(p);
+  }
+}
 
 export function registerWarpBioPodDependencies(deps) {
     if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
@@ -28,7 +43,7 @@ export class WarpBioPod extends Entity {
     takeHit(damage) {
         if (this.dead) return;
         this.hp -= damage;
-        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 6, '#f6f');
+        if (_spawnParticles) _spawnLargeParticles(this.pos.x, this.pos.y, 6, '#f6f');
         if (this.hp <= 0) this.explode();
     }
     explode() {
@@ -39,14 +54,14 @@ export class WarpBioPod extends Entity {
             this._pixiGfx = null;
         }
         playSound('warp_pod_pop');
-        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 18, '#f0f');
-        const pelletCount = 10;
+        if (_spawnParticles) _spawnLargeParticles(this.pos.x, this.pos.y, 18, '#f0f');
+        const pelletCount = Math.round(10 / 3); // 1/3 of original 10 pellets
         for (let i = 0; i < pelletCount; i++) {
             const a = Math.random() * Math.PI * 2;
             const b = new Bullet(this.pos.x, this.pos.y, a, 6, {
                 owner: 'enemy',
                 damage: 1,
-                radius: 3,
+                radius: 12, // 3x larger (4 * 3 = 12)
                 color: '#f0f',
                 life: 180
             });
