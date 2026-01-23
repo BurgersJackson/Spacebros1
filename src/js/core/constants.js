@@ -237,7 +237,7 @@ export const META_SHOP_UPGRADE_DATA = {
         tier8: "Increases effectiveness further",
         tier9: "Increases effectiveness further",
         tier10: "MAX TIER REACHED",
-        notes: "Fireballs orbit at 500u range. 1 rotation every 6 seconds."
+        notes: "Fireballs orbit at 500u range. 1 rotation every 4.8 seconds."
     },
     speedTuning: {
         name: "Speed Tuning",
