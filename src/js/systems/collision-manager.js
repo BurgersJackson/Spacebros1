@@ -2,6 +2,7 @@ import { GameContext } from '../core/game-context.js';
 import { Enemy, Pinwheel, Destroyer, Destroyer2, SpaceStation, Cruiser } from '../entities/index.js';
 import { CavePinwheel1, CavePinwheel2, CavePinwheel3 } from '../entities/cave/index.js';
 import { WarpShieldDrone } from '../entities/bosses/index.js';
+import { Shockwave } from '../entities/projectiles/Shockwave.js';
 
 let _spawnParticles = null;
 let _playSound = null;
@@ -1007,7 +1008,20 @@ export function processBulletCollisions() {
                                         }
                                     }
                                 }
-                                
+
+                                // Explosive Rounds meta upgrade - chance to create explosion on hit
+                                if (!b.isEnemy && GameContext.player && GameContext.player.stats &&
+                                    GameContext.player.stats.explosiveChance > 0 &&
+                                    Math.random() < GameContext.player.stats.explosiveChance) {
+                                    const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                                    const explosiveRange = 200;
+                                    GameContext.shockwaves.push(new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
+                                        damageAsteroids: true,
+                                        damageEnemies: true,
+                                        ignoreOwner: true
+                                    }));
+                                }
+
                                 if (e.hp <= 0) {
                                     e.kill();
                                     GameContext.score += 100;
@@ -1188,6 +1202,19 @@ export function processBulletCollisions() {
                                             break;
                                         }
                                     }
+                                }
+
+                                // Explosive Rounds meta upgrade
+                                if (!b.isEnemy && GameContext.player && GameContext.player.stats &&
+                                    GameContext.player.stats.explosiveChance > 0 &&
+                                    Math.random() < GameContext.player.stats.explosiveChance) {
+                                    const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                                    const explosiveRange = 200;
+                                    GameContext.shockwaves.push(new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
+                                        damageAsteroids: true,
+                                        damageEnemies: true,
+                                        ignoreOwner: true
+                                    }));
                                 }
 
                                 if (e.hp <= 0) {
@@ -1372,6 +1399,19 @@ export function processBulletCollisions() {
                                             break;
                                         }
                                     }
+                                }
+
+                                // Explosive Rounds meta upgrade
+                                if (!b.isEnemy && GameContext.player && GameContext.player.stats &&
+                                    GameContext.player.stats.explosiveChance > 0 &&
+                                    Math.random() < GameContext.player.stats.explosiveChance) {
+                                    const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                                    const explosiveRange = 200;
+                                    GameContext.shockwaves.push(new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
+                                        damageAsteroids: true,
+                                        damageEnemies: true,
+                                        ignoreOwner: true
+                                    }));
                                 }
 
                                 if (e.hp <= 0) {
@@ -1564,6 +1604,19 @@ export function processBulletCollisions() {
                                     }
                                 }
 
+                                // Explosive Rounds meta upgrade
+                                if (!b.isEnemy && GameContext.player && GameContext.player.stats &&
+                                    GameContext.player.stats.explosiveChance > 0 &&
+                                    Math.random() < GameContext.player.stats.explosiveChance) {
+                                    const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                                    const explosiveRange = 200;
+                                    GameContext.shockwaves.push(new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
+                                        damageAsteroids: true,
+                                        damageEnemies: true,
+                                        ignoreOwner: true
+                                    }));
+                                }
+
                                 if (e.hp <= 0) {
                                     e.dead = true;
                                     if (_playSound) _playSound('base_explode');
@@ -1590,6 +1643,20 @@ export function processBulletCollisions() {
                                     hit = true;
                                     if (_playSound) _playSound('hit');
                                     if (_spawnParticles) _spawnParticles(f.pos.x, f.pos.y, 6, '#fff');
+
+                                    // Explosive Rounds meta upgrade
+                                    if (!b.isEnemy && GameContext.player && GameContext.player.stats &&
+                                        GameContext.player.stats.explosiveChance > 0 &&
+                                        Math.random() < GameContext.player.stats.explosiveChance) {
+                                        const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                                        const explosiveRange = 200;
+                                        GameContext.shockwaves.push(new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
+                                            damageAsteroids: true,
+                                            damageEnemies: true,
+                                            ignoreOwner: true
+                                        }));
+                                    }
+
                                     if (f.hp <= 0) {
                                         if (typeof f.kill === 'function') f.kill();
                                         else f.dead = true;
@@ -1612,6 +1679,20 @@ export function processBulletCollisions() {
                                     hit = true;
                                     if (_playSound) _playSound('hit');
                                     if (_spawnParticles) _spawnParticles(t.pos.x, t.pos.y, 6, '#fff');
+
+                                    // Explosive Rounds meta upgrade
+                                    if (!b.isEnemy && GameContext.player && GameContext.player.stats &&
+                                        GameContext.player.stats.explosiveChance > 0 &&
+                                        Math.random() < GameContext.player.stats.explosiveChance) {
+                                        const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                                        const explosiveRange = 200;
+                                        GameContext.shockwaves.push(new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
+                                            damageAsteroids: true,
+                                            damageEnemies: true,
+                                            ignoreOwner: true
+                                        }));
+                                    }
+
                                     if (t.hp <= 0) {
                                         if (typeof t.kill === 'function') t.kill();
                                         else t.dead = true;
@@ -1722,6 +1803,20 @@ export function processBulletCollisions() {
                         hit = true;
                         if (_playSound) _playSound('hit');
                         if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
+
+                        // Explosive Rounds meta upgrade
+                        if (GameContext.player && GameContext.player.stats &&
+                            GameContext.player.stats.explosiveChance > 0 &&
+                            Math.random() < GameContext.player.stats.explosiveChance) {
+                            const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                            const explosiveRange = 200;
+                            GameContext.shockwaves.push(new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
+                                damageAsteroids: true,
+                                damageEnemies: true,
+                                ignoreOwner: true
+                            }));
+                        }
+
                         if (GameContext.spaceStation.hp <= 0) {
                             if (_handleSpaceStationDestroyed) _handleSpaceStationDestroyed();
                         }
@@ -1779,6 +1874,20 @@ export function processBulletCollisions() {
                         hit = true;
                         if (_playSound) _playSound('hit');
                         if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, '#ff0');
+
+                        // Explosive Rounds meta upgrade
+                        if (GameContext.player && GameContext.player.stats &&
+                            GameContext.player.stats.explosiveChance > 0 &&
+                            Math.random() < GameContext.player.stats.explosiveChance) {
+                            const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                            const explosiveRange = 200;
+                            GameContext.shockwaves.push(new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
+                                damageAsteroids: true,
+                                damageEnemies: true,
+                                ignoreOwner: true
+                            }));
+                        }
+
                         if (GameContext.destroyer.hp <= 0) {
                             GameContext.destroyer.kill();
                         }
@@ -1844,6 +1953,20 @@ export function processBulletCollisions() {
                                     hit = true;
                                     if (_playSound) _playSound('hit');
                                     if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, '#fff');
+
+                                    // Explosive Rounds meta upgrade
+                                    if (GameContext.player && GameContext.player.stats &&
+                                        GameContext.player.stats.explosiveChance > 0 &&
+                                        Math.random() < GameContext.player.stats.explosiveChance) {
+                                        const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                                        const explosiveRange = 200;
+                                        GameContext.shockwaves.push(new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
+                                            damageAsteroids: true,
+                                            damageEnemies: true,
+                                            ignoreOwner: true
+                                        }));
+                                    }
+
                                     if (GameContext.boss.hp <= 0) {
                                         GameContext.boss.kill();
                                         GameContext.score += 10000;

@@ -6,8 +6,8 @@ Analysis of which meta shop upgrades actually work when purchased in Spacebros1.
 
 ## Summary
 
-- **18 upgrades** fully functional
-- **12 upgrades** partially or completely non-functional
+- **19 upgrades** fully functional
+- **11 upgrades** partially or completely non-functional
 - **1 upgrade** has implementation bugs
 
 ---
@@ -27,6 +27,7 @@ Analysis of which meta shop upgrades actually work when purchased in Spacebros1.
 | `bankMultiplier` | Bank Multiplier | ✅ Works | Used in `depositMetaNuggets()` |
 | `shopDiscount` | Shop Discount | ✅ Works | Used in `getMetaUpgradeCost()` |
 | `extraLife` | Extra Life | ✅ Works (Fixed) | `GameContext.metaExtraLifeCount` checked in `killPlayer()` - revives with full HP |
+| `explosiveRounds` | Explosive Rounds | ✅ Works (Fixed) | `stats.explosiveChance/explosiveDamage` checked in collision-manager.js |
 | `droneFabricator` | Drone Fabricator | ✅ Works | Spawns drones via `spawnDroneFn` |
 | `splitShot` | Split Shot | ✅ Works | `stats.splitChance` used in shoot() |
 | `shieldRecharge` | Shield Recharge | ✅ Works | `stats.shieldRechargeInterval` used in update() |
@@ -42,7 +43,6 @@ Analysis of which meta shop upgrades actually work when purchased in Spacebros1.
 | Upgrade ID | Name | Issue | Details |
 |------------|------|-------|---------|
 | `piercingRounds` | Piercing Rounds | ❌ NOT USED | `stats.pierceCount` set but never passed to Bullet constructor |
-| `explosiveRounds` | Explosive Rounds | ❌ NOT USED | `stats.explosiveChance/explosiveDamage` set but never applied to bullets |
 | `criticalStrike` | Critical Strike | ❌ NOT USED | `stats.critChance` set but only used for Shockwaves, not regular bullets |
 | `thornArmor` | Thorn Armor | ❌ NOT USED | `stats.thornReflect` set but never checked in `takeHit()` |
 | `lifesteal` | Lifesteal | ❌ NOT USED | `stats.lifestealThreshold` set but never checked on enemy kills |
@@ -94,9 +94,9 @@ Analysis of which meta shop upgrades actually work when purchased in Spacebros1.
 ## Priority Fixes (Most Visible to Players)
 
 1. **Critical Strike** - Players expect crit numbers
-2. **Explosive Rounds** - Visual effect missing
-3. **Piercing Rounds** - Combat feel impact
-4. **Evasion Boost** - Survival mechanic
-5. **Lifesteal** - Sustain mechanic
-6. **Thorn Armor** - Reflect damage is satisfying
-7. **Combo Meter** - Has tracking, just needs bonus fixed
+2. **Piercing Rounds** - Combat feel impact
+3. **Evasion Boost** - Survival mechanic
+4. **Lifesteal** - Sustain mechanic
+5. **Thorn Armor** - Reflect damage is satisfying
+6. **Combo Meter** - Has tracking, just needs bonus fixed
+7. **Dash Cooldown/Duration** - Turbo boost quality of life
