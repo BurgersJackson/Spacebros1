@@ -142,6 +142,7 @@ export class WarpSentinelBoss extends Entity {
     this.shieldDrones = [];
     this.shieldDronesAlive = 4;
     this.shieldEverDown = false;
+    this._pixiFlameGfx = null;
 
     this.spawnShieldDrones();
   }
@@ -278,6 +279,15 @@ export class WarpSentinelBoss extends Entity {
       } catch (e) {}
       this._pixiDebugGfx = null;
     }
+    if (this._pixiFlameGfx) {
+      try {
+        this._pixiFlameGfx.visible = false;
+        if (typeof this._pixiFlameGfx.clear === "function") this._pixiFlameGfx.clear();
+        if (this._pixiFlameGfx.parent) this._pixiFlameGfx.parent.removeChild(this._pixiFlameGfx);
+        this._pixiFlameGfx.destroy(true);
+      } catch (e) {}
+      this._pixiFlameGfx = null;
+    }
     if (this._pixiContainer) {
       try {
         this._pixiContainer.visible = false;
@@ -302,7 +312,8 @@ export class WarpSentinelBoss extends Entity {
     GameContext.bossActive = false;
     GameContext.bossArena.active = false;
     GameContext.bossArena.growing = false;
-    playSound("warp_flame_stop");
+    // FIRE BREATH AUDIO - DISABLED
+    // playSound("warp_flame_stop");
 
     for (let i = GameContext.warpBioPods.length - 1; i >= 0; i--) {
       const pod = GameContext.warpBioPods[i];
@@ -449,11 +460,15 @@ export class WarpSentinelBoss extends Entity {
       }
     }
 
-    this.flameCooldown -= dtFactor;
+    // FIRE BREATH ATTACK - DISABLED
+    // this.flameCooldown -= dtFactor;
+    // this.chitinCooldown -= dtFactor;
     this.chitinCooldown -= dtFactor;
     this.screamCooldown -= dtFactor;
     this.podCooldown -= dtFactor;
 
+    // Fire breath attack logic (commented out)
+    /*
     if (this.flameFire > 0) {
       this.flameFire -= dtFactor;
       this.flameTickCooldown -= dtFactor;
@@ -490,6 +505,7 @@ export class WarpSentinelBoss extends Entity {
         this.flameCooldown = this.phase === 3 ? 150 : 180;
       }
     }
+    */
 
     if (this.chitinCooldown <= 0 && distToPlayer < 2600) {
       const count = this.phase === 1 ? 16 : this.phase === 2 ? 22 : 28;
@@ -714,6 +730,37 @@ export class WarpSentinelBoss extends Entity {
         this._pixiSprite.scale.set(hullScale);
       }
 
+      // FIRE BREATH RENDERING - DISABLED
+      /*
+      // Update fire breath rendering using PixiJS graphics attached to container
+      if ((this.flameCharge > 0 || this.flameFire > 0) && pixiBossLayer) {
+        let flameGfx = this._pixiFlameGfx;
+        if (!flameGfx) {
+          flameGfx = new PIXI.Graphics();
+          this._pixiFlameGfx = flameGfx;
+          container.addChild(flameGfx);
+        }
+
+        flameGfx.clear();
+        flameGfx.visible = true;
+        // Position flame at the boss's mouth, offset forward 200 pixels
+        // Head is at x=100 * sizeScale = 300, plus 200 offset = 500
+        flameGfx.position.set(500, 0);
+        flameGfx.rotation = this.flameAngle - aim; // Rotate relative to container's aim rotation
+
+        const alpha = this.flameFire > 0 ? 0.35 : 0.2;
+        const coneHalf = this.flameCone * 0.5;
+
+        flameGfx.beginFill(0xff7828, alpha);
+        flameGfx.moveTo(0, 0);
+        flameGfx.arc(0, 0, this.flameRange, -coneHalf, coneHalf);
+        flameGfx.lineTo(0, 0);
+        flameGfx.endFill();
+      } else if (this._pixiFlameGfx) {
+        this._pixiFlameGfx.visible = false;
+      }
+      */
+
       if (pixiVectorLayer) {
         let gfx = this._pixiGfx;
         if (!gfx) {
@@ -753,21 +800,6 @@ export class WarpSentinelBoss extends Entity {
         }
 
         gfx.visible = true;
-      }
-
-      if ((this.flameCharge && this.flameCharge > 0) || (this.flameFire && this.flameFire > 0)) {
-        const a = this.flameAngle || aim;
-        const alpha = this.flameFire && this.flameFire > 0 ? 0.35 : 0.2;
-        ctx.save();
-        ctx.translate(rPos.x, rPos.y);
-        ctx.rotate(a);
-        ctx.fillStyle = `rgba(255, 120, 40, ${alpha})`;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.arc(0, 0, this.flameRange, -this.flameCone * 0.5, this.flameCone * 0.5);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
       }
 
       if (pixiVectorLayer) {
@@ -839,6 +871,8 @@ export class WarpSentinelBoss extends Entity {
     ctx.fill();
     ctx.stroke();
 
+    // FIRE BREATH RENDERING (CANVAS 2D FALLBACK) - DISABLED
+    /*
     if ((this.flameCharge && this.flameCharge > 0) || (this.flameFire && this.flameFire > 0)) {
       const a = (this.flameAngle || aim) - aim;
       const alpha = this.flameFire && this.flameFire > 0 ? 0.35 : 0.2;
@@ -852,6 +886,7 @@ export class WarpSentinelBoss extends Entity {
       ctx.fill();
       ctx.restore();
     }
+    */
 
     ctx.rotate(this.coreRot);
     ctx.shadowBlur = 18;

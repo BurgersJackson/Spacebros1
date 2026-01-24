@@ -85,15 +85,23 @@ if (process.env.ELECTRON_NO_GPU === "1") {
   app.disableHardwareAcceleration();
 }
 
+// Apply vsync setting (disable vsync if setting is false)
+// Must be done before app.whenReady() for command-line switches to take effect
+try {
+  if (fs.existsSync(settingsPath)) {
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    if (settings.vsync === false) {
+      app.commandLine.appendSwitch('--disable-gpu-vsync');
+    }
+  }
+} catch (e) {
+  console.error("Failed to apply vsync setting:", e);
+}
+
 let mainWindow = null;
 
 function createWindow() {
   const settings = loadSettings();
-
-  // Apply vsync setting (disable vsync if setting is false)
-  if (settings.vsync === false) {
-    app.commandLine.appendSwitch('--disable-gpu-vsync');
-  }
 
   const win = new BrowserWindow({
     width: settings.fullscreen ? undefined : settings.width,
