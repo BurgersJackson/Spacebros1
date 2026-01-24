@@ -1,6 +1,6 @@
 
 import { CaveMonsterBase } from './CaveMonsterBase.js';
-import { GameContext } from '../../core/game-context.js';
+import { GameContext, getEnemyHpScaling } from '../../core/game-context.js';
 import { Bullet } from '../projectiles/Bullet.js';
 import { Enemy } from '../enemies/Enemy.js';
 import { playSound } from '../../audio/audio-manager.js';
@@ -104,8 +104,9 @@ export class CaveMonster1 extends CaveMonsterBase {
             const my = this.pos.y + Math.sin(angle) * dist;
 
             const mine = new Enemy('turret', { x: mx, y: my }, null);
-            mine.hp = 5;
-            mine.maxHp = 5;
+            const scale = getEnemyHpScaling();
+            mine.hp = (5 + 10) * scale;
+            mine.maxHp = mine.hp;
             mine.radius = 30;
             mine.despawnImmune = true;
             mine.owner = this;

@@ -5,7 +5,7 @@
  */
 
 import { Enemy } from './Enemy.js';
-import { GameContext } from '../../core/game-context.js';
+import { GameContext, getEnemyHpScaling } from '../../core/game-context.js';
 import { SIM_STEP_MS } from '../../core/constants.js';
 
 export class Gunboat extends Enemy {
@@ -21,7 +21,8 @@ export class Gunboat extends Enemy {
         
         // Gunboat stats based on level
         this.radius = 30; // match player size
-        this.hp = this.gunboatLevel === 1 ? 10 : 16;
+        const baseHp = this.gunboatLevel === 1 ? 20 : 26;
+        this.hp = (baseHp + GameContext.difficultyTier) * getEnemyHpScaling();
         this.maxSpeed = 8.0; // doubled
         this.thrustPower = 0.88; // quadrupled (0.22 * 4)
         this.shootTimer = this.gunboatLevel === 1 ? 11 : 9; // ~half

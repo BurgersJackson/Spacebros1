@@ -1,5 +1,5 @@
 import { Entity } from '../../Entity.js';
-import { GameContext } from '../../../core/game-context.js';
+import { GameContext, getEnemyHpScaling } from '../../../core/game-context.js';
 import { SIM_STEP_MS, USE_PIXI_OVERLAY } from '../../../core/constants.js';
 import { playSound } from '../../../audio/audio-manager.js';
 import { Bullet } from '../../projectiles/Bullet.js';
@@ -23,8 +23,9 @@ export class DungeonDrone extends Entity {
         this.orbitRadius = orbitRadius;
         this.orbitAngle = angle;
         this.orbitSpeed = 0.02 + Math.random() * 0.01;
-        this.hp = 5;
-        this.maxHp = 5;
+        const scale = getEnemyHpScaling();
+        this.hp = (15 + (GameContext.difficultyTier || 1)) * scale;
+        this.maxHp = this.hp;
         this.radius = 18;
         this.fireCooldown = 40 + Math.floor(Math.random() * 20);
         this.t = 0;

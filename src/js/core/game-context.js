@@ -332,3 +332,14 @@ export function getElapsedGameTime() {
     if (!GameContext.gameActive) return 0;
     return Date.now() - GameContext.gameStartTime - GameContext.pausedAccumMs;
 }
+
+/**
+ * @returns {number} Multiplier for enemy HP based on elapsed time (1.0 to 4.0 over 30 mins)
+ */
+export function getEnemyHpScaling() {
+    if (!GameContext.gameActive) return 1;
+    const elapsed = getElapsedGameTime();
+    // Scale: 1.0 (start) -> 4.0 (30 mins)
+    // +10 HP base added elsewhere
+    return 1 + (elapsed / (30 * 60 * 1000)) * 3;
+}

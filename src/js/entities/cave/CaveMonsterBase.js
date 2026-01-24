@@ -3,7 +3,7 @@ import { Entity } from '../Entity.js';
 import { Enemy } from '../enemies/Enemy.js';
 import { CaveGunboat1, CaveGunboat2 } from './index.js';
 import { Vector } from '../../core/math.js';
-import { GameContext } from '../../core/game-context.js';
+import { GameContext, getEnemyHpScaling } from '../../core/game-context.js';
 import { SIM_STEP_MS, SIM_FPS, ZOOM_LEVEL } from '../../core/constants.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { Coin } from '../pickups/Coin.js';
@@ -96,8 +96,9 @@ export class CaveMonsterBase extends Entity {
         this.radius = Math.round(this.visualRadius * 1.6); // Collision radius for hull (matches sprite edge ~527px)
         this.collisionRadius = this.visualRadius * 1.5; // For ship-ship collisions
         this.hullCollisionRadius = 550; // Simplified hull collision for bullets (550px circle)
-        this.hp = config.hp;
-        this.maxHp = config.hp;
+        const scale = getEnemyHpScaling();
+        this.hp = (config.hp + 10) * scale;
+        this.maxHp = this.hp;
         this.angle = 0;
 
         // Crystalline shield system - two rings with 50 slots each

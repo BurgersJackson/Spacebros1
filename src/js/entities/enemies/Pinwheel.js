@@ -4,7 +4,7 @@
  */
 
 import { Entity } from '../Entity.js';
-import { GameContext } from '../../core/game-context.js';
+import { GameContext, getEnemyHpScaling } from '../../core/game-context.js';
 import { SIM_STEP_MS } from '../../core/constants.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { Bullet } from '../projectiles/Bullet.js';
@@ -46,7 +46,8 @@ export class Pinwheel extends Entity {
         this.pos.y = y;
         this.type = type;
         this.radius = 84; // 70 * 1.2 (20% increase for collision sphere)
-        this.hp = 10 + (GameContext.difficultyTier - 1) * 5;
+        const baseVal = 20 + (GameContext.difficultyTier - 1) * 5;
+        this.hp = baseVal * getEnemyHpScaling();
         this.shootTimer = 75; // 150 / 2
         this.angle = 0;
         this.turretAngle = 0;

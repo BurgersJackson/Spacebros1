@@ -1,5 +1,5 @@
 import { Entity } from '../Entity.js';
-import { GameContext } from '../../core/game-context.js';
+import { GameContext, getEnemyHpScaling } from '../../core/game-context.js';
 import { SIM_STEP_MS, ZOOM_LEVEL } from '../../core/constants.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { Bullet } from '../projectiles/Bullet.js';
@@ -28,15 +28,16 @@ export class CaveWallTurret extends Entity {
     constructor(x, y, mode = 'rapid', opts = {}) {
         super(x, y);
         this.mode = mode; // 'rapid' | 'beam' | 'missile' 
+        const scale = getEnemyHpScaling();
         this.armored = !!opts.armored;
-        this.armorHp = Math.max(0, opts.armorHp || (this.armored ? 10 : 0));
+        this.armorHp = Math.max(0, opts.armorHp || (this.armored ? 20 * scale : 0));
         this.maxArmorHp = this.armorHp;
-        this.weakpointHp = Math.max(0, opts.weakpointHp || (this.armored ? 4 : 0));
+        this.weakpointHp = Math.max(0, opts.weakpointHp || (this.armored ? 14 * scale : 0));
         this.maxWeakpointHp = this.weakpointHp;
         this._weakOffset = null;
         this.radius = 86;
-        this.hp = 6;
-        this.maxHp = 6;
+        this.hp = (16 + (GameContext.difficultyTier || 1)) * scale;
+        this.maxHp = this.hp;
         this.t = 0;
         this.reload = 30 + Math.floor(Math.random() * 25);
         this.trackerCharge = 0;

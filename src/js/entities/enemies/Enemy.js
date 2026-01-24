@@ -5,7 +5,7 @@
 
 import { Entity } from '../Entity.js';
 import { Vector } from '../../core/math.js';
-import { GameContext } from '../../core/game-context.js';
+import { GameContext, getEnemyHpScaling } from '../../core/game-context.js';
 import { SIM_STEP_MS, SIM_FPS } from '../../core/constants.js';
 import { playSound } from '../../audio/audio-manager.js';
 import { findSpawnPointRelative } from '../../utils/spawn-utils.js';
@@ -92,16 +92,18 @@ export class Enemy extends Entity {
         this.rotationSpeed = 0.1; // 0.05 * 2
         this.friction = 0.94; // 0.97^2 approx 0.941
 
+        const scale = getEnemyHpScaling();
+
         if (this.type === 'roamer') {
-            this.hp = 1;
+            this.hp = (11 + GameContext.difficultyTier) * scale;
         } else if (this.type === 'elite_roamer') {
-            this.hp = 6 + (GameContext.difficultyTier * 2);
+            this.hp = (16 + (GameContext.difficultyTier * 2)) * scale;
             this.shieldSegments = new Array(6).fill(1);
             this.shieldRadius = 26; // reduced 25%
             this.radius = 19; // reduced 25% (was 25)
             this.maxSpeed *= 1.05;
         } else if (this.type === 'hunter') {
-            this.hp = 12 + (GameContext.difficultyTier * 3);
+            this.hp = (22 + (GameContext.difficultyTier * 3)) * scale;
             this.radius = 22; // Base radius (will be multiplied by 3 to get 66)
             this.maxSpeed = 13.0 + (GameContext.difficultyTier * 0.5); // doubled
             this.thrustPower = 1.2; // quadrupled (0.3 * 4)
@@ -109,10 +111,10 @@ export class Enemy extends Entity {
             this.shieldRadius = 30; // Base shield radius (will be multiplied by 3 to get 90)
             this.shootTimer = 20; // 40 / 2
         } else if (this.type === 'defender') {
-            this.hp = 5 + (GameContext.difficultyTier - 1) * 2;
+            this.hp = (15 + (GameContext.difficultyTier - 1) * 2) * scale;
             this.radius = 20; // Same base radius as roamer
         } else {
-            this.hp = 5 + (GameContext.difficultyTier - 1) * 2;
+            this.hp = (15 + (GameContext.difficultyTier - 1) * 2) * scale;
         }
 
         this.shootTimer = 13; // 50% faster (20 * 2/3)
@@ -170,7 +172,8 @@ export class Enemy extends Entity {
                 this.gunboatLevel = overrideLevel ? overrideLevel : ((GameContext.difficultyTier >= 4 || (GameContext.player && GameContext.player.level >= 6)) ? 2 : 1);
             }
             this.radius = 30; // match player size
-            this.hp = this.gunboatLevel === 1 ? 10 : 16;
+            const baseHp = this.gunboatLevel === 1 ? 20 : 26;
+            this.hp = (baseHp + GameContext.difficultyTier) * getEnemyHpScaling();
             this.maxSpeed = 8.0; // doubled
             this.thrustPower = 0.88; // quadrupled (0.22 * 4)
             this.shootTimer = this.gunboatLevel === 1 ? 11 : 9; // ~half
