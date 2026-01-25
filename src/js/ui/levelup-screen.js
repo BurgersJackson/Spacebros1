@@ -98,6 +98,44 @@ export function showLevelUpMenu() {
         }
     }
 
+    // Auto-Reroll - chance for free reroll (doesn't count against tokens)
+    if (GameContext.player.stats.autoRerollChance > 0 && Math.random() < GameContext.player.stats.autoRerollChance) {
+        // Clear shown upgrades to reshow all without penalty
+        GameContext.shownUpgradesThisRun.clear();
+        weightedUpgrades.length = 0;
+        choices.length = 0;
+        pickedIds.clear();
+
+        // Rebuild weighted upgrades from scratch (all weight 1 now)
+        for (const upgrade of validUpgrades) {
+            for (let w = 0; w < 1; w++) {
+                weightedUpgrades.push(upgrade);
+            }
+        }
+
+        // Pick 3 fresh options
+        for (let i = 0; i < count; i++) {
+            if (weightedUpgrades.length === 0) break;
+            const idx = Math.floor(Math.random() * weightedUpgrades.length);
+            const choice = weightedUpgrades[idx];
+            if (!pickedIds.has(choice.id)) {
+                choices.push(choice);
+                pickedIds.add(choice.id);
+                GameContext.shownUpgradesThisRun.add(choice.id);
+            }
+            for (let j = weightedUpgrades.length - 1; j >= 0; j--) {
+                if (weightedUpgrades[j].id === choice.id) {
+                    weightedUpgrades.splice(j, 1);
+                }
+            }
+        }
+
+        // Show notification
+        if (_showOverlayMessage) {
+            _showOverlayMessage("AUTO-REROLL! FREE REROLL TRIGGERED!", "#f80", 1500);
+        }
+    }
+
     const rerollBtn = document.createElement('button');
     rerollBtn.id = 'reroll-btn';
     rerollBtn.style.marginTop = '10px';

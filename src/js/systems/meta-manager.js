@@ -438,6 +438,7 @@ export function applyMetaUpgrades(spawnDroneFn) {
         }
         GameContext.player.stats.comboDamagePer10 = comboDamagePer10;
         GameContext.player.stats.maxComboDamage = maxComboDamage;
+        GameContext.player.stats.comboMaxBonus = maxComboDamage / 10; // Convert to per-stack bonus
         GameContext.player.stats.comboStacks = 0;
         GameContext.player.stats.comboLastHitTime = 0;
     }

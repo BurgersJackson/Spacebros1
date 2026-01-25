@@ -51,6 +51,105 @@ export function registerCollisionDependencies(deps) {
 }
 
 /**
+ * Apply critical strike to damage
+ * @param {number} baseDamage - Base damage value
+ * @param {number} x - X position for floating text
+ * @param {number} y - Y position for floating text
+ * @returns {Object} { damage, isCrit }
+ */
+function applyCriticalStrike(baseDamage, x, y) {
+  if (!GameContext.player || !GameContext.player.stats) {
+    return { damage: baseDamage, isCrit: false };
+  }
+
+  const critChance = GameContext.player.stats.critChance || 0;
+  const critDamage = GameContext.player.stats.critDamage || 1.0;
+
+  if (Math.random() < critChance) {
+    const finalDamage = Math.ceil(baseDamage * critDamage);
+    // Show floating text for crit
+    if (_addPickupFloatingText) {
+      _addPickupFloatingText(x, y, `CRIT! ${finalDamage}`, '#ff0', 24, 0, -40);
+    }
+    return { damage: finalDamage, isCrit: true };
+  }
+
+  return { damage: baseDamage, isCrit: false };
+}
+
+/**
+ * Apply lifesteal - heal player on enemy kills
+ * @param {number} x - X position for floating text
+ * @param {number} y - Y position for floating text
+ */
+function applyLifesteal(x, y) {
+  if (!GameContext.player || !GameContext.player.stats) {
+    return;
+  }
+
+  const threshold = GameContext.player.stats.lifestealThreshold || 100;
+  const healAmount = GameContext.player.stats.lifestealHealAmount || 1;
+
+  // Track kills
+  if (!GameContext.player.lifestealKills) {
+    GameContext.player.lifestealKills = 0;
+  }
+
+  GameContext.player.lifestealKills++;
+
+  // Check if we've reached the threshold
+  if (GameContext.player.lifestealKills >= threshold) {
+    // Heal player
+    GameContext.player.hp = Math.min(GameContext.player.hp + healAmount, GameContext.player.maxHp);
+
+    // Show floating text
+    if (_addPickupFloatingText) {
+      _addPickupFloatingText(x, y, `+${healAmount} HP`, '#0f0', 20, 0, -40);
+    }
+
+    // Update UI
+    if (_updateHealthUI) {
+      _updateHealthUI();
+    }
+
+    // Reset counter
+    GameContext.player.lifestealKills = 0;
+  }
+}
+
+/**
+ * Apply Thorn Armor - reflect damage when player is hit
+ * @param {number} damage - Damage taken by player
+ * @param {Object} sourceEntity - The entity that damaged player
+ */
+function applyThornArmor(damage, sourceEntity) {
+  if (!GameContext.player || !GameContext.player.stats) {
+    return;
+  }
+
+  const thornPercent = GameContext.player.stats.thornReflect || 0;
+  if (thornPercent <= 0) return;
+
+  // Calculate reflected damage
+  const thornDamage = Math.ceil(damage * thornPercent);
+
+  // Apply damage to source
+  if (typeof sourceEntity.takeHit === 'function') {
+    sourceEntity.takeHit(thornDamage);
+  } else if (sourceEntity.hp !== undefined) {
+    sourceEntity.hp -= thornDamage;
+    if (sourceEntity.hp <= 0 && typeof sourceEntity.kill === 'function') {
+      sourceEntity.kill();
+    }
+  }
+
+  // Visual feedback
+  if (_spawnParticles) {
+    _spawnParticles(sourceEntity.pos.x, sourceEntity.pos.y, 10, '#f0f');
+  }
+}
+
+/**
  * @param {Object} entity
  * @param {number} elasticity
  */
@@ -665,6 +764,7 @@ export function resolveEntityCollision() {
           if (_playSound) _playSound("hit");
 
           GameContext.player.takeHit(ramDamage);
+          applyThornArmor(ramDamage, e);
         }
       }
 
@@ -679,6 +779,7 @@ export function resolveEntityCollision() {
           // Positional collision handled in main loop, only apply damage/effects here
           const ramDamage = 3 + Math.floor(GameContext.sectorIndex * 0.5);
           GameContext.player.takeHit(ramDamage);
+          applyThornArmor(ramDamage, e);
 
           if (_spawnParticles)
             _spawnParticles(
@@ -737,6 +838,7 @@ export function resolveEntityCollision() {
         // Positional collision handled in main loop, only apply damage/effects here
         const ramDamage = 5; // Fixed damage for ramming the Cruiser
         GameContext.player.takeHit(ramDamage);
+          applyThornArmor(ramDamage, e);
 
         if (_spawnParticles)
           _spawnParticles(
@@ -827,7 +929,9 @@ export function resolveEntityCollision() {
       );
       if (dist < GameContext.player.radius + n.radius) {
         if (_playSound) _playSound("coin");
-        GameContext.spaceNuggets += n.value;
+        const nuggetBonus = GameContext.player.stats.luckyNuggetDrop || 0;
+        const finalNuggets = Math.ceil(n.value * (1 + nuggetBonus));
+        GameContext.spaceNuggets += finalNuggets;
         if (_updateNuggetUI) _updateNuggetUI();
         if (_addPickupFloatingText) _addPickupFloatingText("nugs", n.value, "#ff0");
         if (typeof n.kill === "function") n.kill();
@@ -843,7 +947,9 @@ export function resolveEntityCollision() {
       );
       if (dist < GameContext.player.radius + p.radius) {
         if (_playSound) _playSound("powerup");
-        GameContext.player.hp = Math.min(GameContext.player.hp + 10, GameContext.player.maxHp);
+        const healthBonus = GameContext.player.stats.luckyHealthDrop || 0;
+        const finalHealth = Math.ceil(10 * (1 + healthBonus));
+        GameContext.player.hp = Math.min(GameContext.player.hp + finalHealth, GameContext.player.maxHp);
         if (_updateHealthUI) _updateHealthUI();
         if (_showOverlayMessage) _showOverlayMessage("HEALTH RESTORED", "#0f0", 1000);
         if (typeof p.kill === "function") p.kill();
@@ -905,6 +1011,7 @@ export function resolveEntityCollision() {
           GameContext.player.vel.x += Math.cos(angle) * 2;
           GameContext.player.vel.y += Math.sin(angle) * 2;
           GameContext.player.takeHit(2);
+          applyThornArmor(2, e);
           if (_updateHealthUI) _updateHealthUI();
           if (_playSound) _playSound("hit");
           if (_spawnParticles)
@@ -960,6 +1067,7 @@ export function resolveEntityCollision() {
             if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 18, "#fa0");
             if (_playSound) _playSound("explode");
             if (b.hp <= 0) {
+              applyLifesteal(b.pos.x, b.pos.y);
               b.dead = true;
               if (_playSound) _playSound("base_explode");
               if (_spawnLargeExplosion) _spawnLargeExplosion(b.pos.x, b.pos.y, 2.0);
@@ -997,6 +1105,7 @@ export function resolveEntityCollision() {
             if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 18, "#fa0");
             if (_playSound) _playSound("explode");
             if (b.hp <= 0) {
+              applyLifesteal(b.pos.x, b.pos.y);
               b.dead = true;
               if (_playSound) _playSound("base_explode");
               if (_spawnLargeExplosion) _spawnLargeExplosion(b.pos.x, b.pos.y, 2.0);
@@ -1331,7 +1440,8 @@ export function processBulletCollisions() {
                 }
 
                 if (e.hp <= 0) {
-                  e.kill();
+                  applyLifesteal(e.pos.x, e.pos.y);
+              e.kill();
                   GameContext.score += 100;
                 }
                 break;
@@ -1573,7 +1683,8 @@ export function processBulletCollisions() {
                 }
 
                 if (e.hp <= 0) {
-                  e.kill();
+                  applyLifesteal(e.pos.x, e.pos.y);
+              e.kill();
                   GameContext.score += 100;
                 }
                 break;

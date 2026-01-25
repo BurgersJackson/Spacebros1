@@ -187,14 +187,19 @@ export class Spaceship extends Entity {
         };
 
         // Turbo boost (activated by E / gamepad X)
+        // Apply Dash Duration meta upgrade (turboDurationBonus)
+        const turboDurationBonus = this.stats.turboDurationBonus || 0;
+        // Apply Dash Cooldown meta upgrade (turboCooldownReduction)
+        const turboCooldownReduction = (this.stats.turboCooldownReduction || 0) * 60; // Convert seconds to frames
+
         this.turboBoost = {
             // Stock ship has a small turbo (upgrades extend duration).
             unlocked: true,
             activeFrames: 0,
             cooldownFrames: 0,
             lastCooldownFrames: 0,
-            durationFrames: 60, // 1.0s
-            cooldownTotalFrames: 600, // fixed 10s cooldown
+            durationFrames: 60 + (turboDurationBonus * 60), // 1.0s + upgrade bonus
+            cooldownTotalFrames: Math.max(0, 600 - turboCooldownReduction), // 10s - upgrade reduction
             speedMult: 1.25, // +25% speed
             buttonHeld: false
         };
@@ -292,6 +297,14 @@ export class Spaceship extends Entity {
     takeHit(damage, ignoreShields = false) {
         if (this.dead || this.invulnerable > 0) return;
 
+        // Evasion Boost - chance to completely avoid damage
+        if (this.stats.evasionChance > 0 && Math.random() < this.stats.evasionChance) {
+            if (_addPickupFloatingText) {
+                _addPickupFloatingText(this.pos.x, this.pos.y, "EVADED!", '#0f0', 20, 0, -30);
+            }
+            return; // Completely avoid the hit
+        }
+
         let remaining = Math.max(0, Math.ceil(damage));
 
         if (!ignoreShields) {
@@ -327,6 +340,14 @@ export class Spaceship extends Entity {
             // Screen shake (global variables)
             if (typeof GameContext.shakeMagnitude !== 'undefined') GameContext.shakeMagnitude = 10;
             if (typeof GameContext.shakeTimer !== 'undefined') GameContext.shakeTimer = 10;
+
+            // Second Wind - grant invulnerability after damage
+            if (this.stats.secondWindDuration > 0) {
+                this.invulnerable = this.stats.secondWindDuration * 60; // Convert seconds to frames
+                if (_addPickupFloatingText) {
+                    _addPickupFloatingText(this.pos.x, this.pos.y, "SECOND WIND!", '#0ff', 24, 0, -60);
+                }
+            }
 
             if (this.hp <= 0) {
                 _killPlayer();
@@ -1033,7 +1054,7 @@ export class Spaceship extends Entity {
         }, 500);
     }
 
-    createBullet(x, y, angle, isEnemy, damage, speed, radius, color, homing, shape) {
+    createBullet(x, y, angle, isEnemy, damage, speed, radius, color, homing, shape, pierceCount) {
         const opts = {};
         if (typeof damage === 'number') opts.damage = damage;
         if (typeof radius === 'number') opts.radius = radius;
@@ -1041,6 +1062,7 @@ export class Spaceship extends Entity {
         else opts.color = isEnemy ? '#f00' : '#ff0';
         if (typeof homing === 'number') opts.homing = homing;
         if (shape) opts.shape = shape;
+        if (typeof pierceCount === 'number') opts.pierceCount = pierceCount;
         opts.owner = isEnemy ? 'enemy' : 'player';
         return new Bullet(x, y, angle, speed, opts);
     }
@@ -1068,7 +1090,7 @@ export class Spaceship extends Entity {
                 const pairSpread = bothOwned ? 0.15 : 0;
                 const spreadOffset = (pair - 0.5) * pairSpread;
                 const angle = this.turretAngle + angleOffset + spreadOffset + (Math.random() - 0.5) * 0.2;
-                const b = this.createBullet(this.pos.x, this.pos.y, angle, false, damage, 12, 3, '#f80', 2);
+                const b = this.createBullet(this.pos.x, this.pos.y, angle, false, damage, 12, 3, '#f80', 2, null, 0, this.stats.pierceCount || 0);
                 b.ignoreShields = false;
                 b.isMissile = true;
                 GameContext.bullets.push(b);
@@ -1095,7 +1117,7 @@ export class Spaceship extends Entity {
                 damage *= comboBonus;
             }
 
-            const b = this.createBullet(this.pos.x, this.pos.y, angle, false, damage, 14, 4, '#ff0');
+            const b = this.createBullet(this.pos.x, this.pos.y, angle, false, damage, 14, 4, '#ff0', null, 0, this.stats.pierceCount || 0);
 
             GameContext.bullets.push(b);
         }
@@ -1274,7 +1296,7 @@ export class Spaceship extends Entity {
         const bulletSpeed = 18; // Same as player turret
         const damage = this.ciwsDamage;
         // White bullets for visibility (#fff, 3px)
-        GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, angle, false, damage, bulletSpeed, 3, '#fff'));
+        GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, angle, false, damage, bulletSpeed, 3, '#fff', null, 0, this.stats.pierceCount || 0));
     }
 
     shoot() {
@@ -1324,13 +1346,13 @@ export class Spaceship extends Entity {
             const bx = this.pos.x + aimX * 25 + perpX * offset;
             const by = this.pos.y + aimY * 25 + perpY * offset;
 
-            GameContext.bullets.push(this.createBullet(bx, by, this.turretAngle, false, damage, bulletSpeed, 4, null, 0));
+            GameContext.bullets.push(this.createBullet(bx, by, this.turretAngle, false, damage, bulletSpeed, 4, null, 0, this.stats.pierceCount || 0));
             _spawnBarrelSmoke(bx, by, this.turretAngle);
 
             // Split Shot - chance to fire additional projectile at angle
             if (this.stats.splitShot > 0 && Math.random() < this.stats.splitShot) {
                 const splitAngle = this.turretAngle + (Math.random() - 0.5) * 0.5;
-                const splitBullet = this.createBullet(bx, by, splitAngle, false, damage, bulletSpeed, 4, '#f80', 0);
+                const splitBullet = this.createBullet(bx, by, splitAngle, false, damage, bulletSpeed, 4, '#f80', null, 0, this.stats.pierceCount || 0);
                 splitBullet.isSplitShot = true;
                 GameContext.bullets.push(splitBullet);
             }
@@ -1356,20 +1378,20 @@ export class Spaceship extends Entity {
             const weaponDamage = damage * finalEffectiveness;
 
             if (w.type === 'side') {
-                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle + Math.PI / 2, false, weaponDamage, bulletSpeed, 4, '#0f0'));
-                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle - Math.PI / 2, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle + Math.PI / 2, false, weaponDamage, bulletSpeed, 4, '#0f0', null, 0, this.stats.pierceCount || 0));
+                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle - Math.PI / 2, false, weaponDamage, bulletSpeed, 4, '#0f0', null, 0, this.stats.pierceCount || 0));
             } else if (w.type === 'rear') {
-                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle + Math.PI, false, weaponDamage, bulletSpeed, 4, '#0f0')); // Rear laser
+                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle + Math.PI, false, weaponDamage, bulletSpeed, 4, '#0f0', null, 0, this.stats.pierceCount || 0)); // Rear laser
             } else if (w.type === 'dual_rear') {
                 // Dual stream to the rear at angles
-                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle + Math.PI - Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
-                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle + Math.PI + Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle + Math.PI - Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0', null, 0, this.stats.pierceCount || 0));
+                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle + Math.PI + Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0', null, 0, this.stats.pierceCount || 0));
             } else if (w.type === 'dual_front') {
                 // Dual stream to the front at angles
-                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle - Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
-                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle + Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle - Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0', null, 0, this.stats.pierceCount || 0));
+                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle + Math.PI / 6, false, weaponDamage, bulletSpeed, 4, '#0f0', null, 0, this.stats.pierceCount || 0));
             } else { // Forward
-                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle, false, weaponDamage, bulletSpeed, 4, '#0f0'));
+                GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, this.angle, false, weaponDamage, bulletSpeed, 4, '#0f0', null, 0, this.stats.pierceCount || 0));
             }
         });
     }
@@ -1400,13 +1422,13 @@ export class Spaceship extends Entity {
         const bx = this.pos.x + aimX * 25 + perpX * offset;
         const by = this.pos.y + aimY * 25 + perpY * offset;
 
-        GameContext.bullets.push(this.createBullet(bx, by, turretAngle, false, damage, bulletSpeed, 4, null, 0));
+        GameContext.bullets.push(this.createBullet(bx, by, turretAngle, false, damage, bulletSpeed, 4, null, 0, this.stats.pierceCount || 0));
         _spawnBarrelSmoke(bx, by, turretAngle);
 
         // Split Shot - chance to fire additional projectile at angle
         if (this.stats.splitShot > 0 && Math.random() < this.stats.splitShot) {
             const splitAngle = turretAngle + (Math.random() - 0.5) * 0.5;
-            const splitBullet = this.createBullet(bx, by, splitAngle, false, damage, bulletSpeed, 4, '#f80', 0);
+            const splitBullet = this.createBullet(bx, by, splitAngle, false, damage, bulletSpeed, 4, '#f80', null, 0, this.stats.pierceCount || 0);
             splitBullet.isSplitShot = true;
             GameContext.bullets.push(splitBullet);
         }
@@ -1432,7 +1454,7 @@ export class Spaceship extends Entity {
         for (let i = 0; i < count; i++) {
             const a = this.turretAngle + (Math.random() - 0.5) * spread;
             const s = 12 + (Math.random() - 0.5) * 4;
-            const b = this.createBullet(this.pos.x, this.pos.y, a, false, dmg, s, 3, '#ff0', 0, 'square');
+            const b = this.createBullet(this.pos.x, this.pos.y, a, false, dmg, s, 3, '#ff0', null, 0, 'square', this.stats.pierceCount || 0);
             b.life = (baseShotgunLife * tierRangeMult) * this.stats.rangeMult;
             GameContext.bullets.push(b);
         }
@@ -1447,7 +1469,7 @@ export class Spaceship extends Entity {
             damage *= comboBonus;
         }
         const forwardAngle = this.angle; // Forward in facing direction
-        GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, forwardAngle, false, damage, 15, 4, '#0f0'));
+        GameContext.bullets.push(this.createBullet(this.pos.x, this.pos.y, forwardAngle, false, damage, 15, 4, '#0f0', null, 0, this.stats.pierceCount || 0));
     }
 
     drawLaser(ctx) {
