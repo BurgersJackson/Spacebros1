@@ -1,5 +1,3 @@
-import { updateShipSelectionUI } from './menus.js';
-
 let GameContextRef = null;
 let gpStateRef = null;
 let setMenuDebounceRef = null;
@@ -84,8 +82,6 @@ export function updateStartScreenDisplay() {
     if (el) {
         el.innerText = GameContextRef.currentProfileName ? `Current: ${GameContextRef.currentProfileName}` : 'Current: None';
     }
-    // Refresh ship selection UI to ensure correct highlighting
-    updateShipSelectionUI();
 }
 
 function updateProfileSelectionVisuals() {

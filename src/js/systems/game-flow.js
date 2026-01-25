@@ -1,6 +1,5 @@
 import { GameContext } from '../core/game-context.js';
 import { ZOOM_LEVEL } from '../core/constants.js';
-import { updateShipSelectionUI } from '../ui/menus.js';
 
 const deps = {};
 
@@ -98,8 +97,6 @@ export function killPlayer() {
         document.querySelector('#start-screen h1').innerText = "BETTER LUCK NEXT TIME";
         document.querySelector('#start-screen h1').style.color = "#f00";
         document.getElementById('start-btn').innerText = "REBOOT SYSTEM";
-        // Refresh ship selection UI to ensure correct highlighting
-        updateShipSelectionUI();
         setTimeout(() => {
             document.getElementById('start-btn').focus();
             GameContext.menuSelectionIndex = 0;
@@ -168,7 +165,7 @@ export function startGame() {
         deps.stopMusic();
         if (GameContext.player) deps.pixiCleanupObject(GameContext.player);
         const shipType = deps.getSelectedShipType ? deps.getSelectedShipType() : null;
-        GameContext.player = new deps.Spaceship(shipType || 'slacker');
+        GameContext.player = new deps.Spaceship(shipType || 'standard');
 
         if (GameContext.currentProfileName) {
             const raw = localStorage.getItem(deps.savePrefix + GameContext.currentProfileName);
@@ -463,8 +460,6 @@ export function quitGame() {
     if (endScreen) endScreen.style.display = 'none';
     document.querySelector('#start-screen h1').innerText = "ABORTED";
     document.getElementById('start-btn').innerText = "INITIATE LAUNCH";
-    // Refresh ship selection UI to ensure correct highlighting
-    updateShipSelectionUI();
     setTimeout(() => document.getElementById('resume-btn-start').focus(), 100);
     GameContext.menuSelectionIndex = 0;
 

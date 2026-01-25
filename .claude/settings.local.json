@@ -28,10 +28,7 @@
       "Bash(git config:*)",
       "Bash(git restore:*)",
       "Bash(npx eslint src/js/entities/bosses/WarpShieldDrone.js src/js/entities/bosses/WarpSentinelBoss.js src/js/rendering/texture-loader.js --format compact)",
-      "Bash(echo \"Exit code: $?\")",
-      "Bash(chmod:*)",
-      "Bash(wc:*)",
-      "Bash(npm run lint:*)"
+      "Bash(echo \"Exit code: $?\")"
     ]
   },
   "outputStyle": "default"
