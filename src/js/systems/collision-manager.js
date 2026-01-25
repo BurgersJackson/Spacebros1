@@ -26,6 +26,7 @@ let _updateContractUI = null;
 let _setProjectileImpactSoundContext = null;
 let _awardCoinsInstant = null;
 let _awardNuggetsInstant = null;
+let _FloatingText = null;
 
 /**
  * @param {Object} deps
@@ -48,6 +49,7 @@ export function registerCollisionDependencies(deps) {
     _setProjectileImpactSoundContext = deps.setProjectileImpactSoundContext;
   if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
   if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
+  if (deps.FloatingText) _FloatingText = deps.FloatingText;
 }
 
 /**
@@ -82,12 +84,14 @@ function applyCriticalStrike(baseDamage, x, y) {
       "-> finalDamage:",
       finalDamage
     );
-    // Show floating text for crit
-    if (_addPickupFloatingText) {
-      _addPickupFloatingText(x, y, `CRIT! ${finalDamage}`, "#ff0", 24, 0, -40);
-      console.log("[CRIT DEBUG] Called floating text at x:", x, "y:", y);
+    // Show floating text for crit - directly create FloatingText instance
+    if (_FloatingText) {
+      GameContext.floatingTexts.push(
+        new _FloatingText(x, y, `CRIT! ${finalDamage}`, "#ff0", 70, {})
+      );
+      console.log("[CRIT DEBUG] Created FloatingText at x:", x, "y:", y);
     } else {
-      console.log("[CRIT DEBUG] ERROR: _addPickupFloatingText is not available!");
+      console.log("[CRIT DEBUG] ERROR: _FloatingText is not available!");
     }
     return { damage: finalDamage, isCrit: true };
   }
@@ -121,8 +125,8 @@ function applyLifesteal(x, y) {
     GameContext.player.hp = Math.min(GameContext.player.hp + healAmount, GameContext.player.maxHp);
 
     // Show floating text
-    if (_addPickupFloatingText) {
-      _addPickupFloatingText(x, y, `+${healAmount} HP`, "#0f0", 20, 0, -40);
+    if (_FloatingText) {
+      GameContext.floatingTexts.push(new _FloatingText(x, y, `+${healAmount} HP`, "#0f0", 60, {}));
     }
 
     // Update UI

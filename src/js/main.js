@@ -864,7 +864,8 @@ registerCollisionDependencies({
   updateContractUI,
   setProjectileImpactSoundContext,
   awardCoinsInstant,
-  awardNuggetsInstant
+  awardNuggetsInstant,
+  FloatingText
 });
 
 registerGameLoopDependencies({
