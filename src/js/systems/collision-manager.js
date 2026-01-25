@@ -1331,7 +1331,7 @@ export function processBulletCollisions() {
               const distSq = dx * dx + dy * dy;
               const hitRadius = e.radius + b.radius;
               if (distSq < hitRadius * hitRadius) {
-                e.hp -= b.damage;
+                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y); e.hp -= critResult.damage;
                 hit = true;
                 b.dead = true;
                 // Stop bullet movement immediately
@@ -1587,7 +1587,7 @@ export function processBulletCollisions() {
 
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
-                e.hp -= b.damage;
+                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y); e.hp -= critResult.damage;
                 hit = true;
                 if (_playSound) _playSound("hit");
                 if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, "#fff");
@@ -1831,7 +1831,7 @@ export function processBulletCollisions() {
 
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
-                e.hp -= b.damage;
+                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y); e.hp -= critResult.damage;
                 hit = true;
                 e.aggro = true;
                 if (_playSound) _playSound("hit");
@@ -2086,7 +2086,7 @@ export function processBulletCollisions() {
 
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
-                e.hp -= b.damage;
+                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y); e.hp -= critResult.damage;
                 hit = true;
                 e.aggro = true;
                 if (_playSound) _playSound("hit");
