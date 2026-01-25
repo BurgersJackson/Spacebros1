@@ -80,6 +80,7 @@ export class Spaceship extends Entity {
         this.xp = 0;
         this.level = 1;
         this.nextLevelXp = 100;
+        this.triggeredFirstUpgrade = false; // Track if first upgrade has been triggered
         this.inventory = {}; // Track upgrade tiers
 
         // Stats
@@ -266,6 +267,14 @@ export class Spaceship extends Entity {
     }
 
     addXp(amount) {
+        // First kill triggers first upgrade immediately
+        if (!this.triggeredFirstUpgrade && amount > 0) {
+            this.triggeredFirstUpgrade = true;
+            this.xp = this.nextLevelXp; // Immediately set to required amount for level-up
+            this.levelUp();
+            return;
+        }
+
         this.xp += amount;
         if (this.xp >= this.nextLevelXp) {
             this.levelUp();

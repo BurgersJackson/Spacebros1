@@ -7,6 +7,7 @@ import { Shockwave } from "../projectiles/Shockwave.js";
 import { Enemy } from "../enemies/Enemy.js";
 import { WarpBioPod } from "../zones/WarpBioPod.js";
 import { showOverlayMessage } from "../../utils/ui-helpers.js";
+import { updateShipSelectionUI } from "../../ui/menus.js";
 import {
   pixiBossLayer,
   pixiVectorLayer,
@@ -223,6 +224,8 @@ export class FinalBoss extends Entity {
       document.querySelector("#start-screen h1").innerText = "YOU WON THIS RUN";
       document.querySelector("#start-screen h1").style.color = "#0f0";
       document.getElementById("start-btn").innerText = "PLAY AGAIN";
+      // Refresh ship selection UI to ensure correct highlighting
+      updateShipSelectionUI();
       setTimeout(() => {
         document.getElementById("start-btn").focus();
       }, 100);

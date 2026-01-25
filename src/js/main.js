@@ -1300,7 +1300,15 @@ registerSpaceshipDependencies({
 });
 
 const SHIP_SELECTION_KEY = "neon_space_ship_selection";
-let selectedShipType = localStorage.getItem(SHIP_SELECTION_KEY) || "standard";
+// Get ship type from localStorage, defaulting to 'slacker' for new users
+let storedShipType = localStorage.getItem(SHIP_SELECTION_KEY);
+let selectedShipType = "slacker"; // Default to slacker
+if (storedShipType && (storedShipType === 'standard' || storedShipType === 'slacker')) {
+    selectedShipType = storedShipType;
+} else {
+    // If no valid value exists, save 'slacker' as the default
+    localStorage.setItem(SHIP_SELECTION_KEY, "slacker");
+}
 
 registerMenuDependencies({
   GameContext,
@@ -1325,6 +1333,7 @@ registerMenuDependencies({
   getSelectedShipType: () => selectedShipType,
   setSelectedShipType: value => {
     selectedShipType = value;
+    localStorage.setItem(SHIP_SELECTION_KEY, value);
   },
   shipSelectionKey: SHIP_SELECTION_KEY,
   getDebugMenuVisible: () => debugMenuVisible,

@@ -274,29 +274,52 @@ function grantDebugUpgrade(upgradeId, tier, upgradeName) {
 }
 
 /**
+ * Updates the ship selection UI to reflect the current selection
+ * @returns {void}
+ */
+export function updateShipSelectionUI() {
+    const standardBtn = document.getElementById('ship-standard-btn');
+    const slackerBtn = document.getElementById('ship-slacker-btn');
+    const descEl = document.getElementById('ship-description');
+    if (!standardBtn || !slackerBtn || !descEl) return;
+
+    // Clear both buttons first
+    standardBtn.classList.remove('selected');
+    slackerBtn.classList.remove('selected');
+
+    // Get selected ship type, prioritizing the current variable over localStorage
+    let selectedShipType = null;
+    if (getSelectedShipTypeRef) {
+        selectedShipType = getSelectedShipTypeRef();
+    }
+    // Only check localStorage if we don't have a value from the ref
+    if (!selectedShipType && shipSelectionKeyRef) {
+        const stored = localStorage.getItem(shipSelectionKeyRef);
+        if (stored && (stored === 'standard' || stored === 'slacker')) {
+            selectedShipType = stored;
+        }
+    }
+    // Default to 'slacker' if nothing found
+    if (!selectedShipType) {
+        selectedShipType = 'slacker';
+        if (shipSelectionKeyRef) {
+            localStorage.setItem(shipSelectionKeyRef, 'slacker');
+        }
+    }
+
+    if (selectedShipType === 'slacker') {
+        slackerBtn.classList.add('selected');
+        descEl.textContent = 'Mouse-driven • Click & hold LEFT BUTTON to brake • RIGHT BUTTON activates turbo boost\nShip follows your cursor • Keyboard works too • Perfect for tactical positioning';
+    } else {
+        standardBtn.classList.add('selected');
+        descEl.textContent = 'Manual turret control • Mouse/Gamepad aiming\nClassic combat experience';
+    }
+}
+
+/**
  * @returns {void}
  */
 export function initMenuUi() {
-    const updateShipSelectionUI = () => {
-        const standardBtn = document.getElementById('ship-standard-btn');
-        const slackerBtn = document.getElementById('ship-slacker-btn');
-        const descEl = document.getElementById('ship-description');
-        if (!standardBtn || !slackerBtn || !descEl) return;
-
-        const selectedShipType = getSelectedShipTypeRef ? getSelectedShipTypeRef() : 'standard';
-        if (selectedShipType === 'slacker') {
-            standardBtn.classList.remove('selected');
-            slackerBtn.classList.add('selected');
-            descEl.textContent = 'Mouse-driven • Click & hold LEFT BUTTON to brake • RIGHT BUTTON activates turbo boost\nShip follows your cursor • Keyboard works too • Perfect for tactical positioning';
-        } else {
-            standardBtn.classList.add('selected');
-            slackerBtn.classList.remove('selected');
-            descEl.textContent = 'Manual turret control • Mouse/Gamepad aiming\nClassic combat experience';
-        }
-        if (shipSelectionKeyRef && selectedShipType) {
-            localStorage.setItem(shipSelectionKeyRef, selectedShipType);
-        }
-    };
 
     updateShipSelectionUI();
 
@@ -386,6 +409,9 @@ export function initMenuUi() {
                 startScreen.style.display = 'block';
                 startScreen.style.visibility = 'visible';
             }
+
+            // Refresh ship selection UI when returning to start screen
+            updateShipSelectionUI();
 
             const allMenuElements = document.querySelectorAll('button, .upgrade-card, .meta-item');
             allMenuElements.forEach(el => {
