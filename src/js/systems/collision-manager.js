@@ -65,11 +65,29 @@ function applyCriticalStrike(baseDamage, x, y) {
   const critChance = GameContext.player.stats.critChance || 0;
   const critDamage = GameContext.player.stats.critDamage || 1.0;
 
+  console.log(
+    "[CRIT DEBUG] Checking crit - baseDamage:",
+    baseDamage,
+    "critChance:",
+    critChance,
+    "critDamage:",
+    critDamage
+  );
+
   if (Math.random() < critChance) {
     const finalDamage = Math.ceil(baseDamage * critDamage);
+    console.log(
+      "[CRIT DEBUG] CRITICAL STRIKE! baseDamage:",
+      baseDamage,
+      "-> finalDamage:",
+      finalDamage
+    );
     // Show floating text for crit
     if (_addPickupFloatingText) {
-      _addPickupFloatingText(x, y, `CRIT! ${finalDamage}`, '#ff0', 24, 0, -40);
+      _addPickupFloatingText(x, y, `CRIT! ${finalDamage}`, "#ff0", 24, 0, -40);
+      console.log("[CRIT DEBUG] Called floating text at x:", x, "y:", y);
+    } else {
+      console.log("[CRIT DEBUG] ERROR: _addPickupFloatingText is not available!");
     }
     return { damage: finalDamage, isCrit: true };
   }
@@ -104,7 +122,7 @@ function applyLifesteal(x, y) {
 
     // Show floating text
     if (_addPickupFloatingText) {
-      _addPickupFloatingText(x, y, `+${healAmount} HP`, '#0f0', 20, 0, -40);
+      _addPickupFloatingText(x, y, `+${healAmount} HP`, "#0f0", 20, 0, -40);
     }
 
     // Update UI
@@ -134,18 +152,18 @@ function applyThornArmor(damage, sourceEntity) {
   const thornDamage = Math.ceil(damage * thornPercent);
 
   // Apply damage to source
-  if (typeof sourceEntity.takeHit === 'function') {
+  if (typeof sourceEntity.takeHit === "function") {
     sourceEntity.takeHit(thornDamage);
   } else if (sourceEntity.hp !== undefined) {
     sourceEntity.hp -= thornDamage;
-    if (sourceEntity.hp <= 0 && typeof sourceEntity.kill === 'function') {
+    if (sourceEntity.hp <= 0 && typeof sourceEntity.kill === "function") {
       sourceEntity.kill();
     }
   }
 
   // Visual feedback
   if (_spawnParticles) {
-    _spawnParticles(sourceEntity.pos.x, sourceEntity.pos.y, 10, '#f0f');
+    _spawnParticles(sourceEntity.pos.x, sourceEntity.pos.y, 10, "#f0f");
   }
 }
 
@@ -838,7 +856,7 @@ export function resolveEntityCollision() {
         // Positional collision handled in main loop, only apply damage/effects here
         const ramDamage = 5; // Fixed damage for ramming the Cruiser
         GameContext.player.takeHit(ramDamage);
-          applyThornArmor(ramDamage, e);
+        applyThornArmor(ramDamage, e);
 
         if (_spawnParticles)
           _spawnParticles(
@@ -949,7 +967,10 @@ export function resolveEntityCollision() {
         if (_playSound) _playSound("powerup");
         const healthBonus = GameContext.player.stats.luckyHealthDrop || 0;
         const finalHealth = Math.ceil(10 * (1 + healthBonus));
-        GameContext.player.hp = Math.min(GameContext.player.hp + finalHealth, GameContext.player.maxHp);
+        GameContext.player.hp = Math.min(
+          GameContext.player.hp + finalHealth,
+          GameContext.player.maxHp
+        );
         if (_updateHealthUI) _updateHealthUI();
         if (_showOverlayMessage) _showOverlayMessage("HEALTH RESTORED", "#0f0", 1000);
         if (typeof p.kill === "function") p.kill();
@@ -1331,7 +1352,8 @@ export function processBulletCollisions() {
               const distSq = dx * dx + dy * dy;
               const hitRadius = e.radius + b.radius;
               if (distSq < hitRadius * hitRadius) {
-                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y); e.hp -= critResult.damage;
+                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                e.hp -= critResult.damage;
                 hit = true;
                 b.dead = true;
                 // Stop bullet movement immediately
@@ -1441,7 +1463,7 @@ export function processBulletCollisions() {
 
                 if (e.hp <= 0) {
                   applyLifesteal(e.pos.x, e.pos.y);
-              e.kill();
+                  e.kill();
                   GameContext.score += 100;
                 }
                 break;
@@ -1587,7 +1609,8 @@ export function processBulletCollisions() {
 
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
-                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y); e.hp -= critResult.damage;
+                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                e.hp -= critResult.damage;
                 hit = true;
                 if (_playSound) _playSound("hit");
                 if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, "#fff");
@@ -1684,7 +1707,7 @@ export function processBulletCollisions() {
 
                 if (e.hp <= 0) {
                   applyLifesteal(e.pos.x, e.pos.y);
-              e.kill();
+                  e.kill();
                   GameContext.score += 100;
                 }
                 break;
@@ -1831,7 +1854,8 @@ export function processBulletCollisions() {
 
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
-                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y); e.hp -= critResult.damage;
+                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                e.hp -= critResult.damage;
                 hit = true;
                 e.aggro = true;
                 if (_playSound) _playSound("hit");
@@ -2086,7 +2110,8 @@ export function processBulletCollisions() {
 
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
-                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y); e.hp -= critResult.damage;
+                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                e.hp -= critResult.damage;
                 hit = true;
                 e.aggro = true;
                 if (_playSound) _playSound("hit");
