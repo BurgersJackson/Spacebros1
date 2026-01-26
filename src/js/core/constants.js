@@ -83,7 +83,7 @@ export const UPGRADE_DATA = {
             name: "Weapons",
             upgrades: [
                 { id: "turret_damage", name: "Turret Damage", tier1: "+20% damage", tier2: "+40% total", tier3: "+70% total", tier4: "+100% total", tier5: "+140% total", notes: "Core DPS boost." },
-                { id: "turret_fire_rate", name: "Turret Fire Rate", tier1: "+15% RPS", tier2: "+30% total", tier3: "+50% total", tier4: "+75% total", tier5: "+100% total", notes: "Stacks multiplicatively." },
+                { id: "turret_fire_rate", name: "Turret Fire Rate", tier1: "+10% RPS", tier2: "+20% total", tier3: "+30% total", tier4: "+35% total", tier5: "+40% total", notes: "Stacks multiplicatively." },
                 { id: "turret_range", name: "Turret Range", tier1: "+25% range", tier2: "+50% total", tier3: "+100% total", tier4: "+150% total", tier5: "+200% total", notes: "Hits farther threats." },
                 { id: "multi_shot", name: "Multi-Shot", tier1: "Fires 2 proj.", tier2: "Fires 3 proj.", tier3: "Fires 4 proj.", tier4: "Fires 5 proj.", tier5: "Fires 6 proj.", notes: "Parallel fire." },
                 { id: "shotgun", name: "Flak Shotgun", tier1: "Unlock: 5 Pellets", tier2: "8 Pellets, +Range", tier3: "12 Pellets", tier4: "16 Pellets, +Range", tier5: "20 Pellets, max range", notes: "Close-range burst." },

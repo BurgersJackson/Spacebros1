@@ -38,7 +38,7 @@ export function applyUpgrade(id, tier) {
             break;
         case 'turret_fire_rate':
             {
-                const table = { 0: 1.0, 1: 1.15, 2: 1.30, 3: 1.50 };
+                const table = { 0: 1.0, 1: 1.10, 2: 1.20, 3: 1.30, 4: 1.35, 5: 1.40 };
                 const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
                 const next = table[tier] || getDiminishingValue(tier, table, 0.99);
                 const ratio = (prev > 0) ? (next / prev) : 1.0;

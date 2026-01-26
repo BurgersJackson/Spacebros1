@@ -130,8 +130,8 @@ export class Spaceship extends Entity {
         this.outerShieldSegments = [];
         this.outerShieldRotation = 0;
 
-        this.baseFireDelay = 12;
-        this.fireDelay = 12;
+        this.baseFireDelay = 20;
+        this.fireDelay = 20;
         this.autofireTimer = 0;
         this.baseShotgunDelay = 30;  // shotgun fire rate (lower = faster)
         this.shotgunDelay = this.baseShotgunDelay;
