@@ -149,7 +149,8 @@ import {
   startGame,
   shiftPausedTimers,
   togglePause,
-  quitGame
+  quitGame,
+  returnToMainMenuFromDeath
 } from "./systems/game-flow.js";
 import {
   registerWorldHelperDependencies,
@@ -1329,6 +1330,7 @@ registerMenuDependencies({
   togglePause,
   showAbortConfirmDialog,
   quitGame,
+  returnToMainMenuFromDeath,
   toggleMusic,
   getMusicEnabled: () => musicEnabled,
   getSelectedShipType: () => selectedShipType,

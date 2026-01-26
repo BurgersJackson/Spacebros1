@@ -146,7 +146,7 @@ export class Spaceship extends Entity {
     this.shotgunTimer = 0;
     this.turretLevel = 1;
 
-    // NEW: Forward laser for Slacker Special (fires independently)
+    // Forward laser (fires independently for all ship types)
     this.forwardLaserDelay = 20; // Fire rate between shots
     this.forwardLaserTimer = 0;
 
@@ -674,13 +674,11 @@ export class Spaceship extends Entity {
       this.shotgunTimer = Math.max(4, this.shotgunDelay);
     }
 
-    // NEW: Slacker Special forward laser (fires independently)
-    if (this.shipType === "slacker") {
-      this.forwardLaserTimer -= dtScale;
-      if (this.forwardLaserTimer <= 0) {
-        this.fireForwardLaser();
-        this.forwardLaserTimer = Math.max(4, this.forwardLaserDelay);
-      }
+    // Forward laser (fires independently for all ship types)
+    this.forwardLaserTimer -= dtScale;
+    if (this.forwardLaserTimer <= 0) {
+      this.fireForwardLaser();
+      this.forwardLaserTimer = Math.max(4, this.forwardLaserDelay);
     }
 
     // Shield Regen
@@ -1635,22 +1633,23 @@ export class Spaceship extends Entity {
       const comboBonus = 1 + (this.comboStacks / this.comboMaxStacks) * this.stats.comboMaxBonus;
       damage *= comboBonus;
     }
-    const forwardAngle = this.angle; // Forward in facing direction
-    GameContext.bullets.push(
-      this.createBullet(
-        this.pos.x,
-        this.pos.y,
-        forwardAngle,
-        false,
-        damage,
-        15,
-        4,
-        "#0f0",
-        null,
-        0,
-        this.stats.pierceCount || 0
-      )
+    // Use ship facing angle for all ship types
+    const forwardAngle = this.angle;
+    const forwardBullet = this.createBullet(
+      this.pos.x,
+      this.pos.y,
+      forwardAngle,
+      false,
+      damage,
+      15,
+      4,
+      "#0f0",
+      null,
+      0,
+      this.stats.pierceCount || 0
     );
+    forwardBullet.weaponType = 'turret'; // Forward laser counts as turret damage
+    GameContext.bullets.push(forwardBullet);
   }
 
   drawLaser(ctx) {

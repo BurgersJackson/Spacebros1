@@ -545,6 +545,18 @@ export function initInputListeners() {
   const mouseScreen = GameContext.mouseScreen;
   const mouseWorld = GameContext.mouseWorld;
 
+  // Handle ESC in capture phase to prevent other listeners from interfering
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !e.repeat) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      if (_togglePause) {
+        _togglePause();
+      }
+    }
+  }, { capture: true });
+
   window.addEventListener("keydown", e => {
     if (e.key === "w" || e.key === "W") keys.w = true;
     if (e.key === "a" || e.key === "A") keys.a = true;
@@ -554,22 +566,6 @@ export function initInputListeners() {
     if (e.key === "e" || e.key === "E") keys.e = true;
     if (e.key === "f" || e.key === "F") keys.f = true;
     if (e.key === "Shift") keys.shift = true;
-    if (e.key === "Escape" && _togglePause) {
-      // Handle pointer lock state before toggling pause
-      const canvas = document.getElementById('gameCanvas');
-      if (canvas && document.pointerLockElement === canvas) {
-        // First ESC press releases pointer lock, don't toggle pause yet
-        try { document.exitPointerLock(); } catch (e) { }
-        // Let the browser consume this event for pointer lock release
-        e.preventDefault();
-        return;
-      }
-      // Pointer is not locked, proceed with normal pause toggle
-      if (!GameContext.gamePaused) {
-        e.preventDefault();
-      }
-      _togglePause();
-    }
     if (e.key === "F1") {
       e.preventDefault();
       if (_toggleDebugButton) _toggleDebugButton();
@@ -778,6 +774,7 @@ export function initInputListeners() {
   }
 
   // Center mouse when pointer lock is activated (for joystick-style control)
+  // Also detect ESC-based pointer lock exit for pause menu
   document.addEventListener("pointerlockchange", () => {
     const canvas = document.getElementById("gameCanvas");
 
@@ -785,6 +782,11 @@ export function initInputListeners() {
       const internal = _getInternalSize();
       mouseScreen.x = internal.width / 2;
       mouseScreen.y = internal.height / 2;
+    } else {
+      // Pointer lock was released (likely by ESC), trigger pause if game is active
+      if (GameContext.gameActive && !GameContext.gamePaused && _togglePause) {
+        _togglePause();
+      }
     }
   });
 

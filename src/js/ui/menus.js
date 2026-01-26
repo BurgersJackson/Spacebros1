@@ -17,6 +17,7 @@ let wipeProfilesRef = null;
 let togglePauseRef = null;
 let showAbortConfirmDialogRef = null;
 let quitGameRef = null;
+let returnToMainMenuFromDeathRef = null;
 let toggleMusicRef = null;
 let getMusicEnabledRef = null;
 let getSelectedShipTypeRef = null;
@@ -46,6 +47,7 @@ export function registerMenuDependencies(deps) {
     if (deps.togglePause) togglePauseRef = deps.togglePause;
     if (deps.showAbortConfirmDialog) showAbortConfirmDialogRef = deps.showAbortConfirmDialog;
     if (deps.quitGame) quitGameRef = deps.quitGame;
+    if (deps.returnToMainMenuFromDeath) returnToMainMenuFromDeathRef = deps.returnToMainMenuFromDeath;
     if (deps.toggleMusic) toggleMusicRef = deps.toggleMusic;
     if (deps.getMusicEnabled) getMusicEnabledRef = deps.getMusicEnabled;
     if (deps.getSelectedShipType) getSelectedShipTypeRef = deps.getSelectedShipType;
@@ -426,7 +428,7 @@ export function initMenuUi() {
     if (deathRestartBtn) {
         deathRestartBtn.addEventListener('click', () => {
             if (initAudioRef) initAudioRef();
-            if (startGameRef) startGameRef();
+            if (returnToMainMenuFromDeathRef) returnToMainMenuFromDeathRef();
         });
     }
 

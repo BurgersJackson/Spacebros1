@@ -378,7 +378,7 @@ export function shiftPausedTimers(pauseMs) {
 }
 
 export function togglePause() {
-    if (!GameContext.gameActive) return; 
+    if (!GameContext.gameActive) return;
 
     if (document.getElementById('debug-menu').style.display === 'block') {
         deps.hideDebugMenu();
@@ -437,10 +437,18 @@ export function togglePause() {
                 try {
                     const request = canvas.requestPointerLock();
                     if (request && typeof request.catch === 'function') {
-                        request.catch((err) => console.warn("Pointer lock failed on unpause:", err));
+                        request.catch((err) => {
+                            // Silently ignore SecurityError from user exiting lock via ESC
+                            if (err.name !== 'SecurityError') {
+                                console.warn("Pointer lock failed on unpause:", err);
+                            }
+                        });
                     }
                 } catch (err) {
-                    console.warn("Pointer lock failed on unpause:", err);
+                    // Silently ignore SecurityError from user exiting lock via ESC
+                    if (err.name !== 'SecurityError') {
+                        console.warn("Pointer lock failed on unpause:", err);
+                    }
                 }
             }
         }
@@ -495,4 +503,44 @@ export function quitGame() {
 
     updateResumeButtonState();
     window.updateResumeButtonState = updateResumeButtonState;
+}
+
+/**
+ * Return to main menu from death screen
+ * Hides death screen and shows start screen without starting a new game
+ */
+export function returnToMainMenuFromDeath() {
+    // Hide death screen
+    const deathScreen = document.getElementById('death-screen');
+    if (deathScreen) {
+        deathScreen.style.display = 'none';
+    }
+
+    // Show start screen
+    const startScreen = document.getElementById('start-screen');
+    if (startScreen) {
+        startScreen.style.display = 'block';
+        // Reset start screen text to default
+        document.querySelector('#start-screen h1').innerText = "SPACEBROS";
+        document.querySelector('#start-screen h1').style.color = "";
+        document.getElementById('start-btn').innerText = "INITIATE LAUNCH";
+
+        // Focus the start button
+        setTimeout(() => {
+            const startBtn = document.getElementById('start-btn');
+            if (startBtn) startBtn.focus();
+        }, 100);
+
+        // Reset menu selection
+        GameContext.menuSelectionIndex = 0;
+    }
+
+    // Hide pause menu
+    const pauseMenu = document.getElementById('pause-menu');
+    if (pauseMenu) {
+        pauseMenu.style.display = 'none';
+    }
+
+    // Start background music if not already playing
+    if (deps.startMusic) deps.startMusic();
 }
