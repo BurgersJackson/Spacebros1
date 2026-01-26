@@ -297,10 +297,11 @@ export function applyMetaUpgrades(spawnDroneFn) {
 
   const droneFabricatorTier = GameContext.metaProfile.purchases.droneFabricator || 0;
   if (droneFabricatorTier > 0 && typeof spawnDroneFn === "function") {
-    const droneCount = Math.min(droneFabricatorTier, 5);
-    for (let i = 0; i < droneCount; i++) {
-      spawnDroneFn("shooter");
-    }
+    if (droneFabricatorTier >= 1) spawnDroneFn("shooter");
+    if (droneFabricatorTier >= 2) spawnDroneFn("shield");
+    if (droneFabricatorTier >= 3) spawnDroneFn("heal");
+    if (droneFabricatorTier >= 4) spawnDroneFn("shooter");
+    if (droneFabricatorTier >= 5) spawnDroneFn("shield");
   }
 
   const piercingRoundsTier = GameContext.metaProfile.purchases.piercingRounds || 0;
@@ -494,18 +495,15 @@ export function applyMetaUpgrades(spawnDroneFn) {
     GameContext.player.stats.secondWindReady = true;
   }
 
-  const batteryTier = GameContext.metaProfile.purchases.batteryCapacitor || 0;
-  if (batteryTier > 0) {
+  const batteryCapacitorTier = GameContext.metaProfile.purchases.batteryCapacitor || 0;
+  if (batteryCapacitorTier > 0) {
     GameContext.player.batteryUnlocked = true;
-    GameContext.player.batteryDamage = batteryTier * 100;
-    if (batteryTier === 1) {
-      GameContext.player.batteryRange = 800;
-    }
-    if (batteryTier === 2) {
-      GameContext.player.batteryRange = 900;
-    }
-    if (batteryTier === 3) {
-      GameContext.player.batteryRange = 1000;
+    GameContext.player.batteryDamage = batteryCapacitorTier * 100;
+    const baseRanges = { 1: 800, 2: 900, 3: 1000 };
+    if (baseRanges[batteryCapacitorTier]) {
+      GameContext.player.batteryRange = baseRanges[batteryCapacitorTier];
+    } else if (batteryCapacitorTier > 3) {
+      GameContext.player.batteryRange = 1000 + (batteryCapacitorTier - 3) * 100;
     }
   }
 }

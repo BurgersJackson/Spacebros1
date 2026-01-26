@@ -95,11 +95,7 @@ export function applyUpgrade(id, tier) {
       );
       break;
     case "segment_count":
-      if (tier === 1) GameContext.player.shieldSegments.push(2, 2);
-      if (tier === 2) GameContext.player.shieldSegments.push(2, 2, 2, 2);
-      if (tier === 3) GameContext.player.shieldSegments.push(2, 2, 2, 2);
-      if (tier === 4) GameContext.player.shieldSegments.push(2, 2, 2, 2, 2, 2, 2, 2);
-      if (tier === 5) GameContext.player.shieldSegments.push(2, 2);
+      GameContext.player.shieldSegments.push(2, 2);
       GameContext.player.maxShieldSegments = GameContext.player.shieldSegments.length;
       break;
     case "outer_shield":
