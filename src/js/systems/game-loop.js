@@ -657,35 +657,25 @@ export function gameLoopLogic(opts = null) {
         !inTractorBeam &&
         !waitingForResume &&
         GameContext.dreadManager.timerActive &&
-        !GameContext.bossActive &&
         GameContext.dreadManager.timerAt &&
         now >= GameContext.dreadManager.timerAt
       ) {
         // Cruisers can spawn even if a station exists
+        // Cruisers can also spawn even if another cruiser is active (multiple cruisers allowed)
         GameContext.cruiserEncounterCount++;
-        // Arena boss fight: clear world threats; boss may call a few helpers.
-        // REMOVED: Enemy/Base/Bullet clearing logic to allow them inside arena
-        /*
-                if (destroyer) {
-                    const idx = enemies.indexOf(destroyer);
-                    if (idx !== -1) enemies.splice(idx, 1);
-                }
-                clearArrayWithPixiCleanup(enemies);
-    clearArrayWithPixiCleanup(pinwheels);
-    clearArrayWithPixiCleanup(cavePinwheels);
-    baseRespawnTimers = [];
-                roamerRespawnQueue = [];
-                // Clear all bullets to prevent immediate cruiser death
-                clearArrayWithPixiCleanup(bullets);
-                clearArrayWithPixiCleanup(bossBombs);
-                 clearArrayWithPixiCleanup(guidedMissiles);
-                 */
-        GameContext.boss = new Cruiser(GameContext.cruiserEncounterCount);
-        GameContext.bossActive = true;
+        const newCruiser = new Cruiser(GameContext.cruiserEncounterCount);
+        // First cruiser becomes the main boss, subsequent cruisers go to enemies array
+        if (!GameContext.bossActive || !GameContext.boss) {
+          GameContext.boss = newCruiser;
+          GameContext.bossActive = true;
+        } else {
+          // Additional cruisers are added to enemies array
+          GameContext.enemies.push(newCruiser);
+        }
         // Keep arena fights clean
         GameContext.radiationStorm = null;
         scheduleNextRadiationStorm(Date.now() + 60000);
-        GameContext.dreadManager.timerActive = false;
+        // Keep timer active so more cruisers can spawn while this one is alive
         GameContext.dreadManager.firstSpawnDone = true;
         showOverlayMessage("WARNING: CRUISER APPROACHING", "#f00", 4000);
         playSound("boss_spawn");

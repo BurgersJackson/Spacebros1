@@ -283,35 +283,40 @@ export class Cruiser extends Enemy {
     // Award nuggets directly: 5 nuggets
     let nuggetCount = 5;
     // Bounty Hunter meta upgrade - bonus nuggets for boss kills
-    if (GameContext.player && GameContext.player.stats && GameContext.player.stats.bountyBossBonus) {
-        nuggetCount += GameContext.player.stats.bountyBossBonus;
+    if (
+      GameContext.player &&
+      GameContext.player.stats &&
+      GameContext.player.stats.bountyBossBonus
+    ) {
+      nuggetCount += GameContext.player.stats.bountyBossBonus;
     }
     if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
     GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
-    GameContext.bossActive = false;
-    if (GameContext.cruiserEncounterCount === 2) {
-      GameContext.pendingStations = 1;
-      GameContext.nextSpaceStationTime = Date.now() + 30000;
-      showOverlayMessage("CRUISER DESTROYED - SPACE STATION IN 30s", "#f80", 4000);
+    // Check for other cruisers in enemies array
+    const otherCruisers = GameContext.enemies.filter(e => e && e.type === "cruiser");
+    if (otherCruisers.length > 0) {
+      // Promote another cruiser to be the main boss
+      GameContext.boss = otherCruisers[0];
+      // Remove it from enemies array
+      const idx = GameContext.enemies.indexOf(otherCruisers[0]);
+      if (idx !== -1) GameContext.enemies.splice(idx, 1);
+      showOverlayMessage("CRUISER DESTROYED - ANOTHER APPROACHING", "#f80", 3000);
+      // bossActive stays true
     } else {
-      showOverlayMessage("CRUISER DESTROYED", "#0f0", 3000);
+      // No other cruisers, clear boss status
+      GameContext.bossActive = false;
+      GameContext.boss = null;
+      if (GameContext.cruiserEncounterCount === 2) {
+        GameContext.pendingStations = 1;
+        GameContext.nextSpaceStationTime = Date.now() + 30000;
+        showOverlayMessage("CRUISER DESTROYED - SPACE STATION IN 30s", "#f80", 4000);
+      } else {
+        showOverlayMessage("CRUISER DESTROYED", "#0f0", 3000);
+      }
+      if (musicEnabled) setMusicMode("normal");
+      stopArenaCountdown();
     }
-    if (musicEnabled) setMusicMode("normal");
-    try {
-      const delay =
-        GameContext.dreadManager.minDelayMs +
-        Math.floor(
-          Math.random() *
-            (GameContext.dreadManager.maxDelayMs - GameContext.dreadManager.minDelayMs + 1)
-        );
-      GameContext.dreadManager.timerAt = Date.now() + delay;
-      GameContext.dreadManager.timerActive = true;
-      GameContext.dreadManager.firstSpawnDone = true;
-    } catch (e) {
-      console.warn("failed to start cruiser timer", e);
-    }
-    GameContext.boss = null;
-    stopArenaCountdown();
+    // Timer is handled by game-loop.js - keeps running for multiple cruisers
   }
 
   update(deltaTime = SIM_STEP_MS) {
