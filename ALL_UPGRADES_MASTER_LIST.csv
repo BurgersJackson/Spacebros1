@@ -26,7 +26,6 @@ Weapons,homing_missiles,Homing Missiles,"2 missiles, 1 damage (auto-fire)","2 mi
 Weapons,ciws,CIWS,"Auto-targets 400u, 1 dmg","2 dmg","3 dmg","4 dmg","5 dmg","Rapid-fire defense. Targets all enemies."
 Weapons,volley_shot,Volley Shot,"Auto-fires 3-shot burst every 2s","4-shot burst every 2s","5-shot burst every 2s","6-shot burst every 2s","7-shot burst every 2s","Automatic burst damage. No input required."
 Weapons,chain_lightning,Chain Lightning,"Projectiles chain to 1 enemy (200u)","Chain to 2 enemies (250u)","Chain to 3 enemies (300u)","Chain to 4 enemies (350u)","Chain to 5 enemies (400u)","Arc damage hits grouped enemies. Great vs swarms."
-Weapons,backstabber,Backstabber," +50% damage from behind"," +100% damage from behind"," +150% damage, slow enemies 2s"," +200% damage, slow 3s"," +250% damage, slow 4s","Positioning matters. Flanking = huge damage."
 Shields & Hull,hull_strength,Hull Strength," +25 Max HP, Heal 25"," +25 Max HP, Heal 25"," +25 Max HP, Heal 25"," +25 Max HP, Heal 25"," +25 Max HP, Heal 25","Increases survival"
 Shields & Hull,segment_count,Segment Count," +2 segments (total 10)"," +4 total (14)"," +8 total (18)"," +12 total (26)"," +16 total (30)","Larger shield bubble"
 Shields & Hull,outer_shield,Outer Shield,"6 purple segments","8 segments (restore all)","12 segments (restore all)","16 segments (restore all)","20 segments (restore all)","Extra rotating ring (1 HP/seg)"
@@ -86,7 +85,7 @@ UPGRADE SYNERGIES AND BUILD STRATEGIES
 
 DAMAGE BUILD:
 - Meta: startDamage, criticalStrike, explosiveRounds, splitShot, comboMeter
-- In-Game: turret_damage, turret_fire_rate, multi_shot, backstabber, chain_lightning
+- In-Game: turret_damage, turret_fire_rate, multi_shot, chain_lightning
 
 TANK BUILD:
 - Meta: hullPlating, passiveHp, shieldCore, thornArmor, extraLife, secondWind

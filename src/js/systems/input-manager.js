@@ -555,6 +555,16 @@ export function initInputListeners() {
     if (e.key === "f" || e.key === "F") keys.f = true;
     if (e.key === "Shift") keys.shift = true;
     if (e.key === "Escape" && _togglePause) {
+      // Handle pointer lock state before toggling pause
+      const canvas = document.getElementById('gameCanvas');
+      if (canvas && document.pointerLockElement === canvas) {
+        // First ESC press releases pointer lock, don't toggle pause yet
+        try { document.exitPointerLock(); } catch (e) { }
+        // Let the browser consume this event for pointer lock release
+        e.preventDefault();
+        return;
+      }
+      // Pointer is not locked, proceed with normal pause toggle
       if (!GameContext.gamePaused) {
         e.preventDefault();
       }

@@ -67,31 +67,13 @@ function applyCriticalStrike(baseDamage, x, y) {
   const critChance = GameContext.player.stats.critChance || 0;
   const critDamage = GameContext.player.stats.critDamage || 1.0;
 
-  console.log(
-    "[CRIT DEBUG] Checking crit - baseDamage:",
-    baseDamage,
-    "critChance:",
-    critChance,
-    "critDamage:",
-    critDamage
-  );
-
   if (Math.random() < critChance) {
     const finalDamage = Math.ceil(baseDamage * critDamage);
-    console.log(
-      "[CRIT DEBUG] CRITICAL STRIKE! baseDamage:",
-      baseDamage,
-      "-> finalDamage:",
-      finalDamage
-    );
     // Show floating text for crit - directly create FloatingText instance
     if (_FloatingText) {
       GameContext.floatingTexts.push(
         new _FloatingText(x, y, `CRIT! ${finalDamage}`, "#ff0", 70, {})
       );
-      console.log("[CRIT DEBUG] Created FloatingText at x:", x, "y:", y);
-    } else {
-      console.log("[CRIT DEBUG] ERROR: _FloatingText is not available!");
     }
     return { damage: finalDamage, isCrit: true };
   }

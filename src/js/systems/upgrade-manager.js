@@ -293,22 +293,6 @@ export function applyUpgrade(id, tier) {
         GameContext.player.stats.shotgunRangeMult = 1.2;
       }
       break;
-    case "backstabber":
-      if (tier === 1) GameContext.player.stats.backstabberBonus = 1.5;
-      if (tier === 2) GameContext.player.stats.backstabberBonus = 2.0;
-      if (tier === 3) {
-        GameContext.player.stats.backstabberBonus = 2.5;
-        GameContext.player.stats.backstabberSlow = 120;
-      }
-      if (tier === 4) {
-        GameContext.player.stats.backstabberBonus = 3.0;
-        GameContext.player.stats.backstabberSlow = 180;
-      }
-      if (tier === 5) {
-        GameContext.player.stats.backstabberBonus = 3.5;
-        GameContext.player.stats.backstabberSlow = 240;
-      }
-      break;
     case "reactive_shield":
       if (tier === 1) GameContext.player.stats.reactiveShield = 1;
       if (tier === 2) GameContext.player.stats.reactiveShield = 2;

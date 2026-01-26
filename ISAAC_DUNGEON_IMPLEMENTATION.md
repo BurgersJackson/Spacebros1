@@ -153,7 +153,7 @@ Boss drop system implemented:
 
 1. Health upgrade: Always grants `hull_strength` (+25 max HP, heal 25)
 2. Random upgrade: Selects random upgrade from UPGRADE_DATA categories
-   - Weapons: turret_damage, turret_fire_rate, turret_range, multi_shot, shotgun, static_weapons, homing_missiles, volley_shot, ciws, chain_lightning, backstabber
+   - Weapons: turret_damage, turret_fire_rate, turret_range, multi_shot, shotgun, static_weapons, homing_missiles, volley_shot, ciws, chain_lightning
    - Shields & Hull: segment_count, outer_shield, shield_regen, hp_regen, reactive_shield, damage_mitigation
    - Mobility: speed, turbo_boost
    - Specials: xp_magnet, area_nuke, invincibility, slow_field, time_dilation

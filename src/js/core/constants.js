@@ -181,16 +181,6 @@ export const UPGRADE_DATA = {
           tier4: "Chain to 4 enemies (350u)",
           tier5: "Chain to 5 enemies (400u)",
           notes: "Arc damage hits grouped enemies. Great vs swarms."
-        },
-        {
-          id: "backstabber",
-          name: "Backstabber",
-          tier1: "+50% damage from behind",
-          tier2: "+100% damage from behind",
-          tier3: "+150% damage, slow enemies 2s",
-          tier4: "+200% damage, slow 3s",
-          tier5: "+250% damage, slow 4s",
-          notes: "Positioning matters. Flanking = huge damage."
         }
       ]
     },

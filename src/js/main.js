@@ -1301,7 +1301,7 @@ registerSpaceshipDependencies({
 });
 
 const SHIP_SELECTION_KEY = "neon_space_ship_selection";
-let selectedShipType = localStorage.getItem(SHIP_SELECTION_KEY) || "standard";
+let selectedShipType = localStorage.getItem(SHIP_SELECTION_KEY) || "slacker";
 
 registerMenuDependencies({
   GameContext,
