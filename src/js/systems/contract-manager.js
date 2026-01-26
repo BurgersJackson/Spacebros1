@@ -99,6 +99,11 @@ export function startNewContract() {
             const gy = GameContext.player.pos.y + Math.sin(a) * d;
             GameContext.contractEntities.gates.push(new GateRingCtor(gx, gy, i, gateCount));
         }
+        // Apply Contract Speed meta upgrade multiplier to time limit
+        const baseTimeLimit = 45000;
+        const contractSpeedMult = (GameContext.player && GameContext.player.stats && GameContext.player.stats.contractSpeedMult) || 1.0;
+        const adjustedTimeLimit = Math.floor(baseTimeLimit / contractSpeedMult);
+        
         GameContext.activeContract = {
             id: `C${GameContext.contractSequence}`,
             type: 'gate_run',
@@ -106,7 +111,7 @@ export function startNewContract() {
             title: 'GATE RUN',
             gateIndex: 0,
             gateCount,
-            endsAt: Date.now() + 45000,
+            endsAt: Date.now() + adjustedTimeLimit,
             rewardNugs: 6 + Math.floor(Math.random() * 4),
             rewardScore: 10000
         };

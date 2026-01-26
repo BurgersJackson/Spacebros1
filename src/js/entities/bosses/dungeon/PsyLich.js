@@ -381,7 +381,12 @@ export class PsyLich extends Enemy {
         // Award coins directly: 22 coins * 10 value = 220 total
         if (_awardCoinsInstant) _awardCoinsInstant(220, { noSound: false, sound: 'coin' });
         // Award nuggets directly: 10 nuggets
-        if (_awardNuggetsInstant) _awardNuggetsInstant(10, { noSound: false, sound: 'coin' });
+        let nuggetCount = 10;
+        // Bounty Hunter meta upgrade - bonus nuggets for boss kills
+        if (GameContext.player && GameContext.player.stats && GameContext.player.stats.bountyBossBonus) {
+            nuggetCount += GameContext.player.stats.bountyBossBonus;
+        }
+        if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: 'coin' });
         GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
         GameContext.bossActive = false;

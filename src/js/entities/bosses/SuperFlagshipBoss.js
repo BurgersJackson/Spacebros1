@@ -243,7 +243,12 @@ export class SuperFlagshipBoss extends Flagship {
 
         if (_awardCoinsInstant) _awardCoinsInstant(80 * 10, { noSound: false, sound: 'coin', color: '#ff0' });
         // Award nuggets directly: 24 nuggets
-        if (_awardNuggetsInstant) _awardNuggetsInstant(24, { noSound: false, sound: 'coin' });
+        let nuggetCount = 24;
+        // Bounty Hunter meta upgrade - bonus nuggets for boss kills
+        if (GameContext.player && GameContext.player.stats && GameContext.player.stats.bountyBossBonus) {
+            nuggetCount += GameContext.player.stats.bountyBossBonus;
+        }
+        if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: 'coin' });
 
         GameContext.bossActive = false;
         GameContext.bossArena.active = false;

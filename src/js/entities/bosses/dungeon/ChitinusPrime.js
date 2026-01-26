@@ -314,7 +314,12 @@ export class ChitinusPrime extends Enemy {
         // Award coins directly: 20 coins * 10 value = 200 total
         if (_awardCoinsInstant) _awardCoinsInstant(200, { noSound: false, sound: 'coin' });
         // Award nuggets directly: 8 nuggets
-        if (_awardNuggetsInstant) _awardNuggetsInstant(8, { noSound: false, sound: 'coin' });
+        let nuggetCount = 8;
+        // Bounty Hunter meta upgrade - bonus nuggets for boss kills
+        if (GameContext.player && GameContext.player.stats && GameContext.player.stats.bountyBossBonus) {
+            nuggetCount += GameContext.player.stats.bountyBossBonus;
+        }
+        if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: 'coin' });
         GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
         GameContext.bossActive = false;

@@ -326,7 +326,12 @@ export class NecroticHive extends Enemy {
         // Rewards - Award coins directly: 16 coins * 10 value = 160 total
         if (_awardCoinsInstant) _awardCoinsInstant(160, { noSound: false, sound: 'coin' });
         // Award nuggets directly: 6 nuggets
-        if (_awardNuggetsInstant) _awardNuggetsInstant(6, { noSound: false, sound: 'coin' });
+        let nuggetCount = 6;
+        // Bounty Hunter meta upgrade - bonus nuggets for boss kills
+        if (GameContext.player && GameContext.player.stats && GameContext.player.stats.bountyBossBonus) {
+            nuggetCount += GameContext.player.stats.bountyBossBonus;
+        }
+        if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: 'coin' });
         GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
         GameContext.bossActive = false;

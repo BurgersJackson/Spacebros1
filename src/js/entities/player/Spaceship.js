@@ -344,9 +344,12 @@ export class Spaceship extends Entity {
       if (typeof GameContext.shakeMagnitude !== "undefined") GameContext.shakeMagnitude = 10;
       if (typeof GameContext.shakeTimer !== "undefined") GameContext.shakeTimer = 10;
 
-      // Second Wind - grant invulnerability after damage
-      if (this.stats.secondWindDuration > 0) {
-        this.invulnerable = this.stats.secondWindDuration * 60; // Convert seconds to frames
+      // Second Wind - grant invulnerability after damage (if cooldown is ready)
+      if (this.stats.secondWindDuration > 0 && this.stats.secondWindReady && this.stats.secondWindTimer <= 0) {
+        this.invulnerable = this.stats.secondWindDuration; // Already in frames from meta-manager
+        this.stats.secondWindActive = this.stats.secondWindDuration;
+        this.stats.secondWindTimer = this.stats.secondWindCooldown;
+        this.stats.secondWindReady = false;
         if (_addPickupFloatingText) {
           _addPickupFloatingText(this.pos.x, this.pos.y, "SECOND WIND!", "#0ff", 24, 0, -60);
         }
@@ -880,6 +883,15 @@ export class Spaceship extends Entity {
       this.stats.secondWindActive -= dtScale;
       if (this.stats.secondWindActive <= 0) {
         this.stats.secondWindActive = 0;
+      }
+    }
+    
+    // Second Wind cooldown timer update
+    if (this.stats.secondWindTimer > 0) {
+      this.stats.secondWindTimer -= dtScale;
+      if (this.stats.secondWindTimer <= 0) {
+        this.stats.secondWindTimer = 0;
+        this.stats.secondWindReady = true;
       }
     }
 

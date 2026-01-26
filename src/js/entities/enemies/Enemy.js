@@ -286,7 +286,12 @@ export class Enemy extends Entity {
             
             // Award nuggets directly
             if (this.nameTag && _awardNuggetsInstant) {
-                _awardNuggetsInstant(1, { noSound: false, sound: 'coin' });
+                let nuggetCount = 1;
+                // Bounty Hunter meta upgrade - bonus nuggets for elite kills
+                if (GameContext.player && GameContext.player.stats && GameContext.player.stats.bountyEliteBonus) {
+                    nuggetCount += GameContext.player.stats.bountyEliteBonus;
+                }
+                _awardNuggetsInstant(nuggetCount, { noSound: false, sound: 'coin' });
             }
 
             // Sector 2 needs more nugz to match the pace of Sector 1 (no contracts/stations here).

@@ -281,7 +281,12 @@ export class Cruiser extends Enemy {
     // Award coins directly: 13 coins * 10 value = 130 total
     if (_awardCoinsInstant) _awardCoinsInstant(130, { noSound: false, sound: "coin" });
     // Award nuggets directly: 5 nuggets
-    if (_awardNuggetsInstant) _awardNuggetsInstant(5, { noSound: false, sound: "coin" });
+    let nuggetCount = 5;
+    // Bounty Hunter meta upgrade - bonus nuggets for boss kills
+    if (GameContext.player && GameContext.player.stats && GameContext.player.stats.bountyBossBonus) {
+        nuggetCount += GameContext.player.stats.bountyBossBonus;
+    }
+    if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
     GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
     GameContext.bossActive = false;
     if (GameContext.cruiserEncounterCount === 2) {

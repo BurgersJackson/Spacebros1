@@ -420,7 +420,11 @@ export class CaveMonsterBase extends Entity {
 
         // Award loot directly
         const coinCount = 18 + this.monsterType * 4;
-        const nuggetCount = 5 + this.monsterType * 2;
+        let nuggetCount = 5 + this.monsterType * 2;
+        // Bounty Hunter meta upgrade - bonus nuggets for boss kills
+        if (GameContext.player && GameContext.player.stats && GameContext.player.stats.bountyBossBonus) {
+            nuggetCount += GameContext.player.stats.bountyBossBonus;
+        }
         const totalCoinValue = coinCount * 10;
         if (caveDeps.awardCoinsInstant) caveDeps.awardCoinsInstant(totalCoinValue, { noSound: false, sound: 'coin' });
         if (caveDeps.awardNuggetsInstant) caveDeps.awardNuggetsInstant(nuggetCount, { noSound: false, sound: 'coin' });

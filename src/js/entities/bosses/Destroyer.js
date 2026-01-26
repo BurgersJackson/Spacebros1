@@ -510,7 +510,12 @@ export class Destroyer extends Entity {
         }
 
         // Award nuggets directly: 20 nuggets
-        if (_awardNuggetsInstant) _awardNuggetsInstant(20, { noSound: false, sound: 'coin' });
+        let nuggetCount = 20;
+        // Bounty Hunter meta upgrade - bonus nuggets for boss kills
+        if (GameContext.player && GameContext.player.stats && GameContext.player.stats.bountyBossBonus) {
+            nuggetCount += GameContext.player.stats.bountyBossBonus;
+        }
+        if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: 'coin' });
 
         const boomScale = Math.max(2.8, Math.min(5, (this.visualRadius || this.radius || 400) / 250));
         if (_spawnBossExplosion) _spawnBossExplosion(this.pos.x, this.pos.y, boomScale, 22);

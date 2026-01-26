@@ -122,7 +122,12 @@ export class Flagship extends Cruiser {
         // Award coins directly: 50 coins * 10 value = 500 total
         if (_awardCoinsInstant) _awardCoinsInstant(500, { noSound: false, sound: 'coin' });
         // Award nuggets directly: 16 nuggets
-        if (_awardNuggetsInstant) _awardNuggetsInstant(16, { noSound: false, sound: 'coin' });
+        let nuggetCount = 16;
+        // Bounty Hunter meta upgrade - bonus nuggets for boss kills
+        if (GameContext.player && GameContext.player.stats && GameContext.player.stats.bountyBossBonus) {
+            nuggetCount += GameContext.player.stats.bountyBossBonus;
+        }
+        if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: 'coin' });
 
         GameContext.bossActive = false;
         GameContext.bossArena.active = false;

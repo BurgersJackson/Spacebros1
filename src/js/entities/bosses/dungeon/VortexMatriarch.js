@@ -329,7 +329,12 @@ export class VortexMatriarch extends Enemy {
         // Award coins directly: 17 coins * 10 value = 170 total
         if (_awardCoinsInstant) _awardCoinsInstant(170, { noSound: false, sound: 'coin' });
         // Award nuggets directly: 7 nuggets
-        if (_awardNuggetsInstant) _awardNuggetsInstant(7, { noSound: false, sound: 'coin' });
+        let nuggetCount = 7;
+        // Bounty Hunter meta upgrade - bonus nuggets for boss kills
+        if (GameContext.player && GameContext.player.stats && GameContext.player.stats.bountyBossBonus) {
+            nuggetCount += GameContext.player.stats.bountyBossBonus;
+        }
+        if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: 'coin' });
         GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
         GameContext.bossActive = false;

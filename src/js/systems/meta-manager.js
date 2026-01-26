@@ -360,6 +360,7 @@ export function applyMetaUpgrades(spawnDroneFn) {
       threshold -= 5 * (lifestealTier - 3);
     }
     GameContext.player.stats.lifestealThreshold = Math.max(threshold, 25);
+    GameContext.player.stats.lifestealHealAmount = Math.min(lifestealTier, 3);
     GameContext.player.stats.lifestealTracking = 0;
   }
 
