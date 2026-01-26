@@ -326,16 +326,6 @@ export const UPGRADE_DATA = {
           tier4: "Stops 10s, +25% Area",
           tier5: "Stops 12s, +50% Area",
           notes: "Freezes enemies."
-        },
-        {
-          id: "momentum",
-          name: "Momentum",
-          tier1: "Moving increases fire rate (+10%)",
-          tier2: "+20% fire rate, +15% damage",
-          tier3: "+30% fire rate, +25% damage",
-          tier4: "+40% fire rate, +35% damage",
-          tier5: "+50% fire rate, +50% damage",
-          notes: "Keep moving to maximize DPS. Hit-and-run style."
         }
       ]
     },

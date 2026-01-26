@@ -30,7 +30,6 @@ The following meta upgrades will be removed and re-added to in-game upgrade syst
 
 - **Meta effect:** +3-15% damage per 10 combo stacks (max 20-60%)
 - **New in-game name:** Combo Meter
-- **Why unique:** Different from `momentum` (hit-based vs movement-based)
 - **Benefits:** Rewards consistent play, resets on damage taken, skill-based mechanic
 
 #### 3. **explosiveRounds** → **explosive_rounds** (Weapons category)
