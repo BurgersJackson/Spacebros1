@@ -1,10 +1,14 @@
-import { GameContext } from '../core/game-context.js';
+import { GameContext, getElapsedGameTime } from '../core/game-context.js';
 import { ZOOM_LEVEL } from '../core/constants.js';
 
 const deps = {};
 
 export function registerGameFlowDependencies(next) {
     Object.assign(deps, next);
+}
+
+export function getGameFlowDeps() {
+    return deps;
 }
 
 function updateResumeButtonState() {
@@ -85,6 +89,8 @@ export function killPlayer() {
     deps.playSound('explode');
     deps.spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 30, '#0ff');
     setTimeout(() => {
+        // Capture survival time BEFORE setting gameActive = false
+        const survivalTimeMs = getElapsedGameTime();
         GameContext.gameActive = false;
         deps.resetWarpState();
         deps.stopMusic();
@@ -93,14 +99,20 @@ export function killPlayer() {
             deps.autoSaveToCurrentProfile();
             deps.saveMetaProfile();
         }
-        document.getElementById('start-screen').style.display = 'block';
-        document.querySelector('#start-screen h1').innerText = "BETTER LUCK NEXT TIME";
-        document.querySelector('#start-screen h1').style.color = "#f00";
-        document.getElementById('start-btn').innerText = "REBOOT SYSTEM";
-        setTimeout(() => {
-            document.getElementById('start-btn').focus();
-            GameContext.menuSelectionIndex = 0;
-        }, 100);
+        // Show death screen instead of start screen
+        if (deps.showDeathScreen) {
+            deps.showDeathScreen(survivalTimeMs);
+        } else {
+            // Fallback to old behavior if death screen not available
+            document.getElementById('start-screen').style.display = 'block';
+            document.querySelector('#start-screen h1').innerText = "BETTER LUCK NEXT TIME";
+            document.querySelector('#start-screen h1').style.color = "#f00";
+            document.getElementById('start-btn').innerText = "REBOOT SYSTEM";
+            setTimeout(() => {
+                document.getElementById('start-btn').focus();
+                GameContext.menuSelectionIndex = 0;
+            }, 100);
+        }
     }, 2000);
 }
 
@@ -187,6 +199,11 @@ export function startGame() {
         GameContext.difficultyTier = 1;
         GameContext.pinwheelsDestroyedTotal = 0;
         GameContext.gunboatsDestroyedTotal = 0;
+        // Reset death screen statistics
+        GameContext.damageByWeaponType = {};
+        GameContext.enemyKills = 0;
+        GameContext.bossKills = 0;
+        GameContext.totalDamageDealt = 0;
         GameContext.bossActive = false;
         if (GameContext.boss) deps.pixiCleanupObject(GameContext.boss);
         GameContext.boss = null;
@@ -271,6 +288,8 @@ export function startGame() {
         document.getElementById('start-screen').style.display = 'none';
         const endScreen = document.getElementById('end-screen');
         if (endScreen) endScreen.style.display = 'none';
+        const deathScreen = document.getElementById('death-screen');
+        if (deathScreen) deathScreen.style.display = 'none';
         document.getElementById('pause-menu').style.display = 'none';
         GameContext.gameActive = true;
         GameContext.gamePaused = false;
@@ -440,6 +459,8 @@ export function quitGame() {
         } catch (e) { console.warn('save failed on abort', e); }
     }
 
+    // Capture survival time BEFORE setting gameActive = false
+    const survivalTimeMs = getElapsedGameTime();
     GameContext.gameActive = false;
     GameContext.gameEnded = true;
 
@@ -455,13 +476,20 @@ export function quitGame() {
     GameContext.sectorIndex = 1;
 
     document.getElementById('pause-menu').style.display = 'none';
-    document.getElementById('start-screen').style.display = 'block';
-    const endScreen = document.getElementById('end-screen');
-    if (endScreen) endScreen.style.display = 'none';
-    document.querySelector('#start-screen h1').innerText = "ABORTED";
-    document.getElementById('start-btn').innerText = "INITIATE LAUNCH";
-    setTimeout(() => document.getElementById('resume-btn-start').focus(), 100);
-    GameContext.menuSelectionIndex = 0;
+    
+    // Show death screen instead of start screen
+    if (deps.showDeathScreen) {
+        deps.showDeathScreen(survivalTimeMs);
+    } else {
+        // Fallback to old behavior
+        document.getElementById('start-screen').style.display = 'block';
+        const endScreen = document.getElementById('end-screen');
+        if (endScreen) endScreen.style.display = 'none';
+        document.querySelector('#start-screen h1').innerText = "ABORTED";
+        document.getElementById('start-btn').innerText = "INITIATE LAUNCH";
+        setTimeout(() => document.getElementById('resume-btn-start').focus(), 100);
+        GameContext.menuSelectionIndex = 0;
+    }
 
     GameContext.canResumeGame = false;
 

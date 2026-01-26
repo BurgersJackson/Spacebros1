@@ -7,3 +7,4 @@ export * from './hud.js';
 export * from './levelup-screen.js';
 export * from './meta-shop.js';
 export * from './crt-filter.js';
+export * from './death-screen.js';

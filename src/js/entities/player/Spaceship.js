@@ -544,7 +544,7 @@ export class Spaceship extends Entity {
     if (this.caveSlowFrames > 0) this.caveSlowFrames -= dtScale;
     const slowMult =
       this.caveSlowFrames > 0 ? Math.max(0.4, Math.min(1.0, this.caveSlowMult || 0.62)) : 1.0;
-    const currentMaxSpeed = this.maxSpeed * this.stats.speedMult * turboMult * slowMult;
+    const currentMaxSpeed = this.maxSpeed * this.stats.speedMult * (this.stats.speedBonusFromMit || 1.0) * turboMult * slowMult;
 
     if (moveMag > 0.06) {
       // For slacker with mouse, don't update angle based on movement (rotation is handled separately)
@@ -1008,7 +1008,8 @@ export class Spaceship extends Entity {
         damageAsteroids: true,
         damageMissiles: true,
         damageBases: true,
-        followPlayer: true
+        followPlayer: true,
+        damageType: 'area_nuke'
       })
     );
     this.nukeCooldown = this.nukeMaxCooldown;
@@ -1120,6 +1121,7 @@ export class Spaceship extends Entity {
         );
         b.ignoreShields = false;
         b.isMissile = true;
+        b.weaponType = 'homing_missile';
         GameContext.bullets.push(b);
         _spawnSmoke(this.pos.x, this.pos.y, 1);
       }
@@ -1157,7 +1159,7 @@ export class Spaceship extends Entity {
         0,
         this.stats.pierceCount || 0
       );
-
+      b.weaponType = 'volley_shot';
       GameContext.bullets.push(b);
     }
 
@@ -1360,21 +1362,21 @@ export class Spaceship extends Entity {
     const bulletSpeed = 18; // Same as player turret
     const damage = this.ciwsDamage;
     // White bullets for visibility (#fff, 3px)
-    GameContext.bullets.push(
-      this.createBullet(
-        this.pos.x,
-        this.pos.y,
-        angle,
-        false,
-        damage,
-        bulletSpeed,
-        3,
-        "#fff",
-        null,
-        0,
-        this.stats.pierceCount || 0
-      )
+    const ciwsBullet = this.createBullet(
+      this.pos.x,
+      this.pos.y,
+      angle,
+      false,
+      damage,
+      bulletSpeed,
+      3,
+      "#fff",
+      null,
+      0,
+      this.stats.pierceCount || 0
     );
+    ciwsBullet.weaponType = 'ciws';
+    GameContext.bullets.push(ciwsBullet);
   }
 
   shoot() {
@@ -1403,20 +1405,20 @@ export class Spaceship extends Entity {
       const bx = this.pos.x + Math.cos(angle) * 25;
       const by = this.pos.y + Math.sin(angle) * 25;
 
-      GameContext.bullets.push(
-        this.createBullet(
-          bx,
-          by,
-          angle,
-          false,
-          damage,
-          bulletSpeed,
-          4,
-          null,
-          0,
-          this.stats.pierceCount || 0
-        )
+      const bullet = this.createBullet(
+        bx,
+        by,
+        angle,
+        false,
+        damage,
+        bulletSpeed,
+        4,
+        null,
+        0,
+        this.stats.pierceCount || 0
       );
+      bullet.weaponType = 'turret';
+      GameContext.bullets.push(bullet);
       _spawnBarrelSmoke(bx, by, angle);
 
       // Split Shot - chance to fire additional projectile at angle
@@ -1436,6 +1438,7 @@ export class Spaceship extends Entity {
           this.stats.pierceCount || 0
         );
         splitBullet.isSplitShot = true;
+        splitBullet.weaponType = 'split_shot';
         GameContext.bullets.push(splitBullet);
       }
     }
@@ -1460,133 +1463,133 @@ export class Spaceship extends Entity {
       const weaponDamage = damage * finalEffectiveness;
 
       if (w.type === "side") {
-        GameContext.bullets.push(
-          this.createBullet(
-            this.pos.x,
-            this.pos.y,
-            this.angle + Math.PI / 2,
-            false,
-            weaponDamage,
-            bulletSpeed,
-            4,
-            "#0f0",
-            null,
-            0,
-            this.stats.pierceCount || 0
-          )
+        const sideBullet1 = this.createBullet(
+          this.pos.x,
+          this.pos.y,
+          this.angle + Math.PI / 2,
+          false,
+          weaponDamage,
+          bulletSpeed,
+          4,
+          "#0f0",
+          null,
+          0,
+          this.stats.pierceCount || 0
         );
-        GameContext.bullets.push(
-          this.createBullet(
-            this.pos.x,
-            this.pos.y,
-            this.angle - Math.PI / 2,
-            false,
-            weaponDamage,
-            bulletSpeed,
-            4,
-            "#0f0",
-            null,
-            0,
-            this.stats.pierceCount || 0
-          )
+        sideBullet1.weaponType = 'static_side';
+        GameContext.bullets.push(sideBullet1);
+        const sideBullet2 = this.createBullet(
+          this.pos.x,
+          this.pos.y,
+          this.angle - Math.PI / 2,
+          false,
+          weaponDamage,
+          bulletSpeed,
+          4,
+          "#0f0",
+          null,
+          0,
+          this.stats.pierceCount || 0
         );
+        sideBullet2.weaponType = 'static_side';
+        GameContext.bullets.push(sideBullet2);
       } else if (w.type === "rear") {
-        GameContext.bullets.push(
-          this.createBullet(
-            this.pos.x,
-            this.pos.y,
-            this.angle + Math.PI,
-            false,
-            weaponDamage,
-            bulletSpeed,
-            4,
-            "#0f0",
-            null,
-            0,
-            this.stats.pierceCount || 0
-          )
-        ); // Rear laser
+        const rearBullet = this.createBullet(
+          this.pos.x,
+          this.pos.y,
+          this.angle + Math.PI,
+          false,
+          weaponDamage,
+          bulletSpeed,
+          4,
+          "#0f0",
+          null,
+          0,
+          this.stats.pierceCount || 0
+        );
+        rearBullet.weaponType = 'static_rear';
+        GameContext.bullets.push(rearBullet);
       } else if (w.type === "dual_rear") {
         // Dual stream to the rear at angles
-        GameContext.bullets.push(
-          this.createBullet(
-            this.pos.x,
-            this.pos.y,
-            this.angle + Math.PI - Math.PI / 6,
-            false,
-            weaponDamage,
-            bulletSpeed,
-            4,
-            "#0f0",
-            null,
-            0,
-            this.stats.pierceCount || 0
-          )
+        const dualRearBullet1 = this.createBullet(
+          this.pos.x,
+          this.pos.y,
+          this.angle + Math.PI - Math.PI / 6,
+          false,
+          weaponDamage,
+          bulletSpeed,
+          4,
+          "#0f0",
+          null,
+          0,
+          this.stats.pierceCount || 0
         );
-        GameContext.bullets.push(
-          this.createBullet(
-            this.pos.x,
-            this.pos.y,
-            this.angle + Math.PI + Math.PI / 6,
-            false,
-            weaponDamage,
-            bulletSpeed,
-            4,
-            "#0f0",
-            null,
-            0,
-            this.stats.pierceCount || 0
-          )
+        dualRearBullet1.weaponType = 'static_rear';
+        GameContext.bullets.push(dualRearBullet1);
+        const dualRearBullet2 = this.createBullet(
+          this.pos.x,
+          this.pos.y,
+          this.angle + Math.PI + Math.PI / 6,
+          false,
+          weaponDamage,
+          bulletSpeed,
+          4,
+          "#0f0",
+          null,
+          0,
+          this.stats.pierceCount || 0
         );
+        dualRearBullet2.weaponType = 'static_rear';
+        GameContext.bullets.push(dualRearBullet2);
       } else if (w.type === "dual_front") {
         // Dual stream to the front at angles
-        GameContext.bullets.push(
-          this.createBullet(
-            this.pos.x,
-            this.pos.y,
-            this.angle - Math.PI / 6,
-            false,
-            weaponDamage,
-            bulletSpeed,
-            4,
-            "#0f0",
-            null,
-            0,
-            this.stats.pierceCount || 0
-          )
+        const dualFrontBullet1 = this.createBullet(
+          this.pos.x,
+          this.pos.y,
+          this.angle - Math.PI / 6,
+          false,
+          weaponDamage,
+          bulletSpeed,
+          4,
+          "#0f0",
+          null,
+          0,
+          this.stats.pierceCount || 0
         );
-        GameContext.bullets.push(
-          this.createBullet(
-            this.pos.x,
-            this.pos.y,
-            this.angle + Math.PI / 6,
-            false,
-            weaponDamage,
-            bulletSpeed,
-            4,
-            "#0f0",
-            null,
-            0,
-            this.stats.pierceCount || 0
-          )
+        dualFrontBullet1.weaponType = 'static_forward';
+        GameContext.bullets.push(dualFrontBullet1);
+        const dualFrontBullet2 = this.createBullet(
+          this.pos.x,
+          this.pos.y,
+          this.angle + Math.PI / 6,
+          false,
+          weaponDamage,
+          bulletSpeed,
+          4,
+          "#0f0",
+          null,
+          0,
+          this.stats.pierceCount || 0
         );
+        dualFrontBullet2.weaponType = 'static_forward';
+        GameContext.bullets.push(dualFrontBullet2);
       } else {
         // Forward
-        GameContext.bullets.push(
-          this.createBullet(
-            this.pos.x,
-            this.pos.y,
-            this.angle,
-            false,
-            weaponDamage,
-            bulletSpeed,
-            4,
-            "#0f0",
-            null,
-            0,
-            this.stats.pierceCount || 0
-          )
+        const forwardBullet = this.createBullet(
+          this.pos.x,
+          this.pos.y,
+          this.angle,
+          false,
+          weaponDamage,
+          bulletSpeed,
+          4,
+          "#0f0",
+          null,
+          0,
+          this.stats.pierceCount || 0
         );
+        forwardBullet.weaponType = 'static_forward';
+        GameContext.bullets.push(forwardBullet);
       }
     });
   }
@@ -1618,6 +1621,7 @@ export class Spaceship extends Entity {
         "square",
         this.stats.pierceCount || 0
       );
+      b.weaponType = 'shotgun';
       b.life = baseShotgunLife * tierRangeMult * this.stats.rangeMult;
       GameContext.bullets.push(b);
     }

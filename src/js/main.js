@@ -241,7 +241,9 @@ import {
   registerCrtFilterDependencies,
   initCrtFilterUI,
   isCrtFilterEnabled,
-  toggleCrtFilter
+  toggleCrtFilter,
+  showDeathScreen,
+  registerDeathScreenDependencies
 } from "./ui/index.js";
 import { initDebugKeyboardShortcuts, registerDebugSpawnDependencies } from "./debug/index.js";
 import {
@@ -774,6 +776,7 @@ registerGameFlowDependencies({
     simNowMs = value;
   },
   setupGameWorld,
+  showDeathScreen,
   showOverlayMessage,
   spawnDrone,
   spawnParticles,
@@ -1302,6 +1305,11 @@ registerSpaceshipDependencies({
 
 const SHIP_SELECTION_KEY = "neon_space_ship_selection";
 let selectedShipType = localStorage.getItem(SHIP_SELECTION_KEY) || "slacker";
+
+registerDeathScreenDependencies({
+  startGame,
+  formatTime
+});
 
 registerMenuDependencies({
   GameContext,

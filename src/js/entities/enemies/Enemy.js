@@ -210,6 +210,17 @@ export class Enemy extends Entity {
     kill() {
         if (this.dead) return;
         this.dead = true;
+        
+        // Track enemy kills (not bosses)
+        // Check if this is a boss: Cruiser, dungeon boss, or stored in GameContext.boss
+        const isBoss = this.isCruiser || this.isDungeonBoss || GameContext.boss === this || 
+                       GameContext.spaceStation === this || GameContext.destroyer === this;
+        
+        if (!isBoss) {
+            GameContext.enemyKills++;
+        } else {
+            GameContext.bossKills++;
+        }
 
         // FIX: Clean up shield graphics BEFORE calling pixiCleanupObject
         // This prevents pixiCleanupObject from missing these

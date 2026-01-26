@@ -472,6 +472,7 @@ export class Destroyer extends Entity {
     kill() {
         if (this.dead) return;
         this.dead = true;
+        GameContext.bossKills++;
         pixiCleanupObject(this);
         if (this._pixiInnerGfx) {
             try { this._pixiInnerGfx.destroy(true); } catch (e) { }

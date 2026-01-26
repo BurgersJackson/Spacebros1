@@ -99,7 +99,7 @@ export function applyUpgrade(id, tier) {
       if (tier === 2) GameContext.player.shieldSegments.push(2, 2, 2, 2);
       if (tier === 3) GameContext.player.shieldSegments.push(2, 2, 2, 2);
       if (tier === 4) GameContext.player.shieldSegments.push(2, 2, 2, 2, 2, 2, 2, 2);
-      if (tier === 5) GameContext.player.shieldSegments.push(2, 2, 2, 2, 2, 2, 2, 2);
+      if (tier === 5) GameContext.player.shieldSegments.push(2, 2);
       GameContext.player.maxShieldSegments = GameContext.player.shieldSegments.length;
       break;
     case "outer_shield":
@@ -291,6 +291,14 @@ export function applyUpgrade(id, tier) {
       if (tier === 3) {
         GameContext.player.stats.shotgunPellets = 12;
         GameContext.player.stats.shotgunRangeMult = 1.2;
+      }
+      if (tier === 4) {
+        GameContext.player.stats.shotgunPellets = 16;
+        GameContext.player.stats.shotgunRangeMult = 1.4;
+      }
+      if (tier === 5) {
+        GameContext.player.stats.shotgunPellets = 20;
+        GameContext.player.stats.shotgunRangeMult = 1.6;
       }
       break;
     case "reactive_shield":

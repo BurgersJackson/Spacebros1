@@ -415,6 +415,7 @@ export class CaveMonsterBase extends Entity {
     kill() {
         if (this.dead) return;
         this.dead = true;
+        GameContext.bossKills++;
         pixiCleanupObject(this);
 
         // Award loot directly

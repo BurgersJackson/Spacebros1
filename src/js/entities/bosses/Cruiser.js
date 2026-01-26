@@ -213,6 +213,7 @@ export class Cruiser extends Enemy {
   kill() {
     if (this.dead) return;
     this.dead = true;
+    GameContext.bossKills++;
 
     if (this._pixiInvulGfx) {
       try {

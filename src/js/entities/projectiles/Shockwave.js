@@ -94,6 +94,14 @@ export class Shockwave extends Entity {
                     }
 
                     e.hp -= damage;
+                    // Track area nuke damage if this is from player nuke
+                    if (!this.isEnemy && this.damageType === 'area_nuke') {
+                        if (!GameContext.damageByWeaponType['area_nuke']) {
+                            GameContext.damageByWeaponType['area_nuke'] = 0;
+                        }
+                        GameContext.damageByWeaponType['area_nuke'] += damage;
+                        GameContext.totalDamageDealt += damage;
+                    }
                     this.hitList.push(e);
                     playSound('hit');
                     if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 5, this.hasCrit ? '#ffd700' : '#ff0');

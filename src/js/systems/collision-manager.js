@@ -122,6 +122,51 @@ function applyLifesteal(x, y) {
 }
 
 /**
+ * Track damage by weapon type for death screen statistics
+ * @param {Object} bullet - The bullet that dealt damage
+ * @param {number} damage - The damage dealt
+ */
+function trackDamageByWeaponType(bullet, damage) {
+  if (!bullet || bullet.isEnemy || bullet.owner === 'enemy') return;
+  
+  // Determine weapon type from bullet properties
+  let weaponType = 'turret'; // default
+  
+  if (bullet.weaponType) {
+    weaponType = bullet.weaponType;
+  } else if (bullet.isMissile) {
+    weaponType = 'homing_missile';
+  } else if (bullet.isSplitShot) {
+    weaponType = 'split_shot';
+  } else if (bullet.isExplosive) {
+    weaponType = 'explosive_rounds';
+  } else if (bullet.shape === 'square') {
+    weaponType = 'shotgun';
+  }
+  
+  // Initialize if needed
+  if (!GameContext.damageByWeaponType[weaponType]) {
+    GameContext.damageByWeaponType[weaponType] = 0;
+  }
+  
+  GameContext.damageByWeaponType[weaponType] += damage;
+  GameContext.totalDamageDealt += damage;
+}
+
+/**
+ * Track chain lightning damage
+ * @param {number} damage - The chain lightning damage dealt
+ */
+function trackChainLightningDamage(damage) {
+  const weaponType = 'chain_lightning';
+  if (!GameContext.damageByWeaponType[weaponType]) {
+    GameContext.damageByWeaponType[weaponType] = 0;
+  }
+  GameContext.damageByWeaponType[weaponType] += damage;
+  GameContext.totalDamageDealt += damage;
+}
+
+/**
  * Apply Thorn Armor - reflect damage when player is hit
  * @param {number} damage - Damage taken by player
  * @param {Object} sourceEntity - The entity that damaged player
@@ -1339,6 +1384,7 @@ export function processBulletCollisions() {
               const hitRadius = e.radius + b.radius;
               if (distSq < hitRadius * hitRadius) {
                 const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                trackDamageByWeaponType(b, critResult.damage);
                 e.hp -= critResult.damage;
                 hit = true;
                 b.dead = true;
@@ -1401,6 +1447,7 @@ export function processBulletCollisions() {
 
                     if (nearestTarget) {
                       const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                      trackChainLightningDamage(chainDamage);
                       nearestTarget.hp -= chainDamage;
                       chainTargets.add(nearestTarget);
 
@@ -1596,6 +1643,7 @@ export function processBulletCollisions() {
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
                 const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                trackDamageByWeaponType(b, critResult.damage);
                 e.hp -= critResult.damage;
                 hit = true;
                 if (_playSound) _playSound("hit");
@@ -1640,6 +1688,7 @@ export function processBulletCollisions() {
 
                     if (nearestTarget) {
                       const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                      trackChainLightningDamage(chainDamage);
                       if (nearestTarget === GameContext.destroyer) {
                         const hpBefore = nearestTarget.hp;
                         nearestTarget.hp -= chainDamage;
@@ -1841,6 +1890,7 @@ export function processBulletCollisions() {
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
                 const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                trackDamageByWeaponType(b, critResult.damage);
                 e.hp -= critResult.damage;
                 hit = true;
                 e.aggro = true;
@@ -1886,6 +1936,7 @@ export function processBulletCollisions() {
 
                     if (nearestTarget) {
                       const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                      trackChainLightningDamage(chainDamage);
                       if (nearestTarget === GameContext.destroyer) {
                         const hpBefore = nearestTarget.hp;
                         nearestTarget.hp -= chainDamage;
@@ -2097,6 +2148,7 @@ export function processBulletCollisions() {
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
                 const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                trackDamageByWeaponType(b, critResult.damage);
                 e.hp -= critResult.damage;
                 hit = true;
                 e.aggro = true;
@@ -2142,6 +2194,7 @@ export function processBulletCollisions() {
 
                     if (nearestTarget) {
                       const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                      trackChainLightningDamage(chainDamage);
                       if (nearestTarget === GameContext.destroyer) {
                         const hpBefore = nearestTarget.hp;
                         nearestTarget.hp -= chainDamage;
@@ -2462,6 +2515,7 @@ export function processBulletCollisions() {
             }
           }
           if (!hit && dist < GameContext.spaceStation.radius + b.radius) {
+            trackDamageByWeaponType(b, b.damage);
             GameContext.spaceStation.hp -= b.damage;
             hit = true;
             if (_playSound) _playSound("hit");
@@ -2571,6 +2625,7 @@ export function processBulletCollisions() {
               : dist < GameContext.destroyer.radius + b.radius)
           ) {
             const hpBefore = GameContext.destroyer.hp;
+            trackDamageByWeaponType(b, b.damage);
             GameContext.destroyer.hp -= b.damage;
             hit = true;
             if (_playSound) _playSound("hit");
@@ -2691,6 +2746,7 @@ export function processBulletCollisions() {
                     ? GameContext.boss.hitTestCircle(b.pos.x, b.pos.y, b.radius)
                     : dist < hullRadius + b.radius;
                 if (hitTest) {
+                  trackDamageByWeaponType(b, b.damage);
                   GameContext.boss.hp -= b.damage;
                   hit = true;
                   if (_playSound) _playSound("hit");

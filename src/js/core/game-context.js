@@ -208,6 +208,11 @@ export const GameContext = {
     overlayTimeout: null,
     DEBUG_COLLISION: false,
     TEST_WARP_GATE_AT_START: false, // Set to true to spawn warp gate at game start for testing
+    // Death screen statistics
+    damageByWeaponType: {},
+    enemyKills: 0,
+    bossKills: 0,
+    totalDamageDealt: 0,
     /**
      * @returns {void}
      */
@@ -320,6 +325,10 @@ export const GameContext = {
         };
         this.cruiserTimerPausedAt = null;
         this.cruiserTimerResumeAt = 0;
+        this.damageByWeaponType = {};
+        this.enemyKills = 0;
+        this.bossKills = 0;
+        this.totalDamageDealt = 0;
         this.asteroidGrid.clear();
         this.targetGrid.clear();
     }

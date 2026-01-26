@@ -101,6 +101,7 @@ export class Flagship extends Cruiser {
     kill() {
         if (this.dead) return;
         this.dead = true;
+        GameContext.bossKills++;
         if (this._pixiInnerGfx) {
             try { this._pixiInnerGfx.destroy(true); } catch (e) { }
             this._pixiInnerGfx = null;

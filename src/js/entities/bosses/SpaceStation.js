@@ -266,6 +266,7 @@ export class SpaceStation extends Entity {
     kill() {
         if (this.dead) return;
         this.dead = true;
+        GameContext.bossKills++;
         // Clean up PixiJS graphics
         if (this._pixiInnerGfx) {
             try { this._pixiInnerGfx.destroy(true); } catch (e) { }

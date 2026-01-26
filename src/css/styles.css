@@ -312,6 +312,49 @@ canvas {
     display: none;
 }
 
+#death-screen {
+    display: none;
+}
+
+.death-stats-section {
+    margin: 20px 0;
+    padding: 15px;
+    border: 2px solid #0f0;
+    background: rgba(0, 20, 0, 0.5);
+}
+
+.death-stats-section h2 {
+    color: #0f0;
+    text-shadow: 0 0 10px #0f0;
+    margin: 0 0 15px 0;
+    font-size: 18px;
+    border-bottom: 1px solid #0f0;
+    padding-bottom: 8px;
+}
+
+.death-stat-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(0, 255, 0, 0.2);
+}
+
+.death-stat-item:last-child {
+    border-bottom: none;
+}
+
+.death-stat-item .stat-label {
+    color: #9f9;
+    font-size: 14px;
+}
+
+.death-stat-item .stat-value {
+    color: #0f0;
+    font-weight: bold;
+    font-size: 14px;
+    text-shadow: 0 0 5px #0f0;
+}
+
 #overlay-message {
     position: absolute;
     top: 30%;

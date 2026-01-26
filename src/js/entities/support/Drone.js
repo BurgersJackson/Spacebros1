@@ -68,14 +68,14 @@ export class Drone extends Entity {
       // halved interval for 60Hz
       // Shooter drone now fires where the player's turret aims
       const aimAngle = GameContext.player ? GameContext.player.turretAngle : 0;
-      GameContext.bullets.push(
-        new Bullet(this.pos.x, this.pos.y, aimAngle, 14, {
-          owner: "player",
-          damage: 1.5,
-          radius: 4,
-          color: "#ff0"
-        })
-      );
+      const droneBullet = new Bullet(this.pos.x, this.pos.y, aimAngle, 14, {
+        owner: "player",
+        damage: 1.5,
+        radius: 4,
+        color: "#ff0"
+      });
+      droneBullet.weaponType = 'drone';
+      GameContext.bullets.push(droneBullet);
       if (_spawnBarrelSmoke) _spawnBarrelSmoke(this.pos.x, this.pos.y, aimAngle);
     }
   }

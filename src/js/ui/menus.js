@@ -422,6 +422,14 @@ export function initMenuUi() {
         });
     }
 
+    const deathRestartBtn = document.getElementById('death-restart-btn');
+    if (deathRestartBtn) {
+        deathRestartBtn.addEventListener('click', () => {
+            if (initAudioRef) initAudioRef();
+            if (startGameRef) startGameRef();
+        });
+    }
+
     const resumeBtn = document.getElementById('resume-btn');
     if (resumeBtn) resumeBtn.addEventListener('click', () => { if (togglePauseRef) togglePauseRef(); });
 
