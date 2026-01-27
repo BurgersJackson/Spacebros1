@@ -1718,19 +1718,37 @@ export function processBulletCollisions() {
 
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
-                // Final check: ensure shields are actually depleted before applying HP damage
-                // This prevents damage when shields are still active
-                const hasActiveOuter =
-                  e.shieldSegments &&
-                  e.shieldSegments.length > 0 &&
-                  e.shieldSegments.some(s => s > 0);
-                const hasActiveInner =
-                  e.innerShieldSegments &&
-                  e.innerShieldSegments.length > 0 &&
-                  e.innerShieldSegments.some(s => s > 0);
+                // Check shield segments at the bullet's angle, not all segments
+                // This allows damage through destroyed shield shards
+                const angle = Math.atan2(dy, dx);
+                let hasShieldAtAngle = false;
 
-                // Only apply HP damage if no shields are active
-                if (!hasActiveOuter && !hasActiveInner) {
+                // Check inner shield at this angle
+                if (e.innerShieldSegments && e.innerShieldSegments.length > 0) {
+                  const normalizedAngle =
+                    (angle - (e.innerShieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                  const innerCount = e.innerShieldSegments.length;
+                  const innerAngle = (Math.PI * 2) / innerCount;
+                  const segmentIdx = Math.floor(normalizedAngle / innerAngle) % innerCount;
+                  if (e.innerShieldSegments[segmentIdx] > 0) {
+                    hasShieldAtAngle = true;
+                  }
+                }
+
+                // Check outer shield at this angle (only if inner didn't block)
+                if (!hasShieldAtAngle && e.shieldSegments && e.shieldSegments.length > 0) {
+                  const normalizedAngle =
+                    (angle - (e.shieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
+                  const segCount = e.shieldSegments.length;
+                  const segAngle = (Math.PI * 2) / segCount;
+                  const segmentIdx = Math.floor(normalizedAngle / segAngle) % segCount;
+                  if (e.shieldSegments[segmentIdx] > 0) {
+                    hasShieldAtAngle = true;
+                  }
+                }
+
+                // Apply HP damage if no shield at this angle
+                if (!hasShieldAtAngle) {
                   const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
                   if (!critResult.isCrit) {
                     showDamageFloatingText(e.pos.x, e.pos.y, critResult.damage, false);
@@ -1741,10 +1759,10 @@ export function processBulletCollisions() {
                   if (_playSound) _playSound("hit");
                   if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, "#fff");
                 } else {
-                  // Shields are still active but bullet reached hull - this shouldn't happen, but block it anyway
+                  // Shield at this angle is still active - block it
                   hit = true;
                   if (_playSound) _playSound("enemy_shield_hit");
-                  if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, "#f0f");
+                  if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
                 }
 
                 if (
@@ -2898,19 +2916,49 @@ export function processBulletCollisions() {
                     ? GameContext.boss.hitTestCircle(b.pos.x, b.pos.y, b.radius)
                     : dist < hullRadius + b.radius;
                 if (hitTest) {
-                  // Final check: ensure shields are actually depleted before applying HP damage
-                  // This prevents damage when shields are still active
-                  const hasActiveOuter =
-                    GameContext.boss.shieldSegments &&
-                    GameContext.boss.shieldSegments.length > 0 &&
-                    GameContext.boss.shieldSegments.some(s => s > 0);
-                  const hasActiveInner =
-                    GameContext.boss.innerShieldSegments &&
-                    GameContext.boss.innerShieldSegments.length > 0 &&
-                    GameContext.boss.innerShieldSegments.some(s => s > 0);
+                  // Check shield segments at bullet's angle, not all segments
+                  // This allows damage through destroyed shield shards
+                  const angle = Math.atan2(
+                    b.pos.y - GameContext.boss.pos.y,
+                    b.pos.x - GameContext.boss.pos.x
+                  );
+                  let hasShieldAtAngle = false;
 
-                  // Only apply HP damage if no shields are active
-                  if (!hasActiveOuter && !hasActiveInner) {
+                  // Check inner shield at this angle
+                  if (
+                    GameContext.boss.innerShieldSegments &&
+                    GameContext.boss.innerShieldSegments.length > 0
+                  ) {
+                    const normalizedAngle =
+                      (angle - (GameContext.boss.innerShieldRotation || 0) + Math.PI * 2) %
+                      (Math.PI * 2);
+                    const innerCount = GameContext.boss.innerShieldSegments.length;
+                    const innerAngle = (Math.PI * 2) / innerCount;
+                    const segmentIdx = Math.floor(normalizedAngle / innerAngle) % innerCount;
+                    if (GameContext.boss.innerShieldSegments[segmentIdx] > 0) {
+                      hasShieldAtAngle = true;
+                    }
+                  }
+
+                  // Check outer shield at this angle (only if inner didn't block)
+                  if (
+                    !hasShieldAtAngle &&
+                    GameContext.boss.shieldSegments &&
+                    GameContext.boss.shieldSegments.length > 0
+                  ) {
+                    const normalizedAngle =
+                      (angle - (GameContext.boss.shieldRotation || 0) + Math.PI * 2) %
+                      (Math.PI * 2);
+                    const segCount = GameContext.boss.shieldSegments.length;
+                    const segAngle = (Math.PI * 2) / segCount;
+                    const segmentIdx = Math.floor(normalizedAngle / segAngle) % segCount;
+                    if (GameContext.boss.shieldSegments[segmentIdx] > 0) {
+                      hasShieldAtAngle = true;
+                    }
+                  }
+
+                  // Apply HP damage if no shield at this angle
+                  if (!hasShieldAtAngle) {
                     trackDamageByWeaponType(b, b.damage);
                     GameContext.boss.hp -= b.damage;
                     showDamageFloatingText(
@@ -2923,7 +2971,7 @@ export function processBulletCollisions() {
                     if (_playSound) _playSound("hit");
                     if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#fff");
                   } else {
-                    // Shields are still active but bullet reached hull - block it
+                    // Shield at this angle is still active - block it
                     hit = true;
                     if (_playSound) _playSound("enemy_shield_hit");
                     if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
