@@ -290,11 +290,11 @@ export const UPGRADE_DATA = {
         {
           id: "area_nuke",
           name: "Area Nuke",
-          tier1: "Auto-fire 500u blast (5 dmg)",
-          tier2: "600u range, 10 dmg",
-          tier3: "800u range, 15 dmg",
-          tier4: "1000u range, 20 dmg",
-          tier5: "1200u range, 25 dmg",
+          tier1: "Auto-fire 600u blast (5 dmg)",
+          tier2: "700u range, 10 dmg, 9s cooldown",
+          tier3: "900u range, 15 dmg, 8s cooldown",
+          tier4: "1000u range, 20 dmg, 7s cooldown",
+          tier5: "1200u range, 25 dmg, 6s cooldown",
           notes: "Auto-activates when ready."
         },
         {

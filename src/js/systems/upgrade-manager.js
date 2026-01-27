@@ -151,7 +151,7 @@ export function applyUpgrade(id, tier) {
     }
     case "area_nuke":
       GameContext.player.nukeUnlocked = true;
-      GameContext.player.nukeMaxCooldown = 600;
+      GameContext.player.nukeMaxCooldown = 600 - (tier - 1) * 60;
       if (tier === 1) {
         GameContext.player.nukeDamage = 5;
         GameContext.player.nukeRange = 600;
