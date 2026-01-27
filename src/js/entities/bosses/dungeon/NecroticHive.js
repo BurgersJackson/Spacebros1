@@ -43,7 +43,7 @@ export class NecroticHive extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 160;
+    const baseHp = 240;
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
 

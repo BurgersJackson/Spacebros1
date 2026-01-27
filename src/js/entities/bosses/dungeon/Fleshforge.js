@@ -40,7 +40,7 @@ export class Fleshforge extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 180;
+    const baseHp = 270;
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
 

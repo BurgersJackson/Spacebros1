@@ -40,7 +40,7 @@ export class VortexMatriarch extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 150;
+    const baseHp = 225;
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
 

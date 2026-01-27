@@ -40,7 +40,7 @@ export class PsyLich extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 130;
+    const baseHp = 195;
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
     this.livesRemaining = 2; // Has 3 lives total

@@ -39,7 +39,7 @@ export class CerebralPsion extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 140;
+    const baseHp = 210;
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
 
