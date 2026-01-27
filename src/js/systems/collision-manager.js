@@ -61,14 +61,14 @@ export function registerCollisionDependencies(deps) {
  */
 function applyCriticalStrike(baseDamage, x, y) {
   if (!GameContext.player || !GameContext.player.stats) {
-    return { damage: baseDamage, isCrit: false };
+    return { damage: Math.round(baseDamage), isCrit: false };
   }
 
   const critChance = GameContext.player.stats.critChance || 0;
   const critDamage = GameContext.player.stats.critDamage || 1.0;
 
   if (Math.random() < critChance) {
-    const finalDamage = Math.ceil(baseDamage * critDamage);
+    const finalDamage = Math.round(baseDamage * critDamage);
     // Show floating text for crit - directly create FloatingText instance
     if (_FloatingText) {
       GameContext.floatingTexts.push(
@@ -91,13 +91,11 @@ function applyCriticalStrike(baseDamage, x, y) {
 function showDamageFloatingText(x, y, damage, isCrit = false) {
   if (damage <= 0) return;
   const color = isCrit ? "#ff0" : "#fff";
-  const text = isCrit ? `${damage}!` : `${damage}`;
+  const roundedDamage = Math.round(damage);
+  const text = isCrit ? `${roundedDamage}!` : `${roundedDamage}`;
   const key = `dmg_${Math.floor(x / 50)}_${Math.floor(y / 50)}`;
   if (_FloatingText) {
-    getOrCreateFloatingText(GameContext.floatingTexts, key, x, y, text, color, {
-      life: 45,
-      maxAge: 20
-    });
+    GameContext.floatingTexts.push(new _FloatingText(x, y, text, color, 45, {}));
   }
 }
 
