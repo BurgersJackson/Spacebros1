@@ -279,7 +279,7 @@ export function applyMetaUpgrades(spawnDroneFn) {
   const nukeCapacitorTier = GameContext.metaProfile.purchases.nukeCapacitor || 0;
   if (nukeCapacitorTier > 0) {
     GameContext.player.defenseRingTier = nukeCapacitorTier;
-    GameContext.player.defenseOrbDamage = 5 + (nukeCapacitorTier - 1);
+    GameContext.player.defenseOrbDamage = 10 + (nukeCapacitorTier - 1) * 2;
     GameContext.player.defenseOrbs = [];
     const count = nukeCapacitorTier;
     for (let i = 0; i < count; i++) {

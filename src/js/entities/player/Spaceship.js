@@ -168,7 +168,7 @@ export class Spaceship extends Entity {
     this.defenseOrbs = [];
     this.defenseOrbAngle = 0;
     this.defenseOrbRadius = 500;
-    this.defenseOrbDamage = 5;
+    this.defenseOrbDamage = 10;
     this.defenseOrbSpeed = ((Math.PI * 2) / 360) * 1.25; // 25% faster - 1.25 rotations per 6 seconds
 
     this.slowField = 0; // 0 or radius

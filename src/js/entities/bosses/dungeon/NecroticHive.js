@@ -30,7 +30,7 @@ export class NecroticHive extends Enemy {
   constructor(encounterIndex = 1) {
     super("gunboat", null, null, { gunboatLevel: 2 });
     const boost = Math.max(0, encounterIndex - 1);
-    const hpScale = 1 + boost * 0.2;
+    const hpScale = 1 + boost * 0.35;
 
     this.type = "necroticHive";
     this.isDungeonBoss = true;

@@ -27,6 +27,14 @@ import {
   Cruiser,
   Gunboat
 } from "../entities/index.js";
+import {
+  NecroticHive,
+  CerebralPsion,
+  Fleshforge,
+  VortexMatriarch,
+  ChitinusPrime,
+  PsyLich
+} from "../entities/bosses/dungeon/index.js";
 import { CaveGunboat1, CaveGunboat2 } from "../entities/cave/index.js";
 import {
   scheduleNextMiniEvent,
@@ -645,7 +653,7 @@ export function gameLoopLogic(opts = null) {
         }
       }
     } catch (e) {}
-    // Cruiser timed spawn: if timer active and no boss present, spawn a cruiser
+    // Unique boss spawn: if timer active and no boss present, spawn from unique pool
     try {
       if (
         !GameContext.sectorTransitionActive &&
@@ -660,22 +668,69 @@ export function gameLoopLogic(opts = null) {
         GameContext.dreadManager.timerAt &&
         now >= GameContext.dreadManager.timerAt
       ) {
-        // Cruisers can spawn even if a station exists
-        // Cruisers can also spawn even if another cruiser is active (multiple cruisers allowed)
+        // Reset boss pool when entering sector 1
+        if (GameContext.currentSectorForBossReset !== 1) {
+          GameContext.bossesSpawnedThisLevel = [];
+          GameContext.currentSectorForBossReset = 1;
+        }
+        // Get available bosses not yet spawned this level
+        const available = GameContext.bossPool.filter(
+          b => !GameContext.bossesSpawnedThisLevel.includes(b)
+        );
+        // If all bosses spawned, reset pool
+        if (available.length === 0) {
+          GameContext.bossesSpawnedThisLevel = [];
+        }
+        // Pick random boss from available
+        const bossType =
+          GameContext.bossPool[Math.floor(Math.random() * GameContext.bossPool.length)];
+        GameContext.bossesSpawnedThisLevel.push(bossType);
+
+        // Spawn the selected boss
         GameContext.cruiserEncounterCount++;
-        const newCruiser = new Cruiser(GameContext.cruiserEncounterCount);
-        // First cruiser becomes the main boss, subsequent cruisers go to enemies array
+        let newBoss;
+        switch (bossType) {
+          case "Cruiser":
+            newBoss = new Cruiser(GameContext.cruiserEncounterCount);
+            break;
+          case "NecroticHive":
+            newBoss = new NecroticHive(GameContext.cruiserEncounterCount);
+            GameContext.necroticHive = newBoss;
+            break;
+          case "CerebralPsion":
+            newBoss = new CerebralPsion(GameContext.cruiserEncounterCount);
+            GameContext.cerebralPsion = newBoss;
+            break;
+          case "Fleshforge":
+            newBoss = new Fleshforge(GameContext.cruiserEncounterCount);
+            GameContext.fleshforge = newBoss;
+            break;
+          case "VortexMatriarch":
+            newBoss = new VortexMatriarch(GameContext.cruiserEncounterCount);
+            GameContext.vortexMatriarch = newBoss;
+            break;
+          case "ChitinusPrime":
+            newBoss = new ChitinusPrime(GameContext.cruiserEncounterCount);
+            GameContext.chitinusPrime = newBoss;
+            break;
+          case "PsyLich":
+            newBoss = new PsyLich(GameContext.cruiserEncounterCount);
+            GameContext.psyLich = newBoss;
+            break;
+          default:
+            newBoss = new Cruiser(GameContext.cruiserEncounterCount);
+        }
+        // First boss becomes the main boss, subsequent bosses go to enemies array
         if (!GameContext.bossActive || !GameContext.boss) {
-          GameContext.boss = newCruiser;
+          GameContext.boss = newBoss;
           GameContext.bossActive = true;
         } else {
-          // Additional cruisers are added to enemies array
-          GameContext.enemies.push(newCruiser);
+          GameContext.enemies.push(newBoss);
         }
         // Keep arena fights clean
         GameContext.radiationStorm = null;
         scheduleNextRadiationStorm(Date.now() + 60000);
-        // Restart timer for next cruiser (continuous loop)
+        // Restart timer for next boss (continuous loop)
         const cruiserDelay =
           GameContext.dreadManager.minDelayMs +
           Math.floor(
@@ -683,12 +738,12 @@ export function gameLoopLogic(opts = null) {
               (GameContext.dreadManager.maxDelayMs - GameContext.dreadManager.minDelayMs + 1)
           );
         GameContext.dreadManager.timerAt = Date.now() + cruiserDelay;
-        showOverlayMessage("WARNING: CRUISER APPROACHING", "#f00", 4000);
+        showOverlayMessage("WARNING: HOSTILE APPROACHING", "#f00", 4000);
         playSound("boss_spawn");
         if (isMusicEnabled && isMusicEnabled()) setMusicMode("cruiser");
       }
     } catch (e) {
-      console.warn("cruiser spawn check failed", e);
+      console.warn("boss spawn check failed", e);
     }
 
     // Space Station Spawn (timer-driven)
