@@ -82,6 +82,55 @@ function applyCriticalStrike(baseDamage, x, y) {
 }
 
 /**
+ * Show floating damage text at position
+ * @param {number} x - X position
+ * @param {number} y - Y position
+ * @param {number} damage - Damage amount
+ * @param {boolean} isCrit - Whether this is a crit hit
+ */
+function showDamageFloatingText(x, y, damage, isCrit = false) {
+  if (damage <= 0) return;
+  const color = isCrit ? "#ff0" : "#fff";
+  const text = isCrit ? `${damage}!` : `${damage}`;
+  const key = `dmg_${Math.floor(x / 50)}_${Math.floor(y / 50)}`;
+  if (_FloatingText) {
+    getOrCreateFloatingText(GameContext.floatingTexts, key, x, y, text, color, {
+      life: 45,
+      maxAge: 20
+    });
+  }
+}
+
+/**
+ * Find or create a floating text for stacking
+ * @param {Array} floatingTexts - Array of floating texts
+ * @param {string} key - Unique key for stacking
+ * @param {number} x - X position
+ * @param {number} y - Y position
+ * @param {number} amount - Text to display
+ * @param {string} color - Text color
+ * @param {Object} opts - Additional options
+ */
+function getOrCreateFloatingText(floatingTexts, key, x, y, amount, color, opts = {}) {
+  const maxAge = opts.maxAge || 600;
+  for (let i = 0; i < floatingTexts.length; i++) {
+    const ft = floatingTexts[i];
+    if (ft.key === key && !ft.dead && ft.age < 20) {
+      ft.bump(null, x, y);
+      return ft;
+    }
+  }
+  const ft = new _FloatingText(x, y, `${amount}`, color, opts.life || 45, {
+    key,
+    amount: null,
+    prefix: "",
+    suffix: ""
+  });
+  floatingTexts.push(ft);
+  return ft;
+}
+
+/**
  * Apply lifesteal - heal player on enemy kills
  * @param {number} x - X position for floating text
  * @param {number} y - Y position for floating text
@@ -1102,6 +1151,7 @@ export function resolveEntityCollision() {
         const dist = Math.hypot(s.pos.x - e.pos.x, s.pos.y - e.pos.y);
         if (dist < s.radius + e.radius) {
           e.hp -= s.damage;
+          showDamageFloatingText(e.pos.x, e.pos.y, s.damage, false);
           if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 14, "#fa0");
           if (_playSound) _playSound("explode");
           if (e.hp <= 0) e.kill();
@@ -1115,6 +1165,7 @@ export function resolveEntityCollision() {
           const dist = Math.hypot(s.pos.x - b.pos.x, s.pos.y - b.pos.y);
           if (dist < s.radius + b.radius) {
             b.hp -= s.damage;
+            showDamageFloatingText(b.pos.x, b.pos.y, s.damage, false);
             b.aggro = true;
             if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 18, "#fa0");
             if (_playSound) _playSound("explode");
@@ -1153,6 +1204,7 @@ export function resolveEntityCollision() {
           const dist = Math.hypot(s.pos.x - b.pos.x, s.pos.y - b.pos.y);
           if (dist < s.radius + b.radius) {
             b.hp -= s.damage;
+            showDamageFloatingText(b.pos.x, b.pos.y, s.damage, false);
             b.aggro = true;
             if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 18, "#fa0");
             if (_playSound) _playSound("explode");
@@ -1199,6 +1251,7 @@ export function resolveEntityCollision() {
             !(GameContext.boss instanceof Cruiser && GameContext.boss.invulnerableTimer > 0)
           ) {
             GameContext.boss.hp -= s.damage;
+            showDamageFloatingText(GameContext.boss.pos.x, GameContext.boss.pos.y, s.damage, false);
             if (_spawnParticles)
               _spawnParticles(GameContext.boss.pos.x, GameContext.boss.pos.y, 22, "#fa0");
             if (_playSound) _playSound("explode");
@@ -1217,6 +1270,12 @@ export function resolveEntityCollision() {
         );
         if (dist < s.radius + GameContext.spaceStation.radius) {
           GameContext.spaceStation.hp -= s.damage;
+          showDamageFloatingText(
+            GameContext.spaceStation.pos.x,
+            GameContext.spaceStation.pos.y,
+            s.damage,
+            false
+          );
           if (_spawnParticles)
             _spawnParticles(
               GameContext.spaceStation.pos.x,
@@ -1449,6 +1508,12 @@ export function processBulletCollisions() {
                       const chainDamage = b.damage * Math.pow(0.7, chain + 1);
                       trackChainLightningDamage(chainDamage);
                       nearestTarget.hp -= chainDamage;
+                      showDamageFloatingText(
+                        nearestTarget.pos.x,
+                        nearestTarget.pos.y,
+                        chainDamage,
+                        false
+                      );
                       chainTargets.add(nearestTarget);
 
                       if (_spawnLightningArc)
@@ -1505,7 +1570,13 @@ export function processBulletCollisions() {
             if (e instanceof Enemy) {
               // Skip damage for non-dungeon bosses stored in GameContext.boss (they have separate collision handling)
               // Dungeon bosses need to go through normal shield checking logic
-              if (GameContext.bossActive && GameContext.boss && e === GameContext.boss && !e.isDungeonBoss) continue;
+              if (
+                GameContext.bossActive &&
+                GameContext.boss &&
+                e === GameContext.boss &&
+                !e.isDungeonBoss
+              )
+                continue;
               // Skip damage if Cruiser is invulnerable
               if (e instanceof Cruiser && e.invulnerableTimer > 0) continue;
 
@@ -1713,8 +1784,20 @@ export function processBulletCollisions() {
                       if (nearestTarget === GameContext.destroyer) {
                         const hpBefore = nearestTarget.hp;
                         nearestTarget.hp -= chainDamage;
+                        showDamageFloatingText(
+                          nearestTarget.pos.x,
+                          nearestTarget.pos.y,
+                          chainDamage,
+                          false
+                        );
                       } else {
                         nearestTarget.hp -= chainDamage;
+                        showDamageFloatingText(
+                          nearestTarget.pos.x,
+                          nearestTarget.pos.y,
+                          chainDamage,
+                          false
+                        );
                       }
                       chainTargets.add(nearestTarget);
 
@@ -1961,8 +2044,20 @@ export function processBulletCollisions() {
                       if (nearestTarget === GameContext.destroyer) {
                         const hpBefore = nearestTarget.hp;
                         nearestTarget.hp -= chainDamage;
+                        showDamageFloatingText(
+                          nearestTarget.pos.x,
+                          nearestTarget.pos.y,
+                          chainDamage,
+                          false
+                        );
                       } else {
                         nearestTarget.hp -= chainDamage;
+                        showDamageFloatingText(
+                          nearestTarget.pos.x,
+                          nearestTarget.pos.y,
+                          chainDamage,
+                          false
+                        );
                       }
                       chainTargets.add(nearestTarget);
 
@@ -2219,8 +2314,20 @@ export function processBulletCollisions() {
                       if (nearestTarget === GameContext.destroyer) {
                         const hpBefore = nearestTarget.hp;
                         nearestTarget.hp -= chainDamage;
+                        showDamageFloatingText(
+                          nearestTarget.pos.x,
+                          nearestTarget.pos.y,
+                          chainDamage,
+                          false
+                        );
                       } else {
                         nearestTarget.hp -= chainDamage;
+                        showDamageFloatingText(
+                          nearestTarget.pos.x,
+                          nearestTarget.pos.y,
+                          chainDamage,
+                          false
+                        );
                       }
                       chainTargets.add(nearestTarget);
 
@@ -2538,6 +2645,12 @@ export function processBulletCollisions() {
           if (!hit && dist < GameContext.spaceStation.radius + b.radius) {
             trackDamageByWeaponType(b, b.damage);
             GameContext.spaceStation.hp -= b.damage;
+            showDamageFloatingText(
+              GameContext.spaceStation.pos.x,
+              GameContext.spaceStation.pos.y,
+              b.damage,
+              false
+            );
             hit = true;
             if (_playSound) _playSound("hit");
             if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#fff");
@@ -2648,6 +2761,12 @@ export function processBulletCollisions() {
             const hpBefore = GameContext.destroyer.hp;
             trackDamageByWeaponType(b, b.damage);
             GameContext.destroyer.hp -= b.damage;
+            showDamageFloatingText(
+              GameContext.destroyer.pos.x,
+              GameContext.destroyer.pos.y,
+              b.damage,
+              false
+            );
             hit = true;
             if (_playSound) _playSound("hit");
             if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#ff0");
@@ -2782,6 +2901,12 @@ export function processBulletCollisions() {
                   if (!hasActiveOuter && !hasActiveInner) {
                     trackDamageByWeaponType(b, b.damage);
                     GameContext.boss.hp -= b.damage;
+                    showDamageFloatingText(
+                      GameContext.boss.pos.x,
+                      GameContext.boss.pos.y,
+                      b.damage,
+                      false
+                    );
                     hit = true;
                     if (_playSound) _playSound("hit");
                     if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#fff");
