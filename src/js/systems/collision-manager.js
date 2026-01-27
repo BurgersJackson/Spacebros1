@@ -127,28 +127,28 @@ function applyLifesteal(x, y) {
  * @param {number} damage - The damage dealt
  */
 function trackDamageByWeaponType(bullet, damage) {
-  if (!bullet || bullet.isEnemy || bullet.owner === 'enemy') return;
-  
+  if (!bullet || bullet.isEnemy || bullet.owner === "enemy") return;
+
   // Determine weapon type from bullet properties
-  let weaponType = 'turret'; // default
-  
+  let weaponType = "turret"; // default
+
   if (bullet.weaponType) {
     weaponType = bullet.weaponType;
   } else if (bullet.isMissile) {
-    weaponType = 'homing_missile';
+    weaponType = "homing_missile";
   } else if (bullet.isSplitShot) {
-    weaponType = 'split_shot';
+    weaponType = "split_shot";
   } else if (bullet.isExplosive) {
-    weaponType = 'explosive_rounds';
-  } else if (bullet.shape === 'square') {
-    weaponType = 'shotgun';
+    weaponType = "explosive_rounds";
+  } else if (bullet.shape === "square") {
+    weaponType = "shotgun";
   }
-  
+
   // Initialize if needed
   if (!GameContext.damageByWeaponType[weaponType]) {
     GameContext.damageByWeaponType[weaponType] = 0;
   }
-  
+
   GameContext.damageByWeaponType[weaponType] += damage;
   GameContext.totalDamageDealt += damage;
 }
@@ -158,7 +158,7 @@ function trackDamageByWeaponType(bullet, damage) {
  * @param {number} damage - The chain lightning damage dealt
  */
 function trackChainLightningDamage(damage) {
-  const weaponType = 'chain_lightning';
+  const weaponType = "chain_lightning";
   if (!GameContext.damageByWeaponType[weaponType]) {
     GameContext.damageByWeaponType[weaponType] = 0;
   }
@@ -1139,7 +1139,7 @@ export function resolveEntityCollision() {
               GameContext.enemies.forEach(e => {
                 if (e.assignedBase === b) e.type = "roamer";
               });
-              const delay = 5000 + Math.random() * 5000;
+              const delay = 10000 + Math.random() * 10000;
               GameContext.baseRespawnTimers.push(Date.now() + delay);
             }
             hitEntity = true;
@@ -1177,7 +1177,7 @@ export function resolveEntityCollision() {
               GameContext.enemies.forEach(e => {
                 if (e.assignedBase === b) e.type = "roamer";
               });
-              const delay = 5000 + Math.random() * 5000;
+              const delay = 10000 + Math.random() * 10000;
               GameContext.baseRespawnTimers.push(Date.now() + delay);
             }
             hitEntity = true;
@@ -1503,7 +1503,9 @@ export function processBulletCollisions() {
               }
             }
             if (e instanceof Enemy) {
-              if (GameContext.bossActive && GameContext.boss && e === GameContext.boss) continue;
+              // Skip damage for non-dungeon bosses stored in GameContext.boss (they have separate collision handling)
+              // Dungeon bosses need to go through normal shield checking logic
+              if (GameContext.bossActive && GameContext.boss && e === GameContext.boss && !e.isDungeonBoss) continue;
               // Skip damage if Cruiser is invulnerable
               if (e instanceof Cruiser && e.invulnerableTimer > 0) continue;
 
@@ -1642,12 +1644,31 @@ export function processBulletCollisions() {
 
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
-                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
-                trackDamageByWeaponType(b, critResult.damage);
-                e.hp -= critResult.damage;
-                hit = true;
-                if (_playSound) _playSound("hit");
-                if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, "#fff");
+                // Final check: ensure shields are actually depleted before applying HP damage
+                // This prevents damage when shields are still active
+                const hasActiveOuter =
+                  e.shieldSegments &&
+                  e.shieldSegments.length > 0 &&
+                  e.shieldSegments.some(s => s > 0);
+                const hasActiveInner =
+                  e.innerShieldSegments &&
+                  e.innerShieldSegments.length > 0 &&
+                  e.innerShieldSegments.some(s => s > 0);
+
+                // Only apply HP damage if no shields are active
+                if (!hasActiveOuter && !hasActiveInner) {
+                  const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                  trackDamageByWeaponType(b, critResult.damage);
+                  e.hp -= critResult.damage;
+                  hit = true;
+                  if (_playSound) _playSound("hit");
+                  if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, "#fff");
+                } else {
+                  // Shields are still active but bullet reached hull - this shouldn't happen, but block it anyway
+                  hit = true;
+                  if (_playSound) _playSound("enemy_shield_hit");
+                  if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, "#f0f");
+                }
 
                 if (
                   GameContext.player.chainLightningCount &&
@@ -2746,11 +2767,30 @@ export function processBulletCollisions() {
                     ? GameContext.boss.hitTestCircle(b.pos.x, b.pos.y, b.radius)
                     : dist < hullRadius + b.radius;
                 if (hitTest) {
-                  trackDamageByWeaponType(b, b.damage);
-                  GameContext.boss.hp -= b.damage;
-                  hit = true;
-                  if (_playSound) _playSound("hit");
-                  if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#fff");
+                  // Final check: ensure shields are actually depleted before applying HP damage
+                  // This prevents damage when shields are still active
+                  const hasActiveOuter =
+                    GameContext.boss.shieldSegments &&
+                    GameContext.boss.shieldSegments.length > 0 &&
+                    GameContext.boss.shieldSegments.some(s => s > 0);
+                  const hasActiveInner =
+                    GameContext.boss.innerShieldSegments &&
+                    GameContext.boss.innerShieldSegments.length > 0 &&
+                    GameContext.boss.innerShieldSegments.some(s => s > 0);
+
+                  // Only apply HP damage if no shields are active
+                  if (!hasActiveOuter && !hasActiveInner) {
+                    trackDamageByWeaponType(b, b.damage);
+                    GameContext.boss.hp -= b.damage;
+                    hit = true;
+                    if (_playSound) _playSound("hit");
+                    if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#fff");
+                  } else {
+                    // Shields are still active but bullet reached hull - block it
+                    hit = true;
+                    if (_playSound) _playSound("enemy_shield_hit");
+                    if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
+                  }
 
                   // Explosive Rounds meta upgrade
                   if (

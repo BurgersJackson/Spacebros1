@@ -135,11 +135,11 @@ export const UPGRADE_DATA = {
         {
           id: "static_weapons",
           name: "Static Weapons",
-          tier1: "Unlock Forward Laser",
+          tier1: "Unlock Rear Laser",
           tier2: "Add Side Lasers",
-          tier3: "Add Rear Laser",
+          tier3: "Unlock Forward Laser",
           tier4: "Dual Rear Stream",
-          tier5: "Dual Front Stream",
+          tier5: "Dual Side Lasers (5° spread)",
           notes: "Always-on turrets."
         },
         {
@@ -401,10 +401,10 @@ export const META_SHOP_UPGRADE_DATA = {
   },
   staticBlueprint: {
     name: "Static Blueprint",
-    description: "Unlock always-on forward laser turret",
-    tier1: "Unlock Forward Laser",
+    description: "Unlock always-on rear laser turret",
+    tier1: "Unlock Rear Laser",
     tier2: "Add Side Lasers",
-    tier3: "Add Rear Laser",
+    tier3: "Unlock Forward Laser",
     tier4: "Increases effectiveness further",
     tier5: "Increases effectiveness further",
     tier6: "Increases effectiveness further",

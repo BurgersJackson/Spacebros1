@@ -675,8 +675,14 @@ export function gameLoopLogic(opts = null) {
         // Keep arena fights clean
         GameContext.radiationStorm = null;
         scheduleNextRadiationStorm(Date.now() + 60000);
-        // Keep timer active so more cruisers can spawn while this one is alive
-        GameContext.dreadManager.firstSpawnDone = true;
+        // Restart timer for next cruiser (continuous loop)
+        const cruiserDelay =
+          GameContext.dreadManager.minDelayMs +
+          Math.floor(
+            Math.random() *
+              (GameContext.dreadManager.maxDelayMs - GameContext.dreadManager.minDelayMs + 1)
+          );
+        GameContext.dreadManager.timerAt = Date.now() + cruiserDelay;
         showOverlayMessage("WARNING: CRUISER APPROACHING", "#f00", 4000);
         playSound("boss_spawn");
         if (isMusicEnabled && isMusicEnabled()) setMusicMode("cruiser");
@@ -706,7 +712,7 @@ export function gameLoopLogic(opts = null) {
       GameContext.nextSpaceStationTime = null;
     }
 
-    // Gunboat respawn (one at a time)
+    // Gunboat respawn system - time-based tiered spawning
     if (
       !warpActive &&
       !GameContext.dungeon1Active &&
@@ -715,45 +721,53 @@ export function gameLoopLogic(opts = null) {
       !GameContext.gamePaused &&
       GameContext.initialSpawnDone
     ) {
-      const gunboatAlive = GameContext.enemies.some(e => e.isGunboat);
-      const level2Alive = GameContext.enemies.some(e => e.isGunboat && e.gunboatLevel === 2);
-      const level1Alive = GameContext.enemies.some(e => e.isGunboat && e.gunboatLevel === 1);
+      const elapsedMs = now - GameContext.gameStartTime - GameContext.pausedAccumMs;
+      const elapsedMinutes = elapsedMs / 60000;
+
+      let targetLevel1 = 1;
+      let targetLevel2 = 0;
+
+      if (elapsedMinutes >= 5) targetLevel1 = 2;
+      else if (elapsedMinutes >= 10) {
+        targetLevel1 = 3;
+        targetLevel2 = 1;
+      } else if (elapsedMinutes >= 15) {
+        targetLevel1 = 3;
+        targetLevel2 = 2;
+      } else if (elapsedMinutes >= 20) {
+        targetLevel1 = 0;
+        targetLevel2 = 5;
+      } else if (elapsedMinutes >= 25) targetLevel2 = 6;
+
+      const currentLevel1 = GameContext.enemies.filter(
+        e => e.isGunboat && e.gunboatLevel === 1
+      ).length;
+      const currentLevel2 = GameContext.enemies.filter(
+        e => e.isGunboat && e.gunboatLevel === 2
+      ).length;
+
       if (GameContext.gunboatRespawnAt && now >= GameContext.gunboatRespawnAt) {
-        // Spawn rules: before warp, only level 1, one at a time. After warp, allow one level 1 and one level 2 simultaneously.
-        // Use Gunboat classes (cave variants extend Gunboat for unified difficulty tier system)
-        if (!GameContext.gunboatLevel2Unlocked) {
-          if (!level1Alive) {
-            if (GameContext.caveMode) {
-              GameContext.enemies.push(new CaveGunboat1(null, null));
-            } else {
-              GameContext.enemies.push(new Gunboat(null, null, 1));
-            }
+        if (targetLevel1 > 0 && currentLevel1 < targetLevel1) {
+          if (GameContext.caveMode) {
+            GameContext.enemies.push(new CaveGunboat1(null, null));
+          } else {
+            GameContext.enemies.push(new Gunboat(null, null, 1));
           }
-          GameContext.gunboatRespawnAt = null;
-        } else {
-          if (!level1Alive) {
-            if (GameContext.caveMode) {
-              GameContext.enemies.push(new CaveGunboat1(null, null));
-            } else {
-              GameContext.enemies.push(new Gunboat(null, null, 1));
-            }
-          } else if (!level2Alive) {
-            if (GameContext.caveMode) {
-              GameContext.enemies.push(new CaveGunboat2(null, null));
-            } else {
-              GameContext.enemies.push(new Gunboat(null, null, 2));
-            }
+        } else if (targetLevel2 > 0 && currentLevel2 < targetLevel2) {
+          if (GameContext.caveMode) {
+            GameContext.enemies.push(new CaveGunboat2(null, null));
+          } else {
+            GameContext.enemies.push(new Gunboat(null, null, 2));
           }
-          GameContext.gunboatRespawnAt = null;
         }
+        GameContext.gunboatRespawnAt = null;
       }
-      if (!GameContext.gunboatRespawnAt) {
-        // Only set a timer if we need more according to rules
-        if (!GameContext.gunboatLevel2Unlocked) {
-          if (!level1Alive) GameContext.gunboatRespawnAt = now + 20000;
-        } else {
-          if (!level1Alive || !level2Alive) GameContext.gunboatRespawnAt = now + 20000;
-        }
+
+      if (
+        !GameContext.gunboatRespawnAt &&
+        (currentLevel1 < targetLevel1 || currentLevel2 < targetLevel2)
+      ) {
+        GameContext.gunboatRespawnAt = now + 10000;
       }
     }
 
@@ -900,9 +914,9 @@ export function gameLoopLogic(opts = null) {
       if (elapsed < 0) elapsed = 0;
       const elapsedMinutes = elapsed / 60000;
 
-      const baseRoamers = 6;
-      GameContext.maxRoamers = 15;
-      const rampMinutes = 28; // slower ramp
+      const baseRoamers = 4;
+      GameContext.maxRoamers = 13;
+      const rampMinutes = 25; // slower ramp
       const rampT = Math.min(1, elapsedMinutes / rampMinutes);
       const difficultyBonus =
         Math.max(0, GameContext.difficultyTier + GameContext.player.level * 0.1 - 1) * 0.3;
@@ -919,8 +933,8 @@ export function gameLoopLogic(opts = null) {
         !GameContext.intensityBreakActive &&
         currentRoamers + GameContext.roamerRespawnQueue.length < targetRoamers
       ) {
-        // 3000ms delay between new spawns to refill population slower
-        GameContext.roamerRespawnQueue.push(3000);
+        // 6000ms delay between new spawns to refill population slower
+        GameContext.roamerRespawnQueue.push(6000);
       }
 
       const eliteUnlocked =
@@ -1086,7 +1100,7 @@ export function gameLoopLogic(opts = null) {
             GameContext.baseRespawnTimers.splice(i, 1);
           } else {
             // Delay respawns until the current target count needs them.
-            GameContext.baseRespawnTimers[i] = now + 8000;
+            GameContext.baseRespawnTimers[i] = now + 16000;
           }
         } else if (GameContext.baseRespawnTimers[i] > now + 60000) {
           // Remove timers that are more than 60 seconds in the future (stale timers)

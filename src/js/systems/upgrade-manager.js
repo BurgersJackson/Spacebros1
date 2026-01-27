@@ -21,7 +21,6 @@ export function applyUpgrade(id, tier) {
   try {
     GameContext.dreadManager.upgradesChosen = (GameContext.dreadManager.upgradesChosen || 0) + 1;
     if (
-      !GameContext.dreadManager.firstSpawnDone &&
       GameContext.dreadManager.upgradesChosen >= 3 &&
       !GameContext.bossActive &&
       !GameContext.dreadManager.timerActive
@@ -69,7 +68,7 @@ export function applyUpgrade(id, tier) {
         GameContext.player.staticWeapons = GameContext.player.staticWeapons.filter(
           w => w.source !== "upgrade"
         );
-        const weaponTypes = ["forward", "side", "rear", "dual_rear", "dual_front"];
+        const weaponTypes = ["rear", "side", "forward", "dual_rear", "dual_side"];
         for (let i = 0; i < tier && i < weaponTypes.length; i++) {
           GameContext.player.staticWeapons.push({ type: weaponTypes[i], source: "upgrade" });
         }

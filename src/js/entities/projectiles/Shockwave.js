@@ -93,7 +93,33 @@ export class Shockwave extends Entity {
                         if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 8, '#ff0');
                     }
 
-                    e.hp -= damage;
+                    // Check shields before applying HP damage (for enemies with shield systems)
+                    let remaining = damage;
+                    if (e.shieldSegments && e.shieldSegments.length > 0) {
+                        for (let i = 0; i < e.shieldSegments.length && remaining > 0; i++) {
+                            const absorb = Math.min(remaining, e.shieldSegments[i]);
+                            e.shieldSegments[i] -= absorb;
+                            remaining -= absorb;
+                            if (e.shieldsDirty !== undefined) e.shieldsDirty = true;
+                        }
+                    }
+                    if (e.innerShieldSegments && e.innerShieldSegments.length > 0 && remaining > 0) {
+                        for (let i = 0; i < e.innerShieldSegments.length && remaining > 0; i++) {
+                            const absorb = Math.min(remaining, e.innerShieldSegments[i]);
+                            e.innerShieldSegments[i] -= absorb;
+                            remaining -= absorb;
+                            if (e.shieldsDirty !== undefined) e.shieldsDirty = true;
+                        }
+                    }
+
+                    // Only apply HP damage if shields couldn't absorb all damage
+                    if (remaining > 0) {
+                        e.hp -= remaining;
+                    } else {
+                        // All damage absorbed by shields
+                        if (_playSound) _playSound("enemy_shield_hit");
+                        if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, "#f0f");
+                    }
                     // Track area nuke damage if this is from player nuke
                     if (!this.isEnemy && this.damageType === 'area_nuke') {
                         if (!GameContext.damageByWeaponType['area_nuke']) {
