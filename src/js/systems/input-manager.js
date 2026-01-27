@@ -207,6 +207,11 @@ export function getActiveMenuElements() {
     return Array.from(document.querySelectorAll("#start-screen button"));
   }
 
+  const deathScreen = document.getElementById("death-screen");
+  if (isVisible(deathScreen)) {
+    return Array.from(document.querySelectorAll("#death-screen button"));
+  }
+
   return [];
 }
 
@@ -546,16 +551,20 @@ export function initInputListeners() {
   const mouseWorld = GameContext.mouseWorld;
 
   // Handle ESC in capture phase to prevent other listeners from interfering
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !e.repeat) {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      if (_togglePause) {
-        _togglePause();
+  window.addEventListener(
+    "keydown",
+    e => {
+      if (e.key === "Escape" && !e.repeat) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (_togglePause) {
+          _togglePause();
+        }
       }
-    }
-  }, { capture: true });
+    },
+    { capture: true }
+  );
 
   window.addEventListener("keydown", e => {
     if (e.key === "w" || e.key === "W") keys.w = true;
