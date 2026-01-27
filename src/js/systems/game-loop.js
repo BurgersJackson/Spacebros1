@@ -674,16 +674,17 @@ export function gameLoopLogic(opts = null) {
           GameContext.currentSectorForBossReset = 1;
         }
         // Get available bosses not yet spawned this level
-        const available = GameContext.bossPool.filter(
+        let available = GameContext.bossPool.filter(
           b => !GameContext.bossesSpawnedThisLevel.includes(b)
         );
         // If all bosses spawned, reset pool
         if (available.length === 0) {
           GameContext.bossesSpawnedThisLevel = [];
+          // Reset available to full pool since all bosses can spawn again
+          available = GameContext.bossPool;
         }
         // Pick random boss from available
-        const bossType =
-          GameContext.bossPool[Math.floor(Math.random() * GameContext.bossPool.length)];
+        const bossType = available[Math.floor(Math.random() * available.length)];
         GameContext.bossesSpawnedThisLevel.push(bossType);
 
         // Spawn the selected boss
