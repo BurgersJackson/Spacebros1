@@ -1,25 +1,39 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { checkWallCollision, checkBulletWallCollision, registerCollisionDependencies } from '../../../src/js/systems/collision-manager.js';
-import { GameContext } from '../../../src/js/core/game-context.js';
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+// Mock texture-loader before importing collision-manager to avoid Image.addEventListener errors
+vi.mock("../../../src/js/rendering/texture-loader.js", () => ({
+  pixiTextures: {},
+  pixiTextureAnchors: {},
+  pixiTextureRotOffsets: {},
+  pixiTextureScaleToRadius: {},
+  pixiTextureBaseScales: {}
+}));
 
 // Mock entity classes to avoid texture-loader DOM dependencies
-vi.mock('../../../src/js/entities/index.js', () => ({
+vi.mock("../../../src/js/entities/index.js", () => ({
   Enemy: class {},
   Pinwheel: class {},
   Destroyer: class {},
   Destroyer2: class {},
   SpaceStation: class {},
-  Cruiser: class {},
+  Cruiser: class {}
 }));
 
-vi.mock('../../../src/js/entities/cave/index.js', () => ({
+vi.mock("../../../src/js/entities/cave/index.js", () => ({
   CavePinwheel1: class {},
   CavePinwheel2: class {},
-  CavePinwheel3: class {},
+  CavePinwheel3: class {}
 }));
 
+import {
+  checkWallCollision,
+  checkBulletWallCollision,
+  registerCollisionDependencies
+} from "../../../src/js/systems/collision-manager.js";
+import { GameContext } from "../../../src/js/core/game-context.js";
+
 // Mock GameContext
-vi.mock('../../../src/js/core/game-context.js', () => ({
+vi.mock("../../../src/js/core/game-context.js", () => ({
   GameContext: {
     caveMode: false,
     caveLevel: null,
@@ -33,13 +47,13 @@ vi.mock('../../../src/js/core/game-context.js', () => ({
     activeContract: null,
     contractEntities: {
       anomalies: [],
-      fortresses: [],
+      fortresses: []
     },
-    sectorIndex: 0,
-  },
+    sectorIndex: 0
+  }
 }));
 
-describe('collision-manager.js', () => {
+describe("collision-manager.js", () => {
   beforeEach(() => {
     // Reset GameContext state
     GameContext.caveMode = false;
@@ -56,38 +70,38 @@ describe('collision-manager.js', () => {
     vi.clearAllMocks();
   });
 
-  describe('registerCollisionDependencies', () => {
-    it('should register spawnParticles dependency', () => {
+  describe("registerCollisionDependencies", () => {
+    it("should register spawnParticles dependency", () => {
       const mockSpawnParticles = vi.fn();
       registerCollisionDependencies({ spawnParticles: mockSpawnParticles });
       expect(mockSpawnParticles).toBeDefined();
     });
 
-    it('should register playSound dependency', () => {
+    it("should register playSound dependency", () => {
       const mockPlaySound = vi.fn();
       registerCollisionDependencies({ playSound: mockPlaySound });
       expect(mockPlaySound).toBeDefined();
     });
 
-    it('should register updateHealthUI dependency', () => {
+    it("should register updateHealthUI dependency", () => {
       const mockUpdateHealthUI = vi.fn();
       registerCollisionDependencies({ updateHealthUI: mockUpdateHealthUI });
       expect(mockUpdateHealthUI).toBeDefined();
     });
 
-    it('should register killPlayer dependency', () => {
+    it("should register killPlayer dependency", () => {
       const mockKillPlayer = vi.fn();
       registerCollisionDependencies({ killPlayer: mockKillPlayer });
       expect(mockKillPlayer).toBeDefined();
     });
 
-    it('should handle missing dependencies gracefully', () => {
+    it("should handle missing dependencies gracefully", () => {
       expect(() => {
         registerCollisionDependencies({});
       }).not.toThrow();
     });
 
-    it('should register all dependencies at once', () => {
+    it("should register all dependencies at once", () => {
       const deps = {
         spawnParticles: vi.fn(),
         playSound: vi.fn(),
@@ -103,7 +117,7 @@ describe('collision-manager.js', () => {
         updateContractUI: vi.fn(),
         setProjectileImpactSoundContext: vi.fn(),
         awardCoinsInstant: vi.fn(),
-        awardNuggetsInstant: vi.fn(),
+        awardNuggetsInstant: vi.fn()
       };
       expect(() => {
         registerCollisionDependencies(deps);
@@ -111,7 +125,7 @@ describe('collision-manager.js', () => {
     });
   });
 
-  describe('checkWallCollision', () => {
+  describe("checkWallCollision", () => {
     let mockEntity;
 
     beforeEach(() => {
@@ -119,61 +133,61 @@ describe('collision-manager.js', () => {
         pos: { x: 100, y: 100 },
         vel: { x: 5, y: 5 },
         radius: 20,
-        dead: false,
+        dead: false
       };
     });
 
-    it('should return early if entity is null', () => {
+    it("should return early if entity is null", () => {
       expect(() => {
         checkWallCollision(null);
       }).not.toThrow();
     });
 
-    it('should return early if entity is dead', () => {
+    it("should return early if entity is dead", () => {
       mockEntity.dead = true;
       expect(() => {
         checkWallCollision(mockEntity);
       }).not.toThrow();
     });
 
-    it('should apply cave wall collisions when caveMode is active', () => {
+    it("should apply cave wall collisions when caveMode is active", () => {
       GameContext.caveMode = true;
       GameContext.caveLevel = {
         active: true,
-        applyWallCollisions: vi.fn(),
+        applyWallCollisions: vi.fn()
       };
 
       checkWallCollision(mockEntity);
       expect(GameContext.caveLevel.applyWallCollisions).toHaveBeenCalledWith(mockEntity);
     });
 
-    it('should apply warp zone wall collisions when warpZone is active', () => {
+    it("should apply warp zone wall collisions when warpZone is active", () => {
       GameContext.warpZone = {
         active: true,
-        applyWallCollisions: vi.fn(),
+        applyWallCollisions: vi.fn()
       };
 
       checkWallCollision(mockEntity);
       expect(GameContext.warpZone.applyWallCollisions).toHaveBeenCalledWith(mockEntity);
     });
 
-    it('should apply anomaly zone wall collisions when active contract is anomaly', () => {
+    it("should apply anomaly zone wall collisions when active contract is anomaly", () => {
       const mockAnomaly = {
         pos: { x: 100, y: 100 },
         radius: 100,
         dead: false,
-        contractId: 'contract-1',
-        applyWallCollisions: vi.fn(),
+        contractId: "contract-1",
+        applyWallCollisions: vi.fn()
       };
 
-      GameContext.activeContract = { type: 'anomaly', id: 'contract-1' };
+      GameContext.activeContract = { type: "anomaly", id: "contract-1" };
       GameContext.contractEntities.anomalies = [mockAnomaly];
 
       checkWallCollision(mockEntity);
       expect(mockAnomaly.applyWallCollisions).toHaveBeenCalledWith(mockEntity, 0.95);
     });
 
-    describe('Boss Arena Boundary', () => {
+    describe("Boss Arena Boundary", () => {
       beforeEach(() => {
         GameContext.bossArena = { active: true, x: 0, y: 0, radius: 1000 };
         GameContext.player = {
@@ -182,32 +196,32 @@ describe('collision-manager.js', () => {
           radius: 20,
           hp: 100,
           invulnerable: 0,
-          lastArenaDamageTime: 0,
+          lastArenaDamageTime: 0
         };
       });
 
-      it('should return early for enemies in boss arena', async () => {
-        const { Enemy } = await import('../../../src/js/entities/index.js');
+      it("should return early for enemies in boss arena", async () => {
+        const { Enemy } = await import("../../../src/js/entities/index.js");
         const mockEnemy = new Enemy();
         Object.assign(mockEnemy, {
           pos: { x: 0, y: 1050 },
           vel: { x: 0, y: 5 },
           radius: 20,
           dead: false,
-          type: 'enemy',
+          type: "enemy"
         });
 
         checkWallCollision(mockEnemy);
         expect(mockEnemy.pos.y).toBe(1050);
       });
 
-      it('should push entity back to arena boundary', () => {
+      it("should push entity back to arena boundary", () => {
         checkWallCollision(GameContext.player);
         expect(GameContext.player.pos.x).toBeCloseTo(0);
         expect(Math.abs(GameContext.player.pos.y)).toBeLessThan(1021);
       });
 
-      it('should reflect velocity when moving away from center', () => {
+      it("should reflect velocity when moving away from center", () => {
         const mockKillPlayer = vi.fn();
         registerCollisionDependencies({ killPlayer: mockKillPlayer });
 
@@ -215,7 +229,7 @@ describe('collision-manager.js', () => {
         expect(GameContext.player.vel.y).toBeLessThan(5);
       });
 
-      it('should damage player when outside arena boundary', () => {
+      it("should damage player when outside arena boundary", () => {
         const mockKillPlayer = vi.fn();
         const mockUpdateHealthUI = vi.fn();
         const mockSpawnParticles = vi.fn();
@@ -227,18 +241,18 @@ describe('collision-manager.js', () => {
           updateHealthUI: mockUpdateHealthUI,
           spawnParticles: mockSpawnParticles,
           playSound: mockPlaySound,
-          showOverlayMessage: mockShowOverlayMessage,
+          showOverlayMessage: mockShowOverlayMessage
         });
 
         checkWallCollision(GameContext.player);
         expect(GameContext.player.hp).toBe(99);
         expect(mockUpdateHealthUI).toHaveBeenCalled();
         expect(mockSpawnParticles).toHaveBeenCalled();
-        expect(mockPlaySound).toHaveBeenCalledWith('hit');
+        expect(mockPlaySound).toHaveBeenCalledWith("hit");
         expect(mockShowOverlayMessage).toHaveBeenCalled();
       });
 
-      it('should not damage player during warp boss fight', () => {
+      it("should not damage player during warp boss fight", () => {
         GameContext.boss = { isWarpBoss: true, active: true, dead: false };
         GameContext.bossActive = true;
         const mockKillPlayer = vi.fn();
@@ -252,7 +266,7 @@ describe('collision-manager.js', () => {
           updateHealthUI: mockUpdateHealthUI,
           spawnParticles: mockSpawnParticles,
           playSound: mockPlaySound,
-          showOverlayMessage: mockShowOverlayMessage,
+          showOverlayMessage: mockShowOverlayMessage
         });
 
         checkWallCollision(GameContext.player);
@@ -260,7 +274,7 @@ describe('collision-manager.js', () => {
         expect(mockUpdateHealthUI).not.toHaveBeenCalled();
       });
 
-      it('should respect damage cooldown', () => {
+      it("should respect damage cooldown", () => {
         const mockKillPlayer = vi.fn();
         const mockUpdateHealthUI = vi.fn();
         const mockSpawnParticles = vi.fn();
@@ -272,7 +286,7 @@ describe('collision-manager.js', () => {
           updateHealthUI: mockUpdateHealthUI,
           spawnParticles: mockSpawnParticles,
           playSound: mockPlaySound,
-          showOverlayMessage: mockShowOverlayMessage,
+          showOverlayMessage: mockShowOverlayMessage
         });
 
         GameContext.player.lastArenaDamageTime = Date.now() - 500;
@@ -282,7 +296,7 @@ describe('collision-manager.js', () => {
       });
     });
 
-    describe('Station Arena Boundary', () => {
+    describe("Station Arena Boundary", () => {
       beforeEach(() => {
         GameContext.stationArena = { active: true, x: 0, y: 0, radius: 1000 };
         GameContext.player = {
@@ -291,32 +305,32 @@ describe('collision-manager.js', () => {
           radius: 20,
           hp: 100,
           invulnerable: 0,
-          lastArenaDamageTime: 0,
+          lastArenaDamageTime: 0
         };
       });
 
-      it('should return early for enemies in station arena', async () => {
-        const { Enemy } = await import('../../../src/js/entities/index.js');
+      it("should return early for enemies in station arena", async () => {
+        const { Enemy } = await import("../../../src/js/entities/index.js");
         const mockEnemy = new Enemy();
         Object.assign(mockEnemy, {
           pos: { x: 0, y: 1050 },
           vel: { x: 0, y: 5 },
           radius: 20,
           dead: false,
-          type: 'enemy',
+          type: "enemy"
         });
 
         checkWallCollision(mockEnemy);
         expect(mockEnemy.pos.y).toBe(1050);
       });
 
-      it('should push player back to station arena boundary', () => {
+      it("should push player back to station arena boundary", () => {
         checkWallCollision(GameContext.player);
         expect(GameContext.player.pos.x).toBeCloseTo(0);
         expect(Math.abs(GameContext.player.pos.y)).toBeLessThan(1021);
       });
 
-      it('should damage player when outside station arena boundary', () => {
+      it("should damage player when outside station arena boundary", () => {
         const mockKillPlayer = vi.fn();
         const mockUpdateHealthUI = vi.fn();
         const mockSpawnParticles = vi.fn();
@@ -328,18 +342,18 @@ describe('collision-manager.js', () => {
           updateHealthUI: mockUpdateHealthUI,
           spawnParticles: mockSpawnParticles,
           playSound: mockPlaySound,
-          showOverlayMessage: mockShowOverlayMessage,
+          showOverlayMessage: mockShowOverlayMessage
         });
 
         checkWallCollision(GameContext.player);
         expect(GameContext.player.hp).toBe(99);
         expect(mockUpdateHealthUI).toHaveBeenCalled();
-        expect(mockPlaySound).toHaveBeenCalledWith('hit');
-        expect(mockShowOverlayMessage).toHaveBeenCalledWith('STATION FIELD DAMAGE', '#f80', 1000);
+        expect(mockPlaySound).toHaveBeenCalledWith("hit");
+        expect(mockShowOverlayMessage).toHaveBeenCalledWith("STATION FIELD DAMAGE", "#f80", 1000);
       });
     });
 
-    describe('Cave Boss Arena Boundary', () => {
+    describe("Cave Boss Arena Boundary", () => {
       beforeEach(() => {
         GameContext.caveMode = true;
         GameContext.caveBossArena = { active: true, x: 0, y: 0, radius: 1000 };
@@ -349,17 +363,17 @@ describe('collision-manager.js', () => {
           radius: 20,
           hp: 100,
           invulnerable: 0,
-          lastArenaDamageTime: 0,
+          lastArenaDamageTime: 0
         };
       });
 
-      it('should push player back to cave boss arena boundary', () => {
+      it("should push player back to cave boss arena boundary", () => {
         checkWallCollision(GameContext.player);
         expect(GameContext.player.pos.x).toBeCloseTo(0);
         expect(Math.abs(GameContext.player.pos.y)).toBeLessThan(1021);
       });
 
-      it('should damage player when outside cave boss arena boundary', () => {
+      it("should damage player when outside cave boss arena boundary", () => {
         const mockKillPlayer = vi.fn();
         const mockUpdateHealthUI = vi.fn();
         const mockSpawnParticles = vi.fn();
@@ -371,18 +385,18 @@ describe('collision-manager.js', () => {
           updateHealthUI: mockUpdateHealthUI,
           spawnParticles: mockSpawnParticles,
           playSound: mockPlaySound,
-          showOverlayMessage: mockShowOverlayMessage,
+          showOverlayMessage: mockShowOverlayMessage
         });
 
         checkWallCollision(GameContext.player);
         expect(GameContext.player.hp).toBe(99);
         expect(mockUpdateHealthUI).toHaveBeenCalled();
-        expect(mockPlaySound).toHaveBeenCalledWith('hit');
-        expect(mockShowOverlayMessage).toHaveBeenCalledWith('ARENA BOUNDARY DAMAGE', '#f80', 1000);
+        expect(mockPlaySound).toHaveBeenCalledWith("hit");
+        expect(mockShowOverlayMessage).toHaveBeenCalledWith("ARENA BOUNDARY DAMAGE", "#f80", 1000);
       });
     });
 
-    describe('Dungeon Arena Boundary', () => {
+    describe("Dungeon Arena Boundary", () => {
       beforeEach(() => {
         GameContext.dungeon1Arena = { active: true, x: 0, y: 0, radius: 1000 };
         GameContext.player = {
@@ -391,32 +405,32 @@ describe('collision-manager.js', () => {
           radius: 20,
           hp: 100,
           invulnerable: 0,
-          lastArenaDamageTime: 0,
+          lastArenaDamageTime: 0
         };
       });
 
-      it('should return early for enemies in dungeon arena', async () => {
-        const { Enemy } = await import('../../../src/js/entities/index.js');
+      it("should return early for enemies in dungeon arena", async () => {
+        const { Enemy } = await import("../../../src/js/entities/index.js");
         const mockEnemy = new Enemy();
         Object.assign(mockEnemy, {
           pos: { x: 0, y: 1050 },
           vel: { x: 0, y: 5 },
           radius: 20,
           dead: false,
-          type: 'enemy',
+          type: "enemy"
         });
 
         checkWallCollision(mockEnemy);
         expect(mockEnemy.pos.y).toBe(1050);
       });
 
-      it('should push player back to dungeon arena boundary', () => {
+      it("should push player back to dungeon arena boundary", () => {
         checkWallCollision(GameContext.player);
         expect(GameContext.player.pos.x).toBeCloseTo(0);
         expect(Math.abs(GameContext.player.pos.y)).toBeLessThan(1021);
       });
 
-      it('should damage player when outside dungeon arena boundary', () => {
+      it("should damage player when outside dungeon arena boundary", () => {
         const mockKillPlayer = vi.fn();
         const mockUpdateHealthUI = vi.fn();
         const mockSpawnParticles = vi.fn();
@@ -428,30 +442,30 @@ describe('collision-manager.js', () => {
           updateHealthUI: mockUpdateHealthUI,
           spawnParticles: mockSpawnParticles,
           playSound: mockPlaySound,
-          showOverlayMessage: mockShowOverlayMessage,
+          showOverlayMessage: mockShowOverlayMessage
         });
 
         checkWallCollision(GameContext.player);
         expect(GameContext.player.hp).toBe(99);
         expect(mockUpdateHealthUI).toHaveBeenCalled();
-        expect(mockPlaySound).toHaveBeenCalledWith('hit');
-        expect(mockShowOverlayMessage).toHaveBeenCalledWith('DUNGEON BOUNDARY', '#f80', 1000);
+        expect(mockPlaySound).toHaveBeenCalledWith("hit");
+        expect(mockShowOverlayMessage).toHaveBeenCalledWith("DUNGEON BOUNDARY", "#f80", 1000);
       });
     });
 
-    describe('Elasticity', () => {
+    describe("Elasticity", () => {
       beforeEach(() => {
         GameContext.bossArena = { active: true, x: 0, y: 0, radius: 1000 };
         mockEntity.pos = { x: 0, y: 1050 };
         mockEntity.vel = { x: 0, y: 5 };
       });
 
-      it('should use default elasticity of 0', () => {
+      it("should use default elasticity of 0", () => {
         checkWallCollision(mockEntity);
         expect(mockEntity.pos.x).toBeDefined();
       });
 
-      it('should use provided elasticity value', () => {
+      it("should use provided elasticity value", () => {
         const initialVelY = mockEntity.vel.y;
         checkWallCollision(mockEntity, 0.5);
         expect(mockEntity.vel.y).toBeLessThan(initialVelY);
@@ -459,120 +473,120 @@ describe('collision-manager.js', () => {
     });
   });
 
-  describe('checkBulletWallCollision', () => {
+  describe("checkBulletWallCollision", () => {
     let mockBullet;
 
     beforeEach(() => {
       mockBullet = {
         pos: { x: 100, y: 100 },
         radius: 5,
-        dead: false,
+        dead: false
       };
       GameContext.asteroidGrid.query.mockReturnValue([]);
     });
 
-    it('should return null when no collisions', () => {
+    it("should return null when no collisions", () => {
       const result = checkBulletWallCollision(mockBullet);
       expect(result).toBeNull();
     });
 
-    it('should detect warp zone wall collision', () => {
+    it("should detect warp zone wall collision", () => {
       GameContext.warpZone = {
         active: true,
-        bulletHitsWall: vi.fn(() => true),
+        bulletHitsWall: vi.fn(() => true)
       };
 
       const result = checkBulletWallCollision(mockBullet);
-      expect(result).toEqual({ kind: 'warp_wall', obj: null });
+      expect(result).toEqual({ kind: "warp_wall", obj: null });
     });
 
-    it('should not detect warp zone collision when bullet does not hit wall', () => {
+    it("should not detect warp zone collision when bullet does not hit wall", () => {
       GameContext.warpZone = {
         active: true,
-        bulletHitsWall: vi.fn(() => false),
+        bulletHitsWall: vi.fn(() => false)
       };
 
       const result = checkBulletWallCollision(mockBullet);
       expect(result).toBeNull();
     });
 
-    it('should detect cave wall collision', () => {
+    it("should detect cave wall collision", () => {
       GameContext.caveMode = true;
       GameContext.caveLevel = {
         active: true,
-        bulletHitsWall: vi.fn(() => true),
+        bulletHitsWall: vi.fn(() => true)
       };
 
       const result = checkBulletWallCollision(mockBullet);
-      expect(result).toEqual({ kind: 'cave_wall', obj: null });
+      expect(result).toEqual({ kind: "cave_wall", obj: null });
     });
 
-    it('should detect anomaly wall collision', () => {
+    it("should detect anomaly wall collision", () => {
       const mockAnomaly = {
         pos: { x: 100, y: 100 },
         radius: 100,
         dead: false,
-        contractId: 'contract-1',
-        bulletHitsWall: vi.fn(() => true),
+        contractId: "contract-1",
+        bulletHitsWall: vi.fn(() => true)
       };
 
-      GameContext.activeContract = { type: 'anomaly', id: 'contract-1' };
+      GameContext.activeContract = { type: "anomaly", id: "contract-1" };
       GameContext.contractEntities.anomalies = [mockAnomaly];
 
       const result = checkBulletWallCollision(mockBullet);
-      expect(result).toEqual({ kind: 'anomaly_wall', obj: null });
+      expect(result).toEqual({ kind: "anomaly_wall", obj: null });
     });
 
-    it('should skip anomaly when contract IDs do not match', () => {
+    it("should skip anomaly when contract IDs do not match", () => {
       const mockAnomaly = {
         pos: { x: 100, y: 100 },
         radius: 100,
         dead: false,
-        contractId: 'contract-2',
-        bulletHitsWall: vi.fn(() => true),
+        contractId: "contract-2",
+        bulletHitsWall: vi.fn(() => true)
       };
 
-      GameContext.activeContract = { type: 'anomaly', id: 'contract-1' };
+      GameContext.activeContract = { type: "anomaly", id: "contract-1" };
       GameContext.contractEntities.anomalies = [mockAnomaly];
 
       const result = checkBulletWallCollision(mockBullet);
       expect(result).toBeNull();
     });
 
-    it('should skip anomaly when out of range', () => {
+    it("should skip anomaly when out of range", () => {
       const mockAnomaly = {
         pos: { x: 1000, y: 1000 },
         radius: 100,
         dead: false,
-        contractId: 'contract-1',
-        bulletHitsWall: vi.fn(() => true),
+        contractId: "contract-1",
+        bulletHitsWall: vi.fn(() => true)
       };
 
-      GameContext.activeContract = { type: 'anomaly', id: 'contract-1' };
+      GameContext.activeContract = { type: "anomaly", id: "contract-1" };
       GameContext.contractEntities.anomalies = [mockAnomaly];
 
       const result = checkBulletWallCollision(mockBullet);
       expect(result).toBeNull();
     });
 
-    it('should detect asteroid collision', () => {
+    it("should detect asteroid collision", () => {
       const mockAsteroid = {
         pos: { x: 100, y: 100 },
         radius: 20,
-        dead: false,
+        dead: false
       };
 
       GameContext.asteroidGrid.query.mockReturnValue([mockAsteroid]);
 
       const result = checkBulletWallCollision(mockBullet);
-      expect(result).toEqual({ kind: 'asteroid', obj: mockAsteroid });
+      expect(result).toEqual({ kind: "asteroid", obj: mockAsteroid });
     });
 
-    it('should skip dead asteroids', () => {
+    it("should skip dead asteroids", () => {
       const mockAsteroid = {
         pos: { x: 100, y: 100 },
         radius: 20,
-        dead: true,
+        dead: true
       };
 
       GameContext.asteroidGrid.query.mockReturnValue([mockAsteroid]);
@@ -581,11 +595,11 @@ describe('collision-manager.js', () => {
       expect(result).toBeNull();
     });
 
-    it('should skip asteroids that do not collide', () => {
+    it("should skip asteroids that do not collide", () => {
       const mockAsteroid = {
         pos: { x: 500, y: 500 },
         radius: 20,
-        dead: false,
+        dead: false
       };
 
       GameContext.asteroidGrid.query.mockReturnValue([mockAsteroid]);

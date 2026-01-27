@@ -1443,6 +1443,9 @@ export function processBulletCollisions() {
               const hitRadius = e.radius + b.radius;
               if (distSq < hitRadius * hitRadius) {
                 const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                if (!critResult.isCrit) {
+                  showDamageFloatingText(e.pos.x, e.pos.y, critResult.damage, false);
+                }
                 trackDamageByWeaponType(b, critResult.damage);
                 e.hp -= critResult.damage;
                 hit = true;
@@ -1729,6 +1732,9 @@ export function processBulletCollisions() {
                 // Only apply HP damage if no shields are active
                 if (!hasActiveOuter && !hasActiveInner) {
                   const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                  if (!critResult.isCrit) {
+                    showDamageFloatingText(e.pos.x, e.pos.y, critResult.damage, false);
+                  }
                   trackDamageByWeaponType(b, critResult.damage);
                   e.hp -= critResult.damage;
                   hit = true;
@@ -1994,6 +2000,9 @@ export function processBulletCollisions() {
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
                 const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                if (!critResult.isCrit) {
+                  showDamageFloatingText(e.pos.x, e.pos.y, critResult.damage, false);
+                }
                 trackDamageByWeaponType(b, critResult.damage);
                 e.hp -= critResult.damage;
                 hit = true;
@@ -2264,6 +2273,9 @@ export function processBulletCollisions() {
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
                 const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                if (!critResult.isCrit) {
+                  showDamageFloatingText(e.pos.x, e.pos.y, critResult.damage, false);
+                }
                 trackDamageByWeaponType(b, critResult.damage);
                 e.hp -= critResult.damage;
                 hit = true;
