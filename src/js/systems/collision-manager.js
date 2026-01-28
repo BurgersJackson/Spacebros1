@@ -1619,6 +1619,10 @@ export function processBulletCollisions() {
                   hit = true;
                   if (_playSound) _playSound("enemy_shield_hit");
                   if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
+                  // FIX: Destroy bullet after hitting shield to prevent it from continuing to hull
+                  b.dead = true;
+                  b.vel.x = 0;
+                  b.vel.y = 0;
                 }
               }
               // Check inner shield (if bullet is within inner shield radius but outside hull)
@@ -1687,6 +1691,10 @@ export function processBulletCollisions() {
                       hit = true;
                       if (_playSound) _playSound("enemy_shield_hit");
                       if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#ff0");
+                      // FIX: Destroy bullet after hitting inner shield (hull override check)
+                      b.dead = true;
+                      b.vel.x = 0;
+                      b.vel.y = 0;
                     }
                   }
 
@@ -1708,7 +1716,11 @@ export function processBulletCollisions() {
                       e.shieldsDirty = true;
                       hit = true;
                       if (_playSound) _playSound("enemy_shield_hit");
-                      if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
+                      if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#ff0");
+                      // FIX: Destroy bullet after hitting outer shield
+                      b.dead = true;
+                      b.vel.x = 0;
+                      b.vel.y = 0;
                     }
                   }
                 }
@@ -1761,6 +1773,10 @@ export function processBulletCollisions() {
                   hit = true;
                   if (_playSound) _playSound("enemy_shield_hit");
                   if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
+                  // FIX: Destroy bullet after hitting shield (final check at hull radius)
+                  b.dead = true;
+                  b.vel.x = 0;
+                  b.vel.y = 0;
                 }
 
                 if (

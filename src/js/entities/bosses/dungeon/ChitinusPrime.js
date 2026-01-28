@@ -39,7 +39,7 @@ export class ChitinusPrime extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 300;
+    const baseHp = 7000;
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
 
@@ -48,8 +48,8 @@ export class ChitinusPrime extends Enemy {
     // Player collides with outer shield, bullets with inner shield - 3px
     this.hullCollisionRadius = this.innerShieldRadius - 3;
     // Chitin armor - segmented with more coverage
-    this.shieldSegments = new Array(20).fill(5);
-    this.innerShieldSegments = new Array(24).fill(5);
+    this.shieldSegments = new Array(20).fill(20);
+    this.innerShieldSegments = new Array(24).fill(20);
     this.innerShieldRotation = 0;
     this.baseGunboatRange = 850;
     this.gunboatRange = this.baseGunboatRange;
@@ -287,17 +287,38 @@ export class ChitinusPrime extends Enemy {
 
     // Chitin armor reduces damage by 25%
     const reducedDamage = amount * 0.75;
+    let remaining = Math.ceil(reducedDamage);
 
-    if (this.absorptionPhase) {
-      // Store 50% of damage for revenge burst
-      this.absorbedDamage += reducedDamage * 0.5;
-      // Only take 50% damage during absorption
-      this.hp -= reducedDamage * 0.5;
-    } else {
-      this.hp -= reducedDamage;
+    // Check outer shield segments
+    if (this.shieldSegments && this.shieldSegments.length > 0) {
+      for (let i = 0; i < this.shieldSegments.length && remaining > 0; i++) {
+        const absorb = Math.min(remaining, this.shieldSegments[i]);
+        this.shieldSegments[i] -= absorb;
+        remaining -= absorb;
+      }
     }
 
-    if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 5, "#ff0");
+    // Check inner shield segments
+    if (this.innerShieldSegments && this.innerShieldSegments.length > 0 && remaining > 0) {
+      for (let i = 0; i < this.innerShieldSegments.length && remaining > 0; i++) {
+        const absorb = Math.min(remaining, this.innerShieldSegments[i]);
+        this.innerShieldSegments[i] -= absorb;
+        remaining -= absorb;
+      }
+    }
+
+    // Apply remaining damage to HP
+    if (remaining > 0) {
+      if (this.absorptionPhase) {
+        // Store 50% of damage for revenge burst, take 50% damage
+        this.absorbedDamage += remaining * 0.5;
+        this.hp -= remaining * 0.5;
+      } else {
+        // Normal phase: take full remaining damage
+        this.hp -= remaining;
+      }
+      if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 5, "#ff0");
+    }
 
     if (this.hp <= 0) {
       this.kill();

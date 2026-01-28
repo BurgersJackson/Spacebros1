@@ -153,23 +153,23 @@ export function applyUpgrade(id, tier) {
       GameContext.player.nukeUnlocked = true;
       GameContext.player.nukeMaxCooldown = 600 - (tier - 1) * 60;
       if (tier === 1) {
-        GameContext.player.nukeDamage = 5;
+        GameContext.player.nukeDamage = 200;
         GameContext.player.nukeRange = 600;
       }
       if (tier === 2) {
-        GameContext.player.nukeDamage = 10;
+        GameContext.player.nukeDamage = 300;
         GameContext.player.nukeRange = 700;
       }
       if (tier === 3) {
-        GameContext.player.nukeDamage = 15;
+        GameContext.player.nukeDamage = 400;
         GameContext.player.nukeRange = 900;
       }
       if (tier === 4) {
-        GameContext.player.nukeDamage = 20;
+        GameContext.player.nukeDamage = 500;
         GameContext.player.nukeRange = 1000;
       }
       if (tier === 5) {
-        GameContext.player.nukeDamage = 25;
+        GameContext.player.nukeDamage = 600;
         GameContext.player.nukeRange = 1200;
       }
       break;

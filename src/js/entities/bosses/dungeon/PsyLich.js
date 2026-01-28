@@ -40,7 +40,7 @@ export class PsyLich extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 195;
+    const baseHp = 4500;
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
     this.livesRemaining = 2; // Has 3 lives total
@@ -49,8 +49,8 @@ export class PsyLich extends Enemy {
     this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
     // Player collides with outer shield, bullets with inner shield - 3px
     this.hullCollisionRadius = this.innerShieldRadius - 3;
-    this.shieldSegments = new Array(10).fill(4);
-    this.innerShieldSegments = new Array(14).fill(4);
+    this.shieldSegments = new Array(10).fill(20);
+    this.innerShieldSegments = new Array(14).fill(20);
     this.innerShieldRotation = 0;
     this.baseGunboatRange = 1000;
     this.gunboatRange = this.baseGunboatRange;

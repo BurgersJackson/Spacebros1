@@ -39,7 +39,7 @@ export class CerebralPsion extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 210;
+    const baseHp = 4900;
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
 
@@ -47,8 +47,8 @@ export class CerebralPsion extends Enemy {
     this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
     // Player collides with outer shield, bullets with inner shield - 3px
     this.hullCollisionRadius = this.innerShieldRadius - 3;
-    this.shieldSegments = new Array(12).fill(4);
-    this.innerShieldSegments = new Array(16).fill(4);
+    this.shieldSegments = new Array(12).fill(20);
+    this.innerShieldSegments = new Array(16).fill(20);
     this.innerShieldRotation = 0;
     this.baseGunboatRange = 1000;
     this.gunboatRange = this.baseGunboatRange;
@@ -64,18 +64,16 @@ export class CerebralPsion extends Enemy {
 
     // Psionic abilities
     this.echoes = [];
-    this.teleportCooldown = 0;
-    this.realityFractureTriggered = false;
-    this.inRealityFracture = false;
-    // Frame-based timer for reality fracture expiry (replaces setTimeout)
-    this.realityFractureTimer = 0;
+    this.mindShacklesActive = false;
+    this.mentalBladeCount = 0;
+    this.realityTearTriggered = false;
 
     this.phaseSeq = [
-      { name: "TELEPORT_STRIKE", duration: 140 },
-      { name: "PSYCHIC_FIELD", duration: 180 },
-      { name: "ECHO_SUMMON", duration: 160 },
-      { name: "MIND_CRUSH", duration: 120 },
-      { name: "PSIONIC_STORM", duration: 200 }
+      { name: "PSYCHIC_BARRAGE", duration: 160 },
+      { name: "MIND_SHACKLES", duration: 180 },
+      { name: "ECHO_SWARM", duration: 160 },
+      { name: "MENTAL_BLADE", duration: 140 },
+      { name: "REALITY_TEAR", duration: 200 }
     ];
 
     const angle = Math.random() * Math.PI * 2;
@@ -98,25 +96,13 @@ export class CerebralPsion extends Enemy {
     const dtFactor = deltaTime / 16.67;
     this.t += dtFactor;
     this.phaseTimer -= dtFactor;
-    this.teleportCooldown -= dtFactor;
 
-    // Frame-based timer for reality fracture expiry (replaces setTimeout)
-    if (this.realityFractureTimer > 0) {
-      this.realityFractureTimer -= dtFactor;
-      if (this.realityFractureTimer <= 0) {
-        this.inRealityFracture = false;
-        this.realityFractureTimer = 0;
-      }
-    }
-
-    // Reality Fracture at 40% HP
-    if (!this.realityFractureTriggered && this.hp / this.maxHp <= 0.4) {
-      this.realityFractureTriggered = true;
-      this.inRealityFracture = true;
-      this.spawnEchoes(3); // Spawn 3 fake echoes
-      showOverlayMessage("REALITY FRACTURE!", "#f0f", 2000);
-      // Frame-based timer: 10 seconds at 60fps = 600 frames
-      this.realityFractureTimer = 600;
+    // Reality Tear at 30% HP (one-time trigger)
+    if (!this.realityTearTriggered && this.hp / this.maxHp <= 0.3) {
+      this.realityTearTriggered = true;
+      // Force phase switch to REALITY_TEAR on next cycle
+      this.phaseIndex = this.phaseSeq.length - 1;
+      showOverlayMessage("REALITY TEAR IMMINENT!", "#f00", 2000);
     }
 
     // Phase progression
@@ -127,11 +113,6 @@ export class CerebralPsion extends Enemy {
       this.phaseTimer = next.duration;
       this.phaseTick = 0;
       showOverlayMessage(`CEREBRAL PSION: ${this.phaseName}`, "#f0f", 900);
-
-      // Teleport on phase change
-      if (this.phaseName !== "INTRO" && this.teleportCooldown <= 0) {
-        this.teleport();
-      }
     }
 
     // Movement style per phase - Cruiser-based
@@ -207,57 +188,65 @@ export class CerebralPsion extends Enemy {
       GameContext.player.pos.x - this.pos.x
     );
 
-    if (this.phaseName === "TELEPORT_STRIKE") {
-      if (this.phaseTick % 40 === 0) {
-        // Teleport near player
-        const teleportDist = 500;
-        const a = Math.random() * Math.PI * 2;
-        this.pos.x = GameContext.player.pos.x + Math.cos(a) * teleportDist;
-        this.pos.y = GameContext.player.pos.y + Math.sin(a) * teleportDist;
-        this.prevPos.x = this.pos.x;
-        this.prevPos.y = this.pos.y;
-        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 20, "#f0f");
-      }
-      if (this.phaseTick % 30 === 0) {
-        // Flame breath cone
-        this.fireFlameBreath(aim);
-      }
-      if (this.phaseTick % 50 === 0) {
-        // Chitin spread
-        for (let i = 0; i < 12; i++) {
-          const a = aim - 0.6 + (i / 11) * 1.2;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 8, {
-            owner: "enemy",
-            damage: 1,
-            radius: 4,
-            color: "#f6f"
-          });
-          b.owner = this;
-          GameContext.bullets.push(b);
-        }
-        playSound("shotgun");
-      }
-    } else if (this.phaseName === "PSYCHIC_FIELD") {
+    if (this.phaseName === "PSYCHIC_BARRAGE") {
       if (this.phaseTick % 60 === 0) {
         // Homing missiles
         GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
         playSound("heavy_shoot");
       }
-      // Psychic field - distorts player controls (visual only)
-      if (this.phaseTick % 10 === 0) {
-        if (_spawnParticles)
-          _spawnParticles(
-            this.pos.x + (Math.random() - 0.5) * 300,
-            this.pos.y + (Math.random() - 0.5) * 300,
-            2,
-            "#a0f"
-          );
+      if (this.phaseTick % 30 === 0) {
+        // Psychic shockwave
+        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 15, "#f0f");
+        // Push player away
+        if (GameContext.player && !GameContext.player.dead) {
+          const dx = GameContext.player.pos.x - this.pos.x;
+          const dy = GameContext.player.pos.y - this.pos.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 800 && dist > 0) {
+            const pushForce = 12;
+            GameContext.player.vel.x += (dx / dist) * pushForce;
+            GameContext.player.vel.y += (dy / dist) * pushForce;
+          }
+        }
+        playSound("shockwave");
       }
-    } else if (this.phaseName === "ECHO_SUMMON") {
-      if (this.phaseTick % 80 === 0) {
-        this.spawnEchoes(1);
+      if (this.phaseTick % 20 === 0) {
+        // Particle burst
+        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 5, "#a0f");
       }
-      // All echoes fire curtain pattern
+    } else if (this.phaseName === "MIND_SHACKLES") {
+      this.mindShacklesActive = true;
+      // Tractor beam pulls player in every 5 ticks
+      if (this.phaseTick % 5 === 0 && GameContext.player && !GameContext.player.dead) {
+        const dx = this.pos.x - GameContext.player.pos.x;
+        const dy = this.pos.y - GameContext.player.pos.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 1200 && dist > 0) {
+          // Gentle but persistent pull
+          GameContext.player.vel.x += (dx / dist) * 0.8;
+          GameContext.player.vel.y += (dy / dist) * 0.8;
+        }
+      }
+      // Fire homing missile to discourage running away
+      if (this.phaseTick % 40 === 0) {
+        GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
+        playSound("heavy_shoot");
+      }
+      if (_spawnParticles) {
+        _spawnParticles(
+          this.pos.x + (Math.random() - 0.5) * 200,
+          this.pos.y + (Math.random() - 0.5) * 200,
+          2,
+          "#a0f"
+        );
+      }
+    } else if (this.phaseName === "ECHO_SWARM") {
+      // Spawn 3 echoes at start of phase
+      if (this.phaseTick === 0) {
+        this.spawnEchoes(3);
+        showOverlayMessage("ECHO SWARM ACTIVATED", "#f0f", 1500);
+      }
+      // Echoes fire curtain pattern every 15 ticks
       if (this.phaseTick % 15 === 0) {
         for (let i = -2; i <= 2; i++) {
           const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, 10, {
@@ -271,44 +260,53 @@ export class CerebralPsion extends Enemy {
         }
         playSound("rapid_shoot");
       }
-    } else if (this.phaseName === "MIND_CRUSH") {
-      if (this.phaseTick % 20 === 0) {
-        // Radial shockwave
-        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 15, "#f0f");
-        // Push player away
-        if (GameContext.player && !GameContext.player.dead) {
-          const dx = GameContext.player.pos.x - this.pos.x;
-          const dy = GameContext.player.pos.y - this.pos.y;
-          const dist = Math.hypot(dx, dy);
-          if (dist < 800 && dist > 0) {
-            const pushForce = 15;
-            GameContext.player.vel.x += (dx / dist) * pushForce;
-            GameContext.player.vel.y += (dy / dist) * pushForce;
-          }
-        }
+      // Boss also fires homing missiles
+      if (this.phaseTick % 40 === 0) {
+        GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
+        playSound("heavy_shoot");
       }
-      // Tractor beam effect (pull player in)
-      if (this.phaseTick % 5 === 0 && GameContext.player && !GameContext.player.dead) {
-        const dx = this.pos.x - GameContext.player.pos.x;
-        const dy = this.pos.y - GameContext.player.pos.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist < 1000 && dist > 0) {
-          GameContext.player.vel.x += (dx / dist) * 0.5;
-          GameContext.player.vel.y += (dy / dist) * 0.5;
-        }
-      }
-    } else if (this.phaseName === "PSIONIC_STORM") {
-      if (this.phaseTick % 8 === 0) {
-        // Teleport randomly
-        const teleportDist = 600 + Math.random() * 400;
-        const a = Math.random() * Math.PI * 2;
-        this.pos.x = GameContext.player.pos.x + Math.cos(a) * teleportDist;
-        this.pos.y = GameContext.player.pos.y + Math.sin(a) * teleportDist;
-        this.prevPos.x = this.pos.x;
-        this.prevPos.y = this.pos.y;
-      }
+    } else if (this.phaseName === "MENTAL_BLADE") {
+      this.mindShacklesActive = false;
+      // Fire psychic daggers that penetrate shields
       if (this.phaseTick % 12 === 0) {
-        // All attacks rapid fire
+        const numBlades = 3;
+        for (let i = 0; i < numBlades; i++) {
+          const spread = -0.3 + (i / (numBlades - 1)) * 0.6;
+          const b = new Bullet(this.pos.x, this.pos.y, aim + spread, 14, {
+            owner: "enemy",
+            damage: 3,
+            radius: 6,
+            color: "#f0f",
+            ignoreShields: true
+          });
+          b.owner = this;
+          GameContext.bullets.push(b);
+        }
+        playSound("laser");
+      }
+      // Wide cone attack
+      if (this.phaseTick % 50 === 0) {
+        for (let i = -6; i <= 6; i++) {
+          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, 11, {
+            owner: "enemy",
+            damage: 1,
+            radius: 3,
+            color: "#d0f"
+          });
+          b.owner = this;
+          GameContext.bullets.push(b);
+        }
+        playSound("shotgun");
+      }
+    } else if (this.phaseName === "REALITY_TEAR") {
+      this.mindShacklesActive = false;
+      // Triggered once at 30% HP - final desperate assault
+      if (!this.realityTearTriggered) {
+        this.realityTearTriggered = true;
+        showOverlayMessage("REALITY TEAR! FINAL PHASE!", "#f00", 2000);
+      }
+      // Rapid fire
+      if (this.phaseTick % 8 === 0) {
         const b = new Bullet(this.pos.x, this.pos.y, aim, 12, {
           owner: "enemy",
           damage: 1,
@@ -319,34 +317,28 @@ export class CerebralPsion extends Enemy {
         GameContext.bullets.push(b);
         playSound("rapid_shoot");
       }
+      // Spawn echoes randomly
+      if (this.phaseTick % 20 === 0) {
+        this.spawnEchoes(1);
+      }
+      // Homing missiles + shockwaves
+      if (this.phaseTick % 40 === 0) {
+        GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
+        // Psychic shockwave
+        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 15, "#f0f");
+        if (GameContext.player && !GameContext.player.dead) {
+          const dx = GameContext.player.pos.x - this.pos.x;
+          const dy = GameContext.player.pos.y - this.pos.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 800 && dist > 0) {
+            const pushForce = 15;
+            GameContext.player.vel.x += (dx / dist) * pushForce;
+            GameContext.player.vel.y += (dy / dist) * pushForce;
+          }
+        }
+        playSound("heavy_shoot");
+      }
     }
-  }
-
-  fireFlameBreath(aim) {
-    // Create flame breath area (damage zone)
-    const range = 700;
-    const cone = Math.PI / 4;
-    // Visual indicator
-    if (_spawnParticles)
-      _spawnParticles(
-        this.pos.x + Math.cos(aim) * 200,
-        this.pos.y + Math.sin(aim) * 200,
-        10,
-        "#f84"
-      );
-    // Damage applied through collision in main loop
-  }
-
-  teleport() {
-    const dist = 400 + Math.random() * 600;
-    const angle = Math.random() * Math.PI * 2;
-    this.pos.x = GameContext.player.pos.x + Math.cos(angle) * dist;
-    this.pos.y = GameContext.player.pos.y + Math.sin(angle) * dist;
-    this.prevPos.x = this.pos.x;
-    this.prevPos.y = this.pos.y;
-    this.teleportCooldown = 90;
-    if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 25, "#f0f");
-    playSound("warp_in");
   }
 
   spawnEchoes(count) {
@@ -359,6 +351,36 @@ export class CerebralPsion extends Enemy {
 
   updateEchoes() {
     this.echoes = this.echoes.filter(e => e && !e.dead);
+  }
+
+  draw(ctx) {
+    super.draw(ctx);
+
+    // Draw mind shackle tether
+    if (this.mindShacklesActive && GameContext.player && !GameContext.player.dead) {
+      const rPos = this.getRenderPos && this.getRenderPos(1);
+      const playerPos = GameContext.player.getRenderPos && GameContext.player.getRenderPos(1);
+
+      if (rPos && playerPos) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 0, 255, 0.6)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(rPos.x, rPos.y);
+        ctx.lineTo(playerPos.x, playerPos.y);
+        ctx.stroke();
+
+        // Pulsing energy effect
+        const pulse = Math.sin(Date.now() / 100) * 0.3 + 0.7;
+        ctx.strokeStyle = `rgba(168, 0, 255, ${pulse})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(rPos.x, rPos.y);
+        ctx.lineTo(playerPos.x, playerPos.y);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
   }
 
   kill() {

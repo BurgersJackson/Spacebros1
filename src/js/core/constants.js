@@ -290,11 +290,11 @@ export const UPGRADE_DATA = {
         {
           id: "area_nuke",
           name: "Area Nuke",
-          tier1: "Auto-fire 600u blast (50 dmg)",
-          tier2: "700u range, 100 dmg, 9s cooldown",
-          tier3: "900u range, 150 dmg, 8s cooldown",
-          tier4: "1000u range, 200 dmg, 7s cooldown",
-          tier5: "1200u range, 250 dmg, 6s cooldown",
+          tier1: "Auto-fire 600u blast (200 dmg)",
+          tier2: "700u range, 300 dmg, 9s CD",
+          tier3: "900u range, 400 dmg, 8s CD",
+          tier4: "1000u range, 500 dmg, 7s CD",
+          tier5: "1200u range, 600 dmg, 6s CD",
           notes: "Auto-activates when ready."
         },
         {
@@ -805,4 +805,3 @@ export const META_SHOP_UPGRADE_DATA = {
     notes: "Press F / Gamepad Y to discharge. Manual control only, never auto-fires."
   }
 };
-

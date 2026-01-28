@@ -40,7 +40,7 @@ export class Fleshforge extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 270;
+    const baseHp = 6200;
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
 
@@ -48,8 +48,8 @@ export class Fleshforge extends Enemy {
     this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
     // Player collides with outer shield, bullets with inner shield - 3px
     this.hullCollisionRadius = this.innerShieldRadius - 3;
-    this.shieldSegments = new Array(16).fill(3);
-    this.innerShieldSegments = new Array(22).fill(3);
+    this.shieldSegments = new Array(16).fill(20);
+    this.innerShieldSegments = new Array(22).fill(20);
     this.innerShieldRotation = 0;
     this.baseGunboatRange = 900;
     this.gunboatRange = this.baseGunboatRange;

@@ -25,7 +25,8 @@ import {
   Destroyer,
   Destroyer2,
   Cruiser,
-  Gunboat
+  Gunboat,
+  Gunboat2
 } from "../entities/index.js";
 import {
   NecroticHive,
@@ -813,7 +814,7 @@ export function gameLoopLogic(opts = null) {
           if (GameContext.caveMode) {
             GameContext.enemies.push(new CaveGunboat2(null, null));
           } else {
-            GameContext.enemies.push(new Gunboat(null, null, 2));
+            GameContext.enemies.push(new Gunboat2(null, null));
           }
         }
         GameContext.gunboatRespawnAt = null;

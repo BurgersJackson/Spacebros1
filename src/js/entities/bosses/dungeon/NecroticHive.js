@@ -43,7 +43,7 @@ export class NecroticHive extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 240;
+    const baseHp = 5500;
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
 
@@ -51,8 +51,8 @@ export class NecroticHive extends Enemy {
     this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
     // Player collides with outer shield, bullets with inner shield - 3px
     this.hullCollisionRadius = this.innerShieldRadius - 3;
-    this.shieldSegments = new Array(14).fill(3);
-    this.innerShieldSegments = new Array(20).fill(3);
+    this.shieldSegments = new Array(14).fill(20);
+    this.innerShieldSegments = new Array(20).fill(20);
     this.innerShieldRotation = 0;
     this.gunboatShieldRecharge = 90;
     this.gunboatMuzzleDist = Math.round(6 * this.cruiserHullScale);

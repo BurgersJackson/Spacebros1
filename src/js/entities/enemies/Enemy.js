@@ -191,14 +191,62 @@ export class Enemy extends Entity {
       this.maxSpeed = 8.0; // doubled
       this.thrustPower = 0.88; // quadrupled (0.22 * 4)
       this.shootTimer = this.gunboatLevel === 1 ? 11 : 9; // ~half
-      this.shieldSegments = new Array(10).fill(2);
+
+      // Shield scaling based on difficulty tier (same as Pinwheel)
+      let outerCount = 10;
+      let outerHp = 10;
+      let innerCount = 0;
+      let innerHp = 0;
+
+      if (GameContext.difficultyTier === 1) {
+        outerCount = 8;
+        outerHp = 10;
+      } else if (GameContext.difficultyTier === 2) {
+        outerCount = 10;
+        outerHp = 10;
+      } else if (GameContext.difficultyTier === 3) {
+        outerCount = 12;
+        outerHp = 10;
+      } else if (GameContext.difficultyTier === 4) {
+        outerCount = 12;
+        outerHp = 20;
+        innerCount = 4;
+        innerHp = 10;
+      } else if (GameContext.difficultyTier === 5) {
+        outerCount = 12;
+        outerHp = 20;
+        innerCount = 6;
+        innerHp = 20;
+      } else if (GameContext.difficultyTier >= 6) {
+        outerCount = 12;
+        outerHp = 30 + (GameContext.difficultyTier - 6) * 10;
+        innerCount = 8 + (GameContext.difficultyTier - 6);
+        innerHp = 20 + Math.floor((GameContext.difficultyTier - 6) / 2) * 10;
+      }
+
+      // Gunboats get slightly weaker shields than pinwheels (80% scaling)
+      outerHp = Math.max(10, Math.floor(outerHp * 0.8));
+      innerHp = Math.max(10, Math.floor(innerHp * 0.8));
+
+      // Store max shield HP for regeneration
+      this.maxShieldHp = outerHp;
+      this.maxInnerShieldHp = innerHp;
+
+      this.shieldSegments = new Array(outerCount).fill(outerHp);
       this.shieldRadius = 45;
+      this.innerShieldSegments = [];
+      if (innerCount > 0) {
+        this.innerShieldSegments = new Array(innerCount).fill(innerHp);
+      }
+      this.innerShieldRadius = innerCount > 0 ? 35 : 0;
+
       this.gunboatShieldRecharge = 90; // halved for 60Hz (approx 1.5s)
-      this.innerShieldSegments = null;
-      this.innerShieldRadius = null;
       const gunboatSizeMult = 3;
       this.radius = Math.round(this.radius * gunboatSizeMult);
       this.shieldRadius = Math.round(this.shieldRadius * gunboatSizeMult);
+      if (this.innerShieldRadius > 0) {
+        this.innerShieldRadius = Math.round(this.innerShieldRadius * gunboatSizeMult);
+      }
     }
 
     // Named elite modifiers
@@ -270,6 +318,13 @@ export class Enemy extends Entity {
         this._pixiNameText.destroy(true);
       } catch (e) {}
       this._pixiNameText = null;
+    }
+    if (this._pixiDebugGfx) {
+      try {
+        if (this._pixiDebugGfx.parent) this._pixiDebugGfx.parent.removeChild(this._pixiDebugGfx);
+        this._pixiDebugGfx.destroy(true);
+      } catch (e) {}
+      this._pixiDebugGfx = null;
     }
 
     // FIX: Ensure sprite is removed from its parent layer before cleanup
@@ -396,7 +451,7 @@ export class Enemy extends Entity {
       this.vel.x = 0;
       this.vel.y = 0;
       // Skip AI movement when frozen
-    } else if (GameContext.player.stats.slowField > 0 && !this.isCruiser) {
+    } else if (GameContext.player.stats.slowField > 0 && !this.isCruiser && !this.isDungeonBoss) {
       if (this.freezeCooldown > 0) this.freezeCooldown -= dtFactor;
 
       const dist = Math.hypot(
@@ -414,10 +469,19 @@ export class Enemy extends Entity {
     if (this.isGunboat && this.shieldSegments.length > 0 && !this.disableShieldRegen) {
       this.gunboatShieldRecharge -= dtFactor;
       if (this.gunboatShieldRecharge <= 0) {
-        const idx = this.shieldSegments.findIndex(s => s < 2);
+        // Recharge outer shield segments to max
+        const idx = this.shieldSegments.findIndex(s => s < this.maxShieldHp);
         if (idx !== -1) {
-          this.shieldSegments[idx] = 2;
+          this.shieldSegments[idx] = this.maxShieldHp;
           this.shieldsDirty = true;
+        }
+        // Recharge inner shield segments if present
+        if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+          const innerIdx = this.innerShieldSegments.findIndex(s => s < this.maxInnerShieldHp);
+          if (innerIdx !== -1) {
+            this.innerShieldSegments[innerIdx] = this.maxInnerShieldHp;
+            this.shieldsDirty = true;
+          }
         }
         this.gunboatShieldRecharge = 180;
       }
@@ -1187,6 +1251,49 @@ export class Enemy extends Entity {
           this._pixiNameText.destroy(true);
         } catch (e) {}
         this._pixiNameText = null;
+      }
+
+      // Debug visualization for Ctrl+H (gunboats only)
+      if (
+        this.isGunboat &&
+        pixiVectorLayer &&
+        typeof GameContext.DEBUG_COLLISION !== "undefined" &&
+        GameContext.DEBUG_COLLISION
+      ) {
+        let debugGfx = this._pixiDebugGfx;
+        if (!debugGfx) {
+          debugGfx = new PIXI.Graphics();
+          pixiVectorLayer.addChild(debugGfx);
+          this._pixiDebugGfx = debugGfx;
+        } else if (!debugGfx.parent) {
+          pixiVectorLayer.addChild(debugGfx);
+        }
+
+        debugGfx.visible = true;
+        debugGfx.clear();
+        debugGfx.position.set(rPos.x, rPos.y);
+
+        // Draw hull collision radius (green)
+        debugGfx.lineStyle(3, 0x00ff00, 0.8);
+        debugGfx.drawCircle(0, 0, this.radius);
+
+        // Draw outer shield radius (cyan) if shields exist
+        if (this.shieldSegments && this.shieldSegments.length > 0) {
+          const hasActiveOuter = this.shieldSegments.some(s => s > 0);
+          debugGfx.lineStyle(2, hasActiveOuter ? 0x00ffff : 0x888888, hasActiveOuter ? 0.6 : 0.3);
+          debugGfx.drawCircle(0, 0, this.shieldRadius);
+        }
+
+        // Draw inner shield radius (magenta) if inner shields exist
+        if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+          const hasActiveInner = this.innerShieldSegments.some(s => s > 0);
+          debugGfx.lineStyle(2, hasActiveInner ? 0xff00ff : 0x888888, hasActiveInner ? 0.6 : 0.3);
+          debugGfx.drawCircle(0, 0, this.innerShieldRadius);
+        }
+      } else if (this._pixiDebugGfx) {
+        if (this._pixiDebugGfx.parent) {
+          this._pixiDebugGfx.visible = false;
+        }
       }
     }
   }
