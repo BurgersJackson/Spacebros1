@@ -21,6 +21,7 @@ export class FloatingText extends Entity {
     this.amount = typeof opts.amount === "number" ? opts.amount : null;
     this.prefix = opts.prefix || "";
     this.suffix = opts.suffix || "";
+    this.fontSize = opts.fontSize || 60;
     this.age = 0;
   }
 
@@ -68,7 +69,7 @@ export class FloatingText extends Entity {
     ctx.translate(rPos.x, rPos.y);
     ctx.globalAlpha = a;
     ctx.fillStyle = this.color;
-    ctx.font = "bold 90px Courier New";
+    ctx.font = `bold ${this.fontSize}px Courier New`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     // Use stroke instead of shadowBlur for performance

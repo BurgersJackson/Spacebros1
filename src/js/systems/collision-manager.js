@@ -90,13 +90,13 @@ function applyCriticalStrike(baseDamage, x, y) {
  */
 function showDamageFloatingText(x, y, damage, isCrit = false) {
   if (damage <= 0) return;
- const color = isCrit ? "#ff0" : "#fff";
- const roundedDamage = Math.round(damage);
- const text = isCrit ? `${roundedDamage}!` : `${roundedDamage}`;
- const key = `dmg_${Math.floor(x / 50)}_${Math.floor(y / 50)}`;
- if (_FloatingText) {
-   GameContext.floatingTexts.push(new _FloatingText(x, y, text, color, 45, { fontSize: 30 }));
- }
+  const color = isCrit ? "#ff0" : "#fff";
+  const roundedDamage = Math.round(damage);
+  const text = isCrit ? `${roundedDamage}!` : `${roundedDamage}`;
+  const key = `dmg_${Math.floor(x / 50)}_${Math.floor(y / 50)}`;
+  if (_FloatingText) {
+    GameContext.floatingTexts.push(new _FloatingText(x, y, text, color, 45, { fontSize: 50 }));
+  }
 }
 
 /**
@@ -1603,12 +1603,12 @@ export function processBulletCollisions() {
                 const segmentIdx = Math.floor(normalizedAngle / segAngle) % segCount;
 
                 // Only check outer shield if bullet is outside inner shield (or no inner shield exists)
-                const innerShieldOuterEdge =
-                  e.innerShieldSegments && e.innerShieldSegments.length > 0
-                    ? e.innerShieldRadius + b.radius
-                    : e.radius + b.radius;
+                const shouldCheckOuterShield =
+                  !e.innerShieldSegments ||
+                  e.innerShieldSegments.length === 0 ||
+                  dist > e.innerShieldRadius;
 
-                if (dist > innerShieldOuterEdge && e.shieldSegments[segmentIdx] > 0) {
+                if (shouldCheckOuterShield && e.shieldSegments[segmentIdx] > 0) {
                   const segmentHp = e.shieldSegments[segmentIdx];
                   if (b.damage >= segmentHp) {
                     e.shieldSegments[segmentIdx] = 0;
@@ -1898,12 +1898,12 @@ export function processBulletCollisions() {
                 const segmentIdx = Math.floor(normalizedAngle / segAngle) % segCount;
 
                 // Only check outer shield if bullet is outside inner shield (or no inner shield exists)
-                const innerShieldOuterEdge =
-                  e.innerShieldSegments && e.innerShieldSegments.length > 0
-                    ? e.innerShieldRadius + b.radius
-                    : e.radius + b.radius;
+                const shouldCheckOuterShield =
+                  !e.innerShieldSegments ||
+                  e.innerShieldSegments.length === 0 ||
+                  dist > e.innerShieldRadius;
 
-                if (dist > innerShieldOuterEdge && e.shieldSegments[segmentIdx] > 0) {
+                if (shouldCheckOuterShield && e.shieldSegments[segmentIdx] > 0) {
                   const segmentHp = e.shieldSegments[segmentIdx];
                   if (b.damage >= segmentHp) {
                     e.shieldSegments[segmentIdx] = 0;
@@ -2171,12 +2171,12 @@ export function processBulletCollisions() {
                 const segmentIdx = Math.floor(normalizedAngle / segAngle) % segCount;
 
                 // Only check outer shield if bullet is outside inner shield (or no inner shield exists)
-                const innerShieldOuterEdge =
-                  e.innerShieldSegments && e.innerShieldSegments.length > 0
-                    ? e.innerShieldRadius + b.radius
-                    : e.radius + b.radius;
+                const shouldCheckOuterShield =
+                  !e.innerShieldSegments ||
+                  e.innerShieldSegments.length === 0 ||
+                  dist > e.innerShieldRadius;
 
-                if (dist > innerShieldOuterEdge && e.shieldSegments[segmentIdx] > 0) {
+                if (shouldCheckOuterShield && e.shieldSegments[segmentIdx] > 0) {
                   const segmentHp = e.shieldSegments[segmentIdx];
                   if (b.damage >= segmentHp) {
                     e.shieldSegments[segmentIdx] = 0;

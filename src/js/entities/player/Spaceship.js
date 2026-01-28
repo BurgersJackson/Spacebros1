@@ -1106,8 +1106,9 @@ export class Spaceship extends Entity {
     const hasMeta = this.stats.homingFromMeta > 0;
     const bothOwned = hasUpgrade && hasMeta;
 
-    const upgradeDamage = this.stats.homingFromUpgrade || 1;
-    const metaDamage = this.stats.homingFromMeta || 1;
+    // Calculate damage: tier × 10 (tier 1 = 10, tier 2 = 20, etc.)
+    const upgradeDamage = (this.stats.homingFromUpgrade || 0) * 10;
+    const metaDamage = (this.stats.homingFromMeta || 0) * 10;
 
     // Fire 2 missiles normally, or 4 if both upgrades owned
     const missilePairs = bothOwned ? 2 : 1;

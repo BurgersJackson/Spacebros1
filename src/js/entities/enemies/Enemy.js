@@ -191,9 +191,11 @@ export class Enemy extends Entity {
       this.maxSpeed = 8.0; // doubled
       this.thrustPower = 0.88; // quadrupled (0.22 * 4)
       this.shootTimer = this.gunboatLevel === 1 ? 11 : 9; // ~half
-      this.shieldSegments = new Array(10).fill(20);
+      this.shieldSegments = new Array(10).fill(2);
       this.shieldRadius = 45;
       this.gunboatShieldRecharge = 90; // halved for 60Hz (approx 1.5s)
+      this.innerShieldSegments = null;
+      this.innerShieldRadius = null;
       const gunboatSizeMult = 3;
       this.radius = Math.round(this.radius * gunboatSizeMult);
       this.shieldRadius = Math.round(this.shieldRadius * gunboatSizeMult);
@@ -201,12 +203,12 @@ export class Enemy extends Entity {
 
     // Named elite modifiers
     if (this.type === "elite_roamer" || this.type === "hunter") {
-    // Circle-strafe preference flags (set after gunboat init so all gunboats orbit)
-    this.circleStrafePreferred = false;
-    if (this.isGunboat) this.circleStrafePreferred = true;
-    else if (this.type === "roamer") this.circleStrafePreferred = Math.random() < 0.3;
-    else if (this.type === "elite_roamer" || this.type === "hunter")
-      this.circleStrafePreferred = Math.random() < 0.5;
+      // Circle-strafe preference flags (set after gunboat init so all gunboats orbit)
+      this.circleStrafePreferred = false;
+      if (this.isGunboat) this.circleStrafePreferred = true;
+      else if (this.type === "roamer") this.circleStrafePreferred = Math.random() < 0.3;
+      else if (this.type === "elite_roamer" || this.type === "hunter")
+        this.circleStrafePreferred = Math.random() < 0.5;
     }
   }
 
@@ -1189,11 +1191,3 @@ export class Enemy extends Entity {
     }
   }
 }
-
-
-
-
-
-
-
-

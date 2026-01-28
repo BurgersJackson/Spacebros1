@@ -12,7 +12,11 @@ if (hasFlag("--devtools")) env.ELECTRON_DEVTOOLS = "1";
 if (hasFlag("--smoke")) env.ELECTRON_SMOKE = "1";
 if (hasFlag("--no-gpu")) env.ELECTRON_NO_GPU = "1";
 
-const child = spawn(electronBinary, ["."], { stdio: "inherit", env });
+const child = spawn(electronBinary, ["."], {
+  stdio: "inherit",
+  env,
+  windowsHide: true
+});
 
 child.on("exit", (code) => process.exit(code ?? 0));
 child.on("error", (err) => {
