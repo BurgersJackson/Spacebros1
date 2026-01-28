@@ -43,7 +43,7 @@ export class SpaceStation extends Entity {
         this.displayName = names[Math.floor(Math.random() * names.length)] + "-" + suffix;
 
         this.radius = Math.floor(520 * 0.65);
-        this.hp = 500;
+        this.hp = 5000;
         this.maxHp = 500;
 
         this.shieldRadius = Math.floor(600 * 0.65);
@@ -697,3 +697,4 @@ export class SpaceStation extends Entity {
         ctx.restore();
     }
 }
+

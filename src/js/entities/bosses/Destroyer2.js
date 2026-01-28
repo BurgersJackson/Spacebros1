@@ -43,30 +43,30 @@ export class Destroyer2 extends Entity {
         this.visualRadius = Math.floor(520 * 0.65) * 2 * 1.5; // Match Destroyer size (visual scale)
         this.radius = Math.round(this.visualRadius * 0.5); // Collision trimmed to hull, not PNG bounds
         this.collisionRadius = this.radius;
-        this.hp = 300;
+        this.hp = 3000;
         this.maxHp = 300;
 
         // Movement properties for roaming
         this.roamSpeed = 1.5; // Slow roaming speed
-        this.roamAngle = Math.random() * Math.PI * 2;
-        this.angle = this.roamAngle;
-        this.roamInterval = 900 + Math.floor(Math.random() * 600); // Rare direction changes (15-25s)
-        this.roamTimer = this.roamInterval;
-        this.turnSpeed = 0.008; // Slow turning per frame at 60fps
-        this.baseTurnSpeed = 0.008;
-        this.farTurnSpeed = 0.05;
+        this.radius = Math.round(this.visualRadius * 0.5); // Collision trimmed to hull, not PNG bounds
+        this.collisionRadius = this.radius;
+        this.hp = 3000;
+        this.maxHp = 3000;
+
+        // Movement properties for roaming
+        this.roamSpeed = 1.5; // Slow roaming speed
         this.chaseDistance = 8000;
 
         // Outer + inner shields for destroyer (cave monster style)
-        this.maxShieldHp = 999;  // Indestructible like cave monsters
+        this.maxShieldHp = 9990;  // Indestructible like cave monsters
         this.shieldSegments = new Array(60).fill(0);
         this.innerShieldSegments = new Array(50).fill(0);
         // Every other segment active (like cave monsters)
         for (let i = 0; i < 60; i += 2) {
-            this.shieldSegments[i] = 999;
+            this.shieldSegments[i] = 9990;
         }
         for (let i = 0; i < 50; i += 2) {
-            this.innerShieldSegments[i] = 999;
+            this.innerShieldSegments[i] = 9990;
         }
         this.shieldRadius = Math.round(this.visualRadius * 0.85);
         this.innerShieldRadius = Math.round(this.visualRadius * 0.78);
@@ -716,3 +716,4 @@ export class Destroyer2 extends Entity {
         }
     }
 }
+

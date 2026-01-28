@@ -266,6 +266,7 @@ export class FloatingText extends Entity {
     this.amount = typeof opts.amount === "number" ? opts.amount : null;
     this.prefix = opts.prefix || "";
     this.suffix = opts.suffix || "";
+    this.fontSize = opts.fontSize || 60;
     this.lastBumpAt = Date.now();
   }
   bump(deltaAmount, x, y) {
@@ -303,7 +304,7 @@ export class FloatingText extends Entity {
     ctx.translate(this.pos.x, this.pos.y);
     ctx.globalAlpha = alpha;
     ctx.fillStyle = this.color;
-    ctx.font = "bold 60px Courier New";
+    ctx.font = `bold ${this.fontSize}px Courier New`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.shadowBlur = 8;

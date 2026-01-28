@@ -25,7 +25,7 @@ export class CaveGuidedMissile extends Entity {
         this.owner = owner || null;
         this.t = 0;
         this.radius = opts.radius || 18;
-        this.hp = opts.hp || 4;
+        this.hp = opts.hp || 40;
         this.maxHp = this.hp;
         this.maxDamage = (typeof opts.maxDamage === 'number') ? opts.maxDamage : null;
         // Removed multiplier for 60Hz scaling transparency.
@@ -273,3 +273,4 @@ export class CaveGuidedMissile extends Entity {
         ctx.restore();
     }
 }
+

@@ -64,12 +64,12 @@ export class WarpSentinelBoss extends Entity {
     this.isWarpBoss = true;
     this.sizeScale = 3;
     this.radius = 110 * this.sizeScale;
-    this.hp = 500;
+    this.hp = 5000;
     this.maxHp = this.hp;
 
-    this.maxShieldHp = 999;
+    this.maxShieldHp = 9990;
     this.shieldStrength = this.maxShieldHp;
-    this.shieldSegments = new Array(72).fill(999);
+    this.shieldSegments = new Array(72).fill(9990);
     this.shieldRadius = 950;
     this.shieldRotation = 0; // Stationary shield (doesn't rotate)
     this.lastShieldRegenAt = Date.now();
@@ -956,3 +956,4 @@ export class WarpSentinelBoss extends Entity {
     playSound("powerup");
   }
 }
+

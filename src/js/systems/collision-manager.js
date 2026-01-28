@@ -90,13 +90,13 @@ function applyCriticalStrike(baseDamage, x, y) {
  */
 function showDamageFloatingText(x, y, damage, isCrit = false) {
   if (damage <= 0) return;
-  const color = isCrit ? "#ff0" : "#fff";
-  const roundedDamage = Math.round(damage);
-  const text = isCrit ? `${roundedDamage}!` : `${roundedDamage}`;
-  const key = `dmg_${Math.floor(x / 50)}_${Math.floor(y / 50)}`;
-  if (_FloatingText) {
-    GameContext.floatingTexts.push(new _FloatingText(x, y, text, color, 45, {}));
-  }
+ const color = isCrit ? "#ff0" : "#fff";
+ const roundedDamage = Math.round(damage);
+ const text = isCrit ? `${roundedDamage}!` : `${roundedDamage}`;
+ const key = `dmg_${Math.floor(x / 50)}_${Math.floor(y / 50)}`;
+ if (_FloatingText) {
+   GameContext.floatingTexts.push(new _FloatingText(x, y, text, color, 45, { fontSize: 30 }));
+ }
 }
 
 /**

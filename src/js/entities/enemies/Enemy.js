@@ -97,31 +97,26 @@ export class Enemy extends Entity {
     if (this.type === "roamer") {
       const elapsedMs = Date.now() - GameContext.gameStartTime - (GameContext.pausedAccumMs || 0);
       const elapsedMinutes = elapsedMs / 60000;
-      const baseHp = elapsedMinutes < 5 ? 5 : 10;
-      this.hp = (baseHp + GameContext.difficultyTier) * scale;
+      const baseHp = elapsedMinutes < 5 ? 50 : 100;
+      this.hp = (baseHp + GameContext.difficultyTier * 10) * scale;
     } else if (this.type === "elite_roamer") {
-      this.hp = (16 + GameContext.difficultyTier * 2) * scale;
-      this.shieldSegments = new Array(6).fill(1);
+      this.hp = (160 + GameContext.difficultyTier * 20) * scale;
       this.shieldRadius = 26; // reduced 25%
+      this.shieldSegments = new Array(6).fill(10);
       this.radius = 19; // reduced 25% (was 25)
       this.maxSpeed *= 1.05;
     } else if (this.type === "hunter") {
-      this.hp = (22 + GameContext.difficultyTier * 3) * scale;
+      this.hp = (220 + GameContext.difficultyTier * 30) * scale;
       this.radius = 22; // Base radius (will be multiplied by 3 to get 66)
       this.maxSpeed = 13.0 + GameContext.difficultyTier * 0.5; // doubled
       this.thrustPower = 1.2; // quadrupled (0.3 * 4)
-      this.shieldSegments = new Array(4).fill(1);
+      this.shieldSegments = new Array(4).fill(10);
       this.shieldRadius = 30; // Base shield radius (will be multiplied by 3 to get 90)
       this.shootTimer = 20; // 40 / 2
     } else if (this.type === "defender") {
-      this.hp = (15 + (GameContext.difficultyTier - 1) * 2) * scale;
+      this.hp = (150 + (GameContext.difficultyTier - 1) * 20) * scale;
       this.radius = 20; // Same base radius as roamer
-    } else {
-      this.hp = (15 + (GameContext.difficultyTier - 1) * 2) * scale;
     }
-
-    this.shootTimer = 13; // 50% faster (20 * 2/3)
-    if (this.type === "elite_roamer" || this.type === "hunter") this.shootTimer = 10; // 50% faster (15 * 2/3)
 
     // Named elite modifiers
     if (this.type === "elite_roamer" || this.type === "hunter") {
@@ -130,7 +125,7 @@ export class Enemy extends Entity {
         this.modifier = mods[Math.floor(Math.random() * mods.length)];
         const names = ["NOVA", "SHADE", "VIPER", "TITAN", "EMBER", "PHANTOM", "ION"];
         this.nameTag = names[Math.floor(Math.random() * names.length)];
-        this.hp += 2; // slight buff for named elites
+        this.hp += 20; // slight buff for named elites (scaled 10x)
       }
     }
 
@@ -191,12 +186,12 @@ export class Enemy extends Entity {
             : 1;
       }
       this.radius = 30; // match player size
-      const baseHp = this.gunboatLevel === 1 ? 20 : 26;
-      this.hp = (baseHp + GameContext.difficultyTier) * getEnemyHpScaling();
+      const baseHp = this.gunboatLevel === 1 ? 200 : 260;
+      this.hp = (baseHp + GameContext.difficultyTier * 10) * getEnemyHpScaling();
       this.maxSpeed = 8.0; // doubled
       this.thrustPower = 0.88; // quadrupled (0.22 * 4)
       this.shootTimer = this.gunboatLevel === 1 ? 11 : 9; // ~half
-      this.shieldSegments = new Array(10).fill(2);
+      this.shieldSegments = new Array(10).fill(20);
       this.shieldRadius = 45;
       this.gunboatShieldRecharge = 90; // halved for 60Hz (approx 1.5s)
       const gunboatSizeMult = 3;
@@ -204,14 +199,15 @@ export class Enemy extends Entity {
       this.shieldRadius = Math.round(this.shieldRadius * gunboatSizeMult);
     }
 
-    // Default bounce; bosses can override
-    this.wallElasticity = 0.8;
+    // Named elite modifiers
+    if (this.type === "elite_roamer" || this.type === "hunter") {
     // Circle-strafe preference flags (set after gunboat init so all gunboats orbit)
     this.circleStrafePreferred = false;
     if (this.isGunboat) this.circleStrafePreferred = true;
     else if (this.type === "roamer") this.circleStrafePreferred = Math.random() < 0.3;
     else if (this.type === "elite_roamer" || this.type === "hunter")
       this.circleStrafePreferred = Math.random() < 0.5;
+    }
   }
 
   getAimAngle() {
@@ -1193,3 +1189,11 @@ export class Enemy extends Entity {
     }
   }
 }
+
+
+
+
+
+
+
+

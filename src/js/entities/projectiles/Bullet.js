@@ -31,7 +31,7 @@ export class Bullet extends Entity {
         this.angle = angle;
         this.speed = speed * 2;
 
-        this.damage = (typeof opts.damage === 'number') ? opts.damage : 1;
+        this.damage = (typeof opts.damage === 'number') ? opts.damage : 10;
         this.radius = (typeof opts.radius === 'number') ? opts.radius : 4;
         this.owner = (opts.owner !== undefined) ? opts.owner : (opts.isEnemy ? 'enemy' : 'player');
         this.isEnemy = (typeof opts.isEnemy === 'boolean') ? opts.isEnemy : (this.owner === 'enemy');

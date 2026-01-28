@@ -160,8 +160,8 @@ export class Spaceship extends Entity {
     this.nukeUnlocked = false;
     this.nukeCooldown = 0;
     this.nukeMaxCooldown = 600; // Default 10s
-    this.nukeDamage = 5;
-    this.nukeRange = 500;
+    this.nukeDamage = 50;
+    this.nukeRange = 5000;
 
     // Global Defense Ring
     this.defenseRingTier = 0;
@@ -209,8 +209,8 @@ export class Spaceship extends Entity {
     // deltaTime is in ms, dtScale = deltaTime / 16.67
     // chargeRate is the amount to add per Reference Frame (16.67ms)
     this.batteryChargeRate = (100 / 60000) * 16.67;
-    this.batteryDamage = 500;
-    this.batteryRange = 800;
+    this.batteryDamage = 5000;
+    this.batteryRange = 8000;
     this.batteryDischarging = false;
 
     // Volley Shot Ability
@@ -221,7 +221,7 @@ export class Spaceship extends Entity {
 
     // CIWS (Close-In Weapon System)
     this.ciwsUnlocked = false;
-    this.ciwsDamage = 1; // Damage per bullet (1-5 based on tier)
+    this.ciwsDamage = 10; // Damage per bullet (10-50 based on tier, scaled 10x)
     this.ciwsRange = 400; // Target acquisition range
     this.ciwsCooldown = 0; // Frames until next shot (6 = 2x player fire rate)
     this.ciwsMaxCooldown = 6; // Fire rate: every 6 frames at 60fps
@@ -1157,7 +1157,7 @@ export class Spaceship extends Entity {
       const angle = this.turretAngle + angleOffset;
 
       // Use player's damage multiplier
-      let damage = 2 * this.stats.damageMult;
+      let damage = 20 * this.stats.damageMult;
 
       // Combo Meter bonus to damage
       if (this.stats.comboMeter > 0 && this.comboStacks > 0) {
@@ -1399,7 +1399,7 @@ export class Spaceship extends Entity {
   }
 
   shoot() {
-    let damage = 2 * this.stats.damageMult; //turret damage
+    let damage = 20 * this.stats.damageMult; //turret damage (scaled 10x from 2)
 
     // Combo Meter bonus to damage
     if (this.stats.comboMeter > 0 && this.comboStacks > 0) {
@@ -1650,7 +1650,7 @@ export class Spaceship extends Entity {
     if (shotgunTier <= 0) return;
 
     const count = shotgunTier === 1 ? 5 : shotgunTier === 2 ? 8 : 12;
-    const dmg = this.stats.damageMult * 0.7;
+    const dmg = 10 * this.stats.damageMult * 0.7;
     const spread = 0.5;
     const baseShotgunLife = 23;
     const tierRangeMult = 1 + 0.1 * Math.max(0, shotgunTier - 1);
@@ -2156,3 +2156,10 @@ export class Spaceship extends Entity {
 
 // AOE damage function that respects shield penetration mechanics
 // Damages shield shards hit by the AOE, overflow penetrates to player
+
+
+
+
+
+
+

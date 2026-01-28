@@ -297,7 +297,7 @@ export function startGame() {
       evasion: 0,
       piercing: 0,
       explosiveRounds: 0,
-      explosiveDamage: 30,
+      explosiveDamage: 300,
       explosiveRadius: 200,
       splitShot: 0,
       comboMeter: 0,
@@ -612,3 +612,4 @@ export function returnToMainMenuFromDeath() {
   // Start background music if not already playing
   if (deps.startMusic) deps.startMusic();
 }
+

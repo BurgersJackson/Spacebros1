@@ -15,7 +15,7 @@ export class CaveWallSwitch extends Entity {
     constructor(x, y, doorIds = []) {
         super(x, y);
         this.radius = 18;
-        this.hp = 3;
+        this.hp = 30;
         this.maxHp = 3;
         this.doorIds = Array.isArray(doorIds) ? doorIds : [];
         this.t = 0;
@@ -85,3 +85,4 @@ export class CaveWallSwitch extends Entity {
         }
     }
 }
+

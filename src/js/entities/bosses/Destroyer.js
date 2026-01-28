@@ -46,27 +46,27 @@ export class Destroyer extends Entity {
         this.visualRadius = Math.floor(520 * 0.65) * 2 * 1.5;
         this.radius = Math.round(this.visualRadius * 0.5);
         this.collisionRadius = this.radius;
-        this.hp = 300;
+        this.hp = 3000;
         this.maxHp = 300;
 
+        this.visualRadius = Math.floor(520 * 0.65) * 2 * 1.5;
+        this.radius = Math.round(this.visualRadius * 0.5);
+        this.collisionRadius = this.radius;
+        this.hp = 3000;
+        this.maxHp = 3000;
+        this.maxShieldHp = 9990;
         this.roamSpeed = 1.5;
         this.roamAngle = Math.random() * Math.PI * 2;
         this.angle = this.roamAngle;
-        this.roamInterval = 900 + Math.floor(Math.random() * 600);
-        this.roamTimer = this.roamInterval;
-        this.turnSpeed = 0.008;
-        this.baseTurnSpeed = 0.008;
-        this.farTurnSpeed = 0.05;
         this.chaseDistance = 8000;
 
-        this.maxShieldHp = 999;
         this.shieldSegments = new Array(60).fill(0);
         this.innerShieldSegments = new Array(50).fill(0);
         for (let i = 0; i < 60; i += 2) {
-            this.shieldSegments[i] = 999;
+            this.shieldSegments[i] = 9990;
         }
         for (let i = 0; i < 50; i += 2) {
-            this.innerShieldSegments[i] = 999;
+            this.innerShieldSegments[i] = 9990;
         }
         this.shieldRadius = Math.round(this.visualRadius * 0.85);
         this.innerShieldRadius = Math.round(this.visualRadius * 0.78);
@@ -912,3 +912,4 @@ export class Destroyer extends Entity {
         ctx.restore();
     }
 }
+

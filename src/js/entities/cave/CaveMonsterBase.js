@@ -97,7 +97,7 @@ export class CaveMonsterBase extends Entity {
         this.collisionRadius = this.visualRadius * 1.5; // For ship-ship collisions
         this.hullCollisionRadius = 550; // Simplified hull collision for bullets (550px circle)
         const scale = getEnemyHpScaling();
-        this.hp = (config.hp + 10) * scale;
+        this.hp = (config.hp * 10 + 100) * scale;
         this.maxHp = this.hp;
         this.angle = 0;
 
@@ -612,3 +612,4 @@ export class CaveMonsterBase extends Entity {
         ctx.restore();
     }
 }
+

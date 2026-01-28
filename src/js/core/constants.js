@@ -145,11 +145,11 @@ export const UPGRADE_DATA = {
         {
           id: "homing_missiles",
           name: "Homing Missiles",
-          tier1: "2 missiles, 1 damage (auto-fire)",
-          tier2: "2 missiles, 2 damage",
-          tier3: "2 missiles, 3 damage",
-          tier4: "2 missiles, 4 damage",
-          tier5: "2 missiles, 5 damage",
+          tier1: "2 missiles, 10 damage (auto-fire)",
+          tier2: "2 missiles, 20 damage",
+          tier3: "2 missiles, 30 damage",
+          tier4: "2 missiles, 40 damage",
+          tier5: "2 missiles, 50 damage",
           notes: "Auto-fires tracking missiles. Stacks with meta upgrade to 4 missiles."
         },
         {
@@ -165,12 +165,12 @@ export const UPGRADE_DATA = {
         {
           id: "ciws",
           name: "CIWS",
-          tier1: "Auto-targets 400u, 1 dmg",
-          tier2: "2 dmg",
-          tier3: "3 dmg",
-          tier4: "4 dmg",
-          tier5: "5 dmg",
-          notes: "Rapid-fire defense. Targets all enemies."
+          tier1: "Auto-targets 400u, 10 dmg",
+          tier2: "20 dmg",
+          tier3: "30 dmg",
+          tier4: "40 dmg",
+          tier5: "50 dmg",
+          notes: "Close-in weapon system. Auto-fires at nearby enemies."
         },
         {
           id: "chain_lightning",
@@ -290,11 +290,11 @@ export const UPGRADE_DATA = {
         {
           id: "area_nuke",
           name: "Area Nuke",
-          tier1: "Auto-fire 600u blast (5 dmg)",
-          tier2: "700u range, 10 dmg, 9s cooldown",
-          tier3: "900u range, 15 dmg, 8s cooldown",
-          tier4: "1000u range, 20 dmg, 7s cooldown",
-          tier5: "1200u range, 25 dmg, 6s cooldown",
+          tier1: "Auto-fire 600u blast (50 dmg)",
+          tier2: "700u range, 100 dmg, 9s cooldown",
+          tier3: "900u range, 150 dmg, 8s cooldown",
+          tier4: "1000u range, 200 dmg, 7s cooldown",
+          tier5: "1200u range, 250 dmg, 6s cooldown",
           notes: "Auto-activates when ready."
         },
         {
@@ -417,9 +417,9 @@ export const META_SHOP_UPGRADE_DATA = {
   missilePrimer: {
     name: "Missile Primer",
     description: "Unlock homing missiles that auto-fire (stacks with in-game upgrade)",
-    tier1: "2 missiles, 1 damage",
-    tier2: "2 missiles, 2 damage",
-    tier3: "2 missiles, 3 damage",
+    tier1: "2 missiles, 10 damage",
+    tier2: "2 missiles, 20 damage",
+    tier3: "2 missiles, 30 damage",
     tier4: "Increases effectiveness further",
     tier5: "Increases effectiveness further",
     tier6: "Increases effectiveness further",
@@ -427,14 +427,14 @@ export const META_SHOP_UPGRADE_DATA = {
     tier8: "Increases effectiveness further",
     tier9: "Increases effectiveness further",
     tier10: "MAX TIER REACHED",
-    notes: "Auto-fires tracking missiles. Combine with in-game upgrade for 4 missiles total."
+    notes: "Auto-fires tracking missiles. Scaled for 10x damage system."
   },
   nukeCapacitor: {
     name: "Global Defense Ring",
     description: "Orbiting fireballs that damage enemies upon contact",
-    tier1: "1 Fireball, 5 dmg",
-    tier2: "2 Fireballs, 6 dmg",
-    tier3: "3 Fireballs, 7 dmg",
+    tier1: "1 Fireball, 50 dmg",
+    tier2: "2 Fireballs, 60 dmg",
+    tier3: "3 Fireballs, 70 dmg",
     tier4: "Increases effectiveness further",
     tier5: "Increases effectiveness further",
     tier6: "Increases effectiveness further",
@@ -442,7 +442,7 @@ export const META_SHOP_UPGRADE_DATA = {
     tier8: "Increases effectiveness further",
     tier9: "Increases effectiveness further",
     tier10: "MAX TIER REACHED",
-    notes: "Fireballs orbit at 500u range. 1 rotation every 4.8 seconds."
+    notes: "Fireballs orbit at 500u. Scaled for 10x damage system."
   },
   speedTuning: {
     name: "Speed Tuning",
@@ -537,9 +537,9 @@ export const META_SHOP_UPGRADE_DATA = {
   explosiveRounds: {
     name: "Explosive Rounds",
     description: "Projectiles create mini-explosions on impact",
-    tier1: "20% chance (30 dmg, 200u)",
-    tier2: "40% chance (30 dmg, 200u)",
-    tier3: "60% chance (30 dmg, 200u)",
+    tier1: "20% chance (300 dmg, 2000u)",
+    tier2: "40% chance (300 dmg, 2000u)",
+    tier3: "60% chance (300 dmg, 2000u)",
     tier4: "Increases effectiveness further",
     tier5: "Increases effectiveness further",
     tier6: "Increases effectiveness further",
@@ -805,3 +805,4 @@ export const META_SHOP_UPGRADE_DATA = {
     notes: "Press F / Gamepad Y to discharge. Manual control only, never auto-fires."
   }
 };
+

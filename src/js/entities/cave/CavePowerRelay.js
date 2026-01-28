@@ -15,7 +15,7 @@ export class CavePowerRelay extends Entity {
         super(x, y);
         this.gateIndex = gateIndex;
         this.radius = 22;
-        this.hp = 8;
+        this.hp = 80;
         this.maxHp = 8;
         this.t = 0;
     }
@@ -76,3 +76,4 @@ export class CavePowerRelay extends Entity {
         }
     }
 }
+

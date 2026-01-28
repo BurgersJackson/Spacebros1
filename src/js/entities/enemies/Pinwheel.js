@@ -46,7 +46,7 @@ export class Pinwheel extends Entity {
         this.pos.y = y;
         this.type = type;
         this.radius = 84; // 70 * 1.2 (20% increase for collision sphere)
-        const baseVal = 20 + (GameContext.difficultyTier - 1) * 5;
+        const baseVal = 200 + (GameContext.difficultyTier - 1) * 5;
         this.hp = baseVal * getEnemyHpScaling();
         this.shootTimer = 75; // 150 / 2
         this.angle = 0;
@@ -58,20 +58,31 @@ export class Pinwheel extends Entity {
         this.aggro = false;
 
         let outerCount = 24;
-        let outerHp = 1;
+        let outerHp = 10;
         let innerCount = 0;
         let innerHp = 0;
 
         if (GameContext.difficultyTier === 1) { outerCount = 12; outerHp = 1; }
+        if (GameContext.difficultyTier === 1) { outerCount = 12; outerHp = 10; }
         else if (GameContext.difficultyTier === 2) { outerCount = 16; outerHp = 1; }
+        else if (GameContext.difficultyTier === 2) { outerCount = 16; outerHp = 10; }
         else if (GameContext.difficultyTier === 3) { outerCount = 24; outerHp = 1; }
+        else if (GameContext.difficultyTier === 3) { outerCount = 24; outerHp = 10; }
         else if (GameContext.difficultyTier === 4) { outerCount = 24; outerHp = 2; innerCount = 8; innerHp = 1; }
+        else if (GameContext.difficultyTier === 4) { outerCount = 24; outerHp = 20; innerCount = 8; innerHp = 10; }
         else if (GameContext.difficultyTier === 5) { outerCount = 24; outerHp = 2; innerCount = 12; innerHp = 2; }
+        else if (GameContext.difficultyTier === 5) { outerCount = 24; outerHp = 20; innerCount = 12; innerHp = 20; }
         else if (GameContext.difficultyTier >= 6) {
             outerCount = 24;
             outerHp = 3 + (GameContext.difficultyTier - 6);
             innerCount = 16 + (GameContext.difficultyTier - 6);
             innerHp = 2 + Math.floor((GameContext.difficultyTier - 6) / 2);
+        }
+        else if (GameContext.difficultyTier >= 6) {
+            outerCount = 24;
+            outerHp = 30 + (GameContext.difficultyTier - 6) * 10;
+            innerCount = 16 + (GameContext.difficultyTier - 6);
+            innerHp = 20 + Math.floor((GameContext.difficultyTier - 6) / 2) * 10;
         }
 
         if (type === 'heavy') {

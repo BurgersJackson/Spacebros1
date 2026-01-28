@@ -49,7 +49,7 @@ export class FinalBoss extends Entity {
     this.isFinalBoss = true;
     this.sizeScale = 3;
     this.radius = 110 * this.sizeScale;
-    this.hp = 1000; // Double HP
+    this.hp = 10000; // Double HP (scaled 10x from 1000)
     this.maxHp = this.hp;
 
     // Crystalline shield system - indestructible shards (cave monster pattern)
@@ -61,11 +61,12 @@ export class FinalBoss extends Entity {
     const outerFillEvery = 3; // Fill 2, skip 1 (2/3 coverage)
     const innerFillEvery = 4; // Fill 3, skip 1 (3/4 coverage)
     for (let i = 0; i < 48; i++) {
-      if (i % outerFillEvery < 2) this.shieldSegments[i] = 999;
+      if (i % outerFillEvery < 2) this.shieldSegments[i] = 9990;
     }
     for (let i = 0; i < 38; i++) {
-      if (i % innerFillEvery < 3) this.innerShieldSegments[i] = 999;
+      if (i % innerFillEvery < 3) this.innerShieldSegments[i] = 9990;
     }
+    this.maxShieldHp = 9990;
     // Shield radius scaled to protect enlarged body
     this.shieldRadius = 950;
     this.innerShieldRadius = 850;
@@ -918,3 +919,4 @@ export class FinalBoss extends Entity {
     playSound("powerup");
   }
 }
+

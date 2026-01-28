@@ -36,7 +36,7 @@ export class CaveWallTurret extends Entity {
         this.maxWeakpointHp = this.weakpointHp;
         this._weakOffset = null;
         this.radius = 86;
-        this.hp = (16 + (GameContext.difficultyTier || 1)) * scale;
+        this.hp = (160 + (GameContext.difficultyTier || 1)) * scale;
         this.maxHp = this.hp;
         this.t = 0;
         this.reload = 30 + Math.floor(Math.random() * 25);
@@ -375,3 +375,4 @@ export class CaveWallTurret extends Entity {
         }
     }
 }
+
