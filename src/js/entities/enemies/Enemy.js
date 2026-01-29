@@ -101,7 +101,7 @@ export class Enemy extends Entity {
       this.hp = (baseHp + GameContext.difficultyTier * 10) * scale;
     } else if (this.type === "elite_roamer") {
       this.hp = (160 + GameContext.difficultyTier * 20) * scale;
-      this.shieldRadius = 26; // reduced 25%
+      this.shieldRadius = 38; // Increased for better hit detection // reduced 25%
       this.shieldSegments = new Array(6).fill(10);
       this.radius = 19; // reduced 25% (was 25)
       this.maxSpeed *= 1.05;
@@ -111,7 +111,7 @@ export class Enemy extends Entity {
       this.maxSpeed = 13.0 + GameContext.difficultyTier * 0.5; // doubled
       this.thrustPower = 1.2; // quadrupled (0.3 * 4)
       this.shieldSegments = new Array(4).fill(10);
-      this.shieldRadius = 30; // Base shield radius (will be multiplied by 3 to get 90)
+      this.shieldRadius = 45; // Increased for better hit detection // Base shield radius (will be multiplied by 3 to get 90)
       this.shootTimer = 20; // 40 / 2
     } else if (this.type === "defender") {
       this.hp = (150 + (GameContext.difficultyTier - 1) * 20) * scale;
@@ -233,22 +233,19 @@ export class Enemy extends Entity {
       this.maxInnerShieldHp = innerHp;
 
       this.shieldSegments = new Array(outerCount).fill(outerHp);
-      this.shieldRadius = 45;
+      this.shieldRadius = 130; // Same as Pinwheel
       this.innerShieldSegments = [];
       if (innerCount > 0) {
         this.innerShieldSegments = new Array(innerCount).fill(innerHp);
       }
-      this.innerShieldRadius = innerCount > 0 ? 35 : 0;
+      this.innerShieldRadius = innerCount > 0 ? 95 : 0; // Same as Pinwheel
 
       this.gunboatShieldRecharge = 90; // halved for 60Hz (approx 1.5s)
-      const gunboatSizeMult = 3;
-      this.radius = Math.round(this.radius * gunboatSizeMult);
-      this.shieldRadius = Math.round(this.shieldRadius * gunboatSizeMult);
-      if (this.innerShieldRadius > 0) {
-        this.innerShieldRadius = Math.round(this.innerShieldRadius * gunboatSizeMult);
-      }
-    }
+      
 
+      // Use Pinwheel's exact sizes
+      this.radius = 84; // Pinwheel collision radius
+    }
     // Named elite modifiers
     if (this.type === "elite_roamer" || this.type === "hunter") {
       // Circle-strafe preference flags (set after gunboat init so all gunboats orbit)

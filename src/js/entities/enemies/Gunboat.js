@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Gunboat.js
  * Fast-moving enemy ship with shields and rapid fire.
  * Base class for regular and cave gunboats.
@@ -73,22 +73,18 @@ export class Gunboat extends Enemy {
     this.maxInnerShieldHp = innerHp;
 
     this.shieldSegments = new Array(outerCount).fill(outerHp);
-    this.shieldRadius = 45;
+    this.shieldRadius = 130; // Same as Pinwheel
     this.innerShieldSegments = [];
     if (innerCount > 0) {
       this.innerShieldSegments = new Array(innerCount).fill(innerHp);
     }
-    this.innerShieldRadius = innerCount > 0 ? 35 : 0;
+    this.innerShieldRadius = innerCount > 0 ? 95 : 0; // Same as Pinwheel
 
     this.gunboatRange = 900;
 
-    const gunboatSizeMult = 3;
-    this.radius = Math.round(this.radius * gunboatSizeMult);
-    this.shieldRadius = Math.round(this.shieldRadius * gunboatSizeMult);
-    if (this.innerShieldRadius > 0) {
-      this.innerShieldRadius = Math.round(this.innerShieldRadius * gunboatSizeMult);
-    }
 
+    // Use Pinwheel's exact sizes
+    this.radius = 84; // Pinwheel collision radius
     // Circle-strafe preference
     this.circleStrafePreferred = true;
   }

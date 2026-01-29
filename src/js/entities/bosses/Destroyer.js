@@ -68,8 +68,9 @@ export class Destroyer extends Entity {
         for (let i = 0; i < 50; i += 2) {
             this.innerShieldSegments[i] = 9990;
         }
-        this.shieldRadius = Math.round(this.visualRadius * 0.85);
-        this.innerShieldRadius = Math.round(this.visualRadius * 0.78);
+        // Increased shield radii for better hit detection (0.98x visual outer, 0.90x visual inner)
+        this.shieldRadius = Math.round(this.visualRadius * 0.98);
+        this.innerShieldRadius = Math.round(this.visualRadius * 0.90);
         this.shieldRotation = 0;
         this.innerShieldRotation = 0;
         this.shieldsDirty = true;

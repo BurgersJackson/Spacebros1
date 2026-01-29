@@ -26,7 +26,9 @@ export class Drone extends Entity {
     this.orbitAngle = (positionIndex * Math.PI * 2) / totalDrones;
     this.orbitRadius = 80 + Math.random() * 20;
     this.dead = false;
-    this.timer = 0;
+    this.shootTimer = 0;
+    this.shootDelay = 20; // Fire every 20 frames (3 shots/second at 60fps) - matches base turret rate
+    this.timer = 0; // Timer for orbit angle (not used for shooting anymore)
     this.lastShieldTick = Date.now();
     this.lastHealTick = Date.now();
   }
@@ -37,12 +39,12 @@ export class Drone extends Entity {
     this.prevPos.y = this.pos.y;
 
     const now = Date.now();
-    this.orbitAngle += 0.04; // doubled for 60Hz
+    this.orbitAngle += 0.04; // Orbit rotation speed (doubled for 60Hz)
+    this.timer++; // Keep timer for potential future use
     const baseX = GameContext.player.pos.x + Math.cos(this.orbitAngle) * this.orbitRadius;
     const baseY = GameContext.player.pos.y + Math.sin(this.orbitAngle) * this.orbitRadius;
     this.pos.x = baseX;
     this.pos.y = baseY;
-    this.timer++;
 
     if (this.type === "heal") {
       // 1 HP per 5 seconds
@@ -64,8 +66,13 @@ export class Drone extends Entity {
         }
         this.lastShieldTick = now;
       }
-    } else if (this.type === "shooter" && this.timer % 25 === 0) {
-      // halved interval for 60Hz
+    } else if (this.type === "shooter") {
+      // Fire rate uses time-based timer (not affected by player fireRateMult upgrades)
+      const dtScale = deltaTime / 16.67; // Normalize to 60fps reference
+      this.shootTimer -= dtScale;
+      if (this.shootTimer <= 0) {
+        this.shootTimer = this.shootDelay; // Reset timer (consistent fire rate)
+        
       // Shooter drone now fires where the player's turret aims
       const aimAngle = GameContext.player ? GameContext.player.turretAngle : 0;
       const droneBullet = new Bullet(this.pos.x, this.pos.y, aimAngle, 14, {
@@ -76,6 +83,7 @@ export class Drone extends Entity {
       droneBullet.weaponType = 'drone';
       GameContext.bullets.push(droneBullet);
       if (_spawnBarrelSmoke) _spawnBarrelSmoke(this.pos.x, this.pos.y, aimAngle);
+      }
     }
   }
   draw(ctx) {

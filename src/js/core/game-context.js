@@ -233,6 +233,8 @@ export const GameContext = {
   menuSelectionIndex: 0,
   overlayTimeout: null,
   DEBUG_COLLISION: false,
+  /** When true, log shield hit / hull bypass for Pinwheel and Gunboat (set in console: GameContext.DEBUG_SHIELD_BYPASS = true) */
+  DEBUG_SHIELD_BYPASS: false,
   TEST_WARP_GATE_AT_START: false, // Set to true to spawn warp gate at game start for testing
   // Death screen statistics
   damageByWeaponType: {},

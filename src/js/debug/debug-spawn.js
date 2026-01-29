@@ -281,6 +281,10 @@ export function initDebugKeyboardShortcuts() {
             e.preventDefault();
             GameContext.DEBUG_COLLISION = !GameContext.DEBUG_COLLISION;
             showOverlayMessage(`HITBOX DEBUG: ${GameContext.DEBUG_COLLISION ? "ON" : "OFF"}`, GameContext.DEBUG_COLLISION ? '#0f0' : '#f00', 1500);
+        } else if (e.ctrlKey && e.shiftKey && (e.key === 's' || e.key === 'S')) {
+            e.preventDefault();
+            GameContext.DEBUG_SHIELD_BYPASS = !GameContext.DEBUG_SHIELD_BYPASS;
+            showOverlayMessage(`SHIELD BYPASS DEBUG: ${GameContext.DEBUG_SHIELD_BYPASS ? "ON" : "OFF"}`, GameContext.DEBUG_SHIELD_BYPASS ? '#0f0' : '#f00', 1500);
         }
     });
 

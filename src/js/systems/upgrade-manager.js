@@ -249,7 +249,7 @@ export function applyUpgrade(id, tier) {
       break;
     case "ciws":
       GameContext.player.ciwsUnlocked = true;
-      GameContext.player.ciwsDamage = tier;
+      GameContext.player.ciwsDamage = tier * 10; // Scaled 10x: tier 1=10, tier 2=20, tier 3=30, tier 4=40, tier 5=50
       break;
     case "chain_lightning":
       if (tier === 1) {

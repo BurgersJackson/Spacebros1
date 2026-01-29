@@ -96,19 +96,63 @@ export class Shockwave extends Entity {
                     // Check shields before applying HP damage (for enemies with shield systems)
                     let remaining = damage;
                     if (e.shieldSegments && e.shieldSegments.length > 0) {
-                        for (let i = 0; i < e.shieldSegments.length && remaining > 0; i++) {
-                            const absorb = Math.min(remaining, e.shieldSegments[i]);
-                            e.shieldSegments[i] -= absorb;
-                            remaining -= absorb;
-                            if (e.shieldsDirty !== undefined) e.shieldsDirty = true;
+                        // For Pinwheels and similar enemies, only damage shield segments within explosion radius
+                        if (e.shieldRotation !== undefined && e.shieldRadius !== undefined) {
+                            for (let i = 0; i < e.shieldSegments.length; i++) {
+                                if (e.shieldSegments[i] <= 0) continue;
+                                
+                                // Calculate position of this shield segment
+                                const segAngle = (Math.PI * 2 * i) / e.shieldSegments.length;
+                                const shieldX = e.pos.x + Math.cos(segAngle + e.shieldRotation) * e.shieldRadius;
+                                const shieldY = e.pos.y + Math.sin(segAngle + e.shieldRotation) * e.shieldRadius;
+                                
+                                // Check if this segment is within explosion radius
+                                const distToSegment = Math.hypot(this.pos.x - shieldX, this.pos.y - shieldY);
+                                if (distToSegment <= this.currentRadius) {
+                                    const absorb = Math.min(remaining, e.shieldSegments[i]);
+                                    e.shieldSegments[i] -= absorb;
+                                    remaining -= absorb;
+                                    if (e.shieldsDirty !== undefined) e.shieldsDirty = true;
+                                }
+                            }
+                        } else {
+                            // Fallback for enemies without rotating shields (damage all segments)
+                            for (let i = 0; i < e.shieldSegments.length && remaining > 0; i++) {
+                                const absorb = Math.min(remaining, e.shieldSegments[i]);
+                                e.shieldSegments[i] -= absorb;
+                                remaining -= absorb;
+                                if (e.shieldsDirty !== undefined) e.shieldsDirty = true;
+                            }
                         }
                     }
                     if (e.innerShieldSegments && e.innerShieldSegments.length > 0 && remaining > 0) {
-                        for (let i = 0; i < e.innerShieldSegments.length && remaining > 0; i++) {
-                            const absorb = Math.min(remaining, e.innerShieldSegments[i]);
-                            e.innerShieldSegments[i] -= absorb;
-                            remaining -= absorb;
-                            if (e.shieldsDirty !== undefined) e.shieldsDirty = true;
+                        // For Pinwheels and similar enemies, only damage inner shield segments within explosion radius
+                        if (e.innerShieldRotation !== undefined && e.innerShieldRadius !== undefined) {
+                            for (let i = 0; i < e.innerShieldSegments.length; i++) {
+                                if (e.innerShieldSegments[i] <= 0) continue;
+                                
+                                // Calculate position of this inner shield segment
+                                const segAngle = (Math.PI * 2 * i) / e.innerShieldSegments.length;
+                                const shieldX = e.pos.x + Math.cos(segAngle + e.innerShieldRotation) * e.innerShieldRadius;
+                                const shieldY = e.pos.y + Math.sin(segAngle + e.innerShieldRotation) * e.innerShieldRadius;
+                                
+                                // Check if this segment is within explosion radius
+                                const distToSegment = Math.hypot(this.pos.x - shieldX, this.pos.y - shieldY);
+                                if (distToSegment <= this.currentRadius) {
+                                    const absorb = Math.min(remaining, e.innerShieldSegments[i]);
+                                    e.innerShieldSegments[i] -= absorb;
+                                    remaining -= absorb;
+                                    if (e.shieldsDirty !== undefined) e.shieldsDirty = true;
+                                }
+                            }
+                        } else {
+                            // Fallback for enemies without rotating inner shields (damage all segments)
+                            for (let i = 0; i < e.innerShieldSegments.length && remaining > 0; i++) {
+                                const absorb = Math.min(remaining, e.innerShieldSegments[i]);
+                                e.innerShieldSegments[i] -= absorb;
+                                remaining -= absorb;
+                                if (e.shieldsDirty !== undefined) e.shieldsDirty = true;
+                            }
                         }
                     }
 
@@ -141,14 +185,80 @@ export class Shockwave extends Entity {
                             if (other === e || other.dead || this.hitList.includes(other)) continue;
                             const d = Math.hypot(other.pos.x - this.pos.x, other.pos.y - this.pos.y);
                             if (d < explodeRadius + other.radius) {
-                                if (other === GameContext.destroyer) {
-                                    const hpBefore = other.hp;
-                                    other.hp -= explodeDmg;
-                                } else {
-                                    other.hp -= explodeDmg;
+                                // Check shields before hull (same logic as primary explosion)
+                                let remaining = explodeDmg;
+                                
+                                // Damage outer shields
+                                if (other.shieldSegments && other.shieldSegments.length > 0) {
+                                    if (other.shieldRotation !== undefined && other.shieldRadius !== undefined) {
+                                        // Rotating shields (Pinwheels)
+                                        for (let i = 0; i < other.shieldSegments.length && remaining > 0; i++) {
+                                            if (other.shieldSegments[i] <= 0) continue;
+                                            const segAngle = (Math.PI * 2 * i) / other.shieldSegments.length;
+                                            const shieldX = other.pos.x + Math.cos(segAngle + other.shieldRotation) * other.shieldRadius;
+                                            const shieldY = other.pos.y + Math.sin(segAngle + other.shieldRotation) * other.shieldRadius;
+                                            const distToSegment = Math.hypot(this.pos.x - shieldX, this.pos.y - shieldY);
+                                            if (distToSegment <= explodeRadius) {
+                                                const absorb = Math.min(remaining, other.shieldSegments[i]);
+                                                other.shieldSegments[i] -= absorb;
+                                                remaining -= absorb;
+                                                if (other.shieldsDirty !== undefined) other.shieldsDirty = true;
+                                            }
+                                        }
+                                    } else {
+                                        // Non-rotating shields (damage all segments)
+                                        for (let i = 0; i < other.shieldSegments.length && remaining > 0; i++) {
+                                            const absorb = Math.min(remaining, other.shieldSegments[i]);
+                                            other.shieldSegments[i] -= absorb;
+                                            remaining -= absorb;
+                                            if (other.shieldsDirty !== undefined) other.shieldsDirty = true;
+                                        }
+                                    }
                                 }
-                                if (_spawnParticles) _spawnParticles(other.pos.x, other.pos.y, 4, '#f80');
-                                if (other.hp <= 0 && typeof other.kill === 'function') other.kill();
+                                
+                                // Damage inner shields
+                                if (other.innerShieldSegments && other.innerShieldSegments.length > 0 && remaining > 0) {
+                                    if (other.innerShieldRotation !== undefined && other.innerShieldRadius !== undefined) {
+                                        // Rotating inner shields (Pinwheels)
+                                        for (let i = 0; i < other.innerShieldSegments.length && remaining > 0; i++) {
+                                            if (other.innerShieldSegments[i] <= 0) continue;
+                                            const segAngle = (Math.PI * 2 * i) / other.innerShieldSegments.length;
+                                            const shieldX = other.pos.x + Math.cos(segAngle + other.innerShieldRotation) * other.innerShieldRadius;
+                                            const shieldY = other.pos.y + Math.sin(segAngle + other.innerShieldRotation) * other.innerShieldRadius;
+                                            const distToSegment = Math.hypot(this.pos.x - shieldX, this.pos.y - shieldY);
+                                            if (distToSegment <= explodeRadius) {
+                                                const absorb = Math.min(remaining, other.innerShieldSegments[i]);
+                                                other.innerShieldSegments[i] -= absorb;
+                                                remaining -= absorb;
+                                                if (other.shieldsDirty !== undefined) other.shieldsDirty = true;
+                                            }
+                                        }
+                                    } else {
+                                        // Non-rotating inner shields (damage all segments)
+                                        for (let i = 0; i < other.innerShieldSegments.length && remaining > 0; i++) {
+                                            const absorb = Math.min(remaining, other.innerShieldSegments[i]);
+                                            other.innerShieldSegments[i] -= absorb;
+                                            remaining -= absorb;
+                                            if (other.shieldsDirty !== undefined) other.shieldsDirty = true;
+                                        }
+                                    }
+                                }
+                                
+                                // Only apply hull damage if shields couldn't absorb it all
+                                if (remaining > 0) {
+                                    if (other === GameContext.destroyer) {
+                                        const hpBefore = other.hp;
+                                        other.hp -= remaining;
+                                    } else {
+                                        other.hp -= remaining;
+                                    }
+                                    if (_spawnParticles) _spawnParticles(other.pos.x, other.pos.y, 4, '#f80');
+                                    if (other.hp <= 0 && typeof other.kill === 'function') other.kill();
+                                } else {
+                                    // All damage absorbed by shields
+                                    if (_playSound) _playSound("enemy_shield_hit");
+                                    if (_spawnParticles) _spawnParticles(other.pos.x, other.pos.y, 3, "#f0f");
+                                }
                             }
                         }
                     }

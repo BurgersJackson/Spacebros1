@@ -1,0 +1,16 @@
+[project]
+name = "mcp-js-validator"
+version = "0.1.0"
+description = "MCP Server for JavaScript syntax validation"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "mcp[cli]>=1.25.0",
+]
+
+[project.scripts]
+mcp-js-validator = "mcp_js_validator:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

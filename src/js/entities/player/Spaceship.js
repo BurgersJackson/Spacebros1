@@ -221,7 +221,7 @@ export class Spaceship extends Entity {
 
     // CIWS (Close-In Weapon System)
     this.ciwsUnlocked = false;
-    this.ciwsDamage = 10; // Damage per bullet (10-50 based on tier, scaled 10x)
+    this.ciwsDamage = 10; // Damage per bullet (tier 1=10, tier 2=20, tier 3=30, tier 4=40, tier 5=50)
     this.ciwsRange = 400; // Target acquisition range
     this.ciwsCooldown = 0; // Frames until next shot (6 = 2x player fire rate)
     this.ciwsMaxCooldown = 6; // Fire rate: every 6 frames at 60fps
@@ -1687,25 +1687,30 @@ export class Spaceship extends Entity {
       const comboBonus = 1 + (this.comboStacks / this.comboMaxStacks) * this.stats.comboMaxBonus;
       damage *= comboBonus;
     }
-    // Use ship facing angle for all ship types
-    const forwardAngle = this.angle;
-    const forwardBullet = this.createBullet(
-      this.pos.x,
-      this.pos.y,
-      forwardAngle,
-      false,
-      damage,
-      15,
-      4,
-      "#0f0",
-      null,
-      0,
-      this.stats.pierceCount || 0
-    );
-    forwardBullet.weaponType = "turret"; // Forward laser counts as turret damage
-    GameContext.bullets.push(forwardBullet);
-  }
-
+      // Use ship facing angle for all ship types
+      const forwardAngle = this.angle;
+      
+      // Forward laser: +50% range, +25% speed
+      const laserSpeed = 15 * 1.25; // 18.75 (25% faster)
+      const laserRange = 50 * 1.5; // 75 (50% more range)
+      
+      const forwardBullet = this.createBullet(
+         this.pos.x,
+         this.pos.y,
+         forwardAngle,
+         false,
+         damage,
+         laserSpeed,
+         4,
+         "#0f0",
+         null,
+         0,
+         this.stats.pierceCount || 0
+      );
+      forwardBullet.life = laserRange * (this.stats.rangeMult || 1); // Apply range multiplier
+      forwardBullet.weaponType = "turret"; // Forward laser counts as turret damage
+      GameContext.bullets.push(forwardBullet);
+    }
   drawLaser(ctx) {
     if (!this.visible || this.dead) {
       if (this._pixiLaserGfx) {

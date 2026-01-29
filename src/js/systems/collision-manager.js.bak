@@ -1,4 +1,4 @@
-import { GameContext } from "../core/game-context.js";
+﻿import { GameContext } from "../core/game-context.js";
 import {
   Enemy,
   Pinwheel,
@@ -50,13 +50,6 @@ export function registerCollisionDependencies(deps) {
   if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
   if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
   if (deps.FloatingText) _FloatingText = deps.FloatingText;
-}
-
-/** Log only when GameContext.DEBUG_SHIELD_BYPASS is true (Pinwheel/Gunboat shield debugging). */
-function _shieldBypassLog(...args) {
-  if (typeof GameContext.DEBUG_SHIELD_BYPASS !== "undefined" && GameContext.DEBUG_SHIELD_BYPASS) {
-    console.log("[SHIELD DEBUG]", ...args);
-  }
 }
 
 /**
@@ -1563,7 +1556,7 @@ export function processBulletCollisions() {
                       damageAsteroids: true,
                       damageEnemies: true,
                       ignoreOwner: true
-                    })
+                    ,`n                      isExplosive: true`n})
                   );
                 }
 
@@ -1617,22 +1610,10 @@ export function processBulletCollisions() {
 
                 if (shouldCheckOuterShield && e.shieldSegments[segmentIdx] > 0) {
                   const segmentHp = e.shieldSegments[segmentIdx];
-                  _shieldBypassLog(
-                    "Gunboat OUTER SHIELD HIT - segment",
-                    segmentIdx,
-                    "was",
-                    segmentHp,
-                    "HP, took",
-                    b.damage,
-                    "damage, entity hp",
-                    e.hp
-                  );
                   if (b.damage >= segmentHp) {
                     e.shieldSegments[segmentIdx] = 0;
-                    _shieldBypassLog("Gunboat shield segment DESTROYED");
                   } else {
                     e.shieldSegments[segmentIdx] -= b.damage;
-                    _shieldBypassLog("Gunboat shield segment now at", e.shieldSegments[segmentIdx], "HP, entity hp", e.hp);
                   }
                   e.shieldsDirty = true;
                   hit = true;
@@ -1672,9 +1653,6 @@ export function processBulletCollisions() {
                   hit = true;
                   if (_playSound) _playSound("enemy_shield_hit");
                   if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#ff0");
-                  b.dead = true;
-                  b.vel.x = 0;
-                  b.vel.y = 0;
                 }
               }
               // Also check if bullet is inside hull but would pass through active shields
@@ -1702,35 +1680,23 @@ export function processBulletCollisions() {
                     const innerAngle = (Math.PI * 2) / innerCount;
                     const segmentIdx = Math.floor(normalizedAngle / innerAngle) % innerCount;
 
-                if (e.innerShieldSegments[segmentIdx] > 0) {
-                  const segmentHp = e.innerShieldSegments[segmentIdx];
-                  _shieldBypassLog(
-                    "Gunboat INNER SHIELD HIT - segment",
-                    segmentIdx,
-                    "was",
-                    segmentHp,
-                    "HP, took",
-                    b.damage,
-                    "damage, entity hp",
-                    e.hp
-                  );
-                  if (b.damage >= segmentHp) {
-                    e.innerShieldSegments[segmentIdx] = 0;
-                    _shieldBypassLog("Gunboat inner shield segment DESTROYED");
-                  } else {
-                    e.innerShieldSegments[segmentIdx] -= b.damage;
-                    _shieldBypassLog("Gunboat inner shield segment now at", e.innerShieldSegments[segmentIdx], "HP, entity hp", e.hp);
+                    if (e.innerShieldSegments[segmentIdx] > 0) {
+                      const segmentHp = e.innerShieldSegments[segmentIdx];
+                      if (b.damage >= segmentHp) {
+                        e.innerShieldSegments[segmentIdx] = 0;
+                      } else {
+                        e.innerShieldSegments[segmentIdx] -= b.damage;
+                      }
+                      e.shieldsDirty = true;
+                      hit = true;
+                      if (_playSound) _playSound("enemy_shield_hit");
+                      if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#ff0");
+                      // FIX: Destroy bullet after hitting inner shield (hull override check)
+                      b.dead = true;
+                      b.vel.x = 0;
+                      b.vel.y = 0;
+                    }
                   }
-                  e.shieldsDirty = true;
-                  hit = true;
-                  if (_playSound) _playSound("enemy_shield_hit");
-                  if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
-                  // FIX: Destroy bullet after hitting inner shield
-                  b.dead = true;
-                  b.vel.x = 0;
-                  b.vel.y = 0;
-                }
-              }
 
                   // If inner didn't block, check outer shield
                   if (!hit && hasActiveOuter && e.shieldSegments && e.shieldSegments.length > 0) {
@@ -1762,65 +1728,32 @@ export function processBulletCollisions() {
 
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
-                // Check shield segments at the bullet's angle (same robust logic as Pinwheel)
+                // Check shield segments at the bullet's angle, not all segments
+                // This allows damage through destroyed shield shards
                 const angle = Math.atan2(dy, dx);
                 let hasShieldAtAngle = false;
-                /** When blocking, which segment took the hit: { inner: index } or { outer: index } */
-                let blockingSegment = null;
-
-                const hasGunboatShields = e.shieldSegments?.length && (e.isGunboat || e.shieldRadius);
 
                 // Check inner shield at this angle
                 if (e.innerShieldSegments && e.innerShieldSegments.length > 0) {
-                  const normInner =
-                    ((angle - (e.innerShieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
-                    (Math.PI * 2);
+                  const normalizedAngle =
+                    (angle - (e.innerShieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
                   const innerCount = e.innerShieldSegments.length;
                   const innerAngle = (Math.PI * 2) / innerCount;
-                  const innerIdx = Math.floor(normInner / innerAngle) % innerCount;
-                  if (e.innerShieldSegments[innerIdx] > 0) {
+                  const segmentIdx = Math.floor(normalizedAngle / innerAngle) % innerCount;
+                  if (e.innerShieldSegments[segmentIdx] > 0) {
                     hasShieldAtAngle = true;
-                    blockingSegment = { inner: innerIdx };
-                  }
-                  // Fallback: any segment with HP contains this angle (handles boundaries)
-                  if (!hasShieldAtAngle && hasGunboatShields) {
-                    for (let i = 0; i < innerCount; i++) {
-                      if (e.innerShieldSegments[i] <= 0) continue;
-                      const a0 = i * innerAngle;
-                      const a1 = (i + 1) * innerAngle;
-                      if (normInner >= a0 - 0.02 && normInner < a1 + 0.02) {
-                        hasShieldAtAngle = true;
-                        blockingSegment = { inner: i };
-                        break;
-                      }
-                    }
                   }
                 }
 
                 // Check outer shield at this angle (only if inner didn't block)
                 if (!hasShieldAtAngle && e.shieldSegments && e.shieldSegments.length > 0) {
-                  const normOuter =
-                    ((angle - (e.shieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
-                    (Math.PI * 2);
+                  const normalizedAngle =
+                    (angle - (e.shieldRotation || 0) + Math.PI * 2) % (Math.PI * 2);
                   const segCount = e.shieldSegments.length;
                   const segAngle = (Math.PI * 2) / segCount;
-                  const outerIdx = Math.floor(normOuter / segAngle) % segCount;
-                  if (e.shieldSegments[outerIdx] > 0) {
+                  const segmentIdx = Math.floor(normalizedAngle / segAngle) % segCount;
+                  if (e.shieldSegments[segmentIdx] > 0) {
                     hasShieldAtAngle = true;
-                    blockingSegment = { outer: outerIdx };
-                  }
-                  // Fallback: any segment with HP contains this angle (handles boundaries)
-                  if (!hasShieldAtAngle && hasGunboatShields) {
-                    for (let i = 0; i < segCount; i++) {
-                      if (e.shieldSegments[i] <= 0) continue;
-                      const a0 = i * segAngle;
-                      const a1 = (i + 1) * segAngle;
-                      if (normOuter >= a0 - 0.02 && normOuter < a1 + 0.02) {
-                        hasShieldAtAngle = true;
-                        blockingSegment = { outer: i };
-                        break;
-                      }
-                    }
                   }
                 }
 
@@ -1831,46 +1764,16 @@ export function processBulletCollisions() {
                     showDamageFloatingText(e.pos.x, e.pos.y, critResult.damage, false);
                   }
                   trackDamageByWeaponType(b, critResult.damage);
-                  if (e.shieldSegments?.length || e.isGunboat) {
-                    _shieldBypassLog(
-                      "Gunboat HULL BYPASS - damage",
-                      critResult.damage,
-                      "dist",
-                      dist.toFixed(0),
-                      "ignoreShields",
-                      !!b.ignoreShields,
-                      "entity hp",
-                      e.hp,
-                      "->",
-                      e.hp - critResult.damage
-                    );
-                  }
                   e.hp -= critResult.damage;
                   hit = true;
                   if (_playSound) _playSound("hit");
                   if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, "#fff");
                 } else {
-                  // Shield at this angle still active - block and apply damage to the segment
+                  // Shield at this angle is still active - block it
                   hit = true;
-                  if (blockingSegment) {
-                    if (blockingSegment.inner !== undefined) {
-                      const idx = blockingSegment.inner;
-                      const segHp = e.innerShieldSegments[idx];
-                      if (segHp > 0) {
-                        e.innerShieldSegments[idx] = Math.max(0, segHp - b.damage);
-                        e.shieldsDirty = true;
-                      }
-                    } else if (blockingSegment.outer !== undefined) {
-                      const idx = blockingSegment.outer;
-                      const segHp = e.shieldSegments[idx];
-                      if (segHp > 0) {
-                        e.shieldSegments[idx] = Math.max(0, segHp - b.damage);
-                        e.shieldsDirty = true;
-                      }
-                    }
-                  }
                   if (_playSound) _playSound("enemy_shield_hit");
                   if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
+                  // FIX: Destroy bullet after hitting shield (final check at hull radius)
                   b.dead = true;
                   b.vel.x = 0;
                   b.vel.y = 0;
@@ -1975,7 +1878,7 @@ export function processBulletCollisions() {
                       damageAsteroids: true,
                       damageEnemies: true,
                       ignoreOwner: true
-                    })
+                    ,`n                      isExplosive: true`n})
                   );
                 }
 
@@ -2018,7 +1921,6 @@ export function processBulletCollisions() {
 
                 if (shouldCheckOuterShield && e.shieldSegments[segmentIdx] > 0) {
                   const segmentHp = e.shieldSegments[segmentIdx];
-                  _shieldBypassLog("Pinwheel OUTER SHIELD HIT - segment", segmentIdx, "took", b.damage, "entity hp", e.hp);
                   if (b.damage >= segmentHp) {
                     e.shieldSegments[segmentIdx] = 0;
                   } else {
@@ -2029,9 +1931,6 @@ export function processBulletCollisions() {
                   e.aggro = true;
                   if (_playSound) _playSound("enemy_shield_hit");
                   if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
-                  b.dead = true;
-                  b.vel.x = 0;
-                  b.vel.y = 0;
                 }
               }
               // Check inner shield (if bullet is within inner shield radius but outside hull)
@@ -2063,10 +1962,6 @@ export function processBulletCollisions() {
                   e.aggro = true;
                   if (_playSound) _playSound("enemy_shield_hit");
                   if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#ff0");
-                  _shieldBypassLog("Pinwheel INNER SHIELD HIT - segment", segmentIdx, "took", b.damage, "entity hp", e.hp);
-                  b.dead = true;
-                  b.vel.x = 0;
-                  b.vel.y = 0;
                 }
               }
               // Also check if bullet is inside hull but would pass through active shields
@@ -2106,9 +2001,6 @@ export function processBulletCollisions() {
                       e.aggro = true;
                       if (_playSound) _playSound("enemy_shield_hit");
                       if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#ff0");
-                      b.dead = true;
-                      b.vel.x = 0;
-                      b.vel.y = 0;
                     }
                   }
 
@@ -2132,9 +2024,6 @@ export function processBulletCollisions() {
                       e.aggro = true;
                       if (_playSound) _playSound("enemy_shield_hit");
                       if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
-                      b.dead = true;
-                      b.vel.x = 0;
-                      b.vel.y = 0;
                     }
                   }
                 }
@@ -2142,122 +2031,16 @@ export function processBulletCollisions() {
 
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
-                // Final gate: check shield at bullet's angle so we never apply hull damage when a segment is still up.
-                // Use explicit "angle within segment arc" check so we block whenever the bullet is inside shield radius and any segment has HP.
-                const angle = Math.atan2(dy, dx);
-                let hasShieldAtAngle = false;
-                /** When blocking, which segment took the hit: { inner: index } or { outer: index } */
-                let blockingSegment = null;
-
-                const isPinwheelOrCave =
-                  e instanceof Pinwheel ||
-                  e instanceof CavePinwheel1 ||
-                  e instanceof CavePinwheel2 ||
-                  e instanceof CavePinwheel3;
-
-                if (e.innerShieldSegments && e.innerShieldSegments.length > 0) {
-                  const innerCount = e.innerShieldSegments.length;
-                  const innerAngle = (Math.PI * 2) / innerCount;
-                  const normInner =
-                    ((angle - (e.innerShieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
-                    (Math.PI * 2);
-                  const innerIdx = Math.floor(normInner / innerAngle) % innerCount;
-                  if (e.innerShieldSegments[innerIdx] > 0) {
-                    hasShieldAtAngle = true;
-                    blockingSegment = { inner: innerIdx };
-                  }
-                  // Fallback: any segment with HP contains this angle (handles boundaries)
-                  if (!hasShieldAtAngle && isPinwheelOrCave) {
-                    for (let i = 0; i < innerCount; i++) {
-                      if (e.innerShieldSegments[i] <= 0) continue;
-                      const a0 = i * innerAngle;
-                      const a1 = (i + 1) * innerAngle;
-                      if (normInner >= a0 - 0.02 && normInner < a1 + 0.02) {
-                        hasShieldAtAngle = true;
-                        blockingSegment = { inner: i };
-                        break;
-                      }
-                    }
-                  }
+                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                if (!critResult.isCrit) {
+                  showDamageFloatingText(e.pos.x, e.pos.y, critResult.damage, false);
                 }
-                if (!hasShieldAtAngle && e.shieldSegments && e.shieldSegments.length > 0) {
-                  const segCount = e.shieldSegments.length;
-                  const segAngle = (Math.PI * 2) / segCount;
-                  const normOuter =
-                    ((angle - (e.shieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
-                    (Math.PI * 2);
-                  const outerIdx = Math.floor(normOuter / segAngle) % segCount;
-                  if (e.shieldSegments[outerIdx] > 0) {
-                    hasShieldAtAngle = true;
-                    blockingSegment = { outer: outerIdx };
-                  }
-                  // Fallback: any segment with HP contains this angle (handles boundaries)
-                  if (!hasShieldAtAngle && isPinwheelOrCave) {
-                    for (let i = 0; i < segCount; i++) {
-                      if (e.shieldSegments[i] <= 0) continue;
-                      const a0 = i * segAngle;
-                      const a1 = (i + 1) * segAngle;
-                      if (normOuter >= a0 - 0.02 && normOuter < a1 + 0.02) {
-                        hasShieldAtAngle = true;
-                        blockingSegment = { outer: i };
-                        break;
-                      }
-                    }
-                  }
-                }
-
-                if (!hasShieldAtAngle) {
-                  const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
-                  if (!critResult.isCrit) {
-                    showDamageFloatingText(e.pos.x, e.pos.y, critResult.damage, false);
-                  }
-                  trackDamageByWeaponType(b, critResult.damage);
-                  if (e instanceof Pinwheel || e instanceof CavePinwheel1 || e instanceof CavePinwheel2 || e instanceof CavePinwheel3) {
-                    _shieldBypassLog(
-                      (e instanceof Pinwheel ? "Pinwheel" : "CavePinwheel") + " HULL BYPASS - damage",
-                      critResult.damage,
-                      "dist",
-                      dist.toFixed(0),
-                      "ignoreShields",
-                      !!b.ignoreShields,
-                      "entity hp",
-                      e.hp,
-                      "->",
-                      e.hp - critResult.damage
-                    );
-                  }
-                  e.hp -= critResult.damage;
-                  hit = true;
-                  e.aggro = true;
-                  if (_playSound) _playSound("hit");
-                  if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, "#fff");
-                } else {
-                  // Shield at this angle still active - block and apply damage to the segment
-                  hit = true;
-                  e.aggro = true;
-                  if (blockingSegment) {
-                    if (blockingSegment.inner !== undefined) {
-                      const idx = blockingSegment.inner;
-                      const segHp = e.innerShieldSegments[idx];
-                      if (segHp > 0) {
-                        e.innerShieldSegments[idx] = Math.max(0, segHp - b.damage);
-                        e.shieldsDirty = true;
-                      }
-                    } else if (blockingSegment.outer !== undefined) {
-                      const idx = blockingSegment.outer;
-                      const segHp = e.shieldSegments[idx];
-                      if (segHp > 0) {
-                        e.shieldSegments[idx] = Math.max(0, segHp - b.damage);
-                        e.shieldsDirty = true;
-                      }
-                    }
-                  }
-                  if (_playSound) _playSound("enemy_shield_hit");
-                  if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
-                  b.dead = true;
-                  b.vel.x = 0;
-                  b.vel.y = 0;
-                }
+                trackDamageByWeaponType(b, critResult.damage);
+                e.hp -= critResult.damage;
+                hit = true;
+                e.aggro = true;
+                if (_playSound) _playSound("hit");
+                if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, "#fff");
 
                 if (
                   GameContext.player.chainLightningCount &&
@@ -2358,7 +2141,7 @@ export function processBulletCollisions() {
                       damageAsteroids: true,
                       damageEnemies: true,
                       ignoreOwner: true
-                    })
+                    ,`n                      isExplosive: true`n})
                   );
                 }
 
@@ -2411,7 +2194,6 @@ export function processBulletCollisions() {
 
                 if (shouldCheckOuterShield && e.shieldSegments[segmentIdx] > 0) {
                   const segmentHp = e.shieldSegments[segmentIdx];
-                  _shieldBypassLog("CavePinwheel OUTER SHIELD HIT - segment", segmentIdx, "took", b.damage, "entity hp", e.hp);
                   if (b.damage >= segmentHp) {
                     e.shieldSegments[segmentIdx] = 0;
                   } else {
@@ -2422,9 +2204,6 @@ export function processBulletCollisions() {
                   e.aggro = true;
                   if (_playSound) _playSound("enemy_shield_hit");
                   if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
-                  b.dead = true;
-                  b.vel.x = 0;
-                  b.vel.y = 0;
                 }
               }
               // Check inner shield (if bullet is within inner shield radius but outside hull)
@@ -2456,10 +2235,6 @@ export function processBulletCollisions() {
                   e.aggro = true;
                   if (_playSound) _playSound("enemy_shield_hit");
                   if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#ff0");
-                  _shieldBypassLog("CavePinwheel INNER SHIELD HIT - segment", segmentIdx, "took", b.damage, "entity hp", e.hp);
-                  b.dead = true;
-                  b.vel.x = 0;
-                  b.vel.y = 0;
                 }
               }
               // Also check if bullet is inside hull but would pass through active shields
@@ -2499,9 +2274,6 @@ export function processBulletCollisions() {
                       e.aggro = true;
                       if (_playSound) _playSound("enemy_shield_hit");
                       if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#ff0");
-                      b.dead = true;
-                      b.vel.x = 0;
-                      b.vel.y = 0;
                     }
                   }
 
@@ -2525,9 +2297,6 @@ export function processBulletCollisions() {
                       e.aggro = true;
                       if (_playSound) _playSound("enemy_shield_hit");
                       if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
-                      b.dead = true;
-                      b.vel.x = 0;
-                      b.vel.y = 0;
                     }
                   }
                 }
@@ -2535,122 +2304,16 @@ export function processBulletCollisions() {
 
               const hitRadius = e.radius + b.radius;
               if (!hit && distSq < hitRadius * hitRadius) {
-                // Final gate: check shield at bullet's angle so we never apply hull damage when a segment is still up.
-                // Use explicit "angle within segment arc" check so we block whenever the bullet is inside shield radius and any segment has HP.
-                const angle = Math.atan2(dy, dx);
-                let hasShieldAtAngle = false;
-                /** When blocking, which segment took the hit: { inner: index } or { outer: index } */
-                let blockingSegment = null;
-
-                const isPinwheelOrCave =
-                  e instanceof Pinwheel ||
-                  e instanceof CavePinwheel1 ||
-                  e instanceof CavePinwheel2 ||
-                  e instanceof CavePinwheel3;
-
-                if (e.innerShieldSegments && e.innerShieldSegments.length > 0) {
-                  const innerCount = e.innerShieldSegments.length;
-                  const innerAngle = (Math.PI * 2) / innerCount;
-                  const normInner =
-                    ((angle - (e.innerShieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
-                    (Math.PI * 2);
-                  const innerIdx = Math.floor(normInner / innerAngle) % innerCount;
-                  if (e.innerShieldSegments[innerIdx] > 0) {
-                    hasShieldAtAngle = true;
-                    blockingSegment = { inner: innerIdx };
-                  }
-                  // Fallback: any segment with HP contains this angle (handles boundaries)
-                  if (!hasShieldAtAngle && isPinwheelOrCave) {
-                    for (let i = 0; i < innerCount; i++) {
-                      if (e.innerShieldSegments[i] <= 0) continue;
-                      const a0 = i * innerAngle;
-                      const a1 = (i + 1) * innerAngle;
-                      if (normInner >= a0 - 0.02 && normInner < a1 + 0.02) {
-                        hasShieldAtAngle = true;
-                        blockingSegment = { inner: i };
-                        break;
-                      }
-                    }
-                  }
+                const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
+                if (!critResult.isCrit) {
+                  showDamageFloatingText(e.pos.x, e.pos.y, critResult.damage, false);
                 }
-                if (!hasShieldAtAngle && e.shieldSegments && e.shieldSegments.length > 0) {
-                  const segCount = e.shieldSegments.length;
-                  const segAngle = (Math.PI * 2) / segCount;
-                  const normOuter =
-                    ((angle - (e.shieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
-                    (Math.PI * 2);
-                  const outerIdx = Math.floor(normOuter / segAngle) % segCount;
-                  if (e.shieldSegments[outerIdx] > 0) {
-                    hasShieldAtAngle = true;
-                    blockingSegment = { outer: outerIdx };
-                  }
-                  // Fallback: any segment with HP contains this angle (handles boundaries)
-                  if (!hasShieldAtAngle && isPinwheelOrCave) {
-                    for (let i = 0; i < segCount; i++) {
-                      if (e.shieldSegments[i] <= 0) continue;
-                      const a0 = i * segAngle;
-                      const a1 = (i + 1) * segAngle;
-                      if (normOuter >= a0 - 0.02 && normOuter < a1 + 0.02) {
-                        hasShieldAtAngle = true;
-                        blockingSegment = { outer: i };
-                        break;
-                      }
-                    }
-                  }
-                }
-
-                if (!hasShieldAtAngle) {
-                  const critResult = applyCriticalStrike(b.damage, e.pos.x, e.pos.y);
-                  if (!critResult.isCrit) {
-                    showDamageFloatingText(e.pos.x, e.pos.y, critResult.damage, false);
-                  }
-                  trackDamageByWeaponType(b, critResult.damage);
-                  if (e instanceof Pinwheel || e instanceof CavePinwheel1 || e instanceof CavePinwheel2 || e instanceof CavePinwheel3) {
-                    _shieldBypassLog(
-                      (e instanceof Pinwheel ? "Pinwheel" : "CavePinwheel") + " HULL BYPASS - damage",
-                      critResult.damage,
-                      "dist",
-                      dist.toFixed(0),
-                      "ignoreShields",
-                      !!b.ignoreShields,
-                      "entity hp",
-                      e.hp,
-                      "->",
-                      e.hp - critResult.damage
-                    );
-                  }
-                  e.hp -= critResult.damage;
-                  hit = true;
-                  e.aggro = true;
-                  if (_playSound) _playSound("hit");
-                  if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, "#fff");
-                } else {
-                  // Shield at this angle still active - block and apply damage to the segment
-                  hit = true;
-                  e.aggro = true;
-                  if (blockingSegment) {
-                    if (blockingSegment.inner !== undefined) {
-                      const idx = blockingSegment.inner;
-                      const segHp = e.innerShieldSegments[idx];
-                      if (segHp > 0) {
-                        e.innerShieldSegments[idx] = Math.max(0, segHp - b.damage);
-                        e.shieldsDirty = true;
-                      }
-                    } else if (blockingSegment.outer !== undefined) {
-                      const idx = blockingSegment.outer;
-                      const segHp = e.shieldSegments[idx];
-                      if (segHp > 0) {
-                        e.shieldSegments[idx] = Math.max(0, segHp - b.damage);
-                        e.shieldsDirty = true;
-                      }
-                    }
-                  }
-                  if (_playSound) _playSound("enemy_shield_hit");
-                  if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
-                  b.dead = true;
-                  b.vel.x = 0;
-                  b.vel.y = 0;
-                }
+                trackDamageByWeaponType(b, critResult.damage);
+                e.hp -= critResult.damage;
+                hit = true;
+                e.aggro = true;
+                if (_playSound) _playSound("hit");
+                if (_spawnParticles) _spawnParticles(e.pos.x, e.pos.y, 3, "#fff");
 
                 if (
                   GameContext.player.chainLightningCount &&
@@ -2751,7 +2414,7 @@ export function processBulletCollisions() {
                       damageAsteroids: true,
                       damageEnemies: true,
                       ignoreOwner: true
-                    })
+                    ,`n                      isExplosive: true`n})
                   );
                 }
 
@@ -2802,7 +2465,7 @@ export function processBulletCollisions() {
                         damageAsteroids: true,
                         damageEnemies: true,
                         ignoreOwner: true
-                      })
+                      ,`n                      isExplosive: true`n})
                     );
                   }
 
@@ -2848,7 +2511,7 @@ export function processBulletCollisions() {
                         damageAsteroids: true,
                         damageEnemies: true,
                         ignoreOwner: true
-                      })
+                      ,`n                      isExplosive: true`n})
                     );
                   }
 
@@ -2994,15 +2657,11 @@ export function processBulletCollisions() {
             const count = GameContext.spaceStation.shieldSegments.length;
             const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
             if (GameContext.spaceStation.shieldSegments[idx] > 0) {
-              const segHp = GameContext.spaceStation.shieldSegments[idx];
-              GameContext.spaceStation.shieldSegments[idx] = Math.max(0, segHp - b.damage);
+              GameContext.spaceStation.shieldSegments[idx]--;
               GameContext.spaceStation.shieldsDirty = true;
               hit = true;
               if (_playSound) _playSound("shield_hit");
               if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#0ff");
-              b.dead = true;
-              b.vel.x = 0;
-              b.vel.y = 0;
             }
           }
           if (
@@ -3020,114 +2679,46 @@ export function processBulletCollisions() {
             const count = GameContext.spaceStation.innerShieldSegments.length;
             const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
             if (GameContext.spaceStation.innerShieldSegments[idx] > 0) {
-              const segHp = GameContext.spaceStation.innerShieldSegments[idx];
-              GameContext.spaceStation.innerShieldSegments[idx] = Math.max(0, segHp - b.damage);
+              GameContext.spaceStation.innerShieldSegments[idx]--;
               GameContext.spaceStation.shieldsDirty = true;
               hit = true;
               if (_playSound) _playSound("shield_hit");
               if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#f0f");
-              b.dead = true;
-              b.vel.x = 0;
-              b.vel.y = 0;
             }
           }
           if (!hit && dist < GameContext.spaceStation.radius + b.radius) {
-            // Final gate: block and damage segment if shield still up at this angle
-            const angle = Math.atan2(
-              b.pos.y - GameContext.spaceStation.pos.y,
-              b.pos.x - GameContext.spaceStation.pos.x
+            trackDamageByWeaponType(b, b.damage);
+            GameContext.spaceStation.hp -= b.damage;
+            showDamageFloatingText(
+              GameContext.spaceStation.pos.x,
+              GameContext.spaceStation.pos.y,
+              b.damage,
+              false
             );
-            let hasShieldAtAngle = false;
-            let blockingInnerIdx = -1;
-            let blockingOuterIdx = -1;
-            if (GameContext.spaceStation.innerShieldSegments && GameContext.spaceStation.innerShieldSegments.length > 0) {
-              const norm =
-                ((angle - (GameContext.spaceStation.innerShieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
-                (Math.PI * 2);
-              const innerCount = GameContext.spaceStation.innerShieldSegments.length;
-              const innerAngle = (Math.PI * 2) / innerCount;
-              const innerIdx = Math.floor(norm / innerAngle) % innerCount;
-              if (GameContext.spaceStation.innerShieldSegments[innerIdx] > 0) {
-                hasShieldAtAngle = true;
-                blockingInnerIdx = innerIdx;
-              }
-            }
+            hit = true;
+            if (_playSound) _playSound("hit");
+            if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#fff");
+
+            // Explosive Rounds meta upgrade
             if (
-              !hasShieldAtAngle &&
-              GameContext.spaceStation.shieldSegments &&
-              GameContext.spaceStation.shieldSegments.length > 0
+              GameContext.player &&
+              GameContext.player.stats &&
+              GameContext.player.stats.explosiveChance > 0 &&
+              Math.random() < GameContext.player.stats.explosiveChance
             ) {
-              const norm =
-                ((angle - (GameContext.spaceStation.shieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
-                (Math.PI * 2);
-              const segCount = GameContext.spaceStation.shieldSegments.length;
-              const segAngle = (Math.PI * 2) / segCount;
-              const outerIdx = Math.floor(norm / segAngle) % segCount;
-              if (GameContext.spaceStation.shieldSegments[outerIdx] > 0) {
-                hasShieldAtAngle = true;
-                blockingOuterIdx = outerIdx;
-              }
-            }
-            if (hasShieldAtAngle) {
-              hit = true;
-              if (blockingInnerIdx >= 0) {
-                const segHp = GameContext.spaceStation.innerShieldSegments[blockingInnerIdx];
-                if (segHp > 0) {
-                  GameContext.spaceStation.innerShieldSegments[blockingInnerIdx] = Math.max(
-                    0,
-                    segHp - b.damage
-                  );
-                  GameContext.spaceStation.shieldsDirty = true;
-                }
-              } else if (blockingOuterIdx >= 0) {
-                const segHp = GameContext.spaceStation.shieldSegments[blockingOuterIdx];
-                if (segHp > 0) {
-                  GameContext.spaceStation.shieldSegments[blockingOuterIdx] = Math.max(
-                    0,
-                    segHp - b.damage
-                  );
-                  GameContext.spaceStation.shieldsDirty = true;
-                }
-              }
-              if (_playSound) _playSound("shield_hit");
-              if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#0ff");
-              b.dead = true;
-              b.vel.x = 0;
-              b.vel.y = 0;
-            } else {
-              trackDamageByWeaponType(b, b.damage);
-              GameContext.spaceStation.hp -= b.damage;
-              showDamageFloatingText(
-                GameContext.spaceStation.pos.x,
-                GameContext.spaceStation.pos.y,
-                b.damage,
-                false
+              const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+              const explosiveRange = 200;
+              GameContext.shockwaves.push(
+                new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
+                  damageAsteroids: true,
+                  damageEnemies: true,
+                  ignoreOwner: true
+                ,`n                      isExplosive: true`n})
               );
-              hit = true;
-              if (_playSound) _playSound("hit");
-              if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#fff");
+            }
 
-              // Explosive Rounds meta upgrade
-              if (
-                GameContext.player &&
-                GameContext.player.stats &&
-                GameContext.player.stats.explosiveChance > 0 &&
-                Math.random() < GameContext.player.stats.explosiveChance
-              ) {
-                const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
-                const explosiveRange = 200;
-                GameContext.shockwaves.push(
-                  new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
-                    damageAsteroids: true,
-                    damageEnemies: true,
-                    ignoreOwner: true
-                  })
-                );
-              }
-
-              if (GameContext.spaceStation.hp <= 0) {
-                if (_handleSpaceStationDestroyed) _handleSpaceStationDestroyed();
-              }
+            if (GameContext.spaceStation.hp <= 0) {
+              if (_handleSpaceStationDestroyed) _handleSpaceStationDestroyed();
             }
           }
         }
@@ -3144,9 +2735,6 @@ export function processBulletCollisions() {
             hit = true;
             if (_playSound) _playSound("shield_hit");
             if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#0ff");
-            b.dead = true;
-            b.vel.x = 0;
-            b.vel.y = 0;
           }
           const outerUp =
             GameContext.destroyer.shieldSegments &&
@@ -3170,14 +2758,15 @@ export function processBulletCollisions() {
             const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
             if (GameContext.destroyer.shieldSegments[idx] > 0) {
               const segmentHp = GameContext.destroyer.shieldSegments[idx];
-              GameContext.destroyer.shieldSegments[idx] = Math.max(0, segmentHp - b.damage);
+              if (b.damage > segmentHp) {
+                GameContext.destroyer.shieldSegments[idx] = 0;
+              } else {
+                GameContext.destroyer.shieldSegments[idx] -= b.damage;
+              }
               GameContext.destroyer.shieldsDirty = true;
               hit = true;
               if (_playSound) _playSound("shield_hit");
               if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#0ff");
-              b.dead = true;
-              b.vel.x = 0;
-              b.vel.y = 0;
             }
           }
           if (
@@ -3196,89 +2785,23 @@ export function processBulletCollisions() {
             const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
             if (GameContext.destroyer.innerShieldSegments[idx] > 0) {
               const segmentHp = GameContext.destroyer.innerShieldSegments[idx];
-              GameContext.destroyer.innerShieldSegments[idx] = Math.max(0, segmentHp - b.damage);
+              if (b.damage > segmentHp) {
+                GameContext.destroyer.innerShieldSegments[idx] = 0;
+              } else {
+                GameContext.destroyer.innerShieldSegments[idx] -= b.damage;
+              }
               GameContext.destroyer.shieldsDirty = true;
               hit = true;
               if (_playSound) _playSound("shield_hit");
               if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#f0f");
-              b.dead = true;
-              b.vel.x = 0;
-              b.vel.y = 0;
             }
           }
-          const destroyerHullHit =
-            typeof GameContext.destroyer.hitTestCircle === "function"
+          if (
+            !hit &&
+            (typeof GameContext.destroyer.hitTestCircle === "function"
               ? GameContext.destroyer.hitTestCircle(b.pos.x, b.pos.y, b.radius)
-              : dist < GameContext.destroyer.radius + b.radius;
-          if (!hit && destroyerHullHit) {
-            // Final gate: block and damage segment if shield still up at this angle
-            const angle = Math.atan2(
-              b.pos.y - GameContext.destroyer.pos.y,
-              b.pos.x - GameContext.destroyer.pos.x
-            );
-            let hasShieldAtAngle = false;
-            let blockingInnerIdx = -1;
-            let blockingOuterIdx = -1;
-            if (
-              GameContext.destroyer.innerShieldSegments &&
-              GameContext.destroyer.innerShieldSegments.length > 0
-            ) {
-              const norm =
-                ((angle - (GameContext.destroyer.innerShieldRotation ?? 0)) % (Math.PI * 2) +
-                  Math.PI * 2) %
-                (Math.PI * 2);
-              const innerCount = GameContext.destroyer.innerShieldSegments.length;
-              const innerAngle = (Math.PI * 2) / innerCount;
-              const innerIdx = Math.floor(norm / innerAngle) % innerCount;
-              if (GameContext.destroyer.innerShieldSegments[innerIdx] > 0) {
-                hasShieldAtAngle = true;
-                blockingInnerIdx = innerIdx;
-              }
-            }
-            if (
-              !hasShieldAtAngle &&
-              GameContext.destroyer.shieldSegments &&
-              GameContext.destroyer.shieldSegments.length > 0
-            ) {
-              const norm =
-                ((angle - (GameContext.destroyer.shieldRotation ?? 0)) % (Math.PI * 2) +
-                  Math.PI * 2) %
-                (Math.PI * 2);
-              const segCount = GameContext.destroyer.shieldSegments.length;
-              const segAngle = (Math.PI * 2) / segCount;
-              const outerIdx = Math.floor(norm / segAngle) % segCount;
-              if (GameContext.destroyer.shieldSegments[outerIdx] > 0) {
-                hasShieldAtAngle = true;
-                blockingOuterIdx = outerIdx;
-              }
-            }
-            if (hasShieldAtAngle) {
-              hit = true;
-              if (blockingInnerIdx >= 0) {
-                const segHp = GameContext.destroyer.innerShieldSegments[blockingInnerIdx];
-                if (segHp > 0) {
-                  GameContext.destroyer.innerShieldSegments[blockingInnerIdx] = Math.max(
-                    0,
-                    segHp - b.damage
-                  );
-                  GameContext.destroyer.shieldsDirty = true;
-                }
-              } else if (blockingOuterIdx >= 0) {
-                const segHp = GameContext.destroyer.shieldSegments[blockingOuterIdx];
-                if (segHp > 0) {
-                  GameContext.destroyer.shieldSegments[blockingOuterIdx] = Math.max(
-                    0,
-                    segHp - b.damage
-                  );
-                  GameContext.destroyer.shieldsDirty = true;
-                }
-              }
-              if (_playSound) _playSound("shield_hit");
-              if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#0ff");
-              b.dead = true;
-              b.vel.x = 0;
-              b.vel.y = 0;
-            } else {
+              : dist < GameContext.destroyer.radius + b.radius)
+          ) {
             const hpBefore = GameContext.destroyer.hp;
             trackDamageByWeaponType(b, b.damage);
             GameContext.destroyer.hp -= b.damage;
@@ -3306,13 +2829,12 @@ export function processBulletCollisions() {
                   damageAsteroids: true,
                   damageEnemies: true,
                   ignoreOwner: true
-                })
+                ,`n                      isExplosive: true`n})
               );
             }
 
             if (GameContext.destroyer.hp <= 0) {
               GameContext.destroyer.kill();
-            }
             }
           }
         }
@@ -3353,24 +2875,18 @@ export function processBulletCollisions() {
               outerShieldsUp &&
               dist < GameContext.boss.shieldRadius + b.radius
             ) {
-              const angle =
+              let angle =
                 Math.atan2(b.pos.y - GameContext.boss.pos.y, b.pos.x - GameContext.boss.pos.x) -
                 GameContext.boss.shieldRotation;
-              const norm =
-                ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+              while (angle < 0) angle += Math.PI * 2;
               const segCount = GameContext.boss.shieldSegments.length;
-              const segAngle = (Math.PI * 2) / segCount;
-              const segIndex = Math.floor(norm / segAngle) % segCount;
+              const segIndex = Math.floor((angle / (Math.PI * 2)) * segCount) % segCount;
               if (GameContext.boss.shieldSegments[segIndex] > 0) {
-                const segHp = GameContext.boss.shieldSegments[segIndex];
-                GameContext.boss.shieldSegments[segIndex] = Math.max(0, segHp - b.damage);
+                GameContext.boss.shieldSegments[segIndex]--;
                 GameContext.boss.shieldsDirty = true;
                 hit = true;
                 if (_playSound) _playSound("shield_hit");
                 if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#0ff");
-                b.dead = true;
-                b.vel.x = 0;
-                b.vel.y = 0;
               }
             }
             if (
@@ -3379,24 +2895,18 @@ export function processBulletCollisions() {
               innerShieldsUp &&
               dist < GameContext.boss.innerShieldRadius + b.radius
             ) {
-              const angle =
+              let angle =
                 Math.atan2(b.pos.y - GameContext.boss.pos.y, b.pos.x - GameContext.boss.pos.x) -
                 GameContext.boss.innerShieldRotation;
-              const norm =
-                ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+              while (angle < 0) angle += Math.PI * 2;
               const count = GameContext.boss.innerShieldSegments.length;
-              const innerAngle = (Math.PI * 2) / count;
-              const segIndex = Math.floor(norm / innerAngle) % count;
+              const segIndex = Math.floor((angle / (Math.PI * 2)) * count) % count;
               if (GameContext.boss.innerShieldSegments[segIndex] > 0) {
-                const segHp = GameContext.boss.innerShieldSegments[segIndex];
-                GameContext.boss.innerShieldSegments[segIndex] = Math.max(0, segHp - b.damage);
+                GameContext.boss.innerShieldSegments[segIndex]--;
                 GameContext.boss.shieldsDirty = true;
                 hit = true;
                 if (_playSound) _playSound("shield_hit");
                 if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
-                b.dead = true;
-                b.vel.x = 0;
-                b.vel.y = 0;
               }
             }
 
@@ -3420,49 +2930,27 @@ export function processBulletCollisions() {
                     ? GameContext.boss.hitTestCircle(b.pos.x, b.pos.y, b.radius)
                     : dist < hullRadius + b.radius;
                 if (hitTest) {
-                  // Check shield segments at bullet's angle (same robust logic as Pinwheel/Gunboat)
+                  // Check shield segments at bullet's angle, not all segments
+                  // This allows damage through destroyed shield shards
                   const angle = Math.atan2(
                     b.pos.y - GameContext.boss.pos.y,
                     b.pos.x - GameContext.boss.pos.x
                   );
                   let hasShieldAtAngle = false;
-                  /** When blocking, which segment took the hit: { inner: index } or { outer: index } */
-                  let blockingSegment = null;
-
-                  const isBossWithShields =
-                    GameContext.boss.shieldSegments?.length ||
-                    GameContext.boss.isDungeonBoss ||
-                    GameContext.boss.isCaveBoss ||
-                    GameContext.boss instanceof Cruiser;
 
                   // Check inner shield at this angle
                   if (
                     GameContext.boss.innerShieldSegments &&
                     GameContext.boss.innerShieldSegments.length > 0
                   ) {
-                    const normInner =
-                      ((angle - (GameContext.boss.innerShieldRotation ?? 0)) % (Math.PI * 2) +
-                        Math.PI * 2) %
+                    const normalizedAngle =
+                      (angle - (GameContext.boss.innerShieldRotation || 0) + Math.PI * 2) %
                       (Math.PI * 2);
                     const innerCount = GameContext.boss.innerShieldSegments.length;
                     const innerAngle = (Math.PI * 2) / innerCount;
-                    const innerIdx = Math.floor(normInner / innerAngle) % innerCount;
-                    if (GameContext.boss.innerShieldSegments[innerIdx] > 0) {
+                    const segmentIdx = Math.floor(normalizedAngle / innerAngle) % innerCount;
+                    if (GameContext.boss.innerShieldSegments[segmentIdx] > 0) {
                       hasShieldAtAngle = true;
-                      blockingSegment = { inner: innerIdx };
-                    }
-                    // Fallback: any segment with HP contains this angle (handles boundaries)
-                    if (!hasShieldAtAngle && isBossWithShields) {
-                      for (let i = 0; i < innerCount; i++) {
-                        if (GameContext.boss.innerShieldSegments[i] <= 0) continue;
-                        const a0 = i * innerAngle;
-                        const a1 = (i + 1) * innerAngle;
-                        if (normInner >= a0 - 0.02 && normInner < a1 + 0.02) {
-                          hasShieldAtAngle = true;
-                          blockingSegment = { inner: i };
-                          break;
-                        }
-                      }
                     }
                   }
 
@@ -3472,29 +2960,14 @@ export function processBulletCollisions() {
                     GameContext.boss.shieldSegments &&
                     GameContext.boss.shieldSegments.length > 0
                   ) {
-                    const normOuter =
-                      ((angle - (GameContext.boss.shieldRotation ?? 0)) % (Math.PI * 2) +
-                        Math.PI * 2) %
+                    const normalizedAngle =
+                      (angle - (GameContext.boss.shieldRotation || 0) + Math.PI * 2) %
                       (Math.PI * 2);
                     const segCount = GameContext.boss.shieldSegments.length;
                     const segAngle = (Math.PI * 2) / segCount;
-                    const outerIdx = Math.floor(normOuter / segAngle) % segCount;
-                    if (GameContext.boss.shieldSegments[outerIdx] > 0) {
+                    const segmentIdx = Math.floor(normalizedAngle / segAngle) % segCount;
+                    if (GameContext.boss.shieldSegments[segmentIdx] > 0) {
                       hasShieldAtAngle = true;
-                      blockingSegment = { outer: outerIdx };
-                    }
-                    // Fallback: any segment with HP contains this angle (handles boundaries)
-                    if (!hasShieldAtAngle && isBossWithShields) {
-                      for (let i = 0; i < segCount; i++) {
-                        if (GameContext.boss.shieldSegments[i] <= 0) continue;
-                        const a0 = i * segAngle;
-                        const a1 = (i + 1) * segAngle;
-                        if (normOuter >= a0 - 0.02 && normOuter < a1 + 0.02) {
-                          hasShieldAtAngle = true;
-                          blockingSegment = { outer: i };
-                          break;
-                        }
-                      }
                     }
                   }
 
@@ -3512,36 +2985,10 @@ export function processBulletCollisions() {
                     if (_playSound) _playSound("hit");
                     if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#fff");
                   } else {
-                    // Shield at this angle still active - block and apply damage to the segment
+                    // Shield at this angle is still active - block it
                     hit = true;
-                    if (blockingSegment) {
-                      if (blockingSegment.inner !== undefined) {
-                        const idx = blockingSegment.inner;
-                        const segHp = GameContext.boss.innerShieldSegments[idx];
-                        if (segHp > 0) {
-                          GameContext.boss.innerShieldSegments[idx] = Math.max(
-                            0,
-                            segHp - b.damage
-                          );
-                          GameContext.boss.shieldsDirty = true;
-                        }
-                      } else if (blockingSegment.outer !== undefined) {
-                        const idx = blockingSegment.outer;
-                        const segHp = GameContext.boss.shieldSegments[idx];
-                        if (segHp > 0) {
-                          GameContext.boss.shieldSegments[idx] = Math.max(
-                            0,
-                            segHp - b.damage
-                          );
-                          GameContext.boss.shieldsDirty = true;
-                        }
-                      }
-                    }
                     if (_playSound) _playSound("enemy_shield_hit");
                     if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
-                    b.dead = true;
-                    b.vel.x = 0;
-                    b.vel.y = 0;
                   }
 
                   // Explosive Rounds meta upgrade
@@ -3558,7 +3005,7 @@ export function processBulletCollisions() {
                         damageAsteroids: true,
                         damageEnemies: true,
                         ignoreOwner: true
-                      })
+                      ,`n                      isExplosive: true`n})
                     );
                   }
 
@@ -3584,3 +3031,4 @@ export function processBulletCollisions() {
     if (_setProjectileImpactSoundContext) _setProjectileImpactSoundContext(false);
   }
 }
+

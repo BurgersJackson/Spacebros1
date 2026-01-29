@@ -14,8 +14,7 @@ if (hasFlag("--no-gpu")) env.ELECTRON_NO_GPU = "1";
 
 const child = spawn(electronBinary, ["."], {
   stdio: "inherit",
-  env,
-  windowsHide: true
+  env
 });
 
 child.on("exit", (code) => process.exit(code ?? 0));

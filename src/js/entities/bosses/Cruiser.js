@@ -54,8 +54,9 @@ export class Cruiser extends Enemy {
     }
     this.hp = hp;
     this.maxHp = this.hp;
-    this.shieldRadius = Math.round(34 * this.cruiserHullScale);
-    this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
+    // Increased shield radii for better hit detection (2.0x hull outer, 1.62x hull inner)
+    this.shieldRadius = Math.round(44 * this.cruiserHullScale);
+    this.innerShieldRadius = Math.round(36 * this.cruiserHullScale);
     this.shieldSegments = new Array(22).fill(shieldStrength);
     this.innerShieldSegments = new Array(18).fill(shieldStrength);
     this.innerShieldRotation = 0;

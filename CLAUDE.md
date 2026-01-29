@@ -373,6 +373,7 @@ Available in browser console (F12) during gameplay:
 - `Ctrl+Shift+6` - Enter Dungeon1 instantly
 - `Ctrl+Shift+D + 4-9` - Spawn specific dungeon bosses (4=NecroticHive, 5=CerebralPsion, 6=Fleshforge, 7=VortexMatriarch, 8=ChitinusPrime, 9=PsyLich)
 - `Ctrl+Shift+H` - Toggle collision debug visualization (`DEBUG_COLLISION`)
+- `Ctrl+Shift+S` - Toggle shield bypass debug for Pinwheel/Gunboat (console logs when shields hit or hull takes damage; `DEBUG_SHIELD_BYPASS`)
 
 ## Upgrade System
 
