@@ -124,7 +124,7 @@ export class Spaceship extends Entity {
     this.lastShieldRegenTime = Date.now();
     this.lastHpRegenTime = Date.now();
 
-    this.shieldRadius = 45 * PLAYER_SHIELD_RADIUS_SCALE;
+    this.shieldRadius = 50 * PLAYER_SHIELD_RADIUS_SCALE;
     this.maxShieldSegments = 8;
     this.shieldSegments = new Array(8).fill(2);
     this.shieldRotation = 0;
@@ -1687,30 +1687,30 @@ export class Spaceship extends Entity {
       const comboBonus = 1 + (this.comboStacks / this.comboMaxStacks) * this.stats.comboMaxBonus;
       damage *= comboBonus;
     }
-      // Use ship facing angle for all ship types
-      const forwardAngle = this.angle;
-      
-      // Forward laser: +50% range, +25% speed
-      const laserSpeed = 15 * 1.25; // 18.75 (25% faster)
-      const laserRange = 50 * 1.5; // 75 (50% more range)
-      
-      const forwardBullet = this.createBullet(
-         this.pos.x,
-         this.pos.y,
-         forwardAngle,
-         false,
-         damage,
-         laserSpeed,
-         4,
-         "#0f0",
-         null,
-         0,
-         this.stats.pierceCount || 0
-      );
-      forwardBullet.life = laserRange * (this.stats.rangeMult || 1); // Apply range multiplier
-      forwardBullet.weaponType = "turret"; // Forward laser counts as turret damage
-      GameContext.bullets.push(forwardBullet);
-    }
+    // Use ship facing angle for all ship types
+    const forwardAngle = this.angle;
+
+    // Forward laser: +50% range, +25% speed
+    const laserSpeed = 15 * 1.25; // 18.75 (25% faster)
+    const laserRange = 50 * 1.5; // 75 (50% more range)
+
+    const forwardBullet = this.createBullet(
+      this.pos.x,
+      this.pos.y,
+      forwardAngle,
+      false,
+      damage,
+      laserSpeed,
+      4,
+      "#0f0",
+      null,
+      0,
+      this.stats.pierceCount || 0
+    );
+    forwardBullet.life = laserRange * (this.stats.rangeMult || 1); // Apply range multiplier
+    forwardBullet.weaponType = "turret"; // Forward laser counts as turret damage
+    GameContext.bullets.push(forwardBullet);
+  }
   drawLaser(ctx) {
     if (!this.visible || this.dead) {
       if (this._pixiLaserGfx) {
@@ -2162,10 +2162,3 @@ export class Spaceship extends Entity {
 
 // AOE damage function that respects shield penetration mechanics
 // Damages shield shards hit by the AOE, overflow penetrates to player
-
-
-
-
-
-
-

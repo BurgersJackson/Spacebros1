@@ -111,6 +111,7 @@ export const GameContext = {
   suppressWarpGateUntil: 0,
   suppressWarpInputUntil: 0,
   cruiserEncounterCount: 0,
+  bossesDestroyedCount: 0,
   pendingStations: 0,
   currentDestroyerType: 1,
   stationHealthBarVisible: false,
@@ -364,6 +365,7 @@ export const GameContext = {
     this.damageByWeaponType = {};
     this.enemyKills = 0;
     this.bossKills = 0;
+    this.bossesDestroyedCount = 0;
     this.totalDamageDealt = 0;
     this.asteroidGrid.clear();
     this.targetGrid.clear();

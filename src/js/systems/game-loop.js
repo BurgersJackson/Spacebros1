@@ -1631,7 +1631,7 @@ export function gameLoopLogic(opts = null) {
 
   if (GameContext.bossActive && GameContext.boss) {
     if (doUpdate) GameContext.boss.update(deltaTime);
-    if (GameContext.boss.isWarpBoss) {
+    if (GameContext.boss && GameContext.boss.isWarpBoss) {
       GameContext.bossArena.x = GameContext.boss.pos.x;
       GameContext.bossArena.y = GameContext.boss.pos.y;
       GameContext.bossArena.radius = 4000;

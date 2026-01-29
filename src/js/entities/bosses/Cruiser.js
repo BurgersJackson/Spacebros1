@@ -307,7 +307,8 @@ export class Cruiser extends Enemy {
       // No other cruisers, clear boss status
       GameContext.bossActive = false;
       GameContext.boss = null;
-      if (GameContext.cruiserEncounterCount === 2) {
+      GameContext.bossesDestroyedCount++;
+      if (GameContext.bossesDestroyedCount >= 3) {
         GameContext.pendingStations = 1;
         GameContext.nextSpaceStationTime = Date.now() + 30000;
         showOverlayMessage("CRUISER DESTROYED - SPACE STATION IN 30s", "#f80", 4000);

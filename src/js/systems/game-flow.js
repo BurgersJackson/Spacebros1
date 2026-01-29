@@ -250,6 +250,7 @@ export function startGame() {
     GameContext.bossArena.growing = false;
     deps.stopArenaCountdown();
     GameContext.cruiserEncounterCount = 0;
+    GameContext.bossesDestroyedCount = 0;
     GameContext.cruiserTimerPausedAt = null;
     GameContext.dreadManager.upgradesChosen = 0;
     GameContext.dreadManager.timerActive = true;
@@ -612,4 +613,3 @@ export function returnToMainMenuFromDeath() {
   // Start background music if not already playing
   if (deps.startMusic) deps.startMusic();
 }
-
