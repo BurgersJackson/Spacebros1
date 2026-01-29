@@ -241,7 +241,6 @@ export class Enemy extends Entity {
       this.innerShieldRadius = innerCount > 0 ? 95 : 0; // Same as Pinwheel
 
       this.gunboatShieldRecharge = 90; // halved for 60Hz (approx 1.5s)
-      
 
       // Use Pinwheel's exact sizes
       this.radius = 84; // Pinwheel collision radius
@@ -548,13 +547,14 @@ export class Enemy extends Entity {
           const angle = Math.atan2(dy, dx) + (this.type === "elite_roamer" ? 0.05 : 0.02);
           desiredVel.x = Math.cos(angle);
           desiredVel.y = Math.sin(angle);
-          if (dist > 600) {
-            desiredVel.x += dx * 0.001;
-            desiredVel.y += dy * 0.001;
+          // More aggressive orbiting - closer range
+          if (dist > 500) {
+            desiredVel.x += dx * 0.002;
+            desiredVel.y += dy * 0.002;
           }
-          if (dist < 400) {
-            desiredVel.x -= dx * 0.001;
-            desiredVel.y -= dy * 0.001;
+          if (dist < 350) {
+            desiredVel.x -= dx * 0.002;
+            desiredVel.y -= dy * 0.002;
           }
         }
       } else if (this.aiState === "ATTACK_RUN") {
@@ -624,9 +624,9 @@ export class Enemy extends Entity {
         let odx = this.pos.x - other.pos.x;
         let ody = this.pos.y - other.pos.y;
         const distSq = odx * odx + ody * ody;
-        if (distSq < 10000) {
+        if (distSq < 22500) {
           const dist = Math.sqrt(distSq);
-          const force = (100 - dist) / 100;
+          const force = (150 - dist) / 150;
           if (dist > 0) {
             sepForce.x += (odx / dist) * force;
             sepForce.y += (ody / dist) * force;
@@ -635,7 +635,7 @@ export class Enemy extends Entity {
         }
       }
       if (count > 0) {
-        sepForce.mult(1.5);
+        sepForce.mult(2.0);
         desiredVel.add(sepForce);
       }
 
@@ -878,48 +878,67 @@ export class Enemy extends Entity {
       // Check for bunching/crowding
       let neighbors = 0;
       for (let e of GameContext.enemies) {
-        if (e !== this && !e.dead && e.type === "roamer") {
+        if (
+          e !== this &&
+          !e.dead &&
+          (e.type === "roamer" || e.type === "elite_roamer" || e.type === "defender")
+        ) {
           const dSq = (e.pos.x - this.pos.x) ** 2 + (e.pos.y - this.pos.y) ** 2;
           if (dSq < 40000) neighbors++; // within 200px
         }
       }
 
-      if (neighbors >= 3) {
+      // More aggressive behavior: flanking and attacking instead of just orbiting
+      const roll = Math.random();
+      if (neighbors >= 2) {
+        // Flank from 2+ neighbors instead of 3
         this.aiState = "FLANK";
-        this.aiTimer = 45 + Math.random() * 30;
+        this.aiTimer = 30 + Math.random() * 20;
         this.flankSide = Math.random() < 0.5 ? 1 : -1;
-      } else if (dist > 800) {
+      } else if (dist > 700) {
         this.aiState = "SEEK";
-        this.aiTimer = 30;
+        this.aiTimer = 20 + Math.random() * 10;
+      } else if (roll < 0.4) {
+        // Attack runs more often instead of orbiting
+        this.aiState = "ATTACK_RUN";
+        this.aiTimer = 60 + Math.random() * 30;
+      } else if (roll < 0.65) {
+        this.aiState = "SEEK";
+        this.aiTimer = 30 + Math.random() * 15;
       } else {
-        const roll = Math.random();
-        if (roll < 0.6) {
-          this.aiState = "ORBIT";
-          this.aiTimer = 120 + Math.random() * 60;
-        } else {
-          this.aiState = "ORBIT";
-          this.aiTimer = 90 + Math.random() * 45;
-        }
+        this.aiState = "ORBIT";
+        this.aiTimer = 90 + Math.random() * 30;
       }
     } else if (this.type === "defender") {
+      // More aggressive defenders
       if (this.assignedBase && !this.assignedBase.dead) {
         const distBase = Math.hypot(
           GameContext.player.pos.x - this.assignedBase.pos.x,
           GameContext.player.pos.y - this.assignedBase.pos.y
         );
-        if (distBase < 800) {
-          this.aiState = "ORBIT";
-          this.aiTimer = 90;
-        } else if (this.hp < 2) {
+        const roll = Math.random();
+        if (this.hp < 2) {
           this.aiState = "RETREAT";
-          this.aiTimer = 120;
+          this.aiTimer = 80;
+        } else if (distBase < 900) {
+          if (roll < 0.5) {
+            // Attack player more often instead of orbiting base
+            this.aiState = "ATTACK_RUN";
+            this.aiTimer = 50 + Math.random() * 20;
+          } else if (roll < 0.75) {
+            this.aiState = "SEEK";
+            this.aiTimer = 40 + Math.random() * 15;
+          } else {
+            this.aiState = "ORBIT";
+            this.aiTimer = 60 + Math.random() * 25;
+          }
         } else {
           this.aiState = "SEEK";
-          this.aiTimer = 60;
+          this.aiTimer = 30 + Math.random() * 15;
         }
       } else {
         this.aiState = "SEEK";
-        this.aiTimer = 60;
+        this.aiTimer = 30 + Math.random() * 15;
       }
     }
   }
