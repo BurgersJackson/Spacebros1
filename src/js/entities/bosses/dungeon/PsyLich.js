@@ -283,7 +283,7 @@ export class PsyLich extends Enemy {
       }
       if (this.phaseTick % 10 === 0) {
         // Rapid fire
-        const b = new Bullet(this.pos.x, this.pos.y, aim, 12, {
+        const b = new Bullet(this.pos.x, this.pos.y, aim, 18, {
           owner: "enemy",
           damage: 1,
           radius: 3,
@@ -405,6 +405,14 @@ export class PsyLich extends Enemy {
   kill() {
     if (this.dead) return;
     this.dead = true;
+
+    // Clear shield segments to prevent visuals from persisting
+    if (this.shieldSegments && this.shieldSegments.length > 0) {
+      this.shieldSegments = [];
+    }
+    if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+      this.innerShieldSegments = [];
+    }
 
     // Clean up soul drain tether
     if (this.soulDrainTether && !this.soulDrainTether.dead) {

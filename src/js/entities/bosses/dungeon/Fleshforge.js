@@ -245,7 +245,7 @@ export class Fleshforge extends Enemy {
       }
       if (this.phaseTick % 40 === 0) {
         // Cannon fire
-        const b = new Bullet(this.pos.x, this.pos.y, aim, 12, {
+        const b = new Bullet(this.pos.x, this.pos.y, aim, 16, {
           owner: "enemy",
           damage: 2,
           radius: 4,
@@ -347,6 +347,14 @@ export class Fleshforge extends Enemy {
   kill() {
     if (this.dead) return;
     this.dead = true;
+
+    // Clear shield segments to prevent visuals from persisting
+    if (this.shieldSegments && this.shieldSegments.length > 0) {
+      this.shieldSegments = [];
+    }
+    if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+      this.innerShieldSegments = [];
+    }
 
     pixiCleanupObject(this);
     if (_spawnBossExplosion) _spawnBossExplosion(this.pos.x, this.pos.y, 4.0, 26);

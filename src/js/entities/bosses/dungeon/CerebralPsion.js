@@ -249,7 +249,7 @@ export class CerebralPsion extends Enemy {
       // Echoes fire curtain pattern every 15 ticks
       if (this.phaseTick % 15 === 0) {
         for (let i = -2; i <= 2; i++) {
-          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, 10, {
+          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, 15, {
             owner: "enemy",
             damage: 1,
             radius: 3,
@@ -287,11 +287,11 @@ export class CerebralPsion extends Enemy {
       // Wide cone attack
       if (this.phaseTick % 50 === 0) {
         for (let i = -6; i <= 6; i++) {
-          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, 11, {
+          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, 16, {
             owner: "enemy",
             damage: 1,
             radius: 3,
-            color: "#d0f"
+            color: "#ff0"
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -307,7 +307,7 @@ export class CerebralPsion extends Enemy {
       }
       // Rapid fire
       if (this.phaseTick % 8 === 0) {
-        const b = new Bullet(this.pos.x, this.pos.y, aim, 12, {
+        const b = new Bullet(this.pos.x, this.pos.y, aim, 18, {
           owner: "enemy",
           damage: 1,
           radius: 3,
@@ -386,6 +386,14 @@ export class CerebralPsion extends Enemy {
   kill() {
     if (this.dead) return;
     this.dead = true;
+
+    // Clear shield segments to prevent visuals from persisting
+    if (this.shieldSegments && this.shieldSegments.length > 0) {
+      this.shieldSegments = [];
+    }
+    if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+      this.innerShieldSegments = [];
+    }
 
     // Clean up echoes
     this.echoes.forEach(e => {

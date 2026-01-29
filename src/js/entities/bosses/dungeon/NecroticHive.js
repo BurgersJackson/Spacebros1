@@ -215,10 +215,10 @@ export class NecroticHive extends Enemy {
         // Chitin barrage arc
         for (let i = 0; i < 16; i++) {
           const a = aim - 0.8 + (i / 15) * 1.6;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 7, {
+          const b = new Bullet(this.pos.x, this.pos.y, a, 11, {
             owner: "enemy",
             damage: 1,
-            radius: 4,
+            radius: 3,
             color: "#f6f"
           });
           b.owner = this;
@@ -236,7 +236,7 @@ export class NecroticHive extends Enemy {
         // Ring attack from drones
         for (let i = 0; i < 12; i++) {
           const a = ((Math.PI * 2) / 12) * i;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 9, {
+          const b = new Bullet(this.pos.x, this.pos.y, a, 13, {
             owner: "enemy",
             damage: 1,
             radius: 4,
@@ -307,11 +307,11 @@ export class NecroticHive extends Enemy {
       if (this.phaseTick % 5 === 0) {
         // Mega barrage
         const a = aim + Math.sin(this.phaseTick * 0.1) * 0.5;
-        const b = new Bullet(this.pos.x, this.pos.y, a, 14, {
+        const b = new Bullet(this.pos.x, this.pos.y, a, 21, {
           owner: "enemy",
           damage: 1,
           radius: 3,
-          color: "#f6f"
+          color: "#f80"
         });
         b.owner = this;
         GameContext.bullets.push(b);
@@ -377,6 +377,14 @@ export class NecroticHive extends Enemy {
   kill() {
     if (this.dead) return;
     this.dead = true;
+
+    // Clear shield segments to prevent visuals from persisting
+    if (this.shieldSegments && this.shieldSegments.length > 0) {
+      this.shieldSegments = [];
+    }
+    if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+      this.innerShieldSegments = [];
+    }
 
     // Kill all drones
     this.drones.forEach(d => {

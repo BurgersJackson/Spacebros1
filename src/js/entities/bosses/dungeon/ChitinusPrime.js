@@ -192,7 +192,7 @@ export class ChitinusPrime extends Enemy {
       if (this.phaseTick % 12 === 0) {
         // Triple fire
         for (let i = -1; i <= 1; i++) {
-          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.12, 13, {
+          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.12, 19, {
             owner: "enemy",
             damage: 2,
             radius: 4,
@@ -207,7 +207,7 @@ export class ChitinusPrime extends Enemy {
         // Sweep laser
         for (let i = 0; i < 8; i++) {
           const a = aim - 0.5 + (i / 7) * 1.0;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 15, {
+          const b = new Bullet(this.pos.x, this.pos.y, a, 22, {
             owner: "enemy",
             damage: 1,
             radius: 3,
@@ -244,10 +244,10 @@ export class ChitinusPrime extends Enemy {
         // Wide chitin arc
         for (let i = 0; i < 20; i++) {
           const a = aim - 1.0 + (i / 19) * 2.0;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 6, {
+          const b = new Bullet(this.pos.x, this.pos.y, a, 9, {
             owner: "enemy",
             damage: 1,
-            radius: 4,
+            radius: 3,
             color: "#ff0"
           });
           b.owner = this;
@@ -351,6 +351,14 @@ export class ChitinusPrime extends Enemy {
   kill() {
     if (this.dead) return;
     this.dead = true;
+
+    // Clear shield segments to prevent visuals from persisting
+    if (this.shieldSegments && this.shieldSegments.length > 0) {
+      this.shieldSegments = [];
+    }
+    if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+      this.innerShieldSegments = [];
+    }
 
     pixiCleanupObject(this);
     if (_spawnBossExplosion) _spawnBossExplosion(this.pos.x, this.pos.y, 4.5, 26);
