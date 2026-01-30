@@ -83,8 +83,8 @@ export class ChitinusPrime extends Enemy {
     this.prevPos.x = this.pos.x;
     this.prevPos.y = this.pos.y;
 
-    this.turnSpeed = (Math.PI * 2) / (22 * SIM_FPS);
-    this.wallElasticity = 0.25;
+    this.turnSpeed = (Math.PI * 2) / (27.5 * SIM_FPS);
+    this.wallElasticity = 0.3;
     this.t = 0;
   }
 
@@ -123,8 +123,8 @@ export class ChitinusPrime extends Enemy {
     if (charging) {
       this.circleStrafePreferred = false;
       this.aiState = "SEEK";
-      this.thrustPower = 0.64;
-      this.maxSpeed = 8.4;
+      this.thrustPower = 0.8;
+      this.maxSpeed = 10.5;
       this.gunboatRange = this.baseGunboatRange + 350;
     } else {
       // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
@@ -146,23 +146,23 @@ export class ChitinusPrime extends Enemy {
       if (this.moveMode === "SEEK") {
         this.circleStrafePreferred = false;
         this.aiState = "SEEK";
-        this.thrustPower = 0.52;
-        this.maxSpeed = 7.8;
+        this.thrustPower = 0.65;
+        this.maxSpeed = 9.75;
       } else if (this.moveMode === "ORBIT") {
         this.circleStrafePreferred = false;
         this.aiState = "ORBIT";
-        this.thrustPower = 0.48;
-        this.maxSpeed = 6.6;
+        this.thrustPower = 0.6;
+        this.maxSpeed = 8.25;
       } else if (this.moveMode === "FLANK") {
         this.circleStrafePreferred = false;
         this.aiState = "FLANK";
-        this.thrustPower = 0.56;
-        this.maxSpeed = 8.2;
+        this.thrustPower = 0.7;
+        this.maxSpeed = 10.25;
       } else {
         this.circleStrafePreferred = true;
         this.aiState = "CIRCLE";
-        this.thrustPower = 0.4;
-        this.maxSpeed = 5.8;
+        this.thrustPower = 0.5;
+        this.maxSpeed = 7.25;
       }
       this.gunboatRange = this.baseGunboatRange;
     }
