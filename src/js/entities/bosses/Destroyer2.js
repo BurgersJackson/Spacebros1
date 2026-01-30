@@ -15,6 +15,7 @@ import {
     pixiCleanupObject,
     getRenderAlpha
 } from '../../rendering/pixi-context.js';
+import { isInViewRadius } from '../../core/performance.js';
 
 let _spawnBossExplosion = null;
 let _spawnLargeExplosion = null;
@@ -384,6 +385,8 @@ export class Destroyer2 extends Entity {
 
         // Pixi fast path (destroyer hull + turrets)
         if (pixiBossLayer && pixiTextures && pixiTextures.destroyer2_hull) {
+            const inView = isInViewRadius(this.pos.x, this.pos.y, this.visualRadius);
+
             let container = this._pixiContainer;
             if (!container) {
                 container = new PIXI.Container();
@@ -400,9 +403,9 @@ export class Destroyer2 extends Entity {
                 pixiBossLayer.addChild(container);
             }
 
-            container.visible = true;
             const rPos = this.getRenderPos(getRenderAlpha());
             container.position.set(rPos.x, rPos.y);
+            container.visible = inView;
             container.rotation = this.angle || 0;
 
             const now = (typeof GameContext.frameNow === 'number' && GameContext.frameNow > 0) ? GameContext.frameNow : Date.now();
@@ -422,6 +425,7 @@ export class Destroyer2 extends Entity {
                 }
 
                 gfx.position.set(rPos.x, rPos.y);
+                gfx.visible = inView;
                 gfx.rotation = this.shieldRotation || 0;
                 if (this.shieldsDirty) {
                     gfx.clear();
@@ -458,6 +462,7 @@ export class Destroyer2 extends Entity {
                 }
 
                 innerGfx.position.set(rPos.x, rPos.y);
+                innerGfx.visible = inView;
                 innerGfx.rotation = this.innerShieldRotation || 0;
                 if (this.shieldsDirty) {
                     innerGfx.clear();
@@ -495,6 +500,7 @@ export class Destroyer2 extends Entity {
                 }
                 phaseGfx.clear();
                 phaseGfx.position.set(rPos.x, rPos.y);
+                phaseGfx.visible = inView;
                 phaseGfx.lineStyle(3, 0xffdc00, 0.6);
                 phaseGfx.drawCircle(0, 0, (this.shieldRadius || this.radius || 0) + 14);
             } else if (this._pixiPhaseGfx) {
@@ -520,7 +526,7 @@ export class Destroyer2 extends Entity {
                     txt.text = this.displayName;
                 }
                 if (!txt.parent) pixiVectorLayer.addChild(txt);
-                txt.visible = true;
+                txt.visible = inView;
                 txt.position.set(rPos.x, rPos.y - this.visualRadius - 20);
             }
 
@@ -541,6 +547,7 @@ export class Destroyer2 extends Entity {
 
                 hpBarGfx.clear();
                 hpBarGfx.position.set(rPos.x, rPos.y - this.visualRadius - 45);
+                hpBarGfx.visible = inView;
 
                 hpBarGfx.beginFill(0x330000);
                 hpBarGfx.drawRect(-hpBarWidth / 2, 0, hpBarWidth, hpBarHeight);
@@ -566,6 +573,7 @@ export class Destroyer2 extends Entity {
                 } else if (!hpText.parent) {
                     pixiVectorLayer.addChild(hpText);
                 }
+                hpText.visible = inView;
                 hpText.text = `${this.hp}/${this.maxHp}`;
                 hpText.position.set(rPos.x, rPos.y - this.visualRadius - 48);
             }
@@ -581,7 +589,7 @@ export class Destroyer2 extends Entity {
                 }
 
                 if (typeof GameContext.DEBUG_COLLISION !== 'undefined' && GameContext.DEBUG_COLLISION) {
-                    debugGfx.visible = true;
+                    debugGfx.visible = inView;
                     debugGfx.clear();
                     debugGfx.position.set(rPos.x, rPos.y);
                     debugGfx.rotation = this.angle || 0;

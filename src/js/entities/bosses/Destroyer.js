@@ -16,6 +16,7 @@ import {
     pixiCleanupObject,
     getRenderAlpha
 } from '../../rendering/pixi-context.js';
+import { isInViewRadius } from '../../core/performance.js';
 
 let _spawnBossExplosion = null;
 let _spawnLargeExplosion = null;
@@ -538,6 +539,8 @@ export class Destroyer extends Entity {
         }
 
         if (pixiBossLayer && pixiTextures && pixiTextures.destroyer_hull) {
+            const inView = isInViewRadius(this.pos.x, this.pos.y, this.visualRadius);
+
             let container = this._pixiContainer;
             if (!container) {
                 container = new PIXI.Container();
@@ -553,11 +556,10 @@ export class Destroyer extends Entity {
                 pixiBossLayer.addChild(container);
             }
 
-            container.visible = true;
-
             const rPos = this.getRenderPos(getRenderAlpha());
 
             container.position.set(rPos.x, rPos.y);
+            container.visible = inView;
             container.rotation = this.angle || 0;
 
             const hullScale = (this.visualRadius && isFinite(this.visualRadius)) ? (this.visualRadius / 340) : 1;
@@ -575,6 +577,7 @@ export class Destroyer extends Entity {
                 }
 
                 gfx.position.set(rPos.x, rPos.y);
+                gfx.visible = inView;
                 gfx.rotation = this.shieldRotation || 0;
                 if (this.shieldsDirty) {
                     gfx.clear();
@@ -611,6 +614,7 @@ export class Destroyer extends Entity {
                 }
 
                 innerGfx.position.set(rPos.x, rPos.y);
+                innerGfx.visible = inView;
                 innerGfx.rotation = this.innerShieldRotation || 0;
                 if (this.shieldsDirty) {
                     innerGfx.clear();
@@ -648,6 +652,7 @@ export class Destroyer extends Entity {
                 }
                 phaseGfx.clear();
                 phaseGfx.position.set(rPos.x, rPos.y);
+                phaseGfx.visible = inView;
                 phaseGfx.lineStyle(3, 0xffdc00, 0.6);
                 phaseGfx.drawCircle(0, 0, (this.shieldRadius || this.radius || 0) + 14);
             } else if (this._pixiPhaseGfx) {
@@ -672,7 +677,7 @@ export class Destroyer extends Entity {
                     txt.text = this.displayName;
                 }
                 if (!txt.parent) pixiVectorLayer.addChild(txt);
-                txt.visible = true;
+                txt.visible = inView;
                 txt.position.set(rPos.x, rPos.y - this.visualRadius - 20);
             }
 
@@ -693,6 +698,7 @@ export class Destroyer extends Entity {
 
                 hpBarGfx.clear();
                 hpBarGfx.position.set(rPos.x, rPos.y - this.visualRadius - 45);
+                hpBarGfx.visible = inView;
 
                 hpBarGfx.beginFill(0x330000);
                 hpBarGfx.drawRect(-hpBarWidth / 2, 0, hpBarWidth, hpBarHeight);
@@ -718,6 +724,7 @@ export class Destroyer extends Entity {
                 } else if (!hpText.parent) {
                     pixiVectorLayer.addChild(hpText);
                 }
+                hpText.visible = inView;
                 hpText.text = `${this.hp}/${this.maxHp}`;
                 hpText.position.set(rPos.x, rPos.y - this.visualRadius - 48);
             }
@@ -733,7 +740,7 @@ export class Destroyer extends Entity {
                 }
 
                 if (typeof GameContext.DEBUG_COLLISION !== 'undefined' && GameContext.DEBUG_COLLISION) {
-                    debugGfx.visible = true;
+                    debugGfx.visible = inView;
                     debugGfx.clear();
                     debugGfx.position.set(rPos.x, rPos.y);
                     debugGfx.rotation = this.angle || 0;
@@ -773,6 +780,7 @@ export class Destroyer extends Entity {
                 const pulse = 0.5 + Math.sin(Date.now() * 0.005) * 0.2;
                 tractorGfx.clear();
                 tractorGfx.position.set(rPos.x, rPos.y);
+                tractorGfx.visible = inView;
                 tractorGfx.lineStyle(10 / (GameContext.currentZoom || 1), 0x00ffff, 0.4 + pulse * 0.2);
                 tractorGfx.drawCircle(0, 0, this.tractorBeamRadius);
                 tractorGfx.endFill();

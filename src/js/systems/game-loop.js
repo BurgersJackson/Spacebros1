@@ -1693,18 +1693,11 @@ export function gameLoopLogic(opts = null) {
     GameContext.stationHealthBarVisible = false;
   }
 
-  // Destroyer update and draw
+  // Destroyer update and draw (always call draw so Pixi position updates every frame;
+  // Destroyer.draw() hides Pixi when out of view to avoid ghost at stale position)
   if (GameContext.destroyer) {
     if (doUpdate) GameContext.destroyer.update(deltaTime);
-    if (
-      doDraw &&
-      isInViewRadius(
-        GameContext.destroyer.pos.x,
-        GameContext.destroyer.pos.y,
-        GameContext.destroyer.visualRadius
-      )
-    )
-      GameContext.destroyer.draw(ctx);
+    if (doDraw) GameContext.destroyer.draw(ctx);
   }
 
   const bulletPixiResources =

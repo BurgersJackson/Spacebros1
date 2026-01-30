@@ -1153,6 +1153,7 @@ export function resolveEntityCollision() {
       let hitEntity = false;
       for (let e of GameContext.enemies) {
         if (!e || e.dead) continue;
+        if (e.isDungeonBoss) continue;
         const dist = Math.hypot(s.pos.x - e.pos.x, s.pos.y - e.pos.y);
         if (dist < s.radius + e.radius) {
           e.hp -= s.damage;
@@ -1632,7 +1633,12 @@ export function processBulletCollisions() {
                     _shieldBypassLog("Gunboat shield segment DESTROYED");
                   } else {
                     e.shieldSegments[segmentIdx] -= b.damage;
-                    _shieldBypassLog("Gunboat shield segment now at", e.shieldSegments[segmentIdx], "HP, entity hp", e.hp);
+                    _shieldBypassLog(
+                      "Gunboat shield segment now at",
+                      e.shieldSegments[segmentIdx],
+                      "HP, entity hp",
+                      e.hp
+                    );
                   }
                   e.shieldsDirty = true;
                   hit = true;
@@ -1702,35 +1708,40 @@ export function processBulletCollisions() {
                     const innerAngle = (Math.PI * 2) / innerCount;
                     const segmentIdx = Math.floor(normalizedAngle / innerAngle) % innerCount;
 
-                if (e.innerShieldSegments[segmentIdx] > 0) {
-                  const segmentHp = e.innerShieldSegments[segmentIdx];
-                  _shieldBypassLog(
-                    "Gunboat INNER SHIELD HIT - segment",
-                    segmentIdx,
-                    "was",
-                    segmentHp,
-                    "HP, took",
-                    b.damage,
-                    "damage, entity hp",
-                    e.hp
-                  );
-                  if (b.damage >= segmentHp) {
-                    e.innerShieldSegments[segmentIdx] = 0;
-                    _shieldBypassLog("Gunboat inner shield segment DESTROYED");
-                  } else {
-                    e.innerShieldSegments[segmentIdx] -= b.damage;
-                    _shieldBypassLog("Gunboat inner shield segment now at", e.innerShieldSegments[segmentIdx], "HP, entity hp", e.hp);
+                    if (e.innerShieldSegments[segmentIdx] > 0) {
+                      const segmentHp = e.innerShieldSegments[segmentIdx];
+                      _shieldBypassLog(
+                        "Gunboat INNER SHIELD HIT - segment",
+                        segmentIdx,
+                        "was",
+                        segmentHp,
+                        "HP, took",
+                        b.damage,
+                        "damage, entity hp",
+                        e.hp
+                      );
+                      if (b.damage >= segmentHp) {
+                        e.innerShieldSegments[segmentIdx] = 0;
+                        _shieldBypassLog("Gunboat inner shield segment DESTROYED");
+                      } else {
+                        e.innerShieldSegments[segmentIdx] -= b.damage;
+                        _shieldBypassLog(
+                          "Gunboat inner shield segment now at",
+                          e.innerShieldSegments[segmentIdx],
+                          "HP, entity hp",
+                          e.hp
+                        );
+                      }
+                      e.shieldsDirty = true;
+                      hit = true;
+                      if (_playSound) _playSound("enemy_shield_hit");
+                      if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
+                      // FIX: Destroy bullet after hitting inner shield
+                      b.dead = true;
+                      b.vel.x = 0;
+                      b.vel.y = 0;
+                    }
                   }
-                  e.shieldsDirty = true;
-                  hit = true;
-                  if (_playSound) _playSound("enemy_shield_hit");
-                  if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#f0f");
-                  // FIX: Destroy bullet after hitting inner shield
-                  b.dead = true;
-                  b.vel.x = 0;
-                  b.vel.y = 0;
-                }
-              }
 
                   // If inner didn't block, check outer shield
                   if (!hit && hasActiveOuter && e.shieldSegments && e.shieldSegments.length > 0) {
@@ -1768,12 +1779,13 @@ export function processBulletCollisions() {
                 /** When blocking, which segment took the hit: { inner: index } or { outer: index } */
                 let blockingSegment = null;
 
-                const hasGunboatShields = e.shieldSegments?.length && (e.isGunboat || e.shieldRadius);
+                const hasGunboatShields =
+                  e.shieldSegments?.length && (e.isGunboat || e.shieldRadius);
 
                 // Check inner shield at this angle
                 if (e.innerShieldSegments && e.innerShieldSegments.length > 0) {
                   const normInner =
-                    ((angle - (e.innerShieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
+                    (((angle - (e.innerShieldRotation ?? 0)) % (Math.PI * 2)) + Math.PI * 2) %
                     (Math.PI * 2);
                   const innerCount = e.innerShieldSegments.length;
                   const innerAngle = (Math.PI * 2) / innerCount;
@@ -1800,7 +1812,7 @@ export function processBulletCollisions() {
                 // Check outer shield at this angle (only if inner didn't block)
                 if (!hasShieldAtAngle && e.shieldSegments && e.shieldSegments.length > 0) {
                   const normOuter =
-                    ((angle - (e.shieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
+                    (((angle - (e.shieldRotation ?? 0)) % (Math.PI * 2)) + Math.PI * 2) %
                     (Math.PI * 2);
                   const segCount = e.shieldSegments.length;
                   const segAngle = (Math.PI * 2) / segCount;
@@ -2018,7 +2030,14 @@ export function processBulletCollisions() {
 
                 if (shouldCheckOuterShield && e.shieldSegments[segmentIdx] > 0) {
                   const segmentHp = e.shieldSegments[segmentIdx];
-                  _shieldBypassLog("Pinwheel OUTER SHIELD HIT - segment", segmentIdx, "took", b.damage, "entity hp", e.hp);
+                  _shieldBypassLog(
+                    "Pinwheel OUTER SHIELD HIT - segment",
+                    segmentIdx,
+                    "took",
+                    b.damage,
+                    "entity hp",
+                    e.hp
+                  );
                   if (b.damage >= segmentHp) {
                     e.shieldSegments[segmentIdx] = 0;
                   } else {
@@ -2063,7 +2082,14 @@ export function processBulletCollisions() {
                   e.aggro = true;
                   if (_playSound) _playSound("enemy_shield_hit");
                   if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#ff0");
-                  _shieldBypassLog("Pinwheel INNER SHIELD HIT - segment", segmentIdx, "took", b.damage, "entity hp", e.hp);
+                  _shieldBypassLog(
+                    "Pinwheel INNER SHIELD HIT - segment",
+                    segmentIdx,
+                    "took",
+                    b.damage,
+                    "entity hp",
+                    e.hp
+                  );
                   b.dead = true;
                   b.vel.x = 0;
                   b.vel.y = 0;
@@ -2159,7 +2185,7 @@ export function processBulletCollisions() {
                   const innerCount = e.innerShieldSegments.length;
                   const innerAngle = (Math.PI * 2) / innerCount;
                   const normInner =
-                    ((angle - (e.innerShieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
+                    (((angle - (e.innerShieldRotation ?? 0)) % (Math.PI * 2)) + Math.PI * 2) %
                     (Math.PI * 2);
                   const innerIdx = Math.floor(normInner / innerAngle) % innerCount;
                   if (e.innerShieldSegments[innerIdx] > 0) {
@@ -2184,7 +2210,7 @@ export function processBulletCollisions() {
                   const segCount = e.shieldSegments.length;
                   const segAngle = (Math.PI * 2) / segCount;
                   const normOuter =
-                    ((angle - (e.shieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
+                    (((angle - (e.shieldRotation ?? 0)) % (Math.PI * 2)) + Math.PI * 2) %
                     (Math.PI * 2);
                   const outerIdx = Math.floor(normOuter / segAngle) % segCount;
                   if (e.shieldSegments[outerIdx] > 0) {
@@ -2212,9 +2238,15 @@ export function processBulletCollisions() {
                     showDamageFloatingText(e.pos.x, e.pos.y, critResult.damage, false);
                   }
                   trackDamageByWeaponType(b, critResult.damage);
-                  if (e instanceof Pinwheel || e instanceof CavePinwheel1 || e instanceof CavePinwheel2 || e instanceof CavePinwheel3) {
+                  if (
+                    e instanceof Pinwheel ||
+                    e instanceof CavePinwheel1 ||
+                    e instanceof CavePinwheel2 ||
+                    e instanceof CavePinwheel3
+                  ) {
                     _shieldBypassLog(
-                      (e instanceof Pinwheel ? "Pinwheel" : "CavePinwheel") + " HULL BYPASS - damage",
+                      (e instanceof Pinwheel ? "Pinwheel" : "CavePinwheel") +
+                        " HULL BYPASS - damage",
                       critResult.damage,
                       "dist",
                       dist.toFixed(0),
@@ -2411,7 +2443,14 @@ export function processBulletCollisions() {
 
                 if (shouldCheckOuterShield && e.shieldSegments[segmentIdx] > 0) {
                   const segmentHp = e.shieldSegments[segmentIdx];
-                  _shieldBypassLog("CavePinwheel OUTER SHIELD HIT - segment", segmentIdx, "took", b.damage, "entity hp", e.hp);
+                  _shieldBypassLog(
+                    "CavePinwheel OUTER SHIELD HIT - segment",
+                    segmentIdx,
+                    "took",
+                    b.damage,
+                    "entity hp",
+                    e.hp
+                  );
                   if (b.damage >= segmentHp) {
                     e.shieldSegments[segmentIdx] = 0;
                   } else {
@@ -2456,7 +2495,14 @@ export function processBulletCollisions() {
                   e.aggro = true;
                   if (_playSound) _playSound("enemy_shield_hit");
                   if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 3, "#ff0");
-                  _shieldBypassLog("CavePinwheel INNER SHIELD HIT - segment", segmentIdx, "took", b.damage, "entity hp", e.hp);
+                  _shieldBypassLog(
+                    "CavePinwheel INNER SHIELD HIT - segment",
+                    segmentIdx,
+                    "took",
+                    b.damage,
+                    "entity hp",
+                    e.hp
+                  );
                   b.dead = true;
                   b.vel.x = 0;
                   b.vel.y = 0;
@@ -2552,7 +2598,7 @@ export function processBulletCollisions() {
                   const innerCount = e.innerShieldSegments.length;
                   const innerAngle = (Math.PI * 2) / innerCount;
                   const normInner =
-                    ((angle - (e.innerShieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
+                    (((angle - (e.innerShieldRotation ?? 0)) % (Math.PI * 2)) + Math.PI * 2) %
                     (Math.PI * 2);
                   const innerIdx = Math.floor(normInner / innerAngle) % innerCount;
                   if (e.innerShieldSegments[innerIdx] > 0) {
@@ -2577,7 +2623,7 @@ export function processBulletCollisions() {
                   const segCount = e.shieldSegments.length;
                   const segAngle = (Math.PI * 2) / segCount;
                   const normOuter =
-                    ((angle - (e.shieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
+                    (((angle - (e.shieldRotation ?? 0)) % (Math.PI * 2)) + Math.PI * 2) %
                     (Math.PI * 2);
                   const outerIdx = Math.floor(normOuter / segAngle) % segCount;
                   if (e.shieldSegments[outerIdx] > 0) {
@@ -2605,9 +2651,15 @@ export function processBulletCollisions() {
                     showDamageFloatingText(e.pos.x, e.pos.y, critResult.damage, false);
                   }
                   trackDamageByWeaponType(b, critResult.damage);
-                  if (e instanceof Pinwheel || e instanceof CavePinwheel1 || e instanceof CavePinwheel2 || e instanceof CavePinwheel3) {
+                  if (
+                    e instanceof Pinwheel ||
+                    e instanceof CavePinwheel1 ||
+                    e instanceof CavePinwheel2 ||
+                    e instanceof CavePinwheel3
+                  ) {
                     _shieldBypassLog(
-                      (e instanceof Pinwheel ? "Pinwheel" : "CavePinwheel") + " HULL BYPASS - damage",
+                      (e instanceof Pinwheel ? "Pinwheel" : "CavePinwheel") +
+                        " HULL BYPASS - damage",
                       critResult.damage,
                       "dist",
                       dist.toFixed(0),
@@ -3040,9 +3092,13 @@ export function processBulletCollisions() {
             let hasShieldAtAngle = false;
             let blockingInnerIdx = -1;
             let blockingOuterIdx = -1;
-            if (GameContext.spaceStation.innerShieldSegments && GameContext.spaceStation.innerShieldSegments.length > 0) {
+            if (
+              GameContext.spaceStation.innerShieldSegments &&
+              GameContext.spaceStation.innerShieldSegments.length > 0
+            ) {
               const norm =
-                ((angle - (GameContext.spaceStation.innerShieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
+                (((angle - (GameContext.spaceStation.innerShieldRotation ?? 0)) % (Math.PI * 2)) +
+                  Math.PI * 2) %
                 (Math.PI * 2);
               const innerCount = GameContext.spaceStation.innerShieldSegments.length;
               const innerAngle = (Math.PI * 2) / innerCount;
@@ -3058,7 +3114,8 @@ export function processBulletCollisions() {
               GameContext.spaceStation.shieldSegments.length > 0
             ) {
               const norm =
-                ((angle - (GameContext.spaceStation.shieldRotation ?? 0)) % (Math.PI * 2) + Math.PI * 2) %
+                (((angle - (GameContext.spaceStation.shieldRotation ?? 0)) % (Math.PI * 2)) +
+                  Math.PI * 2) %
                 (Math.PI * 2);
               const segCount = GameContext.spaceStation.shieldSegments.length;
               const segAngle = (Math.PI * 2) / segCount;
@@ -3224,7 +3281,7 @@ export function processBulletCollisions() {
               GameContext.destroyer.innerShieldSegments.length > 0
             ) {
               const norm =
-                ((angle - (GameContext.destroyer.innerShieldRotation ?? 0)) % (Math.PI * 2) +
+                (((angle - (GameContext.destroyer.innerShieldRotation ?? 0)) % (Math.PI * 2)) +
                   Math.PI * 2) %
                 (Math.PI * 2);
               const innerCount = GameContext.destroyer.innerShieldSegments.length;
@@ -3241,7 +3298,7 @@ export function processBulletCollisions() {
               GameContext.destroyer.shieldSegments.length > 0
             ) {
               const norm =
-                ((angle - (GameContext.destroyer.shieldRotation ?? 0)) % (Math.PI * 2) +
+                (((angle - (GameContext.destroyer.shieldRotation ?? 0)) % (Math.PI * 2)) +
                   Math.PI * 2) %
                 (Math.PI * 2);
               const segCount = GameContext.destroyer.shieldSegments.length;
@@ -3279,40 +3336,40 @@ export function processBulletCollisions() {
               b.vel.x = 0;
               b.vel.y = 0;
             } else {
-            const hpBefore = GameContext.destroyer.hp;
-            trackDamageByWeaponType(b, b.damage);
-            GameContext.destroyer.hp -= b.damage;
-            showDamageFloatingText(
-              GameContext.destroyer.pos.x,
-              GameContext.destroyer.pos.y,
-              b.damage,
-              false
-            );
-            hit = true;
-            if (_playSound) _playSound("hit");
-            if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#ff0");
-
-            // Explosive Rounds meta upgrade
-            if (
-              GameContext.player &&
-              GameContext.player.stats &&
-              GameContext.player.stats.explosiveChance > 0 &&
-              Math.random() < GameContext.player.stats.explosiveChance
-            ) {
-              const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
-              const explosiveRange = 200;
-              GameContext.shockwaves.push(
-                new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
-                  damageAsteroids: true,
-                  damageEnemies: true,
-                  ignoreOwner: true
-                })
+              const hpBefore = GameContext.destroyer.hp;
+              trackDamageByWeaponType(b, b.damage);
+              GameContext.destroyer.hp -= b.damage;
+              showDamageFloatingText(
+                GameContext.destroyer.pos.x,
+                GameContext.destroyer.pos.y,
+                b.damage,
+                false
               );
-            }
+              hit = true;
+              if (_playSound) _playSound("hit");
+              if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#ff0");
 
-            if (GameContext.destroyer.hp <= 0) {
-              GameContext.destroyer.kill();
-            }
+              // Explosive Rounds meta upgrade
+              if (
+                GameContext.player &&
+                GameContext.player.stats &&
+                GameContext.player.stats.explosiveChance > 0 &&
+                Math.random() < GameContext.player.stats.explosiveChance
+              ) {
+                const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                const explosiveRange = 200;
+                GameContext.shockwaves.push(
+                  new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
+                    damageAsteroids: true,
+                    damageEnemies: true,
+                    ignoreOwner: true
+                  })
+                );
+              }
+
+              if (GameContext.destroyer.hp <= 0) {
+                GameContext.destroyer.kill();
+              }
             }
           }
         }
@@ -3356,8 +3413,7 @@ export function processBulletCollisions() {
               const angle =
                 Math.atan2(b.pos.y - GameContext.boss.pos.y, b.pos.x - GameContext.boss.pos.x) -
                 GameContext.boss.shieldRotation;
-              const norm =
-                ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+              const norm = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
               const segCount = GameContext.boss.shieldSegments.length;
               const segAngle = (Math.PI * 2) / segCount;
               const segIndex = Math.floor(norm / segAngle) % segCount;
@@ -3382,8 +3438,7 @@ export function processBulletCollisions() {
               const angle =
                 Math.atan2(b.pos.y - GameContext.boss.pos.y, b.pos.x - GameContext.boss.pos.x) -
                 GameContext.boss.innerShieldRotation;
-              const norm =
-                ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+              const norm = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
               const count = GameContext.boss.innerShieldSegments.length;
               const innerAngle = (Math.PI * 2) / count;
               const segIndex = Math.floor(norm / innerAngle) % count;
@@ -3441,7 +3496,7 @@ export function processBulletCollisions() {
                     GameContext.boss.innerShieldSegments.length > 0
                   ) {
                     const normInner =
-                      ((angle - (GameContext.boss.innerShieldRotation ?? 0)) % (Math.PI * 2) +
+                      (((angle - (GameContext.boss.innerShieldRotation ?? 0)) % (Math.PI * 2)) +
                         Math.PI * 2) %
                       (Math.PI * 2);
                     const innerCount = GameContext.boss.innerShieldSegments.length;
@@ -3473,7 +3528,7 @@ export function processBulletCollisions() {
                     GameContext.boss.shieldSegments.length > 0
                   ) {
                     const normOuter =
-                      ((angle - (GameContext.boss.shieldRotation ?? 0)) % (Math.PI * 2) +
+                      (((angle - (GameContext.boss.shieldRotation ?? 0)) % (Math.PI * 2)) +
                         Math.PI * 2) %
                       (Math.PI * 2);
                     const segCount = GameContext.boss.shieldSegments.length;
@@ -3519,20 +3574,14 @@ export function processBulletCollisions() {
                         const idx = blockingSegment.inner;
                         const segHp = GameContext.boss.innerShieldSegments[idx];
                         if (segHp > 0) {
-                          GameContext.boss.innerShieldSegments[idx] = Math.max(
-                            0,
-                            segHp - b.damage
-                          );
+                          GameContext.boss.innerShieldSegments[idx] = Math.max(0, segHp - b.damage);
                           GameContext.boss.shieldsDirty = true;
                         }
                       } else if (blockingSegment.outer !== undefined) {
                         const idx = blockingSegment.outer;
                         const segHp = GameContext.boss.shieldSegments[idx];
                         if (segHp > 0) {
-                          GameContext.boss.shieldSegments[idx] = Math.max(
-                            0,
-                            segHp - b.damage
-                          );
+                          GameContext.boss.shieldSegments[idx] = Math.max(0, segHp - b.damage);
                           GameContext.boss.shieldsDirty = true;
                         }
                       }
