@@ -358,6 +358,7 @@ export class PsyLich extends Enemy {
 
   takeDamage(amount, source) {
     if (this.dead) return;
+    if (this.phaseName === "DEATH_THROES") return; // No damage during death sequence
     if (this.isIntangible) {
       if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 3, "#a0f");
       return; // No damage while intangible
@@ -394,7 +395,7 @@ export class PsyLich extends Enemy {
       // Trigger death sequence through phase system
       if (this.phaseName !== "DEATH_THROES" && !this.deathSequenceTriggered) {
         this.deathSequenceTriggered = true;
-        this.dead = true;
+        // Don't set dead=true yet - wait for DEATH_THROES phase to complete
         this.phaseName = "DEATH_THROES";
         this.phaseTimer = 80;
         this.phaseTick = 0;
@@ -412,6 +413,35 @@ export class PsyLich extends Enemy {
     }
     if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
       this.innerShieldSegments = [];
+    }
+
+    // Destroy shield graphics (pixiCleanupObject does not clean _pixiGfx / _pixiInnerGfx)
+    if (this._pixiInnerGfx) {
+      try {
+        if (this._pixiInnerGfx.parent) this._pixiInnerGfx.parent.removeChild(this._pixiInnerGfx);
+        this._pixiInnerGfx.destroy(true);
+      } catch (e) {}
+      this._pixiInnerGfx = null;
+    }
+    if (this._pixiGfx) {
+      try {
+        if (this._pixiGfx.parent) this._pixiGfx.parent.removeChild(this._pixiGfx);
+        this._pixiGfx.destroy(true);
+      } catch (e) {}
+      this._pixiGfx = null;
+    }
+    if (this._pixiNameText) {
+      try {
+        this._pixiNameText.destroy(true);
+      } catch (e) {}
+      this._pixiNameText = null;
+    }
+    if (this._pixiDebugGfx) {
+      try {
+        if (this._pixiDebugGfx.parent) this._pixiDebugGfx.parent.removeChild(this._pixiDebugGfx);
+        this._pixiDebugGfx.destroy(true);
+      } catch (e) {}
+      this._pixiDebugGfx = null;
     }
 
     // Clean up soul drain tether

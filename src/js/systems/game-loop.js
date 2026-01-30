@@ -361,6 +361,26 @@ function triggerFinalBattle() {
     if (enterWarpMaze) enterWarpMaze();
   }, 3000);
 }
+
+function isCruiserOrDungeonBossActive() {
+  const dungeonBosses = [
+    GameContext.necroticHive,
+    GameContext.cerebralPsion,
+    GameContext.fleshforge,
+    GameContext.vortexMatriarch,
+    GameContext.chitinusPrime,
+    GameContext.psyLich
+  ];
+  const hasDungeonBoss = dungeonBosses.some(boss => boss && !boss.dead);
+  const hasCruiser = GameContext.enemies.some(e => e.isCruiser && !e.dead);
+  const isMainBossCruiser =
+    GameContext.boss && GameContext.boss.isCruiser && !GameContext.boss.dead;
+  const isMainBossDungeonBoss =
+    GameContext.boss && GameContext.boss.isDungeonBoss && !GameContext.boss.dead;
+
+  return hasDungeonBoss || hasCruiser || isMainBossCruiser || isMainBossDungeonBoss;
+}
+
 export function gameLoopLogic(opts = null) {
   if (_getWidth) width = _getWidth();
   if (_getHeight) height = _getHeight();
@@ -824,7 +844,9 @@ export function gameLoopLogic(opts = null) {
         !GameContext.gunboatRespawnAt &&
         (currentLevel1 < targetLevel1 || currentLevel2 < targetLevel2)
       ) {
-        GameContext.gunboatRespawnAt = now + 10000;
+        // Double delay when cruiser or dungeon boss is active (50% slower respawn rate)
+        const bossActive = isCruiserOrDungeonBossActive();
+        GameContext.gunboatRespawnAt = now + (bossActive ? 20000 : 10000);
       }
     }
 
@@ -991,7 +1013,9 @@ export function gameLoopLogic(opts = null) {
         currentRoamers + GameContext.roamerRespawnQueue.length < targetRoamers
       ) {
         // 6000ms delay between new spawns to refill population slower
-        GameContext.roamerRespawnQueue.push(6000);
+        // Double delay when cruiser or dungeon boss is active (50% slower respawn rate)
+        const bossActive = isCruiserOrDungeonBossActive();
+        GameContext.roamerRespawnQueue.push(bossActive ? 12000 : 6000);
       }
 
       const eliteUnlocked =
@@ -1157,7 +1181,9 @@ export function gameLoopLogic(opts = null) {
             GameContext.baseRespawnTimers.splice(i, 1);
           } else {
             // Delay respawns until the current target count needs them.
-            GameContext.baseRespawnTimers[i] = now + 16000;
+            // Double delay when cruiser or dungeon boss is active (50% slower respawn rate)
+            const bossActive = isCruiserOrDungeonBossActive();
+            GameContext.baseRespawnTimers[i] = now + (bossActive ? 32000 : 16000);
           }
         } else if (GameContext.baseRespawnTimers[i] > now + 60000) {
           // Remove timers that are more than 60 seconds in the future (stale timers)
