@@ -1070,7 +1070,7 @@ export function gameLoopLogic(opts = null) {
       !GameContext.dungeon1Active &&
       !GameContext.verticalScrollingMode
     ) {
-      while (GameContext.environmentAsteroids.length < 100) spawnOneAsteroidRelative();
+      while (GameContext.environmentAsteroids.length < 50) spawnOneAsteroidRelative();
     } else if (GameContext.verticalScrollingMode) {
       // 50% fewer asteroids in vertical scrolling mode
       while (GameContext.environmentAsteroids.length < 50) spawnOneAsteroidRelative();

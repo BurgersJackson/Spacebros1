@@ -3,6 +3,8 @@ import { GameContext } from "../../../core/game-context.js";
 import { SIM_FPS, SIM_STEP_MS } from "../../../core/constants.js";
 import { playSound, setMusicMode, musicEnabled } from "../../../audio/audio-manager.js";
 import { Bullet } from "../../projectiles/Bullet.js";
+import { ClusterBomb } from "../../projectiles/ClusterBomb.js";
+import { CruiserMineBomb } from "../../projectiles/CruiserMineBomb.js";
 import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.js";
 import { DungeonDrone } from "./DungeonDrone.js";
 import { HealthPowerUp } from "../../pickups/index.js";

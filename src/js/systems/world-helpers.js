@@ -19,7 +19,7 @@ export function generateMap() {
     GameContext.asteroidRespawnTimers = [];
     deps.clearArrayWithPixiCleanup(GameContext.caches);
     deps.clearArrayWithPixiCleanup(GameContext.pois);
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 30; i++) {
         deps.spawnOneAsteroidRelative(true);
     }
     deps.spawnExplorationCaches();
