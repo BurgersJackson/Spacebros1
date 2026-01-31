@@ -4,9 +4,10 @@ import { SIM_FPS, SIM_STEP_MS } from "../../../core/constants.js";
 import { playSound, setMusicMode, musicEnabled } from "../../../audio/audio-manager.js";
 import { Bullet } from "../../projectiles/Bullet.js";
 import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.js";
-import { WarpBioPod } from "../../zones/WarpBioPod.js";
+import { DungeonDrone } from "./DungeonDrone.js";
 import { SoulDrainTether } from "./SoulDrainTether.js";
-import { HealthPowerUp } from "../../pickups/HealthPowerUp.js";
+import { WarpBioPod } from "../../zones/WarpBioPod.js";
+import { HealthPowerUp } from "../../pickups/index.js";
 import { showOverlayMessage } from "../../../utils/ui-helpers.js";
 import { pixiCleanupObject, getRenderAlpha } from "../../../rendering/pixi-context.js";
 
@@ -78,8 +79,7 @@ export class PsyLich extends Enemy {
       { name: "PHASE_IN", duration: 120 },
       { name: "INTANGIBLE", duration: 100 },
       { name: "PSYCHIC_ASSAULT", duration: 160 },
-      { name: "LIFE_DRAIN", duration: 140 },
-      { name: "DEATH_THROES", duration: 80 }
+      { name: "LIFE_DRAIN", duration: 140 }
     ];
 
     const angle = Math.random() * Math.PI * 2;

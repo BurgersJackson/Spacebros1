@@ -1651,8 +1651,8 @@ export function gameLoopLogic(opts = null) {
   for (let i = 0, len = GameContext.enemies.length; i < len; i++) {
     const e = GameContext.enemies[i];
     if (doUpdate) e.update(deltaTime);
-    // Always draw entities with alwaysDraw flag (e.g., shield drones for lightning updates)
-    if (doDraw && (e.alwaysDraw || isInView(e.pos.x, e.pos.y))) e.draw(ctx);
+    // Always draw: alwaysDraw flag, dungeon bosses (avoid ghost at stale position), or in view
+    if (doDraw && (e.alwaysDraw || e.isDungeonBoss || isInView(e.pos.x, e.pos.y))) e.draw(ctx);
   }
 
   if (GameContext.bossActive && GameContext.boss) {

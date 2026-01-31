@@ -191,13 +191,10 @@ async function deleteSelectedProfile() {
     }
 
     deleteProfileRecordRef(selectedProfileName);
-        if (success) {
-            updateStartScreenDisplay();
-            updateMetaUIRef();
-            if (showOverlayMessageRef) showOverlayMessageRef(`DELETED ${nameToDelete}`, '#f00', 1500);
-        }
 
     selectedProfileName = GameContextRef.currentProfileName;
+    updateStartScreenDisplay();
+    updateMetaUIRef();
     showSaveMenu();
     showOverlayMessageRef("PROFILE DELETED", '#ff0', 1200);
 }

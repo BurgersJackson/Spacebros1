@@ -3,10 +3,9 @@ import { GameContext } from "../../../core/game-context.js";
 import { SIM_FPS, SIM_STEP_MS } from "../../../core/constants.js";
 import { playSound, setMusicMode, musicEnabled } from "../../../audio/audio-manager.js";
 import { Bullet } from "../../projectiles/Bullet.js";
-import { CruiserMineBomb } from "../../projectiles/CruiserMineBomb.js";
 import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.js";
 import { GravityWell } from "./GravityWell.js";
-import { HealthPowerUp } from "../../pickups/HealthPowerUp.js";
+import { HealthPowerUp } from "../../pickups/index.js";
 import { showOverlayMessage } from "../../../utils/ui-helpers.js";
 import { pixiCleanupObject } from "../../../rendering/pixi-context.js";
 
@@ -74,6 +73,9 @@ export class VortexMatriarch extends Enemy {
     this.eventHorizonDamagePending = false;
     this.eventHorizonPullRadius = 1500;
     this.eventHorizonDamage = 30;
+
+    // Defender limit - maximum 8 defenders at once
+    this.maxDefenders = 8;
 
     this.phaseSeq = [
       { name: "GRAVITY_WELL", duration: 140 },
@@ -232,18 +234,32 @@ export class VortexMatriarch extends Enemy {
       }
     } else if (this.phaseName === "DEFENDERS_CALL") {
       if (this.phaseTick % 40 === 0) {
-        // Spawn hive defenders
-        for (let i = 0; i < 4; i++) {
-          const a = Math.random() * Math.PI * 2;
-          const d = 600 + Math.random() * 300;
-          const e = new Enemy("defender", {
-            x: this.pos.x + Math.cos(a) * d,
-            y: this.pos.y + Math.sin(a) * d
-          });
-          e.despawnImmune = true;
-          GameContext.enemies.push(e);
+        // Count current defenders
+        let defenderCount = 0;
+        for (const enemy of GameContext.enemies) {
+          if (!enemy.dead && enemy.type === "defender") {
+            defenderCount++;
+          }
         }
-        showOverlayMessage("DEFENDERS DEPLOYED", "#0af", 1200);
+
+        // Only spawn if below the limit
+        if (defenderCount < this.maxDefenders) {
+          // Spawn hive defenders (up to 4, but capped by remaining slots)
+          const toSpawn = Math.min(4, this.maxDefenders - defenderCount);
+          for (let i = 0; i < toSpawn; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const d = 600 + Math.random() * 300;
+            const e = new Enemy("defender", {
+              x: this.pos.x + Math.cos(a) * d,
+              y: this.pos.y + Math.sin(a) * d
+            });
+            e.despawnImmune = true;
+            GameContext.enemies.push(e);
+          }
+          if (toSpawn > 0) {
+            showOverlayMessage("DEFENDERS DEPLOYED", "#0af", 1200);
+          }
+        }
       }
       // Tractor beam pull
       if (this.phaseTick % 5 === 0 && GameContext.player && !GameContext.player.dead) {
@@ -476,3 +492,7 @@ export class VortexMatriarch extends Enemy {
     ctx.restore();
   }
 }
+
+// VORTEX MATRIARCH DEFENDER LIMIT: Maximum 8 defenders at once
+// Modified to prevent defender overflow during DEFENDERS_CALL phase
+

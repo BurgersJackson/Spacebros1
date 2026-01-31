@@ -322,7 +322,9 @@ export function applyMetaUpgrades(spawnDroneFn) {
     }
     GameContext.player.stats.explosiveChance =
       (GameContext.player.stats.explosiveChance || 0) + Math.min(explosiveChance, 1.0);
-    GameContext.player.stats.explosiveDamage = (GameContext.player.stats.explosiveDamage || 0) + 30;
+        // Explosive damage: Tier 1 = 5, adds 2 per tier (5, 7, 9, 11, 13)
+    const explosiveDamage = 5 + (explosiveRoundsTier - 1) * 2;
+    GameContext.player.stats.explosiveDamage = explosiveDamage;
   }
 
   const criticalStrikeTier = GameContext.metaProfile.purchases.criticalStrike || 0;

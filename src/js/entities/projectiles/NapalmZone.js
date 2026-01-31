@@ -42,7 +42,7 @@ export class NapalmZone extends Entity {
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist < this.radius) {
                 if (_applyAOEDamageToPlayer) {
-                    _applyAOEDamageToPlayer(this.pos.x, this.pos.y, this.radius, this.damagePerTick);
+                    _applyAOEDamageToPlayer(this.pos.x, this.pos.y, this.radius, this.damagePerTick, true); // bypassShields = true for napalm
                 }
                 this.damageCooldown = this.damageInterval;
                 if (_emitParticle && Math.random() < 0.3) {

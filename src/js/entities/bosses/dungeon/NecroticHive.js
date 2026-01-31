@@ -4,9 +4,9 @@ import { SIM_FPS, SIM_STEP_MS } from "../../../core/constants.js";
 import { playSound, setMusicMode, musicEnabled } from "../../../audio/audio-manager.js";
 import { Bullet } from "../../projectiles/Bullet.js";
 import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.js";
-import { WarpBioPod } from "../../zones/WarpBioPod.js";
 import { DungeonDrone } from "./DungeonDrone.js";
-import { HealthPowerUp } from "../../pickups/HealthPowerUp.js";
+import { WarpBioPod } from "../../zones/WarpBioPod.js";
+import { HealthPowerUp } from "../../pickups/index.js";
 import { showOverlayMessage } from "../../../utils/ui-helpers.js";
 import { pixiCleanupObject, getRenderAlpha } from "../../../rendering/pixi-context.js";
 
@@ -402,7 +402,9 @@ export class NecroticHive extends Enemy {
       this._pixiGfx = null;
     }
     if (this._pixiNameText) {
-      try { this._pixiNameText.destroy(true); } catch (e) {}
+      try {
+        this._pixiNameText.destroy(true);
+      } catch (e) {}
       this._pixiNameText = null;
     }
     if (this._pixiDebugGfx) {

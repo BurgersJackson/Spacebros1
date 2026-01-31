@@ -5,7 +5,7 @@ import { playSound, setMusicMode, musicEnabled } from "../../../audio/audio-mana
 import { Bullet } from "../../projectiles/Bullet.js";
 import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.js";
 import { PsychicEcho } from "./PsychicEcho.js";
-import { HealthPowerUp } from "../../pickups/HealthPowerUp.js";
+import { HealthPowerUp } from "../../pickups/index.js";
 import { showOverlayMessage } from "../../../utils/ui-helpers.js";
 import { pixiCleanupObject } from "../../../rendering/pixi-context.js";
 

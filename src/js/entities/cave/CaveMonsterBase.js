@@ -7,7 +7,7 @@ import { SIM_STEP_MS, SIM_FPS, ZOOM_LEVEL } from "../../core/constants.js";
 import { playSound } from "../../audio/audio-manager.js";
 import { Coin } from "../pickups/Coin.js";
 import { SpaceNugget } from "../pickups/SpaceNugget.js";
-import { HealthPowerUp } from "../pickups/HealthPowerUp.js";
+import { HealthPowerUp } from "../pickups/index.js";
 import {
   pixiTextures,
   pixiTextureAnchors,

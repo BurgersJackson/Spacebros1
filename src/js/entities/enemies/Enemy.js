@@ -27,6 +27,7 @@ import {
   pixiCleanupObject,
   getRenderAlpha
 } from "../../rendering/pixi-context.js";
+import { isInViewRadius } from "../../core/performance.js";
 
 // Dependency placeholders for main.js functions
 let _spawnLargeExplosion = null;
@@ -479,7 +480,8 @@ export class Enemy extends Entity {
             this.shieldsDirty = true;
           }
         }
-        this.gunboatShieldRecharge = 180;
+        // Dungeon bosses regenerate shields every 2 seconds (120 frames), regular gunboats every 3 seconds (180 frames)
+        this.gunboatShieldRecharge = this.isDungeonBoss ? 120 : 180;
       }
     }
 
@@ -992,6 +994,15 @@ export class Enemy extends Entity {
         this.isGunboat = true;
         this.gunboatLevel = 2;
       }
+      // Gunboat/dungeon boss: hide Pixi when out of view to avoid ghost at stale position (draw is always called for isDungeonBoss)
+      const inView =
+        this.isGunboat || this.isDungeonBoss
+          ? isInViewRadius(
+              this.pos.x,
+              this.pos.y,
+              this.visualRadius || this.shieldRadius || this.radius || 50
+            )
+          : true;
       let tex = null;
       let anchor = 0.5;
       let modelScale = 1;
@@ -1090,7 +1101,7 @@ export class Enemy extends Entity {
           if (typeof anchor === "number") spr.anchor.set(anchor);
           else if (anchor && typeof anchor.x === "number" && typeof anchor.y === "number")
             spr.anchor.set(anchor.x, anchor.y);
-          spr.visible = true;
+          spr.visible = inView;
           spr.position.set(rPos.x, rPos.y);
           spr.rotation = (this.angle || 0) + (pixiTextureRotOffsets[key] || 0);
           let effectiveScale = modelScale;
@@ -1128,6 +1139,7 @@ export class Enemy extends Entity {
         const shieldX = rPos.x;
         const shieldY = rPos.y;
         gfx.position.set(shieldX, shieldY);
+        gfx.visible = inView;
         gfx.alpha = stealthAlpha;
 
         // --- Inner Shield ---
@@ -1143,6 +1155,7 @@ export class Enemy extends Entity {
           }
           // FIX: Use the same shieldX, shieldY values calculated above
           innerGfx.position.set(shieldX, shieldY);
+          innerGfx.visible = inView;
           innerGfx.alpha = stealthAlpha;
         } else if (innerGfx) {
           try {
@@ -1259,7 +1272,7 @@ export class Enemy extends Entity {
         if (t && !t.parent) {
           pixiVectorLayer.addChild(t);
         }
-        t.visible = true;
+        t.visible = inView;
         t.position.set(rPos.x, rPos.y - this.radius - 15);
         t.alpha = stealthAlpha;
       } else if (this._pixiNameText) {
@@ -1285,7 +1298,7 @@ export class Enemy extends Entity {
           pixiVectorLayer.addChild(debugGfx);
         }
 
-        debugGfx.visible = true;
+        debugGfx.visible = inView;
         debugGfx.clear();
         debugGfx.position.set(rPos.x, rPos.y);
 

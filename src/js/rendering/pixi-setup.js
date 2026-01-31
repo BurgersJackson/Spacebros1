@@ -41,6 +41,7 @@ export const pixiBulletSpritePool = [];
 export const pixiParticleSpritePool = [];
 export const pixiEnemySpritePools = Object.create(null);
 export const pixiPickupSpritePool = [];
+export const pixiHealthSpritePool = [];
 export const pixiAsteroidSpritePool = [];
 export const pixiStarSpritePool = [];
 

@@ -314,58 +314,6 @@ export class FloatingText extends Entity {
   }
 }
 
-export class HealthPowerUp extends Entity {
-  constructor(x, y) {
-    super(x, y);
-    this._pixiPool = "pickup";
-    this.radius = 15;
-    this.sprite = null;
-    this.vel.x = (Math.random() - 0.5) * 4; // doubled
-    this.vel.y = (Math.random() - 0.5) * 4; // doubled
-    this.magnetized = false;
-    this.flash = 0;
-  }
-  update(player) {
-    if (!player || player.dead) {
-      return;
-    }
-    const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.y - this.pos.y);
-    if (dist < player.magnetRadius) {
-      this.magnetized = true;
-    }
-    if (this.magnetized) {
-      const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
-      const speed = 10 + 1000 / Math.max(10, dist);
-      this.vel.x = Math.cos(angle) * speed;
-      this.vel.y = Math.sin(angle) * speed;
-    } else {
-      this.vel.mult(0.95);
-    }
-    this.pos.add(this.vel);
-    this.flash++;
-  }
-  draw(ctx) {
-    if (this.dead) {
-      return;
-    }
-    ctx.save();
-    ctx.translate(this.pos.x, this.pos.y);
-    const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.2;
-    ctx.scale(scale, scale);
-    ctx.fillStyle = "#0f0";
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 2;
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = "#0f0";
-    ctx.beginPath();
-    ctx.rect(-4, -10, 8, 20);
-    ctx.rect(-10, -4, 20, 8);
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
-  }
-}
-
 export class EnvironmentAsteroid extends Entity {
   constructor(x, y, r, sizeLevel = 3) {
     super(x, y);

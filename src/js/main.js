@@ -1408,4 +1408,19 @@ requestAnimationFrame(() => {
 
 initProfileSystem();
 
+// Debug function to spawn health powerup at player position
+window.spawnHealthPowerUp = function() {
+  if (!GameContext || !GameContext.player) {
+    console.log('Player not spawned yet. Start game first!');
+    return;
+  }
+  const pickup = new HealthPowerUp(
+    GameContext.player.pos.x + 150,
+    GameContext.player.pos.y
+  );
+  GameContext.powerups.push(pickup);
+  console.log('✓ HealthPowerUp spawned 150 units from player!');
+  console.log('✓ Texture: medkit.png should appear');
+};
+
 startMainLoop();

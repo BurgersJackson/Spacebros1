@@ -59,13 +59,14 @@ export function rayCast(x1, y1, angle, maxDist) {
     return closest;
 }
 
-export function applyAOEDamageToPlayer(aoeX, aoeY, aoeRadius, totalDamage) {
+export function applyAOEDamageToPlayer(aoeX, aoeY, aoeRadius, totalDamage, bypassShields = false) {
     if (!GameContext.player || GameContext.player.dead) return;
 
     let remainingDamage = Math.max(0, Math.ceil(totalDamage));
     const playerAngleToAOE = Math.atan2(aoeY - GameContext.player.pos.y, aoeX - GameContext.player.pos.x);
 
-    if (GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.some(s => s > 0)) {
+    // Skip shield damage if bypassShields is true (for explosive weapons)
+    if (!bypassShields && GameContext.player.outerShieldSegments && GameContext.player.outerShieldSegments.some(s => s > 0)) {
         const shieldAngle = playerAngleToAOE - GameContext.player.outerShieldRotation;
         const normalizedAngle = (shieldAngle + Math.PI * 2) % (Math.PI * 2);
         const segCount = GameContext.player.outerShieldSegments.length;
@@ -87,7 +88,7 @@ export function applyAOEDamageToPlayer(aoeX, aoeY, aoeRadius, totalDamage) {
         }
     }
 
-    if (GameContext.player.shieldSegments && remainingDamage > 0) {
+    if (!bypassShields && GameContext.player.shieldSegments && remainingDamage > 0) {
         const shieldAngle = playerAngleToAOE - GameContext.player.shieldRotation;
         const normalizedAngle = (shieldAngle + Math.PI * 2) % (Math.PI * 2);
         const segCount = GameContext.player.shieldSegments.length;

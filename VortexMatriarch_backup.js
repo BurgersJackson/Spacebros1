@@ -1,47 +1,46 @@
-import { Enemy } from "../../enemies/Enemy.js";
+﻿import { Enemy } from "../../enemies/Enemy.js";
 import { GameContext } from "../../../core/game-context.js";
 import { SIM_FPS, SIM_STEP_MS } from "../../../core/constants.js";
 import { playSound, setMusicMode, musicEnabled } from "../../../audio/audio-manager.js";
 import { Bullet } from "../../projectiles/Bullet.js";
-import { ClusterBomb } from "../../projectiles/ClusterBomb.js";
+import { CruiserMineBomb } from "../../projectiles/CruiserMineBomb.js";
 import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.js";
-import { HealthPowerUp } from "../../pickups/index.js";
+import { GravityWell } from "./GravityWell.js";
+import { HealthPowerUp } from "../../pickups/HealthPowerUp.js";
 import { showOverlayMessage } from "../../../utils/ui-helpers.js";
 import { pixiCleanupObject } from "../../../rendering/pixi-context.js";
 
 let _spawnBossExplosion = null;
 let _spawnLargeExplosion = null;
 let _spawnParticles = null;
-let _spawnNapalmZone = null;
 let _awardCoinsInstant = null;
 let _awardNuggetsInstant = null;
 
-export function registerFleshforgeDependencies(deps) {
+export function registerVortexMatriarchDependencies(deps) {
   if (deps.spawnBossExplosion) _spawnBossExplosion = deps.spawnBossExplosion;
   if (deps.spawnLargeExplosion) _spawnLargeExplosion = deps.spawnLargeExplosion;
   if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
-  if (deps.spawnNapalmZone) _spawnNapalmZone = deps.spawnNapalmZone;
   if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
   if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
 }
 
-export class Fleshforge extends Enemy {
+export class VortexMatriarch extends Enemy {
   constructor(encounterIndex = 1) {
     super("gunboat", null, null, { gunboatLevel: 2 });
     const boost = Math.max(0, encounterIndex - 1);
     const hpScale = 1 + boost * 0.35;
 
-    this.type = "fleshforge";
+    this.type = "vortexMatriarch";
     this.isDungeonBoss = true;
     this.isGunboat = true;
     this.gunboatLevel = 2;
-    this.dungeonAsset = "dungeon6.png";
+    this.dungeonAsset = "dungeon7.png";
 
-    this.cruiserHullScale = 7.0;
+    this.cruiserHullScale = 6.3;
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 6200;
+    const baseHp = 5200;
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
 
@@ -49,10 +48,10 @@ export class Fleshforge extends Enemy {
     this.innerShieldRadius = Math.round(28 * this.cruiserHullScale);
     // Player collides with outer shield, bullets with inner shield - 3px
     this.hullCollisionRadius = this.innerShieldRadius - 3;
-    this.shieldSegments = new Array(16).fill(20);
-    this.innerShieldSegments = new Array(22).fill(20);
+    this.shieldSegments = new Array(14).fill(20);
+    this.innerShieldSegments = new Array(18).fill(20);
     this.innerShieldRotation = 0;
-    this.baseGunboatRange = 900;
+    this.baseGunboatRange = 950;
     this.gunboatRange = this.baseGunboatRange;
     this.cruiserBaseDamage = 2;
     this.despawnImmune = true;
@@ -64,22 +63,27 @@ export class Fleshforge extends Enemy {
     this.phaseIndex = 0;
     this.phaseTick = 0;
 
-    // Regen chambers
-    this.regenChambers = [
-      { active: true, hp: 20, maxHp: 20, angle: 0, dist: 100 },
-      { active: true, hp: 20, maxHp: 20, angle: (Math.PI * 2) / 3, dist: 100 },
-      { active: true, hp: 20, maxHp: 20, angle: (Math.PI * 4) / 3, dist: 100 }
-    ];
-    this.regenCooldown = 90;
-    this.emergencyRebuildTriggered = false;
-    // Frame-based timer for emergency rebuild expiry (replaces setTimeout)
-    this.emergencyRebuildTimer = 0;
+    // Gravity abilities
+    this.gravityWells = [];
+    this.gravityWellCooldown = 0;
+    this.graviticShieldActive = false;
+    this.graviticShieldCooldown = 0;
+    this.eventHorizonTriggered = false;
+    // Frame-based timer for Event Horizon damage (replaces setTimeout)
+    this.eventHorizonTimer = 0;
+    this.eventHorizonDamagePending = false;
+    this.eventHorizonPullRadius = 1500;
+    this.eventHorizonDamage = 30;
+
+    // Defender limit - maximum 8 defenders at once
+    this.maxDefenders = 8;
 
     this.phaseSeq = [
-      { name: "FORGE_ACTIVATE", duration: 160 },
-      { name: "CONSUME", duration: 140 },
-      { name: "ASSEMBLY_LINE", duration: 180 },
-      { name: "MELTDOWN", duration: 120 }
+      { name: "GRAVITY_WELL", duration: 140 },
+      { name: "DEFENDERS_CALL", duration: 160 },
+      { name: "REFLECTION", duration: 130 },
+      { name: "ORBITAL_BOMBARDMENT", duration: 180 },
+      { name: "SINGULARITY", duration: 150 }
     ];
 
     const angle = Math.random() * Math.PI * 2;
@@ -89,7 +93,7 @@ export class Fleshforge extends Enemy {
     this.prevPos.x = this.pos.x;
     this.prevPos.y = this.pos.y;
 
-    this.turnSpeed = (Math.PI * 2) / (25 * SIM_FPS);
+    this.turnSpeed = (Math.PI * 2) / (17.5 * SIM_FPS);
     this.wallElasticity = 0.3;
     this.t = 0;
   }
@@ -102,29 +106,23 @@ export class Fleshforge extends Enemy {
     const dtFactor = deltaTime / 16.67;
     this.t += dtFactor;
     this.phaseTimer -= dtFactor;
-    this.regenCooldown -= dtFactor;
+    this.gravityWellCooldown -= dtFactor;
+    this.graviticShieldCooldown -= dtFactor;
 
-    // Frame-based timer for emergency rebuild expiry (replaces setTimeout)
-    if (this.emergencyRebuildTimer > 0) {
-      this.emergencyRebuildTimer -= dtFactor;
-      if (this.emergencyRebuildTimer <= 0) {
-        this.hp = Math.round(this.maxHp * 0.5);
-        this.invulnerable = false;
-        this.emergencyRebuildTimer = 0;
-        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 50, "#0f0");
+    // Frame-based timer for Event Horizon damage (replaces setTimeout)
+    if (this.eventHorizonTimer > 0) {
+      this.eventHorizonTimer -= dtFactor;
+      if (this.eventHorizonTimer <= 0 && this.eventHorizonDamagePending) {
+        this.applyEventHorizonDamage();
+        this.eventHorizonTimer = 0;
+        this.eventHorizonDamagePending = false;
       }
     }
 
-    // Emergency Rebuild at 20% HP if chambers intact
-    if (!this.emergencyRebuildTriggered && this.hp / this.maxHp <= 0.2) {
-      const activeChambers = this.regenChambers.filter(c => c.active).length;
-      if (activeChambers > 0) {
-        this.emergencyRebuildTriggered = true;
-        this.invulnerable = true;
-        showOverlayMessage("EMERGENCY REBUILD!", "#0f0", 1500);
-        // Frame-based timer: 5 seconds at 60fps = 300 frames
-        this.emergencyRebuildTimer = 300;
-      }
+    // Event Horizon at 35% HP
+    if (!this.eventHorizonTriggered && this.hp / this.maxHp <= 0.35) {
+      this.eventHorizonTriggered = true;
+      this.activateEventHorizon();
     }
 
     // Phase progression
@@ -134,11 +132,11 @@ export class Fleshforge extends Enemy {
       this.phaseName = next.name;
       this.phaseTimer = next.duration;
       this.phaseTick = 0;
-      showOverlayMessage(`FLESHFORGE: ${this.phaseName}`, "#0f0", 900);
+      showOverlayMessage(`VORTEX MATRIARCH: ${this.phaseName}`, "#0af", 900);
     }
 
     // Movement style per phase - Cruiser-based
-    const charging = this.phaseName === "MELTDOWN";
+    const charging = false;
     if (charging) {
       this.circleStrafePreferred = false;
       this.aiState = "SEEK";
@@ -186,18 +184,11 @@ export class Fleshforge extends Enemy {
       this.gunboatRange = this.baseGunboatRange;
     }
 
-    this.innerShieldRotation -= 0.05 * dtFactor;
+    this.innerShieldRotation -= 0.07 * dtFactor;
     super.update(deltaTime);
 
-    // Regen chambers heal boss
-    if (this.regenCooldown <= 0) {
-      const activeChambers = this.regenChambers.filter(c => c.active).length;
-      if (activeChambers > 0 && this.hp < this.maxHp) {
-        this.hp = Math.min(this.maxHp, this.hp + activeChambers);
-        this.regenCooldown = 90;
-        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, activeChambers * 3, "#0f0");
-      }
-    }
+    // Update gravity wells
+    this.gravityWells = this.gravityWells.filter(w => w && !w.dead);
 
     // Phase attacks
     if (typeof this.phaseTickAccum === "undefined") this.phaseTickAccum = 0;
@@ -217,89 +208,115 @@ export class Fleshforge extends Enemy {
       GameContext.player.pos.x - this.pos.x
     );
 
-    if (this.phaseName === "FORGE_ACTIVATE") {
-      if (this.phaseTick % 20 === 0) {
-        // Cannon salvos from chambers
-        for (let i = 0; i < 3; i++) {
-          const chamber = this.regenChambers[i];
-          if (chamber.active) {
-            const wx = this.pos.x + Math.cos(this.angle + chamber.angle) * chamber.dist * 7;
-            const wy = this.pos.y + Math.sin(this.angle + chamber.angle) * chamber.dist * 7;
-            const b = new Bullet(wx, wy, aim, 11, {
-              owner: "enemy",
-              damage: 2,
-              radius: 4,
-              color: "#0f0"
-            });
-            b.owner = this;
-            GameContext.bullets.push(b);
-          }
+    if (this.phaseName === "GRAVITY_WELL") {
+      if (this.phaseTick % 50 === 0 && this.gravityWellCooldown <= 0) {
+        // Spawn gravity wells
+        for (let i = 0; i < 2; i++) {
+          const offset = (Math.random() - 0.5) * 400;
+          const well = new GravityWell(this.pos.x + offset, this.pos.y + offset, this);
+          this.gravityWells.push(well);
         }
-        playSound("shoot");
+        this.gravityWellCooldown = 120;
       }
-    } else if (this.phaseName === "CONSUME") {
-      // Leave napalm trails
       if (this.phaseTick % 30 === 0) {
-        if (_spawnNapalmZone) {
-          _spawnNapalmZone(this.pos.x, this.pos.y, 2, 60);
-        }
-      }
-      if (this.phaseTick % 40 === 0) {
-        // Cannon fire
-        const b = new Bullet(this.pos.x, this.pos.y, aim, 16, {
-          owner: "enemy",
-          damage: 2,
-          radius: 4,
-          color: "#0f0"
-        });
-        b.owner = this;
-        GameContext.bullets.push(b);
-        playSound("heavy_shoot");
-      }
-    } else if (this.phaseName === "ASSEMBLY_LINE") {
-      if (this.phaseTick % 60 === 0) {
-        // Cluster bombs
-        const bomb = new ClusterBomb(this.pos.x, this.pos.y, aim, this);
-        bomb.damage = 3;
-        GameContext.bullets.push(bomb);
-        playSound("heavy_shoot");
-      }
-      if (this.phaseTick % 25 === 0) {
-        // Curtain fire
-        for (let i = -3; i <= 3; i++) {
-          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, 9, {
+        // Ring attack
+        for (let i = 0; i < 14; i++) {
+          const a = ((Math.PI * 2) / 14) * i;
+          const b = new Bullet(this.pos.x, this.pos.y, a, 13, {
             owner: "enemy",
             damage: 1,
-            radius: 3,
-            color: "#0f0"
+            radius: 4,
+            color: "#0af"
           });
           b.owner = this;
           GameContext.bullets.push(b);
         }
-        playSound("rapid_shoot");
+        playSound("shotgun");
       }
-    } else if (this.phaseName === "MELTDOWN") {
-      if (this.phaseTick % 6 === 0) {
-        // Rapid fire all weapons
-        const b = new Bullet(this.pos.x, this.pos.y, aim + (Math.random() - 0.5) * 0.3, 14, {
-          owner: "enemy",
-          damage: 2,
-          radius: 3,
-          color: "#0f0"
-        });
-        b.owner = this;
-        GameContext.bullets.push(b);
-        playSound("rapid_shoot");
-      }
+    } else if (this.phaseName === "DEFENDERS_CALL") {
       if (this.phaseTick % 40 === 0) {
-        // Ring attack
-        for (let i = 0; i < 16; i++) {
-          const a = ((Math.PI * 2) / 16) * i;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 9, {
+        // Spawn hive defenders
+        for (let i = 0; i < 4; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const d = 600 + Math.random() * 300;
+          const e = new Enemy("defender", {
+            x: this.pos.x + Math.cos(a) * d,
+            y: this.pos.y + Math.sin(a) * d
+          });
+          e.despawnImmune = true;
+          GameContext.enemies.push(e);
+        }
+        showOverlayMessage("DEFENDERS DEPLOYED", "#0af", 1200);
+      }
+      // Tractor beam pull
+      if (this.phaseTick % 5 === 0 && GameContext.player && !GameContext.player.dead) {
+        const dx = this.pos.x - GameContext.player.pos.x;
+        const dy = this.pos.y - GameContext.player.pos.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 1200 && dist > 0) {
+          GameContext.player.vel.x += (dx / dist) * 0.6;
+          GameContext.player.vel.y += (dy / dist) * 0.6;
+        }
+      }
+    } else if (this.phaseName === "REFLECTION") {
+      if (this.phaseTick === 1) {
+        this.graviticShieldActive = true;
+        showOverlayMessage("GRAVITIC SHIELD ACTIVE", "#0af", 1500);
+      }
+      if (this.phaseTick === this.phaseSeq[2].duration - 30) {
+        this.graviticShieldActive = false;
+      }
+      if (this.phaseTick % 45 === 0) {
+        // Minefield
+        for (let i = 0; i < 5; i++) {
+          const a = ((Math.PI * 2) / 5) * i;
+          GameContext.bossBombs.push(new CruiserMineBomb(this, a, 700, 2, this.radius * 1.5));
+        }
+        playSound("heavy_shoot");
+      }
+    } else if (this.phaseName === "ORBITAL_BOMBARDMENT") {
+      if (this.phaseTick % 35 === 0) {
+        // Guided missiles
+        GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
+        playSound("heavy_shoot");
+      }
+      if (this.phaseTick % 25 === 0) {
+        // Spread shots
+        for (let i = -2; i <= 2; i++) {
+          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, 11, {
             owner: "enemy",
             damage: 1,
             radius: 4,
-            color: "#0f0"
+            color: "#0af"
+          });
+          b.owner = this;
+          GameContext.bullets.push(b);
+        }
+        playSound("shoot");
+      }
+    } else if (this.phaseName === "SINGULARITY") {
+      if (this.phaseTick % 15 === 0) {
+        // Massive gravity pull
+        if (GameContext.player && !GameContext.player.dead) {
+          const dx = this.pos.x - GameContext.player.pos.x;
+          const dy = this.pos.y - GameContext.player.pos.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 1500 && dist > 0) {
+            GameContext.player.vel.x += (dx / dist) * 1.5;
+            GameContext.player.vel.y += (dy / dist) * 1.5;
+          }
+        }
+        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 8, "#0af");
+      }
+      if (this.phaseTick % 40 === 0) {
+        // Ring attacks
+        for (let i = 0; i < 20; i++) {
+          const a = ((Math.PI * 2) / 20) * i;
+          const b = new Bullet(this.pos.x, this.pos.y, a, 15, {
+            owner: "enemy",
+            damage: 1,
+            radius: 4,
+            color: "#0cf"
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -309,12 +326,28 @@ export class Fleshforge extends Enemy {
     }
   }
 
+  activateEventHorizon() {
+    showOverlayMessage("EVENT HORIZON!", "#0af", 2000);
+    // Frame-based timer: 3 seconds at 60fps = 180 frames
+    this.eventHorizonTimer = 180;
+    this.eventHorizonDamagePending = true;
+  }
+
+  applyEventHorizonDamage() {
+    if (GameContext.player && !GameContext.player.dead) {
+      const dist = Math.hypot(
+        GameContext.player.pos.x - this.pos.x,
+        GameContext.player.pos.y - this.pos.y
+      );
+      if (dist < this.eventHorizonPullRadius) {
+        GameContext.player.hp = Math.max(0, GameContext.player.hp - this.eventHorizonDamage);
+        showOverlayMessage("EVENT HORIZON DAMAGE!", "#f00", 1500);
+      }
+    }
+  }
+
   takeDamage(amount, source) {
     if (this.dead) return;
-    if (this.invulnerable) {
-      if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 3, "#0f0");
-      return;
-    }
 
     let remaining = Math.ceil(amount);
 
@@ -336,7 +369,7 @@ export class Fleshforge extends Enemy {
 
     if (remaining > 0) {
       this.hp -= remaining;
-      if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 5, "#0f0");
+      if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 5, "#0af");
     }
 
     if (this.hp <= 0) {
@@ -384,16 +417,22 @@ export class Fleshforge extends Enemy {
       this._pixiDebugGfx = null;
     }
 
-    pixiCleanupObject(this);
-    if (_spawnBossExplosion) _spawnBossExplosion(this.pos.x, this.pos.y, 4.0, 26);
-    if (_spawnLargeExplosion) _spawnLargeExplosion(this.pos.x, this.pos.y, 4.0);
-    if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 140, "#0f0");
-    playSound("base_explode");
-    GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 24);
-    GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 26);
+    // Clean up gravity wells
+    this.gravityWells.forEach(w => {
+      if (w && !w.dead) w.kill();
+    });
+    this.gravityWells = [];
 
-    // Award coins directly: 18 coins * 10 value = 180 total
-    if (_awardCoinsInstant) _awardCoinsInstant(180, { noSound: false, sound: "coin" });
+    pixiCleanupObject(this);
+    if (_spawnBossExplosion) _spawnBossExplosion(this.pos.x, this.pos.y, 3.8, 26);
+    if (_spawnLargeExplosion) _spawnLargeExplosion(this.pos.x, this.pos.y, 3.8);
+    if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 130, "#0af");
+    playSound("base_explode");
+    GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 23);
+    GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 25);
+
+    // Award coins directly: 17 coins * 10 value = 170 total
+    if (_awardCoinsInstant) _awardCoinsInstant(170, { noSound: false, sound: "coin" });
     // Award nuggets directly: 7 nuggets
     let nuggetCount = 7;
     // Bounty Hunter meta upgrade - bonus nuggets for boss kills
@@ -408,10 +447,10 @@ export class Fleshforge extends Enemy {
     GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
     GameContext.bossActive = false;
-    if (GameContext.fleshforge === this) GameContext.fleshforge = null;
+    if (GameContext.vortexMatriarch === this) GameContext.vortexMatriarch = null;
     if (GameContext.boss === this) GameContext.boss = null;
 
-    showOverlayMessage("FLESHFORGE DESTROYED", "#0f0", 3000);
+    showOverlayMessage("VORTEX MATRIARCH DESTROYED", "#0af", 3000);
     if (musicEnabled) setMusicMode("normal");
   }
 
@@ -426,17 +465,17 @@ export class Fleshforge extends Enemy {
     ctx.save();
     ctx.fillStyle = "rgba(0,0,0,0.55)";
     ctx.fillRect(x - 4, y - 4, barW + 8, 20);
-    ctx.strokeStyle = "#0f0";
+    ctx.strokeStyle = "#0af";
     ctx.lineWidth = 2;
     ctx.strokeRect(x - 4, y - 4, barW + 8, 20);
-    ctx.fillStyle = "#0f0";
+    ctx.fillStyle = "#0af";
     ctx.fillRect(x, y, barW * pct, 12);
     ctx.fillStyle = "#fff";
     ctx.font = "bold 12px Courier New";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     const phaseText = this.phaseName || "ACTIVE";
-    ctx.fillText(`FLESHFORGE  (PHASE: ${phaseText})`, w / 2, y + 12);
+    ctx.fillText(`VORTEX MATRIARCH  (PHASE: ${phaseText})`, w / 2, y + 12);
     ctx.restore();
   }
 }

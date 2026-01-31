@@ -1557,7 +1557,7 @@ export function processBulletCollisions() {
                   GameContext.player.stats.explosiveChance > 0 &&
                   Math.random() < GameContext.player.stats.explosiveChance
                 ) {
-                  const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                  const explosiveDamage = GameContext.player.stats.explosiveDamage || 1;
                   const explosiveRange = 200;
                   GameContext.shockwaves.push(
                     new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
@@ -1980,7 +1980,7 @@ export function processBulletCollisions() {
                   GameContext.player.stats.explosiveChance > 0 &&
                   Math.random() < GameContext.player.stats.explosiveChance
                 ) {
-                  const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                  const explosiveDamage = GameContext.player.stats.explosiveDamage || 1;
                   const explosiveRange = 200;
                   GameContext.shockwaves.push(
                     new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
@@ -2383,7 +2383,7 @@ export function processBulletCollisions() {
                   GameContext.player.stats.explosiveChance > 0 &&
                   Math.random() < GameContext.player.stats.explosiveChance
                 ) {
-                  const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                  const explosiveDamage = GameContext.player.stats.explosiveDamage || 1;
                   const explosiveRange = 200;
                   GameContext.shockwaves.push(
                     new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
@@ -2796,7 +2796,7 @@ export function processBulletCollisions() {
                   GameContext.player.stats.explosiveChance > 0 &&
                   Math.random() < GameContext.player.stats.explosiveChance
                 ) {
-                  const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                  const explosiveDamage = GameContext.player.stats.explosiveDamage || 1;
                   const explosiveRange = 200;
                   GameContext.shockwaves.push(
                     new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
@@ -2847,7 +2847,7 @@ export function processBulletCollisions() {
                     GameContext.player.stats.explosiveChance > 0 &&
                     Math.random() < GameContext.player.stats.explosiveChance
                   ) {
-                    const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                    const explosiveDamage = GameContext.player.stats.explosiveDamage || 1;
                     const explosiveRange = 200;
                     GameContext.shockwaves.push(
                       new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
@@ -2893,7 +2893,7 @@ export function processBulletCollisions() {
                     GameContext.player.stats.explosiveChance > 0 &&
                     Math.random() < GameContext.player.stats.explosiveChance
                   ) {
-                    const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                    const explosiveDamage = GameContext.player.stats.explosiveDamage || 1;
                     const explosiveRange = 200;
                     GameContext.shockwaves.push(
                       new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
@@ -3171,7 +3171,7 @@ export function processBulletCollisions() {
                 GameContext.player.stats.explosiveChance > 0 &&
                 Math.random() < GameContext.player.stats.explosiveChance
               ) {
-                const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                const explosiveDamage = GameContext.player.stats.explosiveDamage || 1;
                 const explosiveRange = 200;
                 GameContext.shockwaves.push(
                   new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
@@ -3356,7 +3356,7 @@ export function processBulletCollisions() {
                 GameContext.player.stats.explosiveChance > 0 &&
                 Math.random() < GameContext.player.stats.explosiveChance
               ) {
-                const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                const explosiveDamage = GameContext.player.stats.explosiveDamage || 1;
                 const explosiveRange = 200;
                 GameContext.shockwaves.push(
                   new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
@@ -3600,7 +3600,7 @@ export function processBulletCollisions() {
                     GameContext.player.stats.explosiveChance > 0 &&
                     Math.random() < GameContext.player.stats.explosiveChance
                   ) {
-                    const explosiveDamage = GameContext.player.stats.explosiveDamage || 30;
+                    const explosiveDamage = GameContext.player.stats.explosiveDamage || 1;
                     const explosiveRange = 200;
                     GameContext.shockwaves.push(
                       new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {

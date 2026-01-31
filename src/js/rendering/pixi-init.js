@@ -11,6 +11,7 @@ import { NEBULA_ALPHA } from "../core/constants.js";
 import {
   applyGunboatTextures,
   applyNuggetTexture,
+  applyHealthTexture,
   applyCruiserTexture,
   applyAsteroidTextures,
   applyPlayerHullTexture,
@@ -479,22 +480,9 @@ export function initPixiOverlay(options) {
     pixiTextures.coin5 = makeCoin(0xffff00);
     pixiTextures.coin10 = makeCoin(0xffff00);
 
-    const makeHealth = () => {
-      const g = new PIXI.Graphics();
-      g.beginFill(0x00ff00, 0.12);
-      g.drawCircle(0, 0, 20);
-      g.endFill();
-      g.lineStyle(2, 0xffffff, 1);
-      g.beginFill(0x00ff00, 1);
-      g.drawRect(-4, -10, 8, 20);
-      g.drawRect(-10, -4, 20, 8);
-      g.endFill();
-      g.lineStyle(10, 0x00ff00, 0.1);
-      g.drawRect(-4, -10, 8, 20);
-      g.drawRect(-10, -4, 20, 8);
-      return genTexture(g).tex;
-    };
-    pixiTextures.health = makeHealth();
+    // Health pickup: medkit texture (loaded by texture-manager.js)
+    // Texture will be set when medkit.png loads via applyHealthTexture()
+    applyHealthTexture();
 
     const makeNugget = () => {
       const c = document.createElement("canvas");
