@@ -304,9 +304,8 @@ export class Cruiser extends Enemy {
       showOverlayMessage("CRUISER DESTROYED - ANOTHER APPROACHING", "#f80", 3000);
       // bossActive stays true
     } else {
-      // No other cruisers, clear boss status
+      // No other cruisers; leave GameContext.boss set so game-loop can count arena fight and spawn space station
       GameContext.bossActive = false;
-      GameContext.boss = null;
       GameContext.bossesDestroyedCount++;
       if (GameContext.bossesDestroyedCount >= 3) {
         GameContext.pendingStations = 1;

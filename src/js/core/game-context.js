@@ -65,6 +65,9 @@ export const GameContext = {
     countdownEndTime: 0
   },
   stationArena: { x: 0, y: 0, radius: 2800, active: false },
+  caveWarpCountdownAt: null,
+  arenaFightsCompleted: 0,
+  arenaFightTarget: 3,
   caveBossArena: { x: 0, y: 0, radius: 2500, active: false, bossSpawned: false },
   dungeon1Arena: { x: 0, y: 0, radius: 3000, active: false },
   caveMode: false,
@@ -338,6 +341,9 @@ export const GameContext = {
     this.suppressWarpInputUntil = 0;
     this.pendingStations = 0;
     this.stationHealthBarVisible = false;
+    this.arenaFightsCompleted = 0;
+    this.arenaFightTarget = 3;
+    this.caveWarpCountdownAt = null;
     this.rerollTokens = 0;
     this.metaExtraLifeCount = 0;
     this.shownUpgradesThisRun = new Set();

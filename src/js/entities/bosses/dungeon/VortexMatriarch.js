@@ -51,7 +51,7 @@ export class VortexMatriarch extends Enemy {
     this.shieldSegments = new Array(14).fill(20);
     this.innerShieldSegments = new Array(18).fill(20);
     this.innerShieldRotation = 0;
-    this.baseGunboatRange = 950;
+    this.baseGunboatRange = 1425;
     this.gunboatRange = this.baseGunboatRange;
     this.cruiserBaseDamage = 2;
     this.despawnImmune = true;
@@ -142,7 +142,7 @@ export class VortexMatriarch extends Enemy {
       this.aiState = "SEEK";
       this.thrustPower = 0.8;
       this.maxSpeed = 10.5;
-      this.gunboatRange = this.baseGunboatRange + 350;
+      this.gunboatRange = this.baseGunboatRange + 525;
     } else {
       // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
       const dx = GameContext.player.pos.x - this.pos.x;
@@ -222,7 +222,7 @@ export class VortexMatriarch extends Enemy {
         // Ring attack
         for (let i = 0; i < 14; i++) {
           const a = ((Math.PI * 2) / 14) * i;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 13, {
+          const b = new Bullet(this.pos.x, this.pos.y, a, 19.5, {
             owner: "enemy",
             damage: 1,
             radius: 4,
@@ -234,7 +234,7 @@ export class VortexMatriarch extends Enemy {
         playSound("shotgun");
       }
     } else if (this.phaseName === "DEFENDERS_CALL") {
-      if (this.phaseTick % 40 === 0) {
+      if (this.phaseTick % 60 === 0) {
         // Count current defenders
         let defenderCount = 0;
         for (const enemy of GameContext.enemies) {
@@ -243,7 +243,7 @@ export class VortexMatriarch extends Enemy {
           }
         }
 
-        // Only spawn if below the limit
+        // Only spawn if below limit
         if (defenderCount < this.maxDefenders) {
           // Spawn hive defenders (up to 4, but capped by remaining slots)
           const toSpawn = Math.min(4, this.maxDefenders - defenderCount);
@@ -297,7 +297,7 @@ export class VortexMatriarch extends Enemy {
       if (this.phaseTick % 25 === 0) {
         // Spread shots
         for (let i = -2; i <= 2; i++) {
-          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, 11, {
+          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, 16.5, {
             owner: "enemy",
             damage: 1,
             radius: 4,
@@ -326,7 +326,7 @@ export class VortexMatriarch extends Enemy {
         // Ring attacks
         for (let i = 0; i < 20; i++) {
           const a = ((Math.PI * 2) / 20) * i;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 15, {
+          const b = new Bullet(this.pos.x, this.pos.y, a, 22.5, {
             owner: "enemy",
             damage: 1,
             radius: 4,
@@ -420,7 +420,9 @@ export class VortexMatriarch extends Enemy {
       this._pixiGfx = null;
     }
     if (this._pixiNameText) {
-      try { this._pixiNameText.destroy(true); } catch (e) {}
+      try {
+        this._pixiNameText.destroy(true);
+      } catch (e) {}
       this._pixiNameText = null;
     }
     if (this._pixiDebugGfx) {
@@ -462,7 +464,7 @@ export class VortexMatriarch extends Enemy {
 
     GameContext.bossActive = false;
     if (GameContext.vortexMatriarch === this) GameContext.vortexMatriarch = null;
-    if (GameContext.boss === this) GameContext.boss = null;
+    // Leave GameContext.boss set so game-loop can count arena fight and spawn space station
 
     showOverlayMessage("VORTEX MATRIARCH DESTROYED", "#0af", 3000);
     if (musicEnabled) setMusicMode("normal");
@@ -496,4 +498,3 @@ export class VortexMatriarch extends Enemy {
 
 // VORTEX MATRIARCH DEFENDER LIMIT: Maximum 8 defenders at once
 // Modified to prevent defender overflow during DEFENDERS_CALL phase
-

@@ -30,10 +30,10 @@ function setupCanvasResolution(internalW, internalH) {
     uiCanvas.width = internalW;
     uiCanvas.height = internalH;
 
-    // In fullscreen: stretch canvas to fill entire screen via CSS
-    // In windowed: use internal resolution size (or window size if smaller)
+    // In fullscreen: maintain 16:9 aspect ratio with black bars
+    // In windowed: stretch to fill entire window
     if (isFullscreen) {
-        // In fullscreen, ensure canvas container and canvas fill entire viewport
+        // In fullscreen, ensure canvas container fills entire viewport with black background
         const canvasContainer = document.getElementById('canvas-container');
         if (canvasContainer) {
             canvasContainer.style.setProperty('width', '100vw', 'important');
@@ -44,66 +44,76 @@ function setupCanvasResolution(internalW, internalH) {
             canvasContainer.style.setProperty('margin', '0', 'important');
             canvasContainer.style.setProperty('padding', '0', 'important');
             canvasContainer.style.setProperty('overflow', 'hidden', 'important');
+            canvasContainer.style.setProperty('background-color', 'black', 'important');
         }
-        
-        // Stretch canvas to fill fullscreen viewport - use pixel values for exact sizing
+
+        // Calculate 16:9 display size within viewport (letterbox/pillarbox)
         const vw = window.innerWidth;
         const vh = window.innerHeight;
-        
-        // CRITICAL: Canvas internal resolution (canvas.width/height) is 1280x720
-        // CSS width/height set to 2195x1235 will make the browser stretch the canvas
-        // This is the standard way to stretch a canvas - browser handles it automatically
+        const targetAspect = 16 / 9;
+        const viewportAspect = vw / vh;
+
+        let displayW, displayH;
+        if (viewportAspect > targetAspect) {
+            // Ultra-wide: pillarbox (black bars on sides)
+            displayH = vh;
+            displayW = vh * targetAspect;
+        } else {
+            // Tall (4:3, etc): letterbox (black bars on top/bottom)
+            displayW = vw;
+            displayH = vw / targetAspect;
+        }
+
+        // Center canvas in viewport
+        const offsetX = (vw - displayW) / 2;
+        const offsetY = (vh - displayH) / 2;
+
         canvas.style.removeProperty('transform');
-        canvas.style.setProperty('width', `${vw}px`, 'important');
-        canvas.style.setProperty('height', `${vh}px`, 'important');
+        canvas.style.setProperty('width', `${displayW}px`, 'important');
+        canvas.style.setProperty('height', `${displayH}px`, 'important');
         canvas.style.setProperty('display', 'block', 'important');
         canvas.style.setProperty('box-sizing', 'border-box', 'important');
-        
+        canvas.style.setProperty('position', 'fixed', 'important');
+        canvas.style.setProperty('left', `${offsetX}px`, 'important');
+        canvas.style.setProperty('top', `${offsetY}px`, 'important');
+
         uiCanvas.style.removeProperty('transform');
-        uiCanvas.style.setProperty('width', `${vw}px`, 'important');
-        uiCanvas.style.setProperty('height', `${vh}px`, 'important');
+        uiCanvas.style.setProperty('width', `${displayW}px`, 'important');
+        uiCanvas.style.setProperty('height', `${displayH}px`, 'important');
         uiCanvas.style.setProperty('display', 'block', 'important');
         uiCanvas.style.setProperty('box-sizing', 'border-box', 'important');
-        
+        uiCanvas.style.setProperty('position', 'fixed', 'important');
+        uiCanvas.style.setProperty('left', `${offsetX}px`, 'important');
+        uiCanvas.style.setProperty('top', `${offsetY}px`, 'important');
+
         // Force a reflow to ensure styles are applied
         void canvas.offsetWidth;
         void uiCanvas.offsetWidth;
     } else {
-        // Windowed mode: ensure container is properly sized and centered
+        // Windowed mode: stretch to fill entire window
         const canvasContainer = document.getElementById('canvas-container');
         if (canvasContainer) {
             canvasContainer.style.setProperty('width', '100%', 'important');
             canvasContainer.style.setProperty('height', '100%', 'important');
-            canvasContainer.style.setProperty('display', 'flex', 'important');
-            canvasContainer.style.setProperty('align-items', 'center', 'important');
-            canvasContainer.style.setProperty('justify-content', 'center', 'important');
+            canvasContainer.style.setProperty('overflow', 'hidden', 'important');
         }
-        // Windowed mode: use internal resolution or window size, whichever is smaller
-        const windowW = window.innerWidth;
-        const windowH = window.innerHeight;
-        const scaleW = windowW / internalW;
-        const scaleH = windowH / internalH;
-        const scale = Math.min(scaleW, scaleH, 1); // Don't scale up in windowed mode
-        
-        const displayW = internalW * scale;
-        const displayH = internalH * scale;
-        
+        // Windowed mode: stretch to fill window (aspect ratio not preserved)
+        const displayW = window.innerWidth;
+        const displayH = window.innerHeight;
+
         canvas.style.setProperty('width', `${displayW}px`, 'important');
         canvas.style.setProperty('height', `${displayH}px`, 'important');
+        canvas.style.setProperty('position', 'absolute', 'important');
+        canvas.style.setProperty('top', '0', 'important');
+        canvas.style.setProperty('left', '0', 'important');
         uiCanvas.style.setProperty('width', `${displayW}px`, 'important');
         uiCanvas.style.setProperty('height', `${displayH}px`, 'important');
+        uiCanvas.style.setProperty('position', 'absolute', 'important');
+        uiCanvas.style.setProperty('top', '0', 'important');
+        uiCanvas.style.setProperty('left', '0', 'important');
     }
 
-    // Position canvas absolutely within container, or fixed to viewport in fullscreen
-    if (isFullscreen) {
-        canvas.style.position = 'fixed';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-    } else {
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-    }
+    // Additional canvas styles (positioning already set above)
     canvas.style.imageRendering = 'pixelated';
     canvas.style.setProperty('max-width', 'none', 'important');
     canvas.style.setProperty('max-height', 'none', 'important');
@@ -112,15 +122,6 @@ function setupCanvasResolution(internalW, internalH) {
     canvas.style.setProperty('object-fit', 'fill', 'important');
     canvas.style.setProperty('aspect-ratio', 'unset', 'important');
 
-    if (isFullscreen) {
-        uiCanvas.style.position = 'fixed';
-        uiCanvas.style.top = '0';
-        uiCanvas.style.left = '0';
-    } else {
-        uiCanvas.style.position = 'absolute';
-        uiCanvas.style.top = '0';
-        uiCanvas.style.left = '0';
-    }
     uiCanvas.style.pointerEvents = 'none';
     uiCanvas.style.imageRendering = 'pixelated';
     uiCanvas.style.setProperty('max-width', 'none', 'important');
@@ -138,15 +139,30 @@ function setupCanvasResolution(internalW, internalH) {
     if (ctx) ctx.imageSmoothingEnabled = false;
     if (uiCtx) uiCtx.imageSmoothingEnabled = false;
 
-    // Update PixiJS renderer - in fullscreen, resize to window size for proper stretching
-    // In windowed, use internal resolution
+    // Update PixiJS renderer - match canvas display size for 16:9 in fullscreen
     const pixiApp = typeof getPixiApp === 'function' ? getPixiApp() : null;
     if (pixiApp && pixiApp.renderer) {
+        let pixiW, pixiH;
         if (isFullscreen) {
-            pixiApp.renderer.resize(window.innerWidth, window.innerHeight);
+            // In fullscreen, calculate 16:9 size within viewport
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const targetAspect = 16 / 9;
+            const viewportAspect = vw / vh;
+
+            if (viewportAspect > targetAspect) {
+                pixiH = vh;
+                pixiW = vh * targetAspect;
+            } else {
+                pixiW = vw;
+                pixiH = vw / targetAspect;
+            }
         } else {
-            pixiApp.renderer.resize(internalW, internalH);
+            // Windowed mode: use window size
+            pixiW = window.innerWidth;
+            pixiH = window.innerHeight;
         }
+        pixiApp.renderer.resize(pixiW, pixiH);
     }
 
     // Background sprites should be sized to viewport (1920x1080), not internal resolution

@@ -53,7 +53,7 @@ export class PsyLich extends Enemy {
     this.shieldSegments = new Array(10).fill(20);
     this.innerShieldSegments = new Array(14).fill(20);
     this.innerShieldRotation = 0;
-    this.baseGunboatRange = 1000;
+    this.baseGunboatRange = 1500;
     this.gunboatRange = this.baseGunboatRange;
     this.cruiserBaseDamage = 2;
     this.despawnImmune = true;
@@ -137,9 +137,9 @@ export class PsyLich extends Enemy {
     if (charging) {
       this.circleStrafePreferred = false;
       this.aiState = "SEEK";
-      this.thrustPower = 0.64;
-      this.maxSpeed = 8.4;
-      this.gunboatRange = this.baseGunboatRange + 350;
+      this.thrustPower = 0.8;
+      this.maxSpeed = 10.5;
+      this.gunboatRange = this.baseGunboatRange + 525;
     } else {
       // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
       const dx = GameContext.player.pos.x - this.pos.x;
@@ -283,7 +283,7 @@ export class PsyLich extends Enemy {
       }
       if (this.phaseTick % 10 === 0) {
         // Rapid fire
-        const b = new Bullet(this.pos.x, this.pos.y, aim, 18, {
+        const b = new Bullet(this.pos.x, this.pos.y, aim, 27, {
           owner: "enemy",
           damage: 1,
           radius: 3,
@@ -475,7 +475,7 @@ export class PsyLich extends Enemy {
 
     GameContext.bossActive = false;
     if (GameContext.psyLich === this) GameContext.psyLich = null;
-    if (GameContext.boss === this) GameContext.boss = null;
+    // Leave GameContext.boss set so game-loop can count arena fight and spawn space station
 
     showOverlayMessage("PSYLICH FOREVER VANQUISHED", "#a0f", 4000);
     if (musicEnabled) setMusicMode("normal");

@@ -52,7 +52,7 @@ export class Fleshforge extends Enemy {
     this.shieldSegments = new Array(16).fill(20);
     this.innerShieldSegments = new Array(22).fill(20);
     this.innerShieldRotation = 0;
-    this.baseGunboatRange = 900;
+    this.baseGunboatRange = 1350;
     this.gunboatRange = this.baseGunboatRange;
     this.cruiserBaseDamage = 2;
     this.despawnImmune = true;
@@ -144,7 +144,7 @@ export class Fleshforge extends Enemy {
       this.aiState = "SEEK";
       this.thrustPower = 0.8;
       this.maxSpeed = 10.5;
-      this.gunboatRange = this.baseGunboatRange + 350;
+      this.gunboatRange = this.baseGunboatRange + 525;
     } else {
       // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
       const dx = GameContext.player.pos.x - this.pos.x;
@@ -225,7 +225,7 @@ export class Fleshforge extends Enemy {
           if (chamber.active) {
             const wx = this.pos.x + Math.cos(this.angle + chamber.angle) * chamber.dist * 7;
             const wy = this.pos.y + Math.sin(this.angle + chamber.angle) * chamber.dist * 7;
-            const b = new Bullet(wx, wy, aim, 11, {
+            const b = new Bullet(wx, wy, aim, 16.5, {
               owner: "enemy",
               damage: 2,
               radius: 4,
@@ -246,7 +246,7 @@ export class Fleshforge extends Enemy {
       }
       if (this.phaseTick % 40 === 0) {
         // Cannon fire
-        const b = new Bullet(this.pos.x, this.pos.y, aim, 16, {
+        const b = new Bullet(this.pos.x, this.pos.y, aim, 24, {
           owner: "enemy",
           damage: 2,
           radius: 4,
@@ -267,7 +267,7 @@ export class Fleshforge extends Enemy {
       if (this.phaseTick % 25 === 0) {
         // Curtain fire
         for (let i = -3; i <= 3; i++) {
-          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, 9, {
+          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, 13.5, {
             owner: "enemy",
             damage: 1,
             radius: 3,
@@ -281,7 +281,7 @@ export class Fleshforge extends Enemy {
     } else if (this.phaseName === "MELTDOWN") {
       if (this.phaseTick % 6 === 0) {
         // Rapid fire all weapons
-        const b = new Bullet(this.pos.x, this.pos.y, aim + (Math.random() - 0.5) * 0.3, 14, {
+        const b = new Bullet(this.pos.x, this.pos.y, aim + (Math.random() - 0.5) * 0.3, 21, {
           owner: "enemy",
           damage: 2,
           radius: 3,
@@ -295,7 +295,7 @@ export class Fleshforge extends Enemy {
         // Ring attack
         for (let i = 0; i < 16; i++) {
           const a = ((Math.PI * 2) / 16) * i;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 9, {
+          const b = new Bullet(this.pos.x, this.pos.y, a, 13.5, {
             owner: "enemy",
             damage: 1,
             radius: 4,
@@ -373,7 +373,9 @@ export class Fleshforge extends Enemy {
       this._pixiGfx = null;
     }
     if (this._pixiNameText) {
-      try { this._pixiNameText.destroy(true); } catch (e) {}
+      try {
+        this._pixiNameText.destroy(true);
+      } catch (e) {}
       this._pixiNameText = null;
     }
     if (this._pixiDebugGfx) {
@@ -409,7 +411,7 @@ export class Fleshforge extends Enemy {
 
     GameContext.bossActive = false;
     if (GameContext.fleshforge === this) GameContext.fleshforge = null;
-    if (GameContext.boss === this) GameContext.boss = null;
+    // Leave GameContext.boss set so game-loop can count arena fight and spawn space station
 
     showOverlayMessage("FLESHFORGE DESTROYED", "#0f0", 3000);
     if (musicEnabled) setMusicMode("normal");

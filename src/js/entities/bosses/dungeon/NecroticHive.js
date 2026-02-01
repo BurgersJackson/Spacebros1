@@ -56,7 +56,7 @@ export class NecroticHive extends Enemy {
     this.innerShieldRotation = 0;
     this.gunboatShieldRecharge = 90;
     this.gunboatMuzzleDist = Math.round(6 * this.cruiserHullScale);
-    this.baseGunboatRange = 950;
+    this.baseGunboatRange = 1425;
     this.gunboatRange = this.baseGunboatRange;
     this.cruiserBaseDamage = 2;
     this.cruiserFireDelay = 14;
@@ -141,7 +141,7 @@ export class NecroticHive extends Enemy {
       this.aiState = "SEEK";
       this.thrustPower = 0.8;
       this.maxSpeed = 10.5;
-      this.gunboatRange = this.baseGunboatRange + 350;
+      this.gunboatRange = this.baseGunboatRange + 525;
     } else {
       // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
       const dx = GameContext.player.pos.x - this.pos.x;
@@ -215,7 +215,7 @@ export class NecroticHive extends Enemy {
         // Chitin barrage arc
         for (let i = 0; i < 16; i++) {
           const a = aim - 0.8 + (i / 15) * 1.6;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 11, {
+          const b = new Bullet(this.pos.x, this.pos.y, a, 16.5, {
             owner: "enemy",
             damage: 1,
             radius: 3,
@@ -236,7 +236,7 @@ export class NecroticHive extends Enemy {
         // Ring attack from drones
         for (let i = 0; i < 12; i++) {
           const a = ((Math.PI * 2) / 12) * i;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 13, {
+          const b = new Bullet(this.pos.x, this.pos.y, a, 19.5, {
             owner: "enemy",
             damage: 1,
             radius: 4,
@@ -271,7 +271,7 @@ export class NecroticHive extends Enemy {
       if (this.phaseTick % 8 === 0) {
         // Rapid triple spread
         for (let i = -1; i <= 1; i++) {
-          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, 12, {
+          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, 18, {
             owner: "enemy",
             damage: 1,
             radius: 3,
@@ -286,7 +286,7 @@ export class NecroticHive extends Enemy {
         // Ring attack
         for (let i = 0; i < 16; i++) {
           const a = ((Math.PI * 2) / 16) * i;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 8, {
+          const b = new Bullet(this.pos.x, this.pos.y, a, 12, {
             owner: "enemy",
             damage: 1,
             radius: 4,
@@ -446,7 +446,7 @@ export class NecroticHive extends Enemy {
 
     GameContext.bossActive = false;
     if (GameContext.necroticHive === this) GameContext.necroticHive = null;
-    if (GameContext.boss === this) GameContext.boss = null;
+    // Leave GameContext.boss set so game-loop can count arena fight and spawn space station
 
     showOverlayMessage("NECROTIC HIVE DESTROYED", "#f80", 3000);
     if (musicEnabled) setMusicMode("normal");

@@ -59,11 +59,17 @@ export function updateInputMode(now = Date.now()) {
     GameContext.usingGamepad = gamepadRecent && !mouseRecent;
   }
 
+  const upgradesMenu = document.getElementById("upgrades-menu");
+  const metaShopModal = document.getElementById("meta-shop-modal");
+  const runUpgradesScreen = document.getElementById("run-upgrades-screen");
   const levelupScreen = document.getElementById("levelup-screen");
   const isMenuOpen =
     GameContext.gamePaused ||
     !GameContext.gameActive ||
-    (levelupScreen && levelupScreen.style.display === "flex");
+    (levelupScreen && levelupScreen.style.display === "flex") ||
+    (upgradesMenu && upgradesMenu.style.display === "block") ||
+    (metaShopModal && metaShopModal.style.display === "block") ||
+    (runUpgradesScreen && runUpgradesScreen.style.display === "block");
 
   if (
     (GameContext.usingGamepad ||

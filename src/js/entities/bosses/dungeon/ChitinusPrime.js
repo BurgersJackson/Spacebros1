@@ -53,7 +53,7 @@ export class ChitinusPrime extends Enemy {
     this.shieldSegments = new Array(20).fill(20);
     this.innerShieldSegments = new Array(24).fill(20);
     this.innerShieldRotation = 0;
-    this.baseGunboatRange = 850;
+    this.baseGunboatRange = 1275;
     this.gunboatRange = this.baseGunboatRange;
     this.cruiserBaseDamage = 3;
     this.despawnImmune = true;
@@ -127,7 +127,7 @@ export class ChitinusPrime extends Enemy {
       this.aiState = "SEEK";
       this.thrustPower = 0.8;
       this.maxSpeed = 10.5;
-      this.gunboatRange = this.baseGunboatRange + 350;
+      this.gunboatRange = this.baseGunboatRange + 525;
     } else {
       // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
       const dx = GameContext.player.pos.x - this.pos.x;
@@ -194,7 +194,7 @@ export class ChitinusPrime extends Enemy {
       if (this.phaseTick % 12 === 0) {
         // Triple fire
         for (let i = -1; i <= 1; i++) {
-          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.12, 19, {
+          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.12, 28.5, {
             owner: "enemy",
             damage: 2,
             radius: 4,
@@ -209,7 +209,7 @@ export class ChitinusPrime extends Enemy {
         // Sweep laser
         for (let i = 0; i < 8; i++) {
           const a = aim - 0.5 + (i / 7) * 1.0;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 22, {
+          const b = new Bullet(this.pos.x, this.pos.y, a, 33, {
             owner: "enemy",
             damage: 1,
             radius: 3,
@@ -246,7 +246,7 @@ export class ChitinusPrime extends Enemy {
         // Wide chitin arc
         for (let i = 0; i < 20; i++) {
           const a = aim - 1.0 + (i / 19) * 2.0;
-          const b = new Bullet(this.pos.x, this.pos.y, a, 9, {
+          const b = new Bullet(this.pos.x, this.pos.y, a, 13.5, {
             owner: "enemy",
             damage: 1,
             radius: 3,
@@ -260,7 +260,7 @@ export class ChitinusPrime extends Enemy {
     } else if (this.phaseName === "RAMPAGE") {
       if (this.phaseTick % 8 === 0) {
         // Rapid fire all weapons
-        const b = new Bullet(this.pos.x, this.pos.y, aim + (Math.random() - 0.5) * 0.2, 14, {
+        const b = new Bullet(this.pos.x, this.pos.y, aim + (Math.random() - 0.5) * 0.2, 21, {
           owner: "enemy",
           damage: 2,
           radius: 3,
@@ -335,7 +335,7 @@ export class ChitinusPrime extends Enemy {
 
     for (let i = 0; i < 24; i++) {
       const a = ((Math.PI * 2) / 24) * i;
-      const b = new Bullet(this.pos.x, this.pos.y, a, 10, {
+      const b = new Bullet(this.pos.x, this.pos.y, a, 15, {
         owner: "enemy",
         damage: damagePerProjectile,
         radius: 4,
@@ -378,7 +378,9 @@ export class ChitinusPrime extends Enemy {
       this._pixiGfx = null;
     }
     if (this._pixiNameText) {
-      try { this._pixiNameText.destroy(true); } catch (e) {}
+      try {
+        this._pixiNameText.destroy(true);
+      } catch (e) {}
       this._pixiNameText = null;
     }
     if (this._pixiDebugGfx) {
@@ -414,7 +416,7 @@ export class ChitinusPrime extends Enemy {
 
     GameContext.bossActive = false;
     if (GameContext.chitinusPrime === this) GameContext.chitinusPrime = null;
-    if (GameContext.boss === this) GameContext.boss = null;
+    // Leave GameContext.boss set so game-loop can count arena fight and spawn space station
 
     showOverlayMessage("CHITINUS PRIME DESTROYED", "#ff0", 3000);
     if (musicEnabled) setMusicMode("normal");

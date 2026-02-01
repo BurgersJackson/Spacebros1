@@ -558,6 +558,8 @@ export function gameLoopLogic(opts = null) {
     }
 
     // World warp gate (appears after space station is destroyed, once per sector).
+    // Disabled - warp to cave level happens automatically after space station defeat
+    /*
     if (
       !warpActive &&
       !GameContext.dungeon1Active &&
@@ -565,7 +567,6 @@ export function gameLoopLogic(opts = null) {
       !GameContext.sectorTransitionActive &&
       !GameContext.warpCompletedOnce &&
       !GameContext.caveMode &&
-      !GameContext.spaceStation &&
       GameContext.warpGateUnlocked
     ) {
       if (!GameContext.warpGate || GameContext.warpGate.mode !== "entry") {
@@ -582,6 +583,7 @@ export function gameLoopLogic(opts = null) {
         GameContext.warpGate = null;
       }
     }
+    */
 
     updateContractSystem(now, warpActive);
 
@@ -766,6 +768,68 @@ export function gameLoopLogic(opts = null) {
       }
     } catch (e) {
       console.warn("boss spawn check failed", e);
+    }
+
+    // Track arena fight completion (boss defeats)
+    if (
+      !GameContext.caveMode &&
+      GameContext.boss &&
+      GameContext.boss.dead &&
+      !GameContext.spaceStation
+    ) {
+      GameContext.arenaFightsCompleted++;
+      showOverlayMessage(
+        `ARENA FIGHT ${Math.min(GameContext.arenaFightsCompleted, GameContext.arenaFightTarget)}/${GameContext.arenaFightTarget} COMPLETED`,
+        "#0f0",
+        3000
+      );
+
+      // Clear boss
+      if (GameContext.boss) {
+        pixiCleanupObject(GameContext.boss);
+        GameContext.boss = null;
+      }
+      GameContext.bossActive = false;
+
+      // Check if all arena fights are completed, spawn space station
+      if (
+        GameContext.arenaFightsCompleted >= GameContext.arenaFightTarget &&
+        !GameContext.spaceStation
+      ) {
+        GameContext.spaceStation = new SpaceStation();
+        GameContext.stationArena.x = GameContext.spaceStation.pos.x;
+        GameContext.stationArena.y = GameContext.spaceStation.pos.y;
+        GameContext.stationArena.radius = 2800;
+        GameContext.stationArena.active = false;
+        showOverlayMessage("FINAL BOSS: DESTROY THE SPACE STATION", "#f80", 5000);
+        playSound("station_spawn");
+      }
+    }
+
+    // Trigger warp to cave level after space station is defeated
+    if (
+      !GameContext.caveMode &&
+      GameContext.spaceStation &&
+      GameContext.spaceStation.dead &&
+      GameContext.arenaFightsCompleted >= GameContext.arenaFightTarget &&
+      !GameContext.sectorTransitionActive &&
+      !GameContext.warpCompletedOnce &&
+      !GameContext.caveWarpCountdownAt
+    ) {
+      GameContext.caveWarpCountdownAt = Date.now() + 10000;
+      showOverlayMessage("SPACE STATION DESTROYED - WARPING TO LEVEL 2 IN 10s", "#0ff", 3000);
+    }
+
+    // Check cave warp countdown and trigger warp
+    if (GameContext.caveWarpCountdownAt && Date.now() >= GameContext.caveWarpCountdownAt) {
+      GameContext.caveWarpCountdownAt = null;
+      if (
+        GameContext.gameActive &&
+        !GameContext.player.dead &&
+        !GameContext.sectorTransitionActive
+      ) {
+        enterWarpMaze();
+      }
     }
 
     // Space Station Spawn (timer-driven)

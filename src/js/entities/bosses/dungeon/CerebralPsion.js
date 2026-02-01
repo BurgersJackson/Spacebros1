@@ -50,7 +50,7 @@ export class CerebralPsion extends Enemy {
     this.shieldSegments = new Array(12).fill(20);
     this.innerShieldSegments = new Array(16).fill(20);
     this.innerShieldRotation = 0;
-    this.baseGunboatRange = 1000;
+    this.baseGunboatRange = 1500;
     this.gunboatRange = this.baseGunboatRange;
     this.cruiserBaseDamage = 2;
     this.despawnImmune = true;
@@ -122,7 +122,7 @@ export class CerebralPsion extends Enemy {
       this.aiState = "SEEK";
       this.thrustPower = 0.8;
       this.maxSpeed = 10.5;
-      this.gunboatRange = this.baseGunboatRange + 350;
+      this.gunboatRange = this.baseGunboatRange + 525;
     } else {
       // More varied movement: alternates between circling, orbiting, flanking, and direct approaches
       const dx = GameContext.player.pos.x - this.pos.x;
@@ -249,7 +249,7 @@ export class CerebralPsion extends Enemy {
       // Echoes fire curtain pattern every 15 ticks
       if (this.phaseTick % 15 === 0) {
         for (let i = -2; i <= 2; i++) {
-          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, 15, {
+          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.2, 22.5, {
             owner: "enemy",
             damage: 1,
             radius: 3,
@@ -272,7 +272,7 @@ export class CerebralPsion extends Enemy {
         const numBlades = 3;
         for (let i = 0; i < numBlades; i++) {
           const spread = -0.3 + (i / (numBlades - 1)) * 0.6;
-          const b = new Bullet(this.pos.x, this.pos.y, aim + spread, 14, {
+          const b = new Bullet(this.pos.x, this.pos.y, aim + spread, 21, {
             owner: "enemy",
             damage: 3,
             radius: 6,
@@ -287,7 +287,7 @@ export class CerebralPsion extends Enemy {
       // Wide cone attack
       if (this.phaseTick % 50 === 0) {
         for (let i = -6; i <= 6; i++) {
-          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, 16, {
+          const b = new Bullet(this.pos.x, this.pos.y, aim + i * 0.15, 24, {
             owner: "enemy",
             damage: 1,
             radius: 3,
@@ -307,7 +307,7 @@ export class CerebralPsion extends Enemy {
       }
       // Rapid fire
       if (this.phaseTick % 8 === 0) {
-        const b = new Bullet(this.pos.x, this.pos.y, aim, 18, {
+        const b = new Bullet(this.pos.x, this.pos.y, aim, 27, {
           owner: "enemy",
           damage: 1,
           radius: 3,
@@ -411,7 +411,9 @@ export class CerebralPsion extends Enemy {
       this._pixiGfx = null;
     }
     if (this._pixiNameText) {
-      try { this._pixiNameText.destroy(true); } catch (e) {}
+      try {
+        this._pixiNameText.destroy(true);
+      } catch (e) {}
       this._pixiNameText = null;
     }
     if (this._pixiDebugGfx) {
@@ -453,7 +455,7 @@ export class CerebralPsion extends Enemy {
 
     GameContext.bossActive = false;
     if (GameContext.cerebralPsion === this) GameContext.cerebralPsion = null;
-    if (GameContext.boss === this) GameContext.boss = null;
+    // Leave GameContext.boss set so game-loop can count arena fight and spawn space station
 
     showOverlayMessage("CEREBRAL PSION DESTROYED", "#f0f", 3000);
     if (musicEnabled) setMusicMode("normal");
