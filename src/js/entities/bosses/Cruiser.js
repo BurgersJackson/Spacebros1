@@ -37,9 +37,9 @@ export class Cruiser extends Enemy {
     super("gunboat", null, null, { gunboatLevel: 2 });
     const boost = Math.max(0, encounterIndex - 1);
     const hpScale = 1 + boost * 0.35;
-    // Shield segment HP: 2 + (encounterIndex - 1) = increases by 1 per level
-    let shieldStrength = 2 + boost;
-    const baseCruiserHp = 150;
+    // Shield segment HP: same as strongest dungeon boss (ChitinusPrime) = 20 per shard
+    const shieldStrength = 20;
+    const baseCruiserHp = 7000;
     this.type = "cruiser";
     this.isCruiser = true;
     this.isGunboat = true;

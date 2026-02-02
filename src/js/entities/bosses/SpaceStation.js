@@ -3,6 +3,7 @@ import { GameContext } from "../../core/game-context.js";
 import { SIM_STEP_MS, ZOOM_LEVEL } from "../../core/constants.js";
 import { playSound, setMusicMode, musicEnabled } from "../../audio/audio-manager.js";
 import { Bullet } from "../projectiles/Bullet.js";
+import { ClusterBomb } from "../projectiles/ClusterBomb.js";
 import { CruiserMineBomb } from "../projectiles/CruiserMineBomb.js";
 import { Enemy } from "../enemies/Enemy.js";
 import { showOverlayMessage } from "../../utils/ui-helpers.js";
@@ -57,21 +58,26 @@ export class SpaceStation extends Entity {
     this.displayName = names[Math.floor(Math.random() * names.length)] + "-" + suffix;
 
     this.radius = Math.floor(520 * 0.65);
-    this.hp = 5000;
-    this.maxHp = 500;
+    this.hp = 10000;
+    this.maxHp = 10000;
 
     this.shieldRadius = Math.floor(600 * 0.65);
     this.innerShieldRadius = Math.floor(560 * 0.65);
 
-    this.shieldSegments = new Array(36).fill(10);
-    this.innerShieldSegments = new Array(32).fill(10);
+    this.shieldSegments = new Array(36).fill(100);
+    this.innerShieldSegments = new Array(32).fill(100);
 
     this.shieldRotation = 0;
     this.innerShieldRotation = 0;
+    this.shieldRotationSpeed = 0.0105; // 50% faster than hull (0.007 * 1.5)
+    this.shieldRegenTimer = 0;
+    this.shieldRegenInterval = 1500; // 1 shard every 1.5 seconds
 
     this.turretReload = 250;
     this.defenderSpawnTimer = 0;
     this.minefieldTimer = 2500;
+    this.clusterBombTimer = 3200;
+    this.clusterBombInterval = 3200;
     this.shieldsDirty = true;
     this._pixiInnerGfx = null;
 
@@ -96,6 +102,31 @@ export class SpaceStation extends Entity {
     const dtFactor = deltaTime / 16.67;
     this.t += dtFactor;
     this.angle += this.rotationSpeed * dtFactor;
+    this.shieldRotation += this.shieldRotationSpeed * dtFactor;
+    this.innerShieldRotation += this.shieldRotationSpeed * dtFactor;
+
+    this.shieldRegenTimer += deltaTime;
+    if (this.shieldRegenTimer >= this.shieldRegenInterval) {
+      this.shieldRegenTimer = 0;
+      const maxSeg = 100;
+      let healed = false;
+      for (let i = 0; i < this.shieldSegments.length && !healed; i++) {
+        if (this.shieldSegments[i] < maxSeg) {
+          this.shieldSegments[i] = Math.min(maxSeg, this.shieldSegments[i] + maxSeg);
+          this.shieldsDirty = true;
+          healed = true;
+        }
+      }
+      if (!healed && this.innerShieldSegments) {
+        for (let i = 0; i < this.innerShieldSegments.length && !healed; i++) {
+          if (this.innerShieldSegments[i] < maxSeg) {
+            this.innerShieldSegments[i] = Math.min(maxSeg, this.innerShieldSegments[i] + maxSeg);
+            this.shieldsDirty = true;
+            healed = true;
+          }
+        }
+      }
+    }
 
     if (this.fixedPos) {
       this.pos.x = this.fixedPos.x;
@@ -124,6 +155,12 @@ export class SpaceStation extends Entity {
         if (this.minefieldTimer <= 0) {
           this.deployBombs();
           this.minefieldTimer = 2500;
+        }
+
+        this.clusterBombTimer -= deltaTime;
+        if (this.clusterBombTimer <= 0) {
+          this.fireClusterBomb();
+          this.clusterBombTimer = this.clusterBombInterval;
         }
 
         const applyBeamDamageToPlayer = amount => {
@@ -290,6 +327,19 @@ export class SpaceStation extends Entity {
     }
     if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 20, "#f00");
     playSound("boss_spawn");
+  }
+
+  fireClusterBomb() {
+    if (!GameContext.player || GameContext.player.dead) return;
+    const angle = Math.atan2(
+      GameContext.player.pos.y - this.pos.y,
+      GameContext.player.pos.x - this.pos.x
+    );
+    const bomb = new ClusterBomb(this.pos.x, this.pos.y, angle, this, 4, 350);
+    bomb.damage = 8;
+    GameContext.bullets.push(bomb);
+    if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 12, "#f80");
+    playSound("rapid_shoot");
   }
 
   kill() {

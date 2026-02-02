@@ -814,9 +814,7 @@ export function initSettingsMenu() {
     }
     if (qPause) {
         qPause.addEventListener('click', () => {
-            if (confirm("Quit to desktop? Game and upgrades will be auto-saved.")) {
-                window.SpacebrosApp.settings.quit();
-            }
+            window.SpacebrosApp.settings.quit();
         });
     }
 }

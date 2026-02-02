@@ -66,8 +66,9 @@ function getWeaponTypeName(weaponType) {
 /**
  * Show the death screen with statistics
  * @param {number} survivalTimeMs - Pre-calculated survival time in milliseconds (optional, will calculate if not provided)
+ * @param {Object} [options] - Optional: { title, titleColor } for win screen (e.g. "LEVEL 1 COMPLETE!", "#0f0")
  */
-export function showDeathScreen(survivalTimeMs = null) {
+export function showDeathScreen(survivalTimeMs = null, options = {}) {
     const deathScreen = document.getElementById('death-screen');
     const container = document.getElementById('death-stats-container');
     
@@ -75,6 +76,19 @@ export function showDeathScreen(survivalTimeMs = null) {
         console.warn('[DEATH SCREEN] Missing HTML elements');
         return;
     }
+
+    const h1 = deathScreen.querySelector('h1');
+    if (h1) {
+        if (options.title !== undefined) {
+            h1.innerText = options.title;
+            h1.style.color = options.titleColor !== undefined ? options.titleColor : h1.style.color;
+        } else {
+            h1.innerText = 'MISSION FAILED';
+            h1.style.color = '#f00';
+        }
+    }
+    const endScreen = document.getElementById('end-screen');
+    if (endScreen) endScreen.style.display = 'none';
 
     // Calculate statistics - use provided time or try to get it (may be 0 if gameActive is false)
     if (survivalTimeMs === null || survivalTimeMs === undefined) {
@@ -152,11 +166,19 @@ export function showDeathScreen(survivalTimeMs = null) {
     deathScreen.style.display = 'block';
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('pause-menu').style.display = 'none';
-    
-    // Focus the restart button
+
+    // Reset gamepad menu state so next frame treats this as a new menu and focuses the button
+    GameContext.menuSelectionIndex = 0;
+    if (GameContext.gpState) {
+        GameContext.gpState.lastMenuElements = null;
+    }
+
+    // Focus the restart button (keyboard/mouse and gamepad)
     setTimeout(() => {
         const btn = document.getElementById('death-restart-btn');
-        if (btn) btn.focus();
+        if (btn) {
+            btn.focus();
+        }
     }, 100);
 }
 

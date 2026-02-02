@@ -30,7 +30,7 @@ export function initGameFlow() {
   window.updateResumeButtonState = updateResumeButtonState;
 }
 
-export function endGame(elapsedMs) {
+export function endGame(elapsedMs, options = {}) {
   if (GameContext.gameEnded) return;
   GameContext.gameEnded = true;
   GameContext.gameActive = false;
@@ -59,21 +59,32 @@ export function endGame(elapsedMs) {
       console.warn("save on end game failed", e);
     }
   }
-  const endEl = document.getElementById("end-screen");
-  if (endEl) endEl.style.display = "block";
   const startEl = document.getElementById("start-screen");
   if (startEl) startEl.style.display = "none";
   document.getElementById("pause-menu").style.display = "none";
-  const t = document.getElementById("end-time");
-  const sc = document.getElementById("end-score");
-  const ng = document.getElementById("end-nuggets");
-  if (t) t.innerText = deps.formatTime(elapsedMs);
-  if (sc) sc.innerText = GameContext.score;
-  if (ng) ng.innerText = GameContext.spaceNuggets;
-  setTimeout(() => {
-    const btn = document.getElementById("restart-btn");
-    if (btn) btn.focus();
-  }, 100);
+
+  if (options.showDeathScreen && deps.showDeathScreen) {
+    deps.showDeathScreen(elapsedMs, { title: options.title, titleColor: options.titleColor });
+    const endEl = document.getElementById("end-screen");
+    if (endEl) endEl.style.display = "none";
+    setTimeout(() => {
+      const btn = document.getElementById("death-restart-btn");
+      if (btn) btn.focus();
+    }, 100);
+  } else {
+    const endEl = document.getElementById("end-screen");
+    if (endEl) endEl.style.display = "block";
+    const t = document.getElementById("end-time");
+    const sc = document.getElementById("end-score");
+    const ng = document.getElementById("end-nuggets");
+    if (t) t.innerText = deps.formatTime(elapsedMs);
+    if (sc) sc.innerText = GameContext.score;
+    if (ng) ng.innerText = GameContext.spaceNuggets;
+    setTimeout(() => {
+      const btn = document.getElementById("restart-btn");
+      if (btn) btn.focus();
+    }, 100);
+  }
 
   if (window.updateResumeButtonState) {
     window.updateResumeButtonState();
@@ -449,6 +460,7 @@ export function togglePause() {
   ) {
     document.getElementById("start-screen").style.display = "none";
     document.getElementById("pause-menu").style.display = "block";
+    if (deps.updatePauseMenuObjectives) deps.updatePauseMenuObjectives();
     if (deps.setFromPauseMenu) deps.setFromPauseMenu(false);
     return;
   }
@@ -456,6 +468,7 @@ export function togglePause() {
   GameContext.gamePaused = !GameContext.gamePaused;
   document.getElementById("pause-menu").style.display = GameContext.gamePaused ? "block" : "none";
   if (GameContext.gamePaused) {
+    if (deps.updatePauseMenuObjectives) deps.updatePauseMenuObjectives();
     GameContext.pauseStartTime = deps.getGameNowMs();
     if (deps.isArenaCountdownActive && deps.isArenaCountdownActive()) deps.stopArenaCountdown();
 

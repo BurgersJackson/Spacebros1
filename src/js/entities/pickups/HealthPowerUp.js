@@ -15,6 +15,7 @@ export class HealthPowerUp extends Entity {
   constructor(x, y) {
     super(x, y);
     this._pixiPool = "health";
+    this.healAmount = 10; // Used by HUD to identify health packs for the directional arrow
     this.radius = 32;
     this.sprite = null;
     this.vel.x = (Math.random() - 0.5) * 2;

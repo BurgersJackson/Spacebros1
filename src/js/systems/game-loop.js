@@ -149,6 +149,7 @@ let drawStationIndicator = null;
 let drawDestroyerIndicator = null;
 let drawWarpGateIndicator = null;
 let drawContractIndicator = null;
+let drawHealthPackIndicator = null;
 let drawMiniEventIndicator = null;
 let clearPixiUiText = null;
 let processStaggeredBombExplosions = null;
@@ -247,6 +248,7 @@ export function registerGameLoopLogicDependencies(deps) {
   if (deps.drawDestroyerIndicator) drawDestroyerIndicator = deps.drawDestroyerIndicator;
   if (deps.drawWarpGateIndicator) drawWarpGateIndicator = deps.drawWarpGateIndicator;
   if (deps.drawContractIndicator) drawContractIndicator = deps.drawContractIndicator;
+  if (deps.drawHealthPackIndicator) drawHealthPackIndicator = deps.drawHealthPackIndicator;
   if (deps.drawMiniEventIndicator) drawMiniEventIndicator = deps.drawMiniEventIndicator;
   if (deps.clearPixiUiText) clearPixiUiText = deps.clearPixiUiText;
   if (deps.processStaggeredBombExplosions)
@@ -810,7 +812,7 @@ export function gameLoopLogic(opts = null) {
       }
     }
 
-    // Trigger warp to cave level after space station is defeated
+    // Trigger warp after space station is defeated (level 1: warp to boss; other: warp to cave/level 2)
     if (
       !GameContext.caveMode &&
       GameContext.spaceStation &&
@@ -821,7 +823,11 @@ export function gameLoopLogic(opts = null) {
       !GameContext.caveWarpCountdownAt
     ) {
       GameContext.caveWarpCountdownAt = Date.now() + 10000;
-      showOverlayMessage("SPACE STATION DESTROYED - WARPING TO LEVEL 2 IN 10s", "#0ff", 3000);
+      if (GameContext.currentLevel === 1) {
+        showOverlayMessage("WARP OPENING IN 10s - BOSS AHEAD", "#0ff", 3000);
+      } else {
+        showOverlayMessage("SPACE STATION DESTROYED - WARPING TO LEVEL 2 IN 10s", "#0ff", 3000);
+      }
     }
 
     // Check cave warp countdown and trigger warp
@@ -2021,6 +2027,7 @@ export function gameLoopLogic(opts = null) {
     drawWarpGateIndicator();
     drawMinimap(pixiMinimapGraphics, canvas);
     drawContractIndicator();
+    drawHealthPackIndicator();
     drawMiniEventIndicator();
     updateMiniEventUI();
     // Boss HP bars (including main boss, dungeon bosses, destroyer, station) at bottom of screen

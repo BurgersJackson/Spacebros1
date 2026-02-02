@@ -71,11 +71,12 @@ export function updateInputMode(now = Date.now()) {
     (metaShopModal && metaShopModal.style.display === "block") ||
     (runUpgradesScreen && runUpgradesScreen.style.display === "block");
 
-  if (
-    (GameContext.usingGamepad ||
-      (GameContext.player && GameContext.player.shipType === "slacker")) &&
-    !isMenuOpen
-  ) {
+  // Hide cursor for gamepad/slacker even when a menu is open; show cursor only for mouse users when a menu is open
+  const hideCursor =
+    GameContext.usingGamepad ||
+    (GameContext.player && GameContext.player.shipType === "slacker") ||
+    !isMenuOpen;
+  if (hideCursor) {
     document.body.classList.add("no-cursor");
   } else {
     document.body.classList.remove("no-cursor");

@@ -1,5 +1,5 @@
 import { Entity } from "../Entity.js";
-import { GameContext } from "../../core/game-context.js";
+import { GameContext, getElapsedGameTime } from "../../core/game-context.js";
 import { SIM_STEP_MS, ZOOM_LEVEL } from "../../core/constants.js";
 import { playSound, stopMusic } from "../../audio/audio-manager.js";
 import { Bullet } from "../projectiles/Bullet.js";
@@ -26,6 +26,7 @@ let _updateHealthUI = null;
 let _killPlayer = null;
 let _canvas = null;
 let _unlockLevel = null;
+let _endGame = null;
 
 export function registerFinalBossDependencies(deps) {
   if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
@@ -39,6 +40,7 @@ export function registerFinalBossDependencies(deps) {
   if (deps.killPlayer) _killPlayer = deps.killPlayer;
   if (deps.canvas) _canvas = deps.canvas;
   if (deps.unlockLevel) _unlockLevel = deps.unlockLevel;
+  if (deps.endGame) _endGame = deps.endGame;
 }
 
 // ============================================================================
@@ -219,7 +221,35 @@ export class FinalBoss extends Entity {
     // instead of exploding all bombs at once which causes sprite pool exhaustion
     if (_scheduleStaggeredBombExplosions) _scheduleStaggeredBombExplosions(this.pos.x, this.pos.y);
 
-    // END GAME: Show Victory Screen
+    showOverlayMessage("FINAL BOSS DESTROYED - VICTORY!", "#0f0", 5000, 5);
+    GameContext.bossActive = false;
+    GameContext.bossArena.active = false;
+    GameContext.bossArena.growing = false;
+    playSound("warp_flame_stop");
+    clearArrayWithPixiCleanup(GameContext.warpBioPods);
+    clearArrayWithPixiCleanup(this.mines);
+    if (GameContext.boss) pixiCleanupObject(GameContext.boss);
+    GameContext.boss = null;
+
+    // Level 1: warp boss defeated → unlock level 2 and show level 1 complete screen (stats + win title)
+    if (GameContext.currentLevel === 1 && _unlockLevel && _endGame) {
+      _unlockLevel(2);
+      setTimeout(() => {
+        _endGame(getElapsedGameTime(), {
+          showDeathScreen: true,
+          title: "LEVEL 1 COMPLETE!",
+          titleColor: "#0f0"
+        });
+      }, 2000);
+      return;
+    }
+
+    // Level 2: unlock level 3 and show victory start screen
+    if (GameContext.currentLevel === 2 && _unlockLevel) {
+      _unlockLevel(3);
+    }
+
+    // END GAME: Show Victory Screen (level 2+)
     setTimeout(() => {
       GameContext.gameActive = false;
       stopMusic();
@@ -231,21 +261,6 @@ export class FinalBoss extends Entity {
         document.getElementById("start-btn").focus();
       }, 100);
     }, 5000);
-
-    showOverlayMessage("FINAL BOSS DESTROYED - VICTORY!", "#0f0", 5000, 5);
-    GameContext.bossActive = false;
-    GameContext.bossArena.active = false;
-    GameContext.bossArena.growing = false;
-    playSound("warp_flame_stop");
-    clearArrayWithPixiCleanup(GameContext.warpBioPods);
-    clearArrayWithPixiCleanup(this.mines);
-    if (GameContext.boss) pixiCleanupObject(GameContext.boss);
-    GameContext.boss = null;
-
-    // Level completion: Level 3 unlocks when final boss is defeated in Level 2
-    if (GameContext.currentLevel === 2 && _unlockLevel) {
-      _unlockLevel(3);
-    }
 
     // PERFORMANCE MONITORING: Log completion time
     const killDuration = performance.now() - killStartTime;

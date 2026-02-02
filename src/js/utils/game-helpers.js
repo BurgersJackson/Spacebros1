@@ -5,14 +5,17 @@
 
 import { GameContext } from "../core/game-context.js";
 import { Explosion } from "../entities/index.js";
+import { getElapsedGameTime } from "../core/game-context.js";
 
 // Dependencies that will be injected
 let deps = {};
 let unlockLevelRef = null;
+let endGameRef = null;
 
 export function registerGameHelperDependencies(dependencies) {
   deps = { ...deps, ...dependencies };
   if (dependencies.unlockLevel) unlockLevelRef = dependencies.unlockLevel;
+  if (dependencies.endGame) endGameRef = dependencies.endGame;
 }
 
 /**
@@ -91,7 +94,8 @@ export function handleSpaceStationDestroyed() {
     showOverlayMessage,
     pixiCleanupObject,
     awardCoinsInstant,
-    awardNuggetsInstant
+    awardNuggetsInstant,
+    stopMusic
   } = deps;
 
   if (!GameContext.spaceStation) return;
@@ -105,17 +109,18 @@ export function handleSpaceStationDestroyed() {
   if (awardCoinsInstant) awardCoinsInstant(500, { noSound: false, sound: "coin" });
   // Award nuggets directly: 25 nuggets
   if (awardNuggetsInstant) awardNuggetsInstant(25, { noSound: false, sound: "coin" });
-  showOverlayMessage("SPACE STATION DESTROYED - WARP SIGNAL IN 30s", "#f80", 5000);
   pixiCleanupObject(GameContext.spaceStation);
   GameContext.spaceStation = null;
   GameContext.stationHealthBarVisible = false;
 
-  // Level completion: Level 1 completed when space station is destroyed
-  if (GameContext.currentLevel === 1 && unlockLevelRef) {
-    unlockLevelRef(2);
-    showOverlayMessage("LEVEL 1 COMPLETE - LEVEL 2 UNLOCKED!", "#0f0", 5000);
+  // Level 1: don't end level; warp opens in 10s (game-loop sets caveWarpCountdownAt), player goes to warp boss
+  if (GameContext.currentLevel === 1) {
+    showOverlayMessage("WARP OPENING IN 10s - BOSS AHEAD", "#f80", 5000);
+    GameContext.score += 50000;
+    return;
   }
 
+  showOverlayMessage("SPACE STATION DESTROYED - WARP SIGNAL IN 30s", "#f80", 5000);
   setTimeout(() => {
     GameContext.warpGateUnlocked = true;
     // Reset suppression when warp gate unlocks to ensure it's usable

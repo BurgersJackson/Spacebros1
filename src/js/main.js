@@ -125,7 +125,8 @@ import {
 import {
   initLevelSelection,
   registerLevelManagerDependencies,
-  unlockLevel as levelManagerUnlockLevel
+  unlockLevel as levelManagerUnlockLevel,
+  updatePauseMenuObjectives
 } from "./systems/level-manager.js";
 import { clearOverlayMessageTimeout, formatTime, showOverlayMessage } from "./utils/ui-helpers.js";
 import {
@@ -233,6 +234,7 @@ import {
   drawDestroyerIndicator,
   drawWarpGateIndicator,
   drawContractIndicator,
+  drawHealthPackIndicator,
   drawMiniEventIndicator,
   drawSlackerMouseLine,
   updateHealthUI,
@@ -791,6 +793,7 @@ registerGameFlowDependencies({
   stopMusic,
   updateContractUI,
   updateHealthUI,
+  updatePauseMenuObjectives,
   Spaceship
 });
 initGameFlow();
@@ -939,6 +942,7 @@ registerGameLoopLogicDependencies({
   drawDestroyerIndicator,
   drawWarpGateIndicator,
   drawContractIndicator,
+  drawHealthPackIndicator,
   drawMiniEventIndicator,
   clearPixiUiText,
   processStaggeredBombExplosions,
@@ -1187,7 +1191,8 @@ registerFinalBossDependencies({
   updateHealthUI,
   killPlayer,
   canvas,
-  unlockLevel: levelManagerUnlockLevel
+  unlockLevel: levelManagerUnlockLevel,
+  endGame
 });
 
 registerNecroticHiveDependencies({
@@ -1380,6 +1385,8 @@ registerGameHelperDependencies({
   destroyBulletSprite,
   awardCoinsInstant,
   awardNuggetsInstant,
+  stopMusic,
+  endGame,
   unlockLevel: levelManagerUnlockLevel
 });
 

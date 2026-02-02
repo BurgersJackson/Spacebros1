@@ -10,7 +10,8 @@ let selectedLevel = 1;
 const LEVEL_MISSIONS = {
   1: {
     title: "MISSION BRIEFING",
-    description: "Destroy the space station to beat this area."
+    description:
+      "Defeat 3 cruisers, defeat 1 space station and defeat warp boss to defeat this area."
   },
   2: {
     title: "LEVEL 2",
@@ -174,4 +175,48 @@ export function getSelectedLevel() {
 export function setSelectedLevel(level) {
   selectedLevel = level;
   updateLevelButtons();
+}
+
+/**
+ * Build current level objectives summary from GameContext. Used when pause menu opens.
+ * @returns {string} Text for pause menu objectives block
+ */
+function buildObjectivesSummary() {
+  const g = GameContextRef;
+  if (!g || !g.gameActive) return "";
+
+  const lines = [];
+
+  // Sector 1: cruisers, space station, warp boss
+  if (g.sectorIndex === 1) {
+    const cruisers = Math.min(g.bossesDestroyedCount || 0, 3);
+    lines.push(`Cruisers: ${cruisers}/3`);
+
+    const stationDone =
+      (g.bossesDestroyedCount >= 3 && (!g.spaceStation || g.spaceStation.dead)) ||
+      g.warpGateUnlocked ||
+      (g.warpGate && !g.warpGate.dead);
+    lines.push(`Space station: ${stationDone ? "1" : "0"}/1`);
+
+    const warpBossDone = g.boss && g.boss.isWarpBoss && g.boss.dead;
+    lines.push(`Warp boss: ${warpBossDone ? "1" : "0"}/1`);
+  } else if (g.sectorIndex === 2 && g.caveLevel) {
+    const defeated = g.caveLevel.bossesDefeated || 0;
+    lines.push(`Dungeon bosses: ${defeated}/3`);
+  } else {
+    const finalBossDone = g.bossActive === false && (g.boss === null || (g.boss && g.boss.dead));
+    lines.push(`Final boss: ${finalBossDone ? "1" : "0"}/1`);
+  }
+
+  if (lines.length === 0) return "";
+  return lines.join(" • ");
+}
+
+/**
+ * Update the pause menu objectives block. Call when pause menu is shown.
+ */
+export function updatePauseMenuObjectives() {
+  const el = document.getElementById("pause-objectives");
+  if (!el) return;
+  el.textContent = buildObjectivesSummary();
 }

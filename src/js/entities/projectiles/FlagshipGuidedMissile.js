@@ -38,8 +38,8 @@ export class FlagshipGuidedMissile extends Entity {
         this.radius = 28;
         this.hp = 10;
         this.maxHp = 10;
-        // Updated for 60Hz: player speed is ~12, so missiles must be faster.
-        this.speed = 11.0;
+        // Updated for 60Hz: player speed is ~12, so missiles must be faster. +25% speed.
+        this.speed = 13.75;
         this.turnRate = 0.085;
         this.lifeMs = 5000;
         this.angle = (GameContext.player && !GameContext.player.dead) ? Math.atan2(GameContext.player.pos.y - this.pos.y, GameContext.player.pos.x - this.pos.x) : 0;

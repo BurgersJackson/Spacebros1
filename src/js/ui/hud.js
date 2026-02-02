@@ -376,6 +376,100 @@ export function drawContractIndicator() {
   pixiUiTextObjects.push(text);
 }
 
+export function drawHealthPackIndicator() {
+  if (
+    !GameContext.powerups ||
+    !GameContext.player ||
+    GameContext.player.dead ||
+    !pixiArrowsGraphics ||
+    !canvas ||
+    !pixiUiOverlayLayer
+  )
+    return;
+
+  // Find nearest health pack
+  let nearestHealthPack = null;
+  let nearestDist = Infinity;
+
+  for (const pickup of GameContext.powerups) {
+    if (!pickup || pickup.dead) continue;
+    // Check if it's a HealthPowerUp by checking if it has healAmount
+    if (pickup.healAmount && typeof pickup.healAmount === "number") {
+      const dist = Math.hypot(
+        pickup.pos.x - GameContext.player.pos.x,
+        pickup.pos.y - GameContext.player.pos.y
+      );
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestHealthPack = pickup;
+      }
+    }
+  }
+
+  if (!nearestHealthPack) return;
+
+  const screenW = canvas.width;
+  const screenH = canvas.height;
+  const z = GameContext.currentZoom || ZOOM_LEVEL;
+  const camX = GameContext.player.pos.x - screenW / (2 * z);
+  const camY = GameContext.player.pos.y - screenH / (2 * z);
+  const viewW = screenW / z;
+  const viewH = screenH / z;
+
+  // Don't draw if health pack is on-screen
+  if (
+    nearestHealthPack.pos.x > camX &&
+    nearestHealthPack.pos.x < camX + viewW &&
+    nearestHealthPack.pos.y > camY &&
+    nearestHealthPack.pos.y < camY + viewH
+  ) {
+    return;
+  }
+
+  const dx = nearestHealthPack.pos.x - GameContext.player.pos.x;
+  const dy = nearestHealthPack.pos.y - GameContext.player.pos.y;
+  const angle = Math.atan2(dy, dx);
+
+  const margin = 60;
+  const cx = screenW / 2;
+  const cy = screenH / 2;
+  const vx = Math.cos(angle);
+  const vy = Math.sin(angle);
+
+  const bx = cx - margin;
+  const by = cy - margin;
+  const tx = Math.abs(vx) > 0.001 ? bx / Math.abs(vx) : Infinity;
+  const ty = Math.abs(vy) > 0.001 ? by / Math.abs(vy) : Infinity;
+  const t = Math.min(tx, ty);
+
+  const arrowX = cx + vx * t;
+  const arrowY = cy + vy * t;
+  const pulse = 1.0 + Math.sin(Date.now() * 0.008) * 0.15;
+
+  const arrowShape = [15, 0, -15, 12, -15, -12];
+  const transformed = transformPolygon(arrowShape, arrowX, arrowY, pulse, angle);
+
+  pixiArrowsGraphics.lineStyle(2, 0x000000);
+  pixiArrowsGraphics.beginFill(0xff0000);
+  pixiArrowsGraphics.drawPolygon(transformed);
+  pixiArrowsGraphics.endFill();
+
+  const text = new PIXI.Text("HEALTH", {
+    fontFamily: "Courier New",
+    fontWeight: "bold",
+    fontSize: 12,
+    fill: 0xff0000,
+    align: "center",
+    dropShadow: true,
+    dropShadowColor: 0x000000,
+    dropShadowBlur: 4
+  });
+  text.anchor.set(0.5, 0);
+  text.position.set(arrowX, arrowY + 25);
+  pixiUiOverlayLayer.addChild(text);
+  pixiUiTextObjects.push(text);
+}
+
 export function drawMiniEventIndicator() {
   if (
     !GameContext.miniEvent ||
@@ -680,7 +774,12 @@ function getBossBarLabel(entity) {
   if (entity.isCruiser) return "CRUISER";
   const type = entity.type || (entity.constructor && entity.constructor.name) || "";
   const name = String(type);
-  return name.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase()).trim().toUpperCase().slice(0, 14);
+  return name
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, s => s.toUpperCase())
+    .trim()
+    .toUpperCase()
+    .slice(0, 14);
 }
 
 /**
@@ -695,7 +794,9 @@ export function getActiveBosses(state = GameContext) {
 
   if (gc.spaceStation && gc.spaceStation.maxHp > 0) {
     list.push({
-      name: (gc.spaceStation.displayName && String(gc.spaceStation.displayName).toUpperCase()) || "STATION",
+      name:
+        (gc.spaceStation.displayName && String(gc.spaceStation.displayName).toUpperCase()) ||
+        "STATION",
       hp: gc.spaceStation.hp,
       maxHp: gc.spaceStation.maxHp
     });

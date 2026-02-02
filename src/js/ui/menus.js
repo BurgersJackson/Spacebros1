@@ -478,11 +478,8 @@ export function initMenuUi() {
 
   const quitBtn = document.getElementById("quit-btn");
   if (quitBtn) {
-    quitBtn.addEventListener("click", async () => {
-      const confirmed = showAbortConfirmDialogRef ? await showAbortConfirmDialogRef() : false;
-      if (confirmed) {
-        if (quitGameRef) quitGameRef();
-      }
+    quitBtn.addEventListener("click", () => {
+      if (quitGameRef) quitGameRef();
     });
   }
 
