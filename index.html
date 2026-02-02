@@ -345,6 +345,39 @@
         color: #000;
       }
 
+      .level-select-btn {
+        background: transparent;
+        color: #0ff;
+        border: 2px solid #0ff;
+        padding: 10px 20px;
+        margin: 5px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: bold;
+        transition: all 0.2s;
+        text-transform: uppercase;
+        min-width: 100px;
+      }
+      .level-select-btn:hover {
+        background: rgba(0, 255, 255, 0.2);
+        box-shadow: 0 0 10px #0ff;
+      }
+      .level-locked {
+        color: #666;
+        border-color: #666;
+        opacity: 0.5;
+      }
+      .level-locked:hover {
+        background: transparent;
+        box-shadow: none;
+      }
+      .level-btn-selected {
+        background: #0ff;
+        color: #000;
+        box-shadow: 0 0 15px #0ff;
+      }
+
       #end-screen {
         display: none;
       }
@@ -978,10 +1011,23 @@
     </div>
 
     <div id="start-screen" class="menu-screen">
-      <h1>NEON SPACE</h1>
-      <p>MOUSE: Aim • WASD/L-STICK: Move<br />Collect Coins to Upgrade Ship!</p>
+      <h1>SPACEBROS!</h1>
       <div id="current-profile-display" style="color: #ff0; margin-bottom: 10px; font-size: 14px">
         Current: None
+      </div>
+
+      <!-- Level Selection -->
+      <div style="margin-bottom: 15px; border: 1px solid #0ff; padding: 10px">
+        <div style="color: #0ff; font-size: 14px; margin-bottom: 8px">SELECT LEVEL</div>
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap">
+          <button id="level-1-btn" class="level-select-btn" data-level="1">LEVEL 1</button>
+          <button id="level-2-btn" class="level-select-btn level-locked" data-level="2" disabled>
+            LEVEL 2
+          </button>
+          <button id="level-3-btn" class="level-select-btn level-locked" data-level="3" disabled>
+            LEVEL 3
+          </button>
+        </div>
       </div>
 
       <!-- NEW: Ship Selection -->
@@ -998,7 +1044,6 @@
       </div>
 
       <button id="resume-btn-start">RESUME GAME</button>
-      <button id="start-btn">INITIATE LAUNCH</button>
       <button id="profile-btn">SELECT PROFILE</button>
       <button id="upgrades-btn" style="margin-top: 10px">UPGRADES STORE</button>
       <button id="settings-btn" style="margin-top: 10px">SETTINGS</button>
@@ -1334,14 +1379,35 @@
         ><br />Nuggets: <span id="end-nuggets">0</span>
       </p>
       <button id="restart-btn">RESTART</button>
+      <button id="main-menu-btn" style="margin-top: 10px">MAIN MENU</button>
     </div>
 
-    <div id="death-screen" class="menu-screen" style="display: none; max-height: 90vh; overflow-y: auto;">
-      <h1 style="color: #f00;">MISSION FAILED</h1>
-      <div id="death-stats-container" style="text-align: left; margin: 20px 0; padding: 0 20px;">
+    <div
+      id="death-screen"
+      class="menu-screen"
+      style="display: none; max-height: 90vh; overflow-y: auto"
+    >
+      <h1 style="color: #f00">MISSION FAILED</h1>
+      <div id="death-stats-container" style="text-align: left; margin: 20px 0; padding: 0 20px">
         <!-- Stats will be populated by JavaScript -->
       </div>
       <button id="death-restart-btn">REBOOT SYSTEM</button>
+    </div>
+
+    <div
+      id="level-mission-modal"
+      class="menu-screen"
+      style="display: none; width: 500px; padding: 30px"
+    >
+      <h2 id="mission-title" style="color: #0ff; margin-top: 0">MISSION BRIEFING</h2>
+      <p
+        id="mission-description"
+        style="color: #fff; font-size: 18px; margin: 20px 0; line-height: 1.5"
+      >
+        Mission description here
+      </p>
+      <button id="mission-start-btn">START MISSION</button>
+      <button id="mission-back-btn" style="margin-left: 10px">BACK</button>
     </div>
 
     <div id="pause-menu" class="menu-screen">

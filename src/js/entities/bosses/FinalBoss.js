@@ -25,6 +25,7 @@ let _applyAOEDamageToPlayer = null;
 let _updateHealthUI = null;
 let _killPlayer = null;
 let _canvas = null;
+let _unlockLevel = null;
 
 export function registerFinalBossDependencies(deps) {
   if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
@@ -37,6 +38,7 @@ export function registerFinalBossDependencies(deps) {
   if (deps.updateHealthUI) _updateHealthUI = deps.updateHealthUI;
   if (deps.killPlayer) _killPlayer = deps.killPlayer;
   if (deps.canvas) _canvas = deps.canvas;
+  if (deps.unlockLevel) _unlockLevel = deps.unlockLevel;
 }
 
 // ============================================================================
@@ -239,6 +241,11 @@ export class FinalBoss extends Entity {
     clearArrayWithPixiCleanup(this.mines);
     if (GameContext.boss) pixiCleanupObject(GameContext.boss);
     GameContext.boss = null;
+
+    // Level completion: Level 3 unlocks when final boss is defeated in Level 2
+    if (GameContext.currentLevel === 2 && _unlockLevel) {
+      _unlockLevel(3);
+    }
 
     // PERFORMANCE MONITORING: Log completion time
     const killDuration = performance.now() - killStartTime;
@@ -919,4 +926,3 @@ export class FinalBoss extends Entity {
     playSound("powerup");
   }
 }
-

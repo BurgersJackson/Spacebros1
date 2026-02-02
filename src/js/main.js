@@ -122,6 +122,11 @@ import {
   compactArray as helperCompactArray,
   registerGameHelperDependencies
 } from "./utils/game-helpers.js";
+import {
+  initLevelSelection,
+  registerLevelManagerDependencies,
+  unlockLevel as levelManagerUnlockLevel
+} from "./systems/level-manager.js";
 import { clearOverlayMessageTimeout, formatTime, showOverlayMessage } from "./utils/ui-helpers.js";
 import {
   emitParticle,
@@ -1181,7 +1186,8 @@ registerFinalBossDependencies({
   applyAOEDamageToPlayer,
   updateHealthUI,
   killPlayer,
-  canvas
+  canvas,
+  unlockLevel: levelManagerUnlockLevel
 });
 
 registerNecroticHiveDependencies({
@@ -1373,8 +1379,20 @@ registerGameHelperDependencies({
   pixiBulletSpritePool,
   destroyBulletSprite,
   awardCoinsInstant,
-  awardNuggetsInstant
+  awardNuggetsInstant,
+  unlockLevel: levelManagerUnlockLevel
 });
+
+// Level manager system
+registerLevelManagerDependencies({
+  GameContext,
+  startGame,
+  getActiveMenuElements,
+  updateMenuVisuals,
+  initAudio,
+  saveGame: saveGameSystem
+});
+initLevelSelection();
 
 // Debug spawn system
 registerDebugSpawnDependencies({
@@ -1409,18 +1427,15 @@ requestAnimationFrame(() => {
 initProfileSystem();
 
 // Debug function to spawn health powerup at player position
-window.spawnHealthPowerUp = function() {
+window.spawnHealthPowerUp = function () {
   if (!GameContext || !GameContext.player) {
-    console.log('Player not spawned yet. Start game first!');
+    console.log("Player not spawned yet. Start game first!");
     return;
   }
-  const pickup = new HealthPowerUp(
-    GameContext.player.pos.x + 150,
-    GameContext.player.pos.y
-  );
+  const pickup = new HealthPowerUp(GameContext.player.pos.x + 150, GameContext.player.pos.y);
   GameContext.powerups.push(pickup);
-  console.log('✓ HealthPowerUp spawned 150 units from player!');
-  console.log('✓ Texture: medkit.png should appear');
+  console.log("✓ HealthPowerUp spawned 150 units from player!");
+  console.log("✓ Texture: medkit.png should appear");
 };
 
 startMainLoop();

@@ -104,6 +104,8 @@ export const GameContext = {
   spaceNuggets: 0,
   highScore: 0,
   totalPlayTimeMs: 0,
+  unlockedLevels: [1],
+  currentLevel: 1,
   roamerRespawnQueue: [],
   baseRespawnTimers: [],
   asteroidRespawnTimers: [],

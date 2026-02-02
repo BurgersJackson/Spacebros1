@@ -203,6 +203,11 @@ export function getActiveMenuElements() {
     return Array.from(document.querySelectorAll("#rename-prompt-modal button"));
   }
 
+  const levelMissionModal = document.getElementById("level-mission-modal");
+  if (isVisible(levelMissionModal)) {
+    return Array.from(document.querySelectorAll("#level-mission-modal button"));
+  }
+
   const pauseMenu = document.getElementById("pause-menu");
   if (isVisible(pauseMenu)) {
     return Array.from(document.querySelectorAll("#pause-menu button"));
@@ -448,6 +453,17 @@ function handleMenuNavigation(now) {
               if (debugBackBtn) {
                 debugBackBtn.click();
                 handled = true;
+              }
+            }
+
+            if (!handled) {
+              const levelMissionModal = document.getElementById("level-mission-modal");
+              if (levelMissionModal && levelMissionModal.style.display === "block") {
+                const missionBackBtn = document.getElementById("mission-back-btn");
+                if (missionBackBtn) {
+                  missionBackBtn.click();
+                  handled = true;
+                }
               }
             }
           }
