@@ -698,7 +698,7 @@ export class Destroyer extends Entity {
 
                 hpBarGfx.clear();
                 hpBarGfx.position.set(rPos.x, rPos.y - this.visualRadius - 45);
-                hpBarGfx.visible = inView;
+                hpBarGfx.visible = false; // Boss HP shown in bottom bar only
 
                 hpBarGfx.beginFill(0x330000);
                 hpBarGfx.drawRect(-hpBarWidth / 2, 0, hpBarWidth, hpBarHeight);
@@ -724,7 +724,7 @@ export class Destroyer extends Entity {
                 } else if (!hpText.parent) {
                     pixiVectorLayer.addChild(hpText);
                 }
-                hpText.visible = inView;
+                hpText.visible = false; // Boss HP shown in bottom bar only
                 hpText.text = `${this.hp}/${this.maxHp}`;
                 hpText.position.set(rPos.x, rPos.y - this.visualRadius - 48);
             }

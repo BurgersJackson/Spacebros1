@@ -253,7 +253,8 @@ export class CerebralPsion extends Enemy {
             owner: "enemy",
             damage: 1,
             radius: 3,
-            color: "#f0f"
+            color: "#f0f",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -274,10 +275,10 @@ export class CerebralPsion extends Enemy {
           const spread = -0.3 + (i / (numBlades - 1)) * 0.6;
           const b = new Bullet(this.pos.x, this.pos.y, aim + spread, 21, {
             owner: "enemy",
-            damage: 3,
-            radius: 6,
-            color: "#f0f",
-            ignoreShields: true
+            damage: 1,
+            radius: 3,
+            color: "#ff0",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -291,7 +292,8 @@ export class CerebralPsion extends Enemy {
             owner: "enemy",
             damage: 1,
             radius: 3,
-            color: "#ff0"
+            color: "#ff0",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -311,7 +313,8 @@ export class CerebralPsion extends Enemy {
           owner: "enemy",
           damage: 1,
           radius: 3,
-          color: "#f0f"
+          color: "#f0f",
+          life: 38
         });
         b.owner = this;
         GameContext.bullets.push(b);

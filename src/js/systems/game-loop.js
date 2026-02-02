@@ -49,6 +49,7 @@ import {
   updateArenaCountdownDisplay
 } from "./event-scheduler.js";
 import { updateContract as updateContractSystem } from "./contract-manager.js";
+import { updateBossHealthBars } from "../ui/hud.js";
 import {
   spawnMiniEventRelative,
   spawnNewPinwheelRelative,
@@ -56,6 +57,9 @@ import {
   spawnOneWarpAsteroidRelative,
   spawnRadiationStormRelative
 } from "./spawn-manager.js";
+
+/** Set to true to allow destroyers to spawn automatically; false = you add them manually */
+const DESTROYER_AUTO_SPAWN_ENABLED = false;
 
 let _updateGamepad = null;
 let _gameLoopLogic = null;
@@ -916,7 +920,9 @@ export function gameLoopLogic(opts = null) {
 
     // Single destroyer system: only 1 destroyer at a time, alternates between type 1 and 2
     // Destroyers never spawn in sector 2 (cave mode), in dungeon1, or in vertical scrolling mode
+    // Set DESTROYER_AUTO_SPAWN_ENABLED to true above to re-enable automatic spawning
     if (
+      DESTROYER_AUTO_SPAWN_ENABLED &&
       !warpActive &&
       !GameContext.caveMode &&
       !GameContext.dungeon1Active &&
@@ -1734,26 +1740,13 @@ export function gameLoopLogic(opts = null) {
   if (GameContext.spaceStation) {
     if (doUpdate) GameContext.spaceStation.update(deltaTime);
     if (doDraw) GameContext.spaceStation.draw(ctx);
-
-    // Update Station Health Bar (only update display when state changes)
-    if (!GameContext.stationHealthBarVisible) {
-      const sContainer = document.getElementById("station-health-container");
-      if (sContainer) {
-        sContainer.style.display = "flex";
-        GameContext.stationHealthBarVisible = true;
-      }
-    }
-    const sFill = document.getElementById("station-health-fill");
-    if (doDraw && sFill) {
-      const pct = Math.max(0, (GameContext.spaceStation.hp / GameContext.spaceStation.maxHp) * 100);
-      sFill.style.width = `${pct}%`;
-    }
-  } else {
-    // Always hide the HP bar when spaceStation is null, regardless of flag state
+    // Station HP bar is now shown in bottom boss-health-bars row (updateBossHealthBars)
     const sContainer = document.getElementById("station-health-container");
-    if (sContainer) {
-      sContainer.style.display = "none";
-    }
+    if (sContainer) sContainer.style.display = "none";
+    GameContext.stationHealthBarVisible = false;
+  } else {
+    const sContainer = document.getElementById("station-health-container");
+    if (sContainer) sContainer.style.display = "none";
     GameContext.stationHealthBarVisible = false;
   }
 
@@ -2030,12 +2023,8 @@ export function gameLoopLogic(opts = null) {
     drawContractIndicator();
     drawMiniEventIndicator();
     updateMiniEventUI();
-    if (
-      GameContext.bossActive &&
-      GameContext.boss &&
-      typeof GameContext.boss.drawBossHud === "function"
-    )
-      GameContext.boss.drawBossHud(uiCtx);
+    // Boss HP bars (including main boss, dungeon bosses, destroyer, station) at bottom of screen
+    if (doDraw) updateBossHealthBars();
 
     // Update CRT filter animation
     if (updateCrtFilter) {

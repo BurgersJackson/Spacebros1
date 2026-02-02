@@ -287,7 +287,8 @@ export class PsyLich extends Enemy {
           owner: "enemy",
           damage: 1,
           radius: 3,
-          color: "#f0a"
+          color: "#f0a",
+          life: 38
         });
         b.owner = this;
         GameContext.bullets.push(b);

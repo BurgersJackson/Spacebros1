@@ -198,7 +198,8 @@ export class ChitinusPrime extends Enemy {
             owner: "enemy",
             damage: 2,
             radius: 4,
-            color: "#ff0"
+            color: "#ff0",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -213,7 +214,8 @@ export class ChitinusPrime extends Enemy {
             owner: "enemy",
             damage: 1,
             radius: 3,
-            color: "#fc0"
+            color: "#fc0",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -250,7 +252,8 @@ export class ChitinusPrime extends Enemy {
             owner: "enemy",
             damage: 1,
             radius: 3,
-            color: "#ff0"
+            color: "#ff0",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -264,7 +267,8 @@ export class ChitinusPrime extends Enemy {
           owner: "enemy",
           damage: 2,
           radius: 3,
-          color: "#f80"
+          color: "#f80",
+          life: 38
         });
         b.owner = this;
         GameContext.bullets.push(b);
@@ -342,7 +346,7 @@ export class ChitinusPrime extends Enemy {
         color: "#f00"
       });
       b.owner = this;
-      b.life = 120;
+      b.life = 90;
       GameContext.bullets.push(b);
     }
     playSound("shotgun");

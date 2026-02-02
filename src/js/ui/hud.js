@@ -668,6 +668,119 @@ export function updateNuggetUI(state = GameContext) {
   if (el) el.innerText = (state.metaProfile.bank || 0) + state.spaceNuggets;
 }
 
+/**
+ * Returns a short label for a boss entity (for bottom HP bar).
+ * @param {Object} entity
+ * @returns {string}
+ */
+function getBossBarLabel(entity) {
+  if (!entity) return "BOSS";
+  if (entity.displayName) return String(entity.displayName).toUpperCase();
+  if (entity.isFlagship) return "FLAGSHIP";
+  if (entity.isCruiser) return "CRUISER";
+  const type = entity.type || (entity.constructor && entity.constructor.name) || "";
+  const name = String(type);
+  return name.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase()).trim().toUpperCase().slice(0, 14);
+}
+
+/**
+ * Collects all active boss-like entities (with hp/maxHp) for the bottom HP bars.
+ * Includes: main boss, dungeon/cave bosses in enemies, destroyer, space station.
+ * @param {Object} [state=GameContext]
+ * @returns {{ name: string, hp: number, maxHp: number }[]}
+ */
+export function getActiveBosses(state = GameContext) {
+  const list = [];
+  const gc = state || GameContext;
+
+  if (gc.spaceStation && gc.spaceStation.maxHp > 0) {
+    list.push({
+      name: (gc.spaceStation.displayName && String(gc.spaceStation.displayName).toUpperCase()) || "STATION",
+      hp: gc.spaceStation.hp,
+      maxHp: gc.spaceStation.maxHp
+    });
+  }
+
+  if (gc.destroyer && !gc.destroyer.dead && gc.destroyer.maxHp > 0) {
+    list.push({
+      name: getBossBarLabel(gc.destroyer),
+      hp: gc.destroyer.hp,
+      maxHp: gc.destroyer.maxHp
+    });
+  }
+
+  if (gc.bossActive && gc.boss && !gc.boss.dead && gc.boss.maxHp > 0) {
+    list.push({
+      name: getBossBarLabel(gc.boss),
+      hp: gc.boss.hp,
+      maxHp: gc.boss.maxHp
+    });
+  }
+
+  if (gc.enemies && gc.enemies.length) {
+    for (let i = 0; i < gc.enemies.length; i++) {
+      const e = gc.enemies[i];
+      if (e.dead || !e.maxHp) continue;
+      if (e === gc.boss) continue; // already in list as main boss
+      const isBoss = typeof e.drawBossHud === "function" || e.isDungeonBoss || e.isCruiser;
+      if (!isBoss) continue;
+      list.push({
+        name: getBossBarLabel(e),
+        hp: e.hp,
+        maxHp: e.maxHp
+      });
+    }
+  }
+
+  return list;
+}
+
+/**
+ * Updates the bottom-of-screen boss HP bars (player bar size, side-by-side).
+ * Call each frame when doDraw. Hides container when no bosses.
+ * @param {Object} [state=GameContext]
+ * @returns {void}
+ */
+export function updateBossHealthBars(state = GameContext) {
+  const container = document.getElementById("boss-health-bars-container");
+  if (!container) return;
+  const bosses = getActiveBosses(state);
+  if (bosses.length === 0) {
+    container.style.display = "none";
+    container.innerHTML = "";
+    return;
+  }
+  container.style.display = "flex";
+  while (container.children.length < bosses.length) {
+    const wrap = document.createElement("div");
+    wrap.className = "boss-hp-bar";
+    const label = document.createElement("div");
+    label.className = "boss-hp-bar-label";
+    const border = document.createElement("div");
+    border.className = "boss-hp-bar-border";
+    const fill = document.createElement("div");
+    fill.className = "boss-hp-bar-fill";
+    border.appendChild(fill);
+    wrap.appendChild(label);
+    wrap.appendChild(border);
+    container.appendChild(wrap);
+  }
+  while (container.children.length > bosses.length) {
+    container.removeChild(container.lastChild);
+  }
+  for (let i = 0; i < bosses.length; i++) {
+    const b = bosses[i];
+    const wrap = container.children[i];
+    const labelEl = wrap.querySelector(".boss-hp-bar-label");
+    const fillEl = wrap.querySelector(".boss-hp-bar-fill");
+    if (labelEl) labelEl.textContent = b.name;
+    if (fillEl) {
+      const pct = b.maxHp > 0 ? Math.max(0, (b.hp / b.maxHp) * 100) : 0;
+      fillEl.style.width = `${pct}%`;
+    }
+  }
+}
+
 export function updateInputSpeedUI(state = GameContext) {
   const el = document.getElementById("input-speed");
   if (!el) return;

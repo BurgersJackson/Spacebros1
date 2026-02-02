@@ -219,7 +219,8 @@ export class NecroticHive extends Enemy {
             owner: "enemy",
             damage: 1,
             radius: 3,
-            color: "#f6f"
+            color: "#f6f",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -240,7 +241,8 @@ export class NecroticHive extends Enemy {
             owner: "enemy",
             damage: 1,
             radius: 4,
-            color: "#f80"
+            color: "#f80",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -275,7 +277,8 @@ export class NecroticHive extends Enemy {
             owner: "enemy",
             damage: 1,
             radius: 3,
-            color: "#f44"
+            color: "#f44",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -290,7 +293,8 @@ export class NecroticHive extends Enemy {
             owner: "enemy",
             damage: 1,
             radius: 4,
-            color: "#f80"
+            color: "#f80",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -311,7 +315,8 @@ export class NecroticHive extends Enemy {
           owner: "enemy",
           damage: 1,
           radius: 3,
-          color: "#f80"
+          color: "#f80",
+          life: 38
         });
         b.owner = this;
         GameContext.bullets.push(b);

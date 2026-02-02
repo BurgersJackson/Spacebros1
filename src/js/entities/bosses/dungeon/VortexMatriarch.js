@@ -226,7 +226,8 @@ export class VortexMatriarch extends Enemy {
             owner: "enemy",
             damage: 1,
             radius: 4,
-            color: "#0af"
+            color: "#0af",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -301,7 +302,8 @@ export class VortexMatriarch extends Enemy {
             owner: "enemy",
             damage: 1,
             radius: 4,
-            color: "#0af"
+            color: "#0af",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -330,7 +332,8 @@ export class VortexMatriarch extends Enemy {
             owner: "enemy",
             damage: 1,
             radius: 4,
-            color: "#0cf"
+            color: "#0cf",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);

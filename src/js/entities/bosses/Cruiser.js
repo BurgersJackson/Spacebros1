@@ -526,7 +526,7 @@ export class Cruiser extends Enemy {
 
   fireCannons(baseAngle, shots, spread, speed, dmg, color) {
     const cannons = this.hardpoints.filter(h => h.hp > 0 && h.type === "cannon");
-    const life = Math.round(100 * this.cruiserWeaponRangeMult);
+    const life = Math.round(100 * 0.75 * this.cruiserWeaponRangeMult);
     for (let c = 0; c < cannons.length; c++) {
       const hp = cannons[c];
       const p = this.hardpointWorld(hp);
@@ -585,7 +585,7 @@ export class Cruiser extends Enemy {
   dropMine(angle, speed, dmg, color) {
     const bay = this.hardpoints.find(h => h.hp > 0 && h.type === "bay");
     if (!bay) return;
-    const life = Math.round(220 * this.cruiserWeaponRangeMult);
+    const life = Math.round(220 * 0.75 * this.cruiserWeaponRangeMult);
     const p = this.hardpointWorld(bay);
     const b = new Bullet(p.x, p.y, angle, speed, {
       owner: "enemy",
@@ -617,7 +617,7 @@ export class Cruiser extends Enemy {
   fireRing(n, speed, dmg, color) {
     const bay = this.hardpoints.find(h => h.hp > 0 && h.type === "bay");
     const p = bay ? this.hardpointWorld(bay) : { x: this.pos.x, y: this.pos.y };
-    const life = Math.round(226 * this.cruiserWeaponRangeMult);
+    const life = Math.round(226 * 0.75 * this.cruiserWeaponRangeMult);
     for (let i = 0; i < n; i++) {
       const a = ((Math.PI * 2) / n) * i;
       const b = new Bullet(p.x, p.y, a, speed, {

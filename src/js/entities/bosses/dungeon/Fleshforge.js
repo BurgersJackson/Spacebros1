@@ -229,7 +229,8 @@ export class Fleshforge extends Enemy {
               owner: "enemy",
               damage: 2,
               radius: 4,
-              color: "#0f0"
+              color: "#0f0",
+              life: 38
             });
             b.owner = this;
             GameContext.bullets.push(b);
@@ -250,7 +251,8 @@ export class Fleshforge extends Enemy {
           owner: "enemy",
           damage: 2,
           radius: 4,
-          color: "#0f0"
+          color: "#0f0",
+          life: 38
         });
         b.owner = this;
         GameContext.bullets.push(b);
@@ -271,7 +273,8 @@ export class Fleshforge extends Enemy {
             owner: "enemy",
             damage: 1,
             radius: 3,
-            color: "#0f0"
+            color: "#0f0",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
@@ -285,7 +288,8 @@ export class Fleshforge extends Enemy {
           owner: "enemy",
           damage: 2,
           radius: 3,
-          color: "#0f0"
+          color: "#0f0",
+          life: 38
         });
         b.owner = this;
         GameContext.bullets.push(b);
@@ -299,7 +303,8 @@ export class Fleshforge extends Enemy {
             owner: "enemy",
             damage: 1,
             radius: 4,
-            color: "#0f0"
+            color: "#0f0",
+            life: 38
           });
           b.owner = this;
           GameContext.bullets.push(b);
