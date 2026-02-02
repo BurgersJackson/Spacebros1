@@ -19,6 +19,7 @@ import {
   pixiTextureWhite,
   pixiCleanupObject
 } from "../../rendering/pixi-context.js";
+import { isVectrexFilterEnabled } from "../../ui/vectrex-filter.js";
 
 let keys = null;
 let gpState = null;
@@ -44,6 +45,7 @@ let _getViewportSize = null;
 let _getInternalSize = null;
 let _getPlayerHullExternalReady = null;
 let _getSlackerHullExternalReady = null;
+let _getSlackerHullVectrexExternalReady = null;
 
 export function registerSpaceshipDependencies(deps) {
   if (deps.keys) keys = deps.keys;
@@ -72,6 +74,8 @@ export function registerSpaceshipDependencies(deps) {
     _getPlayerHullExternalReady = deps.getPlayerHullExternalReady;
   if (deps.getSlackerHullExternalReady)
     _getSlackerHullExternalReady = deps.getSlackerHullExternalReady;
+  if (deps.getSlackerHullVectrexExternalReady)
+    _getSlackerHullVectrexExternalReady = deps.getSlackerHullVectrexExternalReady;
 }
 
 export class Spaceship extends Entity {
@@ -1803,12 +1807,23 @@ export class Spaceship extends Entity {
         this._pixiContainer = container;
         pixiPlayerLayer.addChild(container);
 
-        const hullTexture =
-          this.shipType === "slacker"
-            ? pixiTextures.slacker_hull || pixiTextures.player_hull
-            : pixiTextures.player_hull;
-        const hullAnchorKey =
-          this.shipType === "slacker" && pixiTextures.slacker_hull ? "slacker_hull" : "player_hull";
+        let hullTexture;
+        let hullAnchorKey;
+        if (this.shipType === "slacker") {
+          hullTexture = isVectrexFilterEnabled()
+            ? pixiTextures.slacker_hull_vectrex || pixiTextures.slacker_hull
+            : pixiTextures.slacker_hull;
+          hullAnchorKey =
+            isVectrexFilterEnabled() && pixiTextures.slacker_hull_vectrex
+              ? "slacker_hull_vectrex"
+              : pixiTextures.slacker_hull
+                ? "slacker_hull"
+                : "player_hull";
+        } else {
+          hullTexture = pixiTextures.player_hull;
+          hullAnchorKey = "player_hull";
+        }
+
         const hull = new PIXI.Sprite(hullTexture);
         const hA = pixiTextureAnchors[hullAnchorKey] || { x: 0.5, y: 0.5 };
         hull.anchor.set(hA && hA.x != null ? hA.x : 0.5, hA && hA.y != null ? hA.y : 0.5);
@@ -1870,10 +1885,19 @@ export class Spaceship extends Entity {
       if (this._pixiHullSpr) {
         // Keep hull texture synced (important for late-loaded external image).
         const useSlackerHull = this.shipType === "slacker" && pixiTextures.slacker_hull;
-        this._pixiHullSpr.texture = useSlackerHull
-          ? pixiTextures.slacker_hull
-          : pixiTextures.player_hull;
-        const hullAnchorKey = useSlackerHull ? "slacker_hull" : "player_hull";
+        const useVectrex =
+          useSlackerHull && isVectrexFilterEnabled() && pixiTextures.slacker_hull_vectrex;
+
+        this._pixiHullSpr.texture = useVectrex
+          ? pixiTextures.slacker_hull_vectrex
+          : useSlackerHull
+            ? pixiTextures.slacker_hull
+            : pixiTextures.player_hull;
+        const hullAnchorKey = useVectrex
+          ? "slacker_hull_vectrex"
+          : useSlackerHull
+            ? "slacker_hull"
+            : "player_hull";
         const hA = pixiTextureAnchors[hullAnchorKey] || { x: 0.5, y: 0.5 };
         this._pixiHullSpr.anchor.set(
           hA && hA.x != null ? hA.x : 0.5,
@@ -1885,9 +1909,23 @@ export class Spaceship extends Entity {
           : false;
         this._pixiHullSpr.rotation =
           (this.angle || 0) + (playerHullReady ? PLAYER_HULL_ROT_OFFSET : 0);
-        const externalReady = useSlackerHull ? slackerHullReady : playerHullReady;
+
+        let tex;
+        let externalReady;
+        if (useVectrex) {
+          tex = pixiTextures.slacker_hull_vectrex;
+          externalReady = _getSlackerHullVectrexExternalReady
+            ? _getSlackerHullVectrexExternalReady()
+            : false;
+        } else if (useSlackerHull) {
+          tex = pixiTextures.slacker_hull;
+          externalReady = slackerHullReady;
+        } else {
+          tex = pixiTextures.player_hull;
+          externalReady = playerHullReady;
+        }
+
         if (externalReady) {
-          const tex = useSlackerHull ? pixiTextures.slacker_hull : pixiTextures.player_hull;
           const denom = Math.max(1, Math.max(tex.width || 1, tex.height || 1));
           const s = (this.radius * 2 * PLAYER_HULL_RENDER_SCALE) / denom;
           this._pixiHullSpr.scale.set(s);

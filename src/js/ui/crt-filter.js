@@ -10,6 +10,8 @@ let showOverlayMessageRef = null;
 let getPixiAppRef = null;
 let crtFilter = null;
 let bloomFilter = null;
+let disableVectrexFilterRef = null;
+let isVectrexFilterEnabledRef = null;
 
 /**
  * Register dependencies
@@ -19,6 +21,8 @@ export function registerCrtFilterDependencies(deps) {
   if (deps.GameContext) GameContextRef = deps.GameContext;
   if (deps.showOverlayMessage) showOverlayMessageRef = deps.showOverlayMessage;
   if (deps.getPixiApp) getPixiAppRef = deps.getPixiApp;
+  if (deps.disableVectrexFilter) disableVectrexFilterRef = deps.disableVectrexFilter;
+  if (deps.isVectrexFilterEnabled) isVectrexFilterEnabledRef = deps.isVectrexFilterEnabled;
 }
 
 /**
@@ -50,6 +54,13 @@ export function enableCrtFilter() {
   if (!window.PIXI || !window.PIXI.filters) {
     console.warn("[CRT] PixiJS filters not available.");
     return;
+  }
+
+  // Disable Vectrex filter if active (filters are mutually exclusive)
+  if (isVectrexFilterEnabledRef && isVectrexFilterEnabledRef()) {
+    if (disableVectrexFilterRef) {
+      disableVectrexFilterRef();
+    }
   }
 
   if (!window.PIXI.filters.CRTFilter) {

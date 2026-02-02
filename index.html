@@ -492,7 +492,8 @@
       #fullscreen-check.selected,
       #vsync-check.selected,
       #frameless-check.selected,
-      #crt-check.selected {
+      #crt-check.selected,
+      #vectrex-check.selected {
         outline: 2px solid #0ff;
         outline-offset: 2px;
         box-shadow: 0 0 10px #0ff;
@@ -894,6 +895,22 @@
           0.05em 0 0 rgba(255, 0, 0, 0.3),
           -0.05em 0 0 rgba(0, 255, 255, 0.3);
       }
+
+      /* Vectrex Filter Effect - Green phosphor tint */
+      body.vectrex-active #canvas-container,
+      body.vectrex-active #ui-layer {
+        filter: sepia(1) hue-rotate(70deg) saturate(1.5) brightness(1.1);
+      }
+
+      /* Vectrex glow on canvases */
+      body.vectrex-active #gameCanvas,
+      body.vectrex-active #uiCanvas {
+        filter: brightness(1.15) saturate(1.3);
+        box-shadow:
+          0 0 25px rgba(50, 255, 50, 0.4),
+          0 0 50px rgba(50, 255, 50, 0.2),
+          inset 0 0 30px rgba(50, 255, 50, 0.05);
+      }
     </style>
     <script type="importmap">
       {
@@ -1182,6 +1199,24 @@
         <div style="color: #888; font-size: 10px; margin-top: 2px">Retro CRT display effect</div>
       </div>
 
+      <div style="margin: 15px 0">
+        <label
+          style="
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+          "
+        >
+          VECTREX FILTER
+          <input type="checkbox" id="vectrex-check" />
+        </label>
+        <div style="color: #888; font-size: 10px; margin-top: 2px">
+          Monochrome line art with phosphor glow (vector style)
+        </div>
+      </div>
+
       <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center">
         <button id="settings-close-btn" style="padding: 5px 15px">BACK</button>
         <button id="settings-apply-btn" style="padding: 5px 15px; border-color: #0f0; color: #0f0">
@@ -1412,13 +1447,27 @@
 
     <div id="pause-menu" class="menu-screen">
       <h1>PAUSED</h1>
-      <div id="pause-objectives" class="pause-objectives" style="color: #8af; font-size: 12px; text-align: left; margin: 0 0 12px 0; padding: 8px; background: rgba(0,20,40,0.6); border-radius: 4px; min-height: 1.5em;"></div>
+      <div
+        id="pause-objectives"
+        class="pause-objectives"
+        style="
+          color: #8af;
+          font-size: 12px;
+          text-align: left;
+          margin: 0 0 12px 0;
+          padding: 8px;
+          background: rgba(0, 20, 40, 0.6);
+          border-radius: 4px;
+          min-height: 1.5em;
+        "
+      ></div>
       <button id="resume-btn">RESUME</button>
       <button id="pause-upgrades-btn">UPGRADES</button>
       <button id="pause-settings-btn">SETTINGS</button>
       <button id="restart-btn-pause">RESTART</button>
       <button id="music-btn">MUSIC: ON</button>
       <button id="crt-toggle-btn">CRT: OFF</button>
+      <button id="vectrex-toggle-btn">VECTREX: OFF</button>
       <button id="quit-btn">ABORT RUN</button>
       <button id="debug-btn" style="display: none">DEBUG</button>
       <button id="desktop-quit-pause-btn" style="margin-top: 10px; border-color: #f00; color: #f00">

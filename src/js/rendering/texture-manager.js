@@ -47,6 +47,7 @@ const ASTEROID3_URL = "assets/asteroid3.png";
 const ASTEROID2_U_URL = "assets/asteroid2_U.png";
 const PLAYER1_URL = "assets/player1.png";
 const SLACKER_URL = "assets/slacker.png";
+const VECTREX_SLACKER_URL = "assets/vectrex/slacker_v.png";
 const EXPLOSION1_URL = "assets/explosion1.png";
 
 let gunboat1Image = null;
@@ -145,6 +146,10 @@ let playerHullPixiApplied = false;
 let slackerHullImage = null;
 let slackerHullExternalReady = false;
 let slackerHullPixiApplied = false;
+
+let slackerHullVectrexImage = null;
+let slackerHullVectrexExternalReady = false;
+let slackerHullVectrexPixiApplied = false;
 
 let explosion1Image = null;
 
@@ -285,6 +290,10 @@ export function initTextureAssets() {
   slackerHullImage = new Image();
   slackerHullImage.decoding = "async";
   slackerHullImage.src = SLACKER_URL;
+
+  slackerHullVectrexImage = new Image();
+  slackerHullVectrexImage.decoding = "async";
+  slackerHullVectrexImage.src = VECTREX_SLACKER_URL;
 
   explosion1Image = new Image();
   explosion1Image.decoding = "async";
@@ -491,6 +500,12 @@ export function initTextureAssets() {
   slackerHullImage.addEventListener("error", () => {
     slackerHullExternalReady = false;
     slackerHullPixiApplied = false;
+  });
+
+  slackerHullVectrexImage.addEventListener("load", applySlackerHullVectrexTexture);
+  slackerHullVectrexImage.addEventListener("error", () => {
+    slackerHullVectrexExternalReady = false;
+    slackerHullVectrexPixiApplied = false;
   });
 }
 
@@ -1056,6 +1071,28 @@ function applySlackerHullTexture() {
   } catch (e) {}
 }
 
+function applySlackerHullVectrexTexture() {
+  if (!slackerHullVectrexImage || slackerHullVectrexImage.naturalWidth <= 0) return;
+
+  slackerHullVectrexExternalReady = true;
+
+  if (slackerHullVectrexPixiApplied || !window.PIXI) return;
+  if (!pixiTextures || !pixiTextureAnchors) return;
+  try {
+    const tex = PIXI.Texture.from(slackerHullVectrexImage);
+    try {
+      tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+    } catch (e) {}
+    try {
+      tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON;
+    } catch (e) {}
+
+    pixiTextures.slacker_hull_vectrex = tex;
+    pixiTextureAnchors.slacker_hull_vectrex = 0.5;
+    slackerHullVectrexPixiApplied = true;
+  } catch (e) {}
+}
+
 /**
  * @returns {boolean}
  */
@@ -1075,6 +1112,13 @@ export function getPlayerHullExternalReady() {
  */
 export function getSlackerHullExternalReady() {
   return slackerHullExternalReady;
+}
+
+/**
+ * @returns {boolean}
+ */
+export function getSlackerHullVectrexExternalReady() {
+  return slackerHullVectrexExternalReady;
 }
 
 /**

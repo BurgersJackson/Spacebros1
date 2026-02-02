@@ -35,7 +35,8 @@ import {
 import {
   initTextureAssets,
   getPlayerHullExternalReady,
-  getSlackerHullExternalReady
+  getSlackerHullExternalReady,
+  getSlackerHullVectrexExternalReady
 } from "./rendering/texture-manager.js";
 import {
   initStars,
@@ -250,6 +251,12 @@ import {
   initCrtFilterUI,
   isCrtFilterEnabled,
   toggleCrtFilter,
+  disableCrtFilter,
+  registerVectrexFilterDependencies,
+  initVectrexFilterUI,
+  isVectrexFilterEnabled,
+  toggleVectrexFilter,
+  disableVectrexFilter,
   showDeathScreen,
   registerDeathScreenDependencies
 } from "./ui/index.js";
@@ -671,7 +678,9 @@ registerSettingsManagerDependencies({
   SAVE_PREFIX,
   SAVE_LAST_KEY,
   isCrtFilterEnabled,
-  toggleCrtFilter
+  toggleCrtFilter,
+  isVectrexFilterEnabled,
+  toggleVectrexFilter
 });
 
 registerWorldSetupDependencies({
@@ -1312,7 +1321,8 @@ registerSpaceshipDependencies({
   getViewportSize: () => ({ width, height }),
   getInternalSize: () => ({ width: internalWidth, height: internalHeight }),
   getPlayerHullExternalReady,
-  getSlackerHullExternalReady
+  getSlackerHullExternalReady,
+  getSlackerHullVectrexExternalReady
 });
 
 const SHIP_SELECTION_KEY = "neon_space_ship_selection";
@@ -1370,9 +1380,21 @@ initSettingsMenu();
 registerCrtFilterDependencies({
   GameContext,
   showOverlayMessage,
-  getPixiApp: () => pixiApp
+  getPixiApp: () => pixiApp,
+  disableVectrexFilter,
+  isVectrexFilterEnabled
 });
 initCrtFilterUI();
+
+// Initialize Vectrex filter
+registerVectrexFilterDependencies({
+  GameContext,
+  showOverlayMessage,
+  getPixiApp: () => pixiApp,
+  disableCrtFilter,
+  isCrtFilterEnabled
+});
+initVectrexFilterUI();
 
 // Game helpers system
 registerGameHelperDependencies({
