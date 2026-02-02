@@ -268,11 +268,11 @@ export function applyMetaUpgrades(spawnDroneFn) {
 
   const missilePrimerTier = GameContext.metaProfile.purchases.missilePrimer || 0;
   GameContext.player.stats.homingFromMeta = missilePrimerTier;
+  GameContext.player.stats.homing = Math.max(
+    GameContext.player.stats.homingFromUpgrade,
+    GameContext.player.stats.homingFromMeta
+  );
   if (missilePrimerTier > 0) {
-    GameContext.player.stats.homing = Math.max(
-      GameContext.player.stats.homingFromUpgrade,
-      GameContext.player.stats.homingFromMeta
-    );
     GameContext.player.missileTimer = 0;
   }
 
@@ -322,7 +322,7 @@ export function applyMetaUpgrades(spawnDroneFn) {
     }
     GameContext.player.stats.explosiveChance =
       (GameContext.player.stats.explosiveChance || 0) + Math.min(explosiveChance, 1.0);
-        // Explosive damage: Tier 1 = 5, adds 2 per tier (5, 7, 9, 11, 13)
+    // Explosive damage: Tier 1 = 5, adds 2 per tier (5, 7, 9, 11, 13)
     const explosiveDamage = 5 + (explosiveRoundsTier - 1) * 2;
     GameContext.player.stats.explosiveDamage = explosiveDamage;
   }

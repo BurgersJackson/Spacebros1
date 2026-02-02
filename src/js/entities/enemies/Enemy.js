@@ -1127,6 +1127,7 @@ export class Enemy extends Entity {
         let gfx = this._pixiGfx;
         if (!gfx) {
           gfx = new PIXI.Graphics();
+          gfx.pivot.set(0, 0); // Arc is drawn at (0,0); position = world center of shield
           pixiVectorLayer.addChild(gfx);
           this._pixiGfx = gfx;
           this.shieldsDirty = true;
@@ -1134,8 +1135,7 @@ export class Enemy extends Entity {
           pixiVectorLayer.addChild(gfx);
         }
 
-        // FIX: Ensure shield graphics position is always fresh
-        // Don't cache the position reference
+        // FIX: Ensure shield graphics position is always fresh (matches boss center)
         const shieldX = rPos.x;
         const shieldY = rPos.y;
         gfx.position.set(shieldX, shieldY);
@@ -1147,13 +1147,13 @@ export class Enemy extends Entity {
         if (hasInner) {
           if (!innerGfx) {
             innerGfx = new PIXI.Graphics();
+            innerGfx.pivot.set(0, 0); // Arc drawn at (0,0); position = world center
             pixiVectorLayer.addChild(innerGfx);
             this._pixiInnerGfx = innerGfx;
             this.shieldsDirty = true;
           } else if (!innerGfx.parent) {
             pixiVectorLayer.addChild(innerGfx);
           }
-          // FIX: Use the same shieldX, shieldY values calculated above
           innerGfx.position.set(shieldX, shieldY);
           innerGfx.visible = inView;
           innerGfx.alpha = stealthAlpha;

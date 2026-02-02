@@ -187,9 +187,11 @@ function buildObjectivesSummary() {
 
   const lines = [];
 
-  // Sector 1: cruisers, space station, warp boss
+  // Sector 1: cruisers (incl. dungeon bosses), space station, warp boss
   if (g.sectorIndex === 1) {
-    const cruisers = Math.min(g.bossesDestroyedCount || 0, 3);
+    const cruiserKills = g.bossesDestroyedCount || 0;
+    const dungeonBossKills = g.caveLevel?.bossesDefeated || 0;
+    const cruisers = Math.min(cruiserKills + dungeonBossKills, 3);
     lines.push(`Cruisers: ${cruisers}/3`);
 
     const stationDone =
@@ -202,7 +204,7 @@ function buildObjectivesSummary() {
     lines.push(`Warp boss: ${warpBossDone ? "1" : "0"}/1`);
   } else if (g.sectorIndex === 2 && g.caveLevel) {
     const defeated = g.caveLevel.bossesDefeated || 0;
-    lines.push(`Dungeon bosses: ${defeated}/3`);
+    lines.push(`Cruisers: ${defeated}/3`);
   } else {
     const finalBossDone = g.bossActive === false && (g.boss === null || (g.boss && g.boss.dead));
     lines.push(`Final boss: ${finalBossDone ? "1" : "0"}/1`);

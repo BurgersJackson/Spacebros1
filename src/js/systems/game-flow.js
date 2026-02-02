@@ -295,6 +295,8 @@ export function startGame() {
       rangeMult: 1.0,
       multiShot: 1,
       homing: 0,
+      homingFromUpgrade: 0,
+      homingFromMeta: 0,
       shieldRegenRate: 8,
       hpRegenAmount: 1,
       hpRegenRate: 10,

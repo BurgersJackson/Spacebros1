@@ -1116,8 +1116,8 @@ export class Spaceship extends Entity {
     for (let pair = 0; pair < missilePairs; pair++) {
       // Each pair fires 2 missiles
       const count = 2;
-      // Determine damage for this pair
-      const damage = pair === 0 ? upgradeDamage : metaDamage;
+      // Determine damage for this pair - use meta if only meta owned, otherwise use upgrade
+      const damage = !hasUpgrade && hasMeta ? metaDamage : pair === 0 ? upgradeDamage : metaDamage;
 
       for (let i = 0; i < count; i++) {
         const angleOffset = (i - (count - 1) / 2) * 0.3;
