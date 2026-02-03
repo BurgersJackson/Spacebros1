@@ -73,6 +73,7 @@ import {
   WarpParticle,
   Coin,
   FloatingText,
+  GoldNugget,
   HealthPowerUp,
   SpaceNugget,
   getOrCreateFloatingText
@@ -819,6 +820,7 @@ registerSectorFlowDependencies({
   Dungeon1Zone,
   WarpMazeZone,
   VerticalScrollingZone,
+  GoldNugget,
   clearArrayWithPixiCleanup,
   clearMiniEvent,
   clearOverlayMessageTimeout,

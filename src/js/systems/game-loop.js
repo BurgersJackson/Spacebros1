@@ -1069,7 +1069,7 @@ export function gameLoopLogic(opts = null) {
       if (elapsed < 0) elapsed = 0;
       const elapsedMinutes = elapsed / 60000;
 
-      const baseRoamers = 4;
+      const baseRoamers = GameContext.currentLevel === 2 ? 5 : 4;
       GameContext.maxRoamers = 13;
       const rampMinutes = 25; // slower ramp
       const rampT = Math.min(1, elapsedMinutes / rampMinutes);
@@ -1546,6 +1546,16 @@ export function gameLoopLogic(opts = null) {
       else if (typeof n.cull === "function") n.cull();
     }
   }
+  // Update gold nuggets and skip dead ones
+  for (let i = GameContext.goldNuggets.length - 1; i >= 0; i--) {
+    const gn = GameContext.goldNuggets[i];
+    if (!gn || gn.dead) continue;
+    if (doUpdate) gn.update(GameContext.player, deltaTime);
+    if (doDraw) {
+      if (isInView(gn.pos.x, gn.pos.y, 50)) gn.draw(ctx, pickupRes);
+      else if (typeof gn.cull === "function") gn.cull();
+    }
+  }
   // Update powerups and skip dead ones
   for (let i = GameContext.powerups.length - 1; i >= 0; i--) {
     const p = GameContext.powerups[i];
@@ -1949,6 +1959,16 @@ export function gameLoopLogic(opts = null) {
       const nugget = GameContext.nuggets[i];
       if (nugget && nugget.dead && nugget.sprite) {
         nugget.kill();
+      }
+    }
+
+    immediateCompactArray(GameContext.goldNuggets);
+
+    // Safety: Force cleanup of dead gold nuggets that didn't clean themselves
+    for (let i = GameContext.goldNuggets.length - 1; i >= 0; i--) {
+      const goldNugget = GameContext.goldNuggets[i];
+      if (goldNugget && goldNugget.dead && goldNugget.sprite) {
+        goldNugget.kill();
       }
     }
 

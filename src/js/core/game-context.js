@@ -26,6 +26,7 @@ export const GameContext = {
   floatingTexts: [],
   coins: [],
   nuggets: [],
+  goldNuggets: [],
   powerups: [],
   shootingStars: [],
   drones: [],
@@ -274,6 +275,7 @@ export const GameContext = {
     this.floatingTexts = [];
     this.coins = [];
     this.nuggets = [];
+    this.goldNuggets = [];
     this.powerups = [];
     this.shootingStars = [];
     this.drones = [];

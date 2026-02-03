@@ -1042,6 +1042,29 @@ export function resolveEntityCollision() {
       }
     }
 
+    for (let gn of GameContext.goldNuggets) {
+      if (gn.dead) continue;
+      const dist = Math.hypot(
+        GameContext.player.pos.x - gn.pos.x,
+        GameContext.player.pos.y - gn.pos.y
+      );
+      if (dist < GameContext.player.radius + gn.radius) {
+        if (_playSound) _playSound("coin");
+        const nuggetCount =
+          Math.floor(Math.random() * (gn.nuggetMax - gn.nuggetMin + 1)) + gn.nuggetMin;
+        const coinAmount = Math.floor(Math.random() * (gn.coinMax - gn.coinMin + 1)) + gn.coinMin;
+        if (_awardCoinsInstant) _awardCoinsInstant(coinAmount, { noSound: false, sound: "coin" });
+        if (_awardNuggetsInstant)
+          _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
+        if (_addPickupFloatingText) {
+          _addPickupFloatingText("gold", coinAmount, "#ffd700");
+          _addPickupFloatingText("nugs", nuggetCount, "#ff0");
+        }
+        if (typeof gn.kill === "function") gn.kill();
+        else gn.dead = true;
+      }
+    }
+
     for (let p of GameContext.powerups) {
       if (p.dead) continue;
       const dist = Math.hypot(

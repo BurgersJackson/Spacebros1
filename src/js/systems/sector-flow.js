@@ -53,6 +53,7 @@ export function completeSectorWarp() {
   deps.clearArrayWithPixiCleanup(GameContext.cavePinwheels);
   deps.clearArrayWithPixiCleanup(GameContext.coins);
   deps.clearArrayWithPixiCleanup(GameContext.nuggets);
+  deps.clearArrayWithPixiCleanup(GameContext.goldNuggets);
   deps.clearArrayWithPixiCleanup(GameContext.environmentAsteroids);
   GameContext.asteroidRespawnTimers = [];
   GameContext.baseRespawnTimers = [];
@@ -127,6 +128,17 @@ export function startCaveSector2() {
   GameContext.caveLevel.generate();
   deps.clearArrayWithPixiCleanup(GameContext.coins);
 
+  deps.clearArrayWithPixiCleanup(GameContext.goldNuggets);
+  const caveLength = Math.abs(GameContext.caveLevel.endY - GameContext.caveLevel.startY);
+  const nuggetInterval = caveLength / 10;
+  for (let i = 1; i <= 10; i++) {
+    const nuggetY = GameContext.caveLevel.startY - i * nuggetInterval;
+    const bounds = GameContext.caveLevel.boundsAt(nuggetY);
+    const nuggetX = bounds.left + Math.random() * (bounds.right - bounds.left);
+    const goldNugget = new deps.GoldNugget(nuggetX, nuggetY, 3, 5, 25, 75);
+    GameContext.goldNuggets.push(goldNugget);
+  }
+
   GameContext.activeContract = null;
   GameContext.contractEntities = {
     beacons: [],
@@ -199,6 +211,7 @@ export function enterWarpMaze() {
   detach(GameContext.floatingTexts);
   detach(GameContext.coins);
   detach(GameContext.nuggets);
+  detach(GameContext.goldNuggets);
   detach(GameContext.powerups);
   detach(GameContext.shootingStars);
   detach(GameContext.drones);
@@ -219,6 +232,7 @@ export function enterWarpMaze() {
   GameContext.floatingTexts = [];
   GameContext.coins = [];
   GameContext.nuggets = [];
+  GameContext.goldNuggets = [];
   GameContext.powerups = [];
   GameContext.shootingStars = [];
   GameContext.drones = [];
@@ -395,6 +409,7 @@ export function enterVerticalScrollingZone() {
   detach(GameContext.floatingTexts);
   detach(GameContext.coins);
   detach(GameContext.nuggets);
+  detach(GameContext.goldNuggets);
   detach(GameContext.powerups);
   detach(GameContext.shootingStars);
   detach(GameContext.drones);
@@ -415,6 +430,7 @@ export function enterVerticalScrollingZone() {
   GameContext.floatingTexts = [];
   GameContext.coins = [];
   GameContext.nuggets = [];
+  GameContext.goldNuggets = [];
   GameContext.powerups = [];
   GameContext.shootingStars = [];
   GameContext.drones = [];
@@ -517,6 +533,7 @@ export function enterDungeon1Internal() {
   detach(GameContext.floatingTexts);
   detach(GameContext.coins);
   detach(GameContext.nuggets);
+  detach(GameContext.goldNuggets);
   detach(GameContext.powerups);
   detach(GameContext.shootingStars);
   detach(GameContext.drones);
@@ -537,6 +554,7 @@ export function enterDungeon1Internal() {
   GameContext.floatingTexts = [];
   GameContext.coins = [];
   GameContext.nuggets = [];
+  GameContext.goldNuggets = [];
   GameContext.powerups = [];
   GameContext.shootingStars = [];
   GameContext.drones = [];

@@ -699,8 +699,7 @@ export function initInputListeners() {
     const dx = Math.abs(scaledX - (mouseScreen.x || 0));
     const dy = Math.abs(scaledY - (mouseScreen.y || 0));
 
-    if (dx + dy >= 10 || document.pointerLockElement === _canvas)
-      GameContext.lastMouseInputAt = now;
+    if (dx + dy >= 2 || document.pointerLockElement === _canvas) GameContext.lastMouseInputAt = now;
 
     updateInputMode(now);
 
@@ -785,6 +784,8 @@ export function initInputListeners() {
     };
 
     const requestPointerLockForGameplay = () => {
+      GameContext.lastMouseInputAt = Date.now();
+      updateInputMode(Date.now());
       if (!shouldLockPointer()) return;
       if (document.pointerLockElement) return;
       if (!document.body.contains(canvas)) return;
@@ -837,6 +838,8 @@ export function initInputListeners() {
     if (e.button === 0) mouseState.leftDown = true;
     if (e.button === 1) mouseState.middleDown = true;
     if (e.button === 2) mouseState.rightDown = true;
+    GameContext.lastMouseInputAt = Date.now();
+    updateInputMode(Date.now());
   });
 
   window.addEventListener("mouseup", e => {
@@ -844,6 +847,8 @@ export function initInputListeners() {
     if (e.button === 0) mouseState.leftDown = false;
     if (e.button === 1) mouseState.middleDown = false;
     if (e.button === 2) mouseState.rightDown = false;
+    GameContext.lastMouseInputAt = Date.now();
+    updateInputMode(Date.now());
   });
 
   window.addEventListener("gamepadconnected", e => {
