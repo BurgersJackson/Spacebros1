@@ -44,6 +44,7 @@ let _getSuppressWarpInputUntil = null;
 let _getViewportSize = null;
 let _getInternalSize = null;
 let _getPlayerHullExternalReady = null;
+let _getPlayerHullVectrexExternalReady = null;
 let _getSlackerHullExternalReady = null;
 let _getSlackerHullVectrexExternalReady = null;
 
@@ -72,6 +73,8 @@ export function registerSpaceshipDependencies(deps) {
   if (deps.getInternalSize) _getInternalSize = deps.getInternalSize;
   if (deps.getPlayerHullExternalReady)
     _getPlayerHullExternalReady = deps.getPlayerHullExternalReady;
+  if (deps.getPlayerHullVectrexExternalReady)
+    _getPlayerHullVectrexExternalReady = deps.getPlayerHullVectrexExternalReady;
   if (deps.getSlackerHullExternalReady)
     _getSlackerHullExternalReady = deps.getSlackerHullExternalReady;
   if (deps.getSlackerHullVectrexExternalReady)
@@ -1820,8 +1823,13 @@ export class Spaceship extends Entity {
                 ? "slacker_hull"
                 : "player_hull";
         } else {
-          hullTexture = pixiTextures.player_hull;
-          hullAnchorKey = "player_hull";
+          hullTexture = isVectrexFilterEnabled()
+            ? pixiTextures.player_hull_vectrex || pixiTextures.player_hull
+            : pixiTextures.player_hull;
+          hullAnchorKey =
+            isVectrexFilterEnabled() && pixiTextures.player_hull_vectrex
+              ? "player_hull_vectrex"
+              : "player_hull";
         }
 
         const hull = new PIXI.Sprite(hullTexture);
@@ -1885,19 +1893,27 @@ export class Spaceship extends Entity {
       if (this._pixiHullSpr) {
         // Keep hull texture synced (important for late-loaded external image).
         const useSlackerHull = this.shipType === "slacker" && pixiTextures.slacker_hull;
-        const useVectrex =
+        const usePlayerHull = pixiTextures.player_hull;
+        const useVectrexSlacker =
           useSlackerHull && isVectrexFilterEnabled() && pixiTextures.slacker_hull_vectrex;
+        const useVectrexPlayer =
+          !useSlackerHull && isVectrexFilterEnabled() && pixiTextures.player_hull_vectrex;
+        const useVectrex = useVectrexSlacker || useVectrexPlayer;
 
-        this._pixiHullSpr.texture = useVectrex
+        this._pixiHullSpr.texture = useVectrexSlacker
           ? pixiTextures.slacker_hull_vectrex
-          : useSlackerHull
-            ? pixiTextures.slacker_hull
-            : pixiTextures.player_hull;
-        const hullAnchorKey = useVectrex
+          : useVectrexPlayer
+            ? pixiTextures.player_hull_vectrex
+            : useSlackerHull
+              ? pixiTextures.slacker_hull
+              : pixiTextures.player_hull;
+        const hullAnchorKey = useVectrexSlacker
           ? "slacker_hull_vectrex"
-          : useSlackerHull
-            ? "slacker_hull"
-            : "player_hull";
+          : useVectrexPlayer
+            ? "player_hull_vectrex"
+            : useSlackerHull
+              ? "slacker_hull"
+              : "player_hull";
         const hA = pixiTextureAnchors[hullAnchorKey] || { x: 0.5, y: 0.5 };
         this._pixiHullSpr.anchor.set(
           hA && hA.x != null ? hA.x : 0.5,
@@ -1912,10 +1928,15 @@ export class Spaceship extends Entity {
 
         let tex;
         let externalReady;
-        if (useVectrex) {
+        if (useVectrexSlacker) {
           tex = pixiTextures.slacker_hull_vectrex;
           externalReady = _getSlackerHullVectrexExternalReady
             ? _getSlackerHullVectrexExternalReady()
+            : false;
+        } else if (useVectrexPlayer) {
+          tex = pixiTextures.player_hull_vectrex;
+          externalReady = _getPlayerHullVectrexExternalReady
+            ? _getPlayerHullVectrexExternalReady()
             : false;
         } else if (useSlackerHull) {
           tex = pixiTextures.slacker_hull;

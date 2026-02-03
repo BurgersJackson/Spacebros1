@@ -47,6 +47,7 @@ const ASTEROID3_URL = "assets/asteroid3.png";
 const ASTEROID2_U_URL = "assets/asteroid2_U.png";
 const PLAYER1_URL = "assets/player1.png";
 const SLACKER_URL = "assets/slacker.png";
+const VECTREX_PLAYER1_URL = "assets/vectrex/player1_v.png";
 const VECTREX_SLACKER_URL = "assets/vectrex/slacker_v.png";
 const EXPLOSION1_URL = "assets/explosion1.png";
 
@@ -146,6 +147,10 @@ let playerHullPixiApplied = false;
 let slackerHullImage = null;
 let slackerHullExternalReady = false;
 let slackerHullPixiApplied = false;
+
+let playerHullVectrexImage = null;
+let playerHullVectrexExternalReady = false;
+let playerHullVectrexPixiApplied = false;
 
 let slackerHullVectrexImage = null;
 let slackerHullVectrexExternalReady = false;
@@ -286,6 +291,10 @@ export function initTextureAssets() {
   playerHullImage = new Image();
   playerHullImage.decoding = "async";
   playerHullImage.src = PLAYER1_URL;
+
+  playerHullVectrexImage = new Image();
+  playerHullVectrexImage.decoding = "async";
+  playerHullVectrexImage.src = VECTREX_PLAYER1_URL;
 
   slackerHullImage = new Image();
   slackerHullImage.decoding = "async";
@@ -494,6 +503,12 @@ export function initTextureAssets() {
   playerHullImage.addEventListener("error", () => {
     playerHullExternalReady = false;
     playerHullPixiApplied = false;
+  });
+
+  playerHullVectrexImage.addEventListener("load", applyPlayerHullVectrexTexture);
+  playerHullVectrexImage.addEventListener("error", () => {
+    playerHullVectrexExternalReady = false;
+    playerHullVectrexPixiApplied = false;
   });
 
   slackerHullImage.addEventListener("load", applySlackerHullTexture);
@@ -1071,6 +1086,28 @@ function applySlackerHullTexture() {
   } catch (e) {}
 }
 
+function applyPlayerHullVectrexTexture() {
+  if (!playerHullVectrexImage || playerHullVectrexImage.naturalWidth <= 0) return;
+
+  playerHullVectrexExternalReady = true;
+
+  if (playerHullVectrexPixiApplied || !window.PIXI) return;
+  if (!pixiTextures || !pixiTextureAnchors) return;
+  try {
+    const tex = PIXI.Texture.from(playerHullVectrexImage);
+    try {
+      tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+    } catch (e) {}
+    try {
+      tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON;
+    } catch (e) {}
+
+    pixiTextures.player_hull_vectrex = tex;
+    pixiTextureAnchors.player_hull_vectrex = 0.5;
+    playerHullVectrexPixiApplied = true;
+  } catch (e) {}
+}
+
 function applySlackerHullVectrexTexture() {
   if (!slackerHullVectrexImage || slackerHullVectrexImage.naturalWidth <= 0) return;
 
@@ -1114,11 +1151,12 @@ export function getSlackerHullExternalReady() {
   return slackerHullExternalReady;
 }
 
-/**
- * @returns {boolean}
- */
 export function getSlackerHullVectrexExternalReady() {
   return slackerHullVectrexExternalReady;
+}
+
+export function getPlayerHullVectrexExternalReady() {
+  return playerHullVectrexExternalReady;
 }
 
 /**

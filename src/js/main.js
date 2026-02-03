@@ -35,6 +35,7 @@ import {
 import {
   initTextureAssets,
   getPlayerHullExternalReady,
+  getPlayerHullVectrexExternalReady,
   getSlackerHullExternalReady,
   getSlackerHullVectrexExternalReady
 } from "./rendering/texture-manager.js";
@@ -1323,6 +1324,7 @@ registerSpaceshipDependencies({
   getViewportSize: () => ({ width, height }),
   getInternalSize: () => ({ width: internalWidth, height: internalHeight }),
   getPlayerHullExternalReady,
+  getPlayerHullVectrexExternalReady,
   getSlackerHullExternalReady,
   getSlackerHullVectrexExternalReady
 });

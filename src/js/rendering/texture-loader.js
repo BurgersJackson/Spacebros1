@@ -20,7 +20,9 @@ export const pixiTextures = {
   enemy_cruiser: null,
 
   player_hull: null,
+  player_hull_vectrex: null,
   slacker_hull: null,
+  slacker_hull_vectrex: null,
   player_turret_base: null,
   player_barrel: null,
   player_thruster: null,
