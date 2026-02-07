@@ -9,3 +9,4 @@ yarn-error.log*
 .claude/settings.local.json
 .claude/settings.local.json
 nul
+.aider*
