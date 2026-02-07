@@ -207,6 +207,12 @@ export class EnvironmentAsteroid extends Entity {
 
     // Vectrex mode: draw wireframe vector graphics
     if (isVectrexFilterEnabled() && pixiAsteroidLayer) {
+      // Clean up standard sprite when in Vectrex mode
+      if (this.sprite && pixiAsteroidSpritePool) {
+        releasePixiSprite(pixiAsteroidSpritePool, this.sprite);
+        this.sprite = null;
+      }
+
       let gfx = this._pixiVectorGfx;
       if (!gfx) {
         gfx = new PIXI.Graphics();
@@ -241,6 +247,13 @@ export class EnvironmentAsteroid extends Entity {
     const asteroidIndestructibleImage = getAsteroidIndestructibleImage();
     const texturesReady = isAsteroidTexturesReady();
     const indestructibleTextureReady = isAsteroidIndestructibleTextureReady();
+
+    // Clean up vector graphics when not in Vectrex mode
+    if (this._pixiVectorGfx) {
+      pixiAsteroidLayer.removeChild(this._pixiVectorGfx);
+      this._pixiVectorGfx.destroy();
+      this._pixiVectorGfx = null;
+    }
 
     // Try PixiJS rendering
     if (pixiAsteroidLayer && pixiTextures?.asteroids?.length > 0) {

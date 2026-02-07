@@ -511,11 +511,14 @@ export function updateGamepad() {
   }
 
   const deadzone = 0.12;
+  const sensitivity = 2.0; // Higher = reach full speed with less stick travel
   const applyDeadzone = v => {
     const a = Math.abs(v);
     if (a <= deadzone) return 0;
     const scaled = (a - deadzone) / (1 - deadzone);
-    return Math.sign(v) * scaled;
+    // Apply exponential curve for better response at lower stick positions
+    const curved = Math.pow(scaled, 1 / sensitivity);
+    return Math.sign(v) * Math.min(1, curved);
   };
 
   let gamepadInput = false;
