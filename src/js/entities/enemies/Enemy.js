@@ -350,60 +350,58 @@ export class Enemy extends Entity {
     }
 
     // AWARD COINS DIRECTLY (increased by 25%)
-    if (!this.noDrops) {
-      let val = 2;
-      let count = 4; // was 3
-      if (this.type === "elite_roamer") {
-        val = 3;
-        count = 5;
-      } // was 4
-      if (this.type === "hunter") {
-        val = 4;
-        count = 7;
-      } // was 5
-      if (this.type === "defender") {
-        val = 3;
-        count = 4;
-      } // was 3
-      if (this.nameTag) {
-        val += 1;
-        count += 2;
+    let val = 2;
+    let count = 4; // was 3
+    if (this.type === "elite_roamer") {
+      val = 3;
+      count = 5;
+    } // was 4
+    if (this.type === "hunter") {
+      val = 4;
+      count = 7;
+    } // was 5
+    if (this.type === "defender") {
+      val = 3;
+      count = 4;
+    } // was 3
+    if (this.nameTag) {
+      val += 1;
+      count += 2;
+    }
+    const caveActive =
+      GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active;
+
+    let total = count * val;
+    if (this.isGunboat) total += 10 + 5 * 2;
+    if (_awardCoinsInstant && total > 0)
+      _awardCoinsInstant(total, { noSound: false, sound: "coin" });
+
+    // Award nuggets directly
+    if (this.nameTag && _awardNuggetsInstant) {
+      let nuggetCount = 1;
+      // Bounty Hunter meta upgrade - bonus nuggets for elite kills
+      if (
+        GameContext.player &&
+        GameContext.player.stats &&
+        GameContext.player.stats.bountyEliteBonus
+      ) {
+        nuggetCount += GameContext.player.stats.bountyEliteBonus;
       }
-      const caveActive =
-        GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active;
+      _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
+    }
 
-      let total = count * val;
-      if (this.isGunboat) total += 10 + 5 * 2;
-      if (_awardCoinsInstant && total > 0)
-        _awardCoinsInstant(total, { noSound: false, sound: "coin" });
+    // Sector 2 needs more nugz to match the pace of Sector 1 (no contracts/stations here).
+    if (caveActive) {
+      let p = 0.08;
+      if (this.type === "defender") p = 0.14;
+      else if (this.type === "elite_roamer") p = 0.12;
+      else if (this.type === "hunter") p = 0.16;
+      if (this.isGunboat) p = 0.25;
 
-      // Award nuggets directly
-      if (this.nameTag && _awardNuggetsInstant) {
-        let nuggetCount = 1;
-        // Bounty Hunter meta upgrade - bonus nuggets for elite kills
-        if (
-          GameContext.player &&
-          GameContext.player.stats &&
-          GameContext.player.stats.bountyEliteBonus
-        ) {
-          nuggetCount += GameContext.player.stats.bountyEliteBonus;
-        }
-        _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
-      }
-
-      // Sector 2 needs more nugz to match the pace of Sector 1 (no contracts/stations here).
-      if (caveActive) {
-        let p = 0.08;
-        if (this.type === "defender") p = 0.14;
-        else if (this.type === "elite_roamer") p = 0.12;
-        else if (this.type === "hunter") p = 0.16;
-        if (this.isGunboat) p = 0.25;
-
-        if (Math.random() < p) {
-          const nuggetCount = this.isGunboat ? 2 : 1;
-          if (_awardNuggetsInstant)
-            _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
-        }
+      if (Math.random() < p) {
+        const nuggetCount = this.isGunboat ? 2 : 1;
+        if (_awardNuggetsInstant)
+          _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
       }
     }
 
