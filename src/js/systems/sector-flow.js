@@ -60,6 +60,7 @@ export function completeSectorWarp() {
   GameContext.roamerRespawnQueue = [];
   deps.clearArrayWithPixiCleanup(GameContext.caches);
   deps.clearArrayWithPixiCleanup(GameContext.powerups);
+  deps.clearArrayWithPixiCleanup(GameContext.magnetPickups);
   deps.clearArrayWithPixiCleanup(GameContext.shootingStars);
   deps.clearArrayWithPixiCleanup(GameContext.drones);
   GameContext.contractEntities = {

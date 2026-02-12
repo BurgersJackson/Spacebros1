@@ -470,6 +470,95 @@ export function drawHealthPackIndicator() {
   pixiUiTextObjects.push(text);
 }
 
+export function drawMagnetPickupIndicator() {
+  if (
+    !GameContext.magnetPickups ||
+    !GameContext.player ||
+    GameContext.player.dead ||
+    !pixiArrowsGraphics ||
+    !canvas ||
+    !pixiUiOverlayLayer
+  )
+    return;
+
+  let nearestMagnet = null;
+  let nearestDist = Infinity;
+
+  for (const pickup of GameContext.magnetPickups) {
+    if (!pickup || pickup.dead) continue;
+    const dist = Math.hypot(
+      pickup.pos.x - GameContext.player.pos.x,
+      pickup.pos.y - GameContext.player.pos.y
+    );
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearestMagnet = pickup;
+    }
+  }
+
+  if (!nearestMagnet) return;
+
+  const screenW = canvas.width;
+  const screenH = canvas.height;
+  const z = GameContext.currentZoom || ZOOM_LEVEL;
+  const camX = GameContext.player.pos.x - screenW / (2 * z);
+  const camY = GameContext.player.pos.y - screenH / (2 * z);
+  const viewW = screenW / z;
+  const viewH = screenH / z;
+
+  if (
+    nearestMagnet.pos.x > camX &&
+    nearestMagnet.pos.x < camX + viewW &&
+    nearestMagnet.pos.y > camY &&
+    nearestMagnet.pos.y < camY + viewH
+  ) {
+    return;
+  }
+
+  const dx = nearestMagnet.pos.x - GameContext.player.pos.x;
+  const dy = nearestMagnet.pos.y - GameContext.player.pos.y;
+  const angle = Math.atan2(dy, dx);
+
+  const margin = 60;
+  const cx = screenW / 2;
+  const cy = screenH / 2;
+  const vx = Math.cos(angle);
+  const vy = Math.sin(angle);
+
+  const bx = cx - margin;
+  const by = cy - margin;
+  const tx = Math.abs(vx) > 0.001 ? bx / Math.abs(vx) : Infinity;
+  const ty = Math.abs(vy) > 0.001 ? by / Math.abs(vy) : Infinity;
+  const t = Math.min(tx, ty);
+
+  const arrowX = cx + vx * t;
+  const arrowY = cy + vy * t;
+  const pulse = 1.0 + Math.sin(Date.now() * 0.008) * 0.15;
+
+  const arrowShape = [15, 0, -15, 12, -15, -12];
+  const transformed = transformPolygon(arrowShape, arrowX, arrowY, pulse, angle);
+
+  pixiArrowsGraphics.lineStyle(2, 0x000000);
+  pixiArrowsGraphics.beginFill(0x00ffff);
+  pixiArrowsGraphics.drawPolygon(transformed);
+  pixiArrowsGraphics.endFill();
+
+  const text = new PIXI.Text("MAGNET", {
+    fontFamily: "Courier New",
+    fontWeight: "bold",
+    fontSize: 12,
+    fill: 0x00ffff,
+    align: "center",
+    dropShadow: true,
+    dropShadowColor: 0x000000,
+    dropShadowBlur: 4
+  });
+  text.anchor.set(0.5, 0);
+  text.position.set(arrowX, arrowY + 25);
+  pixiUiOverlayLayer.addChild(text);
+  pixiUiTextObjects.push(text);
+}
+
 export function drawMiniEventIndicator() {
   if (
     !GameContext.miniEvent ||

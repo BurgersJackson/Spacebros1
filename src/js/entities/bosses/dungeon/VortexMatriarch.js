@@ -6,7 +6,7 @@ import { Bullet } from "../../projectiles/Bullet.js";
 import { CruiserMineBomb } from "../../projectiles/CruiserMineBomb.js";
 import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.js";
 import { GravityWell } from "./GravityWell.js";
-import { HealthPowerUp } from "../../pickups/index.js";
+import { HealthPowerUp, Coin } from "../../pickups/index.js";
 import { showOverlayMessage } from "../../../utils/ui-helpers.js";
 import { pixiCleanupObject } from "../../../rendering/pixi-context.js";
 
@@ -450,8 +450,16 @@ export class VortexMatriarch extends Enemy {
     GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 23);
     GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 25);
 
-    // Award coins directly: 17 coins * 10 value = 170 total
-    if (_awardCoinsInstant) _awardCoinsInstant(170, { noSound: false, sound: "coin" });
+    // Spawn coins: 17 coins * 10 value = 170 total
+    const coinCount = 17;
+    const coinValue = 10;
+    for (let i = 0; i < coinCount; i++) {
+      const coin = new Coin(this.pos.x, this.pos.y, coinValue);
+      coin.vel.x = (Math.random() - 0.5) * 5;
+      coin.vel.y = (Math.random() - 0.5) * 5;
+      GameContext.coins.push(coin);
+    }
+    playSound("coin");
     // Award nuggets directly: 7 nuggets
     let nuggetCount = 7;
     // Bounty Hunter meta upgrade - bonus nuggets for boss kills

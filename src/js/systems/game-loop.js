@@ -28,6 +28,7 @@ import {
   Gunboat,
   Gunboat2
 } from "../entities/index.js";
+import { MagnetPickup } from "../entities/pickups/index.js";
 import {
   NecroticHive,
   CerebralPsion,
@@ -150,6 +151,7 @@ let drawDestroyerIndicator = null;
 let drawWarpGateIndicator = null;
 let drawContractIndicator = null;
 let drawHealthPackIndicator = null;
+let drawMagnetPickupIndicator = null;
 let drawMiniEventIndicator = null;
 let clearPixiUiText = null;
 let processStaggeredBombExplosions = null;
@@ -249,6 +251,7 @@ export function registerGameLoopLogicDependencies(deps) {
   if (deps.drawWarpGateIndicator) drawWarpGateIndicator = deps.drawWarpGateIndicator;
   if (deps.drawContractIndicator) drawContractIndicator = deps.drawContractIndicator;
   if (deps.drawHealthPackIndicator) drawHealthPackIndicator = deps.drawHealthPackIndicator;
+  if (deps.drawMagnetPickupIndicator) drawMagnetPickupIndicator = deps.drawMagnetPickupIndicator;
   if (deps.drawMiniEventIndicator) drawMiniEventIndicator = deps.drawMiniEventIndicator;
   if (deps.clearPixiUiText) clearPixiUiText = deps.clearPixiUiText;
   if (deps.processStaggeredBombExplosions)
@@ -861,6 +864,28 @@ export function gameLoopLogic(opts = null) {
       showOverlayMessage("SPACE STATION SPAWNED - DESTROY THE BARRIER?", "#f80", 5000);
       playSound("station_spawn");
       GameContext.nextSpaceStationTime = null;
+    }
+
+    // Magnet pickup spawning - every 5 minutes, max 1 at a time
+    if (
+      !GameContext.dungeon1Active &&
+      !GameContext.sectorTransitionActive &&
+      GameContext.gameActive &&
+      !GameContext.gamePaused &&
+      GameContext.initialSpawnDone
+    ) {
+      const existingMagnets = GameContext.magnetPickups.filter(m => !m.dead);
+      if (existingMagnets.length === 0) {
+        if (!GameContext.nextMagnetSpawnTime) {
+          GameContext.nextMagnetSpawnTime = GameContext.gameStartTime + 300000;
+        }
+        if (now >= GameContext.nextMagnetSpawnTime) {
+          const spawnPoint = findSpawnPointRelative(GameContext, true, 1000, 2500);
+          const magnet = new MagnetPickup(spawnPoint.x, spawnPoint.y);
+          GameContext.magnetPickups.push(magnet);
+          GameContext.nextMagnetSpawnTime = now + 300000;
+        }
+      }
     }
 
     // Gunboat respawn system - time-based tiered spawning
@@ -1566,6 +1591,16 @@ export function gameLoopLogic(opts = null) {
       else if (typeof p.cull === "function") p.cull();
     }
   }
+  // Update magnet pickups and skip dead ones
+  for (let i = GameContext.magnetPickups.length - 1; i >= 0; i--) {
+    const m = GameContext.magnetPickups[i];
+    if (!m || m.dead) continue;
+    if (doUpdate) m.update(GameContext.player, deltaTime);
+    if (doDraw) {
+      if (isInView(m.pos.x, m.pos.y, 60)) m.draw(ctx, pickupRes);
+      else if (typeof m.cull === "function") m.cull();
+    }
+  }
   // Update shooting stars and skip dead ones
   for (let i = GameContext.shootingStars.length - 1; i >= 0; i--) {
     const s = GameContext.shootingStars[i];
@@ -1982,6 +2017,8 @@ export function gameLoopLogic(opts = null) {
       }
     }
 
+    immediateCompactArray(GameContext.magnetPickups);
+
     compactParticles(GameContext.particles);
     immediateCompactArray(GameContext.lightningArcs, pixiCleanupObject);
     immediateCompactArray(GameContext.shootingStars, pixiCleanupObject);
@@ -2048,6 +2085,7 @@ export function gameLoopLogic(opts = null) {
     drawMinimap(pixiMinimapGraphics, canvas);
     drawContractIndicator();
     drawHealthPackIndicator();
+    drawMagnetPickupIndicator();
     drawMiniEventIndicator();
     updateMiniEventUI();
     // Boss HP bars (including main boss, dungeon bosses, destroyer, station) at bottom of screen

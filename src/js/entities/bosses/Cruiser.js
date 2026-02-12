@@ -3,7 +3,7 @@ import { GameContext } from "../../core/game-context.js";
 import { SIM_FPS, SIM_STEP_MS } from "../../core/constants.js";
 import { playSound, setMusicMode, musicEnabled } from "../../audio/audio-manager.js";
 import { Bullet, CruiserMineBomb, FlagshipGuidedMissile } from "../projectiles/index.js";
-import { HealthPowerUp } from "../pickups/index.js";
+import { HealthPowerUp, Coin } from "../pickups/index.js";
 import { showOverlayMessage } from "../../utils/ui-helpers.js";
 import { stopArenaCountdown } from "../../systems/event-scheduler.js";
 import {
@@ -279,8 +279,16 @@ export class Cruiser extends Enemy {
     GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 22);
     GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 24);
     clearArrayWithPixiCleanup(GameContext.bossBombs);
-    // Award coins directly: 13 coins * 10 value = 130 total
-    if (_awardCoinsInstant) _awardCoinsInstant(130, { noSound: false, sound: "coin" });
+    // Spawn coins: 13 coins * 10 value = 130 total
+    const coinCount = 13;
+    const coinValue = 10;
+    for (let i = 0; i < coinCount; i++) {
+      const coin = new Coin(this.pos.x, this.pos.y, coinValue);
+      coin.vel.x = (Math.random() - 0.5) * 5;
+      coin.vel.y = (Math.random() - 0.5) * 5;
+      GameContext.coins.push(coin);
+    }
+    playSound("coin");
     // Award nuggets directly: 5 nuggets
     let nuggetCount = 5;
     // Bounty Hunter meta upgrade - bonus nuggets for boss kills

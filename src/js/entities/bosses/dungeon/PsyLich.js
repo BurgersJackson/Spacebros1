@@ -7,7 +7,7 @@ import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.j
 import { DungeonDrone } from "./DungeonDrone.js";
 import { SoulDrainTether } from "./SoulDrainTether.js";
 import { WarpBioPod } from "../../zones/WarpBioPod.js";
-import { HealthPowerUp } from "../../pickups/index.js";
+import { HealthPowerUp, Coin } from "../../pickups/index.js";
 import { showOverlayMessage } from "../../../utils/ui-helpers.js";
 import { pixiCleanupObject, getRenderAlpha } from "../../../rendering/pixi-context.js";
 
@@ -459,8 +459,16 @@ export class PsyLich extends Enemy {
     GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 26);
     GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 28);
 
-    // Award coins directly: 22 coins * 10 value = 220 total
-    if (_awardCoinsInstant) _awardCoinsInstant(220, { noSound: false, sound: "coin" });
+    // Spawn coins: 22 coins * 10 value = 220 total
+    const coinCount = 22;
+    const coinValue = 10;
+    for (let i = 0; i < coinCount; i++) {
+      const coin = new Coin(this.pos.x, this.pos.y, coinValue);
+      coin.vel.x = (Math.random() - 0.5) * 5;
+      coin.vel.y = (Math.random() - 0.5) * 5;
+      GameContext.coins.push(coin);
+    }
+    playSound("coin");
     // Award nuggets directly: 10 nuggets
     let nuggetCount = 10;
     // Bounty Hunter meta upgrade - bonus nuggets for boss kills

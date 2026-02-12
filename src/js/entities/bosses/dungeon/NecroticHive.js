@@ -6,7 +6,7 @@ import { Bullet } from "../../projectiles/Bullet.js";
 import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.js";
 import { DungeonDrone } from "./DungeonDrone.js";
 import { WarpBioPod } from "../../zones/WarpBioPod.js";
-import { HealthPowerUp } from "../../pickups/index.js";
+import { HealthPowerUp, Coin } from "../../pickups/index.js";
 import { showOverlayMessage } from "../../../utils/ui-helpers.js";
 import { pixiCleanupObject, getRenderAlpha } from "../../../rendering/pixi-context.js";
 
@@ -434,8 +434,16 @@ export class NecroticHive extends Enemy {
     GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 22);
     GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 24);
 
-    // Rewards - Award coins directly: 16 coins * 10 value = 160 total
-    if (_awardCoinsInstant) _awardCoinsInstant(160, { noSound: false, sound: "coin" });
+    // Rewards - Spawn coins: 16 coins * 10 value = 160 total
+    const coinCount = 16;
+    const coinValue = 10;
+    for (let i = 0; i < coinCount; i++) {
+      const coin = new Coin(this.pos.x, this.pos.y, coinValue);
+      coin.vel.x = (Math.random() - 0.5) * 5;
+      coin.vel.y = (Math.random() - 0.5) * 5;
+      GameContext.coins.push(coin);
+    }
+    playSound("coin");
     // Award nuggets directly: 6 nuggets
     let nuggetCount = 6;
     // Bounty Hunter meta upgrade - bonus nuggets for boss kills

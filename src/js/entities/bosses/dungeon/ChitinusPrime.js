@@ -7,7 +7,7 @@ import { ClusterBomb } from "../../projectiles/ClusterBomb.js";
 import { CruiserMineBomb } from "../../projectiles/CruiserMineBomb.js";
 import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.js";
 import { DungeonDrone } from "./DungeonDrone.js";
-import { HealthPowerUp } from "../../pickups/index.js";
+import { HealthPowerUp, Coin } from "../../pickups/index.js";
 import { showOverlayMessage } from "../../../utils/ui-helpers.js";
 import { pixiCleanupObject } from "../../../rendering/pixi-context.js";
 
@@ -403,8 +403,16 @@ export class ChitinusPrime extends Enemy {
     GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 25);
     GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 27);
 
-    // Award coins directly: 20 coins * 10 value = 200 total
-    if (_awardCoinsInstant) _awardCoinsInstant(200, { noSound: false, sound: "coin" });
+    // Spawn coins: 20 coins * 10 value = 200 total
+    const coinCount = 20;
+    const coinValue = 10;
+    for (let i = 0; i < coinCount; i++) {
+      const coin = new Coin(this.pos.x, this.pos.y, coinValue);
+      coin.vel.x = (Math.random() - 0.5) * 5;
+      coin.vel.y = (Math.random() - 0.5) * 5;
+      GameContext.coins.push(coin);
+    }
+    playSound("coin");
     // Award nuggets directly: 8 nuggets
     let nuggetCount = 8;
     // Bounty Hunter meta upgrade - bonus nuggets for boss kills

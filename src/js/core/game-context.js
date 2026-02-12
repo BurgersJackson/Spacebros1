@@ -28,6 +28,7 @@ export const GameContext = {
   nuggets: [],
   goldNuggets: [],
   powerups: [],
+  magnetPickups: [],
   shootingStars: [],
   drones: [],
   caches: [],
@@ -94,6 +95,7 @@ export const GameContext = {
   nextDestroyerSpawnTime: null,
   nextContractAt: 0,
   nextSpaceStationTime: null,
+  nextMagnetSpawnTime: null,
   score: 0,
   difficultyTier: 1,
   sectorIndex: 1,
@@ -277,6 +279,7 @@ export const GameContext = {
     this.nuggets = [];
     this.goldNuggets = [];
     this.powerups = [];
+    this.magnetPickups = [];
     this.shootingStars = [];
     this.drones = [];
     this.caches = [];
@@ -329,6 +332,7 @@ export const GameContext = {
     this.nextDestroyerSpawnTime = null;
     this.nextContractAt = 0;
     this.nextSpaceStationTime = null;
+    this.nextMagnetSpawnTime = null;
     this.pinwheelsDestroyed = 0;
     this.pinwheelsDestroyedTotal = 0;
     this.gunboatsDestroyed = 0;

@@ -1086,6 +1086,27 @@ export function resolveEntityCollision() {
       }
     }
 
+    for (let m of GameContext.magnetPickups) {
+      if (m.dead) continue;
+      const dist = Math.hypot(
+        GameContext.player.pos.x - m.pos.x,
+        GameContext.player.pos.y - m.pos.y
+      );
+      if (dist < GameContext.player.radius + m.radius) {
+        if (_playSound) _playSound("powerup");
+        if (_showOverlayMessage)
+          _showOverlayMessage("MAGNET ACTIVATED - ALL COINS MAGNETIZED", "#0ff", 2000);
+        // Magnetize all coins on the map
+        for (let coin of GameContext.coins) {
+          if (!coin.dead) {
+            coin.magnetized = true;
+          }
+        }
+        if (typeof m.kill === "function") m.kill();
+        else m.dead = true;
+      }
+    }
+
     for (let c of GameContext.caches) {
       if (c.dead) continue;
       const dist = Math.hypot(

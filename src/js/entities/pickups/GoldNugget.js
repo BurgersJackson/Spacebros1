@@ -10,7 +10,7 @@ export class GoldNugget extends Entity {
     this.nuggetMax = nuggetMax;
     this.coinMin = coinMin;
     this.coinMax = coinMax;
-    this.radius = 14;
+    this.radius = 21;
     this.sprite = null;
     this.vel.x = (Math.random() - 0.5) * 0.4;
     this.vel.y = (Math.random() - 0.5) * 0.4;
@@ -61,7 +61,7 @@ export class GoldNugget extends Entity {
         const base = (this.radius * 2) / Math.max(1, tex.width, tex.height);
         spr.scale.set(base * pulse * 1.2);
         spr.rotation = this.flash * 0.02;
-        spr.tint = 0xffd700;
+        spr.tint = 0xff8800;
         spr.alpha = 1;
         if (window.PIXI) spr.blendMode = PIXI.BLEND_MODES.ADD;
         this.sprite = spr;
@@ -76,14 +76,14 @@ export class GoldNugget extends Entity {
     ctx.rotate(this.flash * 0.02);
 
     const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
-    gradient.addColorStop(0, "#fff7cc");
-    gradient.addColorStop(0.5, "#ffd700");
-    gradient.addColorStop(1, "#b8860b");
+    gradient.addColorStop(0, "#ffcc88");
+    gradient.addColorStop(0.5, "#ff8800");
+    gradient.addColorStop(1, "#cc6600");
 
     ctx.fillStyle = gradient;
     ctx.strokeStyle = "#fff";
     ctx.lineWidth = 2;
-    ctx.shadowColor = "#ffd700";
+    ctx.shadowColor = "#ff8800";
     ctx.shadowBlur = 15;
 
     ctx.beginPath();

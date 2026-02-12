@@ -373,8 +373,22 @@ export class Enemy extends Entity {
 
     let total = count * val;
     if (this.isGunboat) total += 10 + 5 * 2;
-    if (_awardCoinsInstant && total > 0)
-      _awardCoinsInstant(total, { noSound: false, sound: "coin" });
+
+    // Spawn physical coins instead of awarding instantly
+    if (total > 0) {
+      // Determine coin values (prefer higher value coins when possible)
+      let remaining = total;
+      while (remaining > 0) {
+        const coinValue = Math.min(10, remaining);
+        const coin = new Coin(this.pos.x, this.pos.y, coinValue);
+        // Add random spread
+        coin.vel.x = (Math.random() - 0.5) * 3;
+        coin.vel.y = (Math.random() - 0.5) * 3;
+        GameContext.coins.push(coin);
+        remaining -= coinValue;
+      }
+      playSound("coin");
+    }
 
     // Award nuggets directly
     if (this.nameTag && _awardNuggetsInstant) {

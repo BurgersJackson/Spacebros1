@@ -23,6 +23,7 @@ export function setupGameWorld() {
   deps.clearArrayWithPixiCleanup(GameContext.goldNuggets);
   GameContext.spaceNuggets = 0;
   deps.clearArrayWithPixiCleanup(GameContext.powerups);
+  deps.clearArrayWithPixiCleanup(GameContext.magnetPickups);
   deps.clearArrayWithPixiCleanup(GameContext.shootingStars);
   deps.clearArrayWithPixiCleanup(GameContext.drones);
   deps.clearArrayWithPixiCleanup(GameContext.caches);
