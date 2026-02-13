@@ -454,6 +454,8 @@ export function gameLoopLogic(opts = null) {
   const now = Date.now();
   GameContext.frameNow = now;
   const warpActive = !!(GameContext.warpZone && GameContext.warpZone.active);
+  const nukeSuppressSpawns =
+    GameContext.nukeSuppressSpawnsUntil && now < GameContext.nukeSuppressSpawnsUntil;
 
   if (doUpdate) {
     globalProfiler.start("Update");
@@ -651,6 +653,7 @@ export function gameLoopLogic(opts = null) {
     // Unique boss spawn: if timer active and no boss present, spawn from unique pool
     try {
       if (
+        !nukeSuppressSpawns &&
         !GameContext.sectorTransitionActive &&
         !warpActive &&
         !GameContext.caveMode &&
@@ -951,6 +954,7 @@ export function gameLoopLogic(opts = null) {
 
     // Gunboat respawn system - time-based tiered spawning
     if (
+      !nukeSuppressSpawns &&
       !warpActive &&
       !GameContext.dungeon1Active &&
       !GameContext.sectorTransitionActive &&
@@ -1014,6 +1018,7 @@ export function gameLoopLogic(opts = null) {
     // Destroyers never spawn in sector 2 (cave mode), in dungeon1, or in vertical scrolling mode
     // Set DESTROYER_AUTO_SPAWN_ENABLED to true above to re-enable automatic spawning
     if (
+      !nukeSuppressSpawns &&
       DESTROYER_AUTO_SPAWN_ENABLED &&
       !warpActive &&
       !GameContext.caveMode &&
@@ -1058,6 +1063,7 @@ export function gameLoopLogic(opts = null) {
     }
 
     if (
+      !nukeSuppressSpawns &&
       !warpActive &&
       !GameContext.caveMode &&
       !GameContext.dungeon1Active &&
@@ -1088,6 +1094,7 @@ export function gameLoopLogic(opts = null) {
       if (GameContext.radiationStorm && GameContext.radiationStorm.dead)
         GameContext.radiationStorm = null;
       if (
+        !nukeSuppressSpawns &&
         (!GameContext.radiationStorm || GameContext.radiationStorm.dead) &&
         GameContext.nextRadiationStormAt &&
         now >= GameContext.nextRadiationStormAt
@@ -1109,6 +1116,7 @@ export function gameLoopLogic(opts = null) {
     ) {
       if (GameContext.miniEvent && GameContext.miniEvent.dead) clearMiniEvent();
       if (
+        !nukeSuppressSpawns &&
         !GameContext.miniEvent &&
         GameContext.nextMiniEventAt &&
         now >= GameContext.nextMiniEventAt
@@ -1142,6 +1150,7 @@ export function gameLoopLogic(opts = null) {
 
     // Allow roamers to spawn in normal mode and cave mode (but not in warp/dungeon/boss)
     if (
+      !nukeSuppressSpawns &&
       !warpActive &&
       !GameContext.dungeon1Active &&
       !GameContext.sectorTransitionActive &&
@@ -1227,29 +1236,36 @@ export function gameLoopLogic(opts = null) {
     }
 
     if (
+      !nukeSuppressSpawns &&
       !warpActive &&
       !GameContext.caveMode &&
       !GameContext.dungeon1Active &&
       !GameContext.verticalScrollingMode
     ) {
       while (GameContext.environmentAsteroids.length < 50) spawnOneAsteroidRelative();
-    } else if (GameContext.verticalScrollingMode) {
+    } else if (!nukeSuppressSpawns && GameContext.verticalScrollingMode) {
       // 50% fewer asteroids in vertical scrolling mode
       while (GameContext.environmentAsteroids.length < 50) spawnOneAsteroidRelative();
-    } else if (GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active) {
+    } else if (
+      !nukeSuppressSpawns &&
+      GameContext.caveMode &&
+      GameContext.caveLevel &&
+      GameContext.caveLevel.active
+    ) {
       // Keep asteroids present but not overwhelming inside the cave.
       let tries = 0;
       while (GameContext.environmentAsteroids.length < 75 && tries < 300) {
         spawnOneAsteroidRelative(false);
         tries++;
       }
-    } else if (GameContext.warpZone && GameContext.warpZone.active) {
+    } else if (!nukeSuppressSpawns && GameContext.warpZone && GameContext.warpZone.active) {
       let tries = 0;
       while (GameContext.environmentAsteroids.length < 50 && tries < 300) {
         if (!spawnOneWarpAsteroidRelative(false)) break;
         tries++;
       }
     } else if (
+      !nukeSuppressSpawns &&
       GameContext.dungeon1Active &&
       GameContext.dungeon1Zone &&
       GameContext.dungeon1Zone.active
@@ -1304,6 +1320,7 @@ export function gameLoopLogic(opts = null) {
     globalProfiler.start("LevelLogic");
 
     if (
+      !nukeSuppressSpawns &&
       !warpActive &&
       !GameContext.dungeon1Active &&
       !GameContext.sectorTransitionActive &&

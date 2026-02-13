@@ -9,6 +9,7 @@ import {
   pixiVectorLayer,
   getRenderAlpha
 } from "../../rendering/pixi-context.js";
+import { pixiTextures } from "../../rendering/texture-loader.js";
 let _spawnParticles = null;
 let _getSimNowMs = null;
 let _showLevelUpMenu = null;
@@ -33,8 +34,10 @@ export class MiniEventDefendCache extends Entity {
     this.activated = false;
     this.t = 0;
     this.shieldsDirty = true;
+    this.nuggetAngle = 0;
     this._pixiGfx = null;
     this._pixiProgressGfx = null;
+    this._pixiNuggetSprite = null;
     this._pixiLabelText = null;
     this._pixiTimerText = null;
   }
@@ -46,6 +49,14 @@ export class MiniEventDefendCache extends Entity {
     }
     if (this._pixiProgressGfx && this._pixiProgressGfx.visible !== false) {
       this._pixiProgressGfx.visible = false;
+    }
+    if (this._pixiNuggetSprite) {
+      this._pixiNuggetSprite.visible = false;
+      if (this._pixiNuggetSprite.parent) {
+        this._pixiNuggetSprite.parent.removeChild(this._pixiNuggetSprite);
+      }
+      this._pixiNuggetSprite.destroy();
+      this._pixiNuggetSprite = null;
     }
     if (this._pixiLabelText && this._pixiLabelText.visible !== false) {
       this._pixiLabelText.visible = false;
@@ -70,6 +81,7 @@ export class MiniEventDefendCache extends Entity {
     this.lastUpdateAt = now;
     const dtFactor = deltaTime / 16.67;
     this.t += dtFactor;
+    this.nuggetAngle += 0.02 * dtFactor;
 
     const d = Math.hypot(
       GameContext.player.pos.x - this.pos.x,
@@ -145,6 +157,11 @@ export class MiniEventDefendCache extends Entity {
         this._pixiProgressGfx = new PIXI.Graphics();
         pixiVectorLayer.addChild(this._pixiProgressGfx);
       }
+      if (!this._pixiNuggetSprite && pixiTextures?.nugget) {
+        this._pixiNuggetSprite = new PIXI.Sprite(pixiTextures.nugget);
+        this._pixiNuggetSprite.anchor.set(0.5);
+        pixiVectorLayer.addChild(this._pixiNuggetSprite);
+      }
       if (!this._pixiLabelText) {
         this._pixiLabelText = new PIXI.Text("DEFEND", {
           fontFamily: "Courier New",
@@ -177,14 +194,26 @@ export class MiniEventDefendCache extends Entity {
       this._pixiLabelText.position.set(rPos.x, rPos.y - this.radius - 64);
       this._pixiTimerText.position.set(rPos.x, rPos.y - this.radius - 26);
 
-      this._pixiGfx.clear();
-      this._pixiGfx.lineStyle(6 / (GameContext.currentZoom || 1), 0xffdc00, 0.45);
-      this._pixiGfx.drawCircle(0, 0, this.radius);
+      // Spinning gold nugget sprite in center
+      if (this._pixiNuggetSprite) {
+        this._pixiNuggetSprite.position.set(rPos.x, rPos.y);
+        this._pixiNuggetSprite.rotation = this.nuggetAngle;
+        const tex = pixiTextures.nugget;
+        if (tex) {
+          const nuggetVisualRadius = 50;
+          const scale = (nuggetVisualRadius * 2) / Math.max(1, tex.width, tex.height);
+          this._pixiNuggetSprite.scale.set(scale * pulse);
+        }
+        this._pixiNuggetSprite.visible = true;
+      }
 
-      this._pixiGfx.beginFill(0xffff00, 0.35 * pulse);
-      this._pixiGfx.drawCircle(0, 0, 54);
+      // Outer yellow circle - 2 pixels thick
+      this._pixiGfx.clear();
+      this._pixiGfx.lineStyle(2, 0xffdc00, 0.6);
+      this._pixiGfx.drawCircle(0, 0, this.radius);
       this._pixiGfx.endFill();
 
+      // Progress arc
       this._pixiProgressGfx.clear();
       this._pixiProgressGfx.lineStyle(8 / (GameContext.currentZoom || 1), 0x00ff00, 0.6);
       this._pixiProgressGfx.arc(
@@ -206,26 +235,33 @@ export class MiniEventDefendCache extends Entity {
 
     ctx.save();
     ctx.translate(this.pos.x, this.pos.y);
-    ctx.lineWidth = 6;
-    ctx.shadowBlur = 18;
-    ctx.shadowColor = "#ff0";
-    ctx.strokeStyle = "rgba(255, 220, 0, 0.45)";
+
+    // Outer yellow circle - 2 pixels thick
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255, 220, 0, 0.6)";
     ctx.beginPath();
     ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.shadowBlur = 0;
+    // Progress arc
     ctx.lineWidth = 8;
     ctx.strokeStyle = "rgba(0, 255, 0, 0.6)";
     ctx.beginPath();
     ctx.arc(0, 0, this.radius + 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
     ctx.stroke();
 
-    ctx.globalAlpha = 0.35 * pulse;
-    ctx.fillStyle = "#ff0";
+    // Spinning gold nugget in center (simple circle fallback for canvas)
+    ctx.save();
+    ctx.rotate(this.nuggetAngle);
+    ctx.globalAlpha = 0.9 * pulse;
+    ctx.fillStyle = "#ffaa00";
+    ctx.strokeStyle = "#ffcc00";
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(0, 0, 54, 0, Math.PI * 2);
+    ctx.arc(0, 0, 50, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
+    ctx.restore();
     ctx.globalAlpha = 1;
 
     ctx.fillStyle = "#ff0";

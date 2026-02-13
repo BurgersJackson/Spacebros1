@@ -24,7 +24,6 @@ import {
   isAsteroidTexturesReady,
   isAsteroidIndestructibleTextureReady
 } from "../../rendering/pixi-context.js";
-import { isVectrexFilterEnabled } from "../../ui/vectrex-filter.js";
 
 // Dependency injection for main.js-specific functions that can't be extracted
 let _checkDespawn = null;
@@ -205,50 +204,13 @@ export class EnvironmentAsteroid extends Entity {
     const prevAng = this.prevAngle !== undefined ? this.prevAngle : this.angle;
     const rAngle = prevAng + (this.angle - prevAng) * renderAlpha;
 
-    // Vectrex mode: draw wireframe vector graphics
-    if (isVectrexFilterEnabled() && pixiAsteroidLayer) {
-      // Clean up standard sprite when in Vectrex mode
-      if (this.sprite && pixiAsteroidSpritePool) {
-        releasePixiSprite(pixiAsteroidSpritePool, this.sprite);
-        this.sprite = null;
-      }
-
-      let gfx = this._pixiVectorGfx;
-      if (!gfx) {
-        gfx = new PIXI.Graphics();
-        this._pixiVectorGfx = gfx;
-        pixiAsteroidLayer.addChild(gfx);
-      }
-
-      gfx.clear();
-      gfx.lineStyle(
-        2.5 / Math.max(0.5, GameContext.zoom || 1),
-        this.indestructible ? 0x00aaff : 0x00ff00,
-        1
-      );
-
-      gfx.beginFill(0x000000, 0);
-      gfx.moveTo(this.vertices[0].x, this.vertices[0].y);
-      for (let i = 1; i < this.vertices.length; i++) {
-        gfx.lineTo(this.vertices[i].x, this.vertices[i].y);
-      }
-      gfx.closePath();
-      gfx.endFill();
-
-      gfx.position.set(rPos.x, rPos.y);
-      gfx.rotation = rAngle;
-      gfx.alpha = 1;
-
-      return;
-    }
-
     // Get texture state from pixi-context
     const asteroidImages = getAsteroidImages();
     const asteroidIndestructibleImage = getAsteroidIndestructibleImage();
     const texturesReady = isAsteroidTexturesReady();
     const indestructibleTextureReady = isAsteroidIndestructibleTextureReady();
 
-    // Clean up vector graphics when not in Vectrex mode
+    // Clean up any leftover vector graphics from previous state
     if (this._pixiVectorGfx) {
       pixiAsteroidLayer.removeChild(this._pixiVectorGfx);
       this._pixiVectorGfx.destroy();

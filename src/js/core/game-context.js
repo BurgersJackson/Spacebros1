@@ -33,6 +33,7 @@ export const GameContext = {
   nukePickups: [],
   nextNukeSpawnTime: null,
   nukeFlashTimer: 0,
+  nukeSuppressSpawnsUntil: 0,
   shootingStars: [],
   drones: [],
   caches: [],
@@ -288,6 +289,7 @@ export const GameContext = {
     this.nukePickups = [];
     this.nextNukeSpawnTime = null;
     this.nukeFlashTimer = 0;
+    this.nukeSuppressSpawnsUntil = 0;
     this.shootingStars = [];
     this.drones = [];
     this.caches = [];

@@ -322,6 +322,9 @@ function executeNukeEffect() {
   // Screen flash
   GameContext.nukeFlashTimer = 30;
 
+  // No new spawns for 5 seconds after nuke
+  GameContext.nukeSuppressSpawnsUntil = Date.now() + 5000;
+
   // Spawn shockwave from player position
   if (typeof Shockwave !== "undefined") {
     GameContext.shockwaves.push(

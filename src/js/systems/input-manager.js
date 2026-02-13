@@ -47,16 +47,16 @@ export function registerInputDependencies(deps) {
  * @param {number} now
  */
 export function updateInputMode(now = Date.now()) {
-  const preferGamepadMs = 1200;
   const mouseGraceMs = 220;
   const strictGamepad = now - GameContext.lastGamepadInputAt < 100;
+  const mouseRecent = now - GameContext.lastMouseInputAt < mouseGraceMs;
+  // Prefer gamepad if it was used more recently than mouse (so floating without touching stick doesn't switch to mouse)
+  const gamepadPreferred = GameContext.lastGamepadInputAt > GameContext.lastMouseInputAt;
 
   if (strictGamepad) {
     GameContext.usingGamepad = true;
   } else {
-    const gamepadRecent = now - GameContext.lastGamepadInputAt < preferGamepadMs;
-    const mouseRecent = now - GameContext.lastMouseInputAt < mouseGraceMs;
-    GameContext.usingGamepad = gamepadRecent && !mouseRecent;
+    GameContext.usingGamepad = gamepadPreferred && !mouseRecent;
   }
 
   const upgradesMenu = document.getElementById("upgrades-menu");
@@ -505,6 +505,10 @@ export function updateGamepad() {
     if (!pads.some(p => p)) {
       GameContext.gamepadIndex = null;
       GameContext.lastGamepadInputAt = 0;
+      GameContext.gpState.move.x = 0;
+      GameContext.gpState.move.y = 0;
+      GameContext.gpState.aim.x = 0;
+      GameContext.gpState.aim.y = 0;
       updateInputMode(Date.now());
     }
     return;
@@ -533,10 +537,16 @@ export function updateGamepad() {
     GameContext.lastGamepadInputAt = Date.now();
   }
 
-  GameContext.gpState.move.x = applyDeadzone(gp.axes[0]);
-  GameContext.gpState.move.y = applyDeadzone(gp.axes[1]);
-  GameContext.gpState.aim.x = applyDeadzone(gp.axes[2]);
-  GameContext.gpState.aim.y = applyDeadzone(gp.axes[3]);
+  const rawMoveX = applyDeadzone(gp.axes[0]);
+  const rawMoveY = applyDeadzone(gp.axes[1]);
+  const rawAimX = applyDeadzone(gp.axes[2]);
+  const rawAimY = applyDeadzone(gp.axes[3]);
+  // Smooth axes to avoid single-frame spikes (e.g. stick drift/recalibration after idle) that feel like a sudden push
+  const smoothFactor = 0.35;
+  GameContext.gpState.move.x += (rawMoveX - GameContext.gpState.move.x) * smoothFactor;
+  GameContext.gpState.move.y += (rawMoveY - GameContext.gpState.move.y) * smoothFactor;
+  GameContext.gpState.aim.x += (rawAimX - GameContext.gpState.aim.x) * smoothFactor;
+  GameContext.gpState.aim.y += (rawAimY - GameContext.gpState.aim.y) * smoothFactor;
 
   GameContext.gpState.lastPadAxes = {
     x: gp.axes[0],

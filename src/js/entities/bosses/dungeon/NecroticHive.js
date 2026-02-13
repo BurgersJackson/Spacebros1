@@ -534,13 +534,10 @@ export class NecroticHive extends Enemy {
 
     // Invulnerability shield (when segment shields are up) - same pattern as Cruiser: Pixi ring at _cachedRenderPos
     const showInvulRing =
-      this.vulnerableTimer <= 0 &&
       this.shieldSegments &&
       this.shieldSegments.length > 0 &&
       this.shieldSegments.some(s => s > 0);
-    // Vulnerability indicator (when boss can be damaged) - also use Pixi at _cachedRenderPos
-    const showVulnerableRing = this.vulnerableTimer > 0;
-    if ((showInvulRing || showVulnerableRing) && pixiVectorLayer) {
+    if (showInvulRing && pixiVectorLayer) {
       let invulGfx = this._pixiInvulGfx;
       if (!invulGfx) {
         invulGfx = new PIXI.Graphics();
@@ -551,13 +548,9 @@ export class NecroticHive extends Enemy {
       }
       invulGfx.position.set(rPos.x, rPos.y);
       invulGfx.clear();
-      const alpha = 0.35 + Math.abs(Math.sin(Date.now() * 0.01)) * (showVulnerableRing ? 0.3 : 0.25);
+      const alpha = 0.35 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.25;
       invulGfx.lineStyle(4, 0xffff00, alpha);
-      invulGfx.drawCircle(
-        0,
-        0,
-        showVulnerableRing ? this.radius + 20 : this.shieldRadius + 5
-      );
+      invulGfx.drawCircle(0, 0, this.shieldRadius + 5);
       invulGfx.visible = true;
     } else if (this._pixiInvulGfx) {
       this._pixiInvulGfx.visible = false;

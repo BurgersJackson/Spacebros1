@@ -265,13 +265,14 @@ export function startGame() {
     GameContext.cruiserTimerPausedAt = null;
     GameContext.dreadManager.upgradesChosen = 0;
     GameContext.dreadManager.timerActive = true;
-    GameContext.dreadManager.timerAt =
-      Date.now() +
+    const firstBossMinGraceMs = 240000; // Level 1: first boss no earlier than 4 minutes
+    const baseDelay =
       GameContext.dreadManager.minDelayMs +
       Math.floor(
         Math.random() *
           (GameContext.dreadManager.maxDelayMs - GameContext.dreadManager.minDelayMs + 1)
       );
+    GameContext.dreadManager.timerAt = Date.now() + Math.max(firstBossMinGraceMs, baseDelay);
     GameContext.rerollTokens = GameContext.metaProfile.purchases.rerollTokens || 0;
     GameContext.metaExtraLifeCount = GameContext.metaProfile.purchases.extraLife || 0;
 
