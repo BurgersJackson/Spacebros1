@@ -5,7 +5,7 @@ import { playSound, setMusicMode, musicEnabled } from "../../../audio/audio-mana
 import { Bullet } from "../../projectiles/Bullet.js";
 import { ClusterBomb } from "../../projectiles/ClusterBomb.js";
 import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.js";
-import { HealthPowerUp, Coin } from "../../pickups/index.js";
+import { HealthPowerUp, Coin, SpaceNugget } from "../../pickups/index.js";
 import { showOverlayMessage } from "../../../utils/ui-helpers.js";
 import { pixiCleanupObject } from "../../../rendering/pixi-context.js";
 
@@ -41,7 +41,7 @@ export class Fleshforge extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 6200;
+    const baseHp = 7750; // Increased by 25% from 6200
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
 
@@ -419,7 +419,13 @@ export class Fleshforge extends Enemy {
     ) {
       nuggetCount += GameContext.player.stats.bountyBossBonus;
     }
-    if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
+    for (let i = 0; i < nuggetCount; i++) {
+      const n = new SpaceNugget(this.pos.x, this.pos.y, 1);
+      n.vel.x = (Math.random() - 0.5) * 2;
+      n.vel.y = (Math.random() - 0.5) * 2;
+      GameContext.nuggets.push(n);
+    }
+    playSound("coin");
     GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
     GameContext.bossActive = false;

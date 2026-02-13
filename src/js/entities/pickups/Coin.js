@@ -41,7 +41,11 @@ export class Coin extends Entity {
 
     if (this.magnetized) {
       const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
-      const speed = (12 + 1000 / Math.max(10, dist)) * 3;
+      // Cap speed to prevent overshooting when very close
+      // At dist=10, raw speed would be (12+100)*3=336, cap it to dist*0.8 to prevent overshoot
+      const rawSpeed = (12 + 1000 / Math.max(10, dist)) * 3;
+      const maxSpeed = dist * 0.8; // Don't move more than 80% of distance per frame
+      const speed = Math.min(rawSpeed, maxSpeed);
       this.vel.x = Math.cos(angle) * speed;
       this.vel.y = Math.sin(angle) * speed;
     } else {

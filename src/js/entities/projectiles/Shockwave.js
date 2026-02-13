@@ -184,6 +184,14 @@ export class Shockwave extends Entity {
             GameContext.damageByWeaponType["area_nuke"] += damage;
             GameContext.totalDamageDealt += damage;
           }
+          // Track battery damage
+          if (!this.isEnemy && this.damageType === "battery") {
+            if (!GameContext.damageByWeaponType["battery"]) {
+              GameContext.damageByWeaponType["battery"] = 0;
+            }
+            GameContext.damageByWeaponType["battery"] += damage;
+            GameContext.totalDamageDealt += damage;
+          }
           this.hitList.push(e);
           playSound("hit");
           if (_spawnParticles)

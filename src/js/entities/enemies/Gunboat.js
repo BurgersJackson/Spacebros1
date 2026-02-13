@@ -82,7 +82,6 @@ export class Gunboat extends Enemy {
 
     this.gunboatRange = 900;
 
-
     // Use Pinwheel's exact sizes
     this.radius = 84; // Pinwheel collision radius
     // Circle-strafe preference

@@ -1069,7 +1069,8 @@ export class Spaceship extends Entity {
         damageMissiles: true,
         color: "#0ff",
         travelSpeed: 15,
-        followPlayer: true
+        followPlayer: true,
+        damageType: "battery"
       })
     );
 
@@ -1082,7 +1083,8 @@ export class Spaceship extends Entity {
             damageMissiles: true,
             color: "#08f",
             travelSpeed: 10,
-            followPlayer: true
+            followPlayer: true,
+            damageType: "battery"
           })
         );
       }

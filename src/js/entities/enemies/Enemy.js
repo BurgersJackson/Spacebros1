@@ -390,10 +390,9 @@ export class Enemy extends Entity {
       playSound("coin");
     }
 
-    // Award nuggets directly
-    if (this.nameTag && _awardNuggetsInstant) {
+    // Drop nuggets for player to pick up (elites with nameTag)
+    if (this.nameTag) {
       let nuggetCount = 1;
-      // Bounty Hunter meta upgrade - bonus nuggets for elite kills
       if (
         GameContext.player &&
         GameContext.player.stats &&
@@ -401,10 +400,16 @@ export class Enemy extends Entity {
       ) {
         nuggetCount += GameContext.player.stats.bountyEliteBonus;
       }
-      _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
+      for (let i = 0; i < nuggetCount; i++) {
+        const n = new SpaceNugget(this.pos.x, this.pos.y, 1);
+        n.vel.x = (Math.random() - 0.5) * 2;
+        n.vel.y = (Math.random() - 0.5) * 2;
+        GameContext.nuggets.push(n);
+      }
+      playSound("coin");
     }
 
-    // Sector 2 needs more nugz to match the pace of Sector 1 (no contracts/stations here).
+    // Sector 2: random chance to drop nuggets (cave / gunboat)
     if (caveActive) {
       let p = 0.08;
       if (this.type === "defender") p = 0.14;
@@ -414,8 +419,13 @@ export class Enemy extends Entity {
 
       if (Math.random() < p) {
         const nuggetCount = this.isGunboat ? 2 : 1;
-        if (_awardNuggetsInstant)
-          _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
+        for (let i = 0; i < nuggetCount; i++) {
+          const n = new SpaceNugget(this.pos.x, this.pos.y, 1);
+          n.vel.x = (Math.random() - 0.5) * 2;
+          n.vel.y = (Math.random() - 0.5) * 2;
+          GameContext.nuggets.push(n);
+        }
+        playSound("coin");
       }
     }
 

@@ -1,1 +1,1 @@
-export * from './Spaceship.js';
+export * from "./Spaceship.js";

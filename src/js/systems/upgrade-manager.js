@@ -364,3 +364,52 @@ export function applyUpgrade(id, tier) {
 
   showOverlayMessage(`${id.replace("_", " ").toUpperCase()} UPGRADED!`, "#ff0", 1500);
 }
+
+/**
+ * Apply a random valid upgrade automatically (for contract/event rewards)
+ * @returns {Object|null} The applied upgrade info or null if none available
+ */
+export function applyRandomUpgrade() {
+  if (!GameContext.player || !GameContext.player.inventory) return null;
+
+  const validUpgrades = [];
+
+  let tier2Count = 0;
+  let tier4Count = 0;
+  Object.values(GameContext.player.inventory).forEach(tier => {
+    if (tier === 2) tier2Count++;
+    if (tier === 3) tier2Count++;
+    if (tier === 4) tier4Count++;
+    if (tier === 5) tier4Count++;
+  });
+
+  UPGRADE_DATA.categories.forEach(cat => {
+    cat.upgrades.forEach(up => {
+      const currentTier = GameContext.player.inventory[up.id] || 0;
+      const nextTier = currentTier + 1;
+
+      if (nextTier >= 3 && tier2Count < 5) {
+        return;
+      }
+      if (nextTier >= 5 && tier4Count < 5) {
+        return;
+      }
+
+      validUpgrades.push({ ...up, nextTier });
+    });
+  });
+
+  if (validUpgrades.length === 0) {
+    // No upgrades available, give health instead
+    GameContext.player.hp = Math.min(GameContext.player.hp + 5, GameContext.player.maxHp);
+    updateHealthUI();
+    showOverlayMessage("MAX UPGRADES - HEALTH RESTORED!", "#0f0", 1500);
+    return { id: "health", name: "Health Restored" };
+  }
+
+  // Pick a random upgrade
+  const choice = validUpgrades[Math.floor(Math.random() * validUpgrades.length)];
+  applyUpgrade(choice.id, choice.nextTier);
+
+  return choice;
+}

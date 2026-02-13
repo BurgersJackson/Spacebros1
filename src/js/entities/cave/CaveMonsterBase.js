@@ -441,8 +441,13 @@ export class CaveMonsterBase extends Entity {
     const totalCoinValue = coinCount * 10;
     if (caveDeps.awardCoinsInstant)
       caveDeps.awardCoinsInstant(totalCoinValue, { noSound: false, sound: "coin" });
-    if (caveDeps.awardNuggetsInstant)
-      caveDeps.awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
+    for (let i = 0; i < nuggetCount; i++) {
+      const n = new SpaceNugget(this.pos.x, this.pos.y, 1);
+      n.vel.x = (Math.random() - 0.5) * 2;
+      n.vel.y = (Math.random() - 0.5) * 2;
+      GameContext.nuggets.push(n);
+    }
+    playSound("coin");
     GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
     if (caveDeps.spawnParticles) caveDeps.spawnParticles(this.pos.x, this.pos.y, 120, "#0ff");

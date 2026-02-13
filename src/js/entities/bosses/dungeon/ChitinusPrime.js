@@ -7,7 +7,7 @@ import { ClusterBomb } from "../../projectiles/ClusterBomb.js";
 import { CruiserMineBomb } from "../../projectiles/CruiserMineBomb.js";
 import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.js";
 import { DungeonDrone } from "./DungeonDrone.js";
-import { HealthPowerUp, Coin } from "../../pickups/index.js";
+import { HealthPowerUp, Coin, SpaceNugget } from "../../pickups/index.js";
 import { showOverlayMessage } from "../../../utils/ui-helpers.js";
 import { pixiCleanupObject } from "../../../rendering/pixi-context.js";
 
@@ -41,7 +41,7 @@ export class ChitinusPrime extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 7000;
+    const baseHp = 8750; // Increased by 25% from 7000
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
 
@@ -423,7 +423,13 @@ export class ChitinusPrime extends Enemy {
     ) {
       nuggetCount += GameContext.player.stats.bountyBossBonus;
     }
-    if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
+    for (let i = 0; i < nuggetCount; i++) {
+      const n = new SpaceNugget(this.pos.x, this.pos.y, 1);
+      n.vel.x = (Math.random() - 0.5) * 2;
+      n.vel.y = (Math.random() - 0.5) * 2;
+      GameContext.nuggets.push(n);
+    }
+    playSound("coin");
     GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
     GameContext.bossActive = false;

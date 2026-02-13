@@ -29,6 +29,7 @@ import {
   Gunboat2
 } from "../entities/index.js";
 import { MagnetPickup } from "../entities/pickups/index.js";
+import { NukePickup } from "../entities/pickups/index.js";
 import {
   NecroticHive,
   CerebralPsion,
@@ -50,7 +51,7 @@ import {
   updateArenaCountdownDisplay
 } from "./event-scheduler.js";
 import { updateContract as updateContractSystem } from "./contract-manager.js";
-import { updateBossHealthBars } from "../ui/hud.js";
+import { updateBossHealthBars, drawNukePickupIndicator } from "../ui/hud.js";
 import {
   spawnMiniEventRelative,
   spawnNewPinwheelRelative,
@@ -780,8 +781,10 @@ export function gameLoopLogic(opts = null) {
     }
 
     // Track arena fight completion (boss defeats)
+    // Skip if in dungeon - Dungeon1Zone handles counting those kills
     if (
       !GameContext.caveMode &&
+      !GameContext.dungeon1Active &&
       GameContext.boss &&
       GameContext.boss.dead &&
       !GameContext.spaceStation
@@ -800,19 +803,32 @@ export function gameLoopLogic(opts = null) {
       }
       GameContext.bossActive = false;
 
-      // Check if all arena fights are completed, spawn space station
+      // Check if all arena fights are completed, start 3-minute countdown to station spawn
       if (
         GameContext.arenaFightsCompleted >= GameContext.arenaFightTarget &&
-        !GameContext.spaceStation
+        !GameContext.spaceStation &&
+        !GameContext.stationSpawnAt
       ) {
-        GameContext.spaceStation = new SpaceStation();
-        GameContext.stationArena.x = GameContext.spaceStation.pos.x;
-        GameContext.stationArena.y = GameContext.spaceStation.pos.y;
-        GameContext.stationArena.radius = 2800;
-        GameContext.stationArena.active = false;
-        showOverlayMessage("FINAL BOSS: DESTROY THE SPACE STATION", "#f80", 5000);
-        playSound("station_spawn");
+        GameContext.stationSpawnAt = Date.now() + 180000; // 3 minutes
+        showOverlayMessage("ALL BOSSES DEFEATED - STATION INCOMING IN 3 MINUTES", "#f80", 5000);
+        playSound("contract");
       }
+    }
+
+    // Check if station spawn timer has expired
+    if (
+      GameContext.stationSpawnAt &&
+      Date.now() >= GameContext.stationSpawnAt &&
+      !GameContext.spaceStation
+    ) {
+      GameContext.stationSpawnAt = null;
+      GameContext.spaceStation = new SpaceStation();
+      GameContext.stationArena.x = GameContext.spaceStation.pos.x;
+      GameContext.stationArena.y = GameContext.spaceStation.pos.y;
+      GameContext.stationArena.radius = 2800;
+      GameContext.stationArena.active = false;
+      showOverlayMessage("FINAL BOSS: DESTROY THE SPACE STATION", "#f80", 5000);
+      playSound("station_spawn");
     }
 
     // Trigger warp after space station is defeated (level 1: warp to boss; other: warp to cave/level 2)
@@ -880,10 +896,33 @@ export function gameLoopLogic(opts = null) {
           GameContext.nextMagnetSpawnTime = GameContext.gameStartTime + 300000;
         }
         if (now >= GameContext.nextMagnetSpawnTime) {
-          const spawnPoint = findSpawnPointRelative(GameContext, true, 2000, 3000);
+          const spawnPoint = findSpawnPointRelative(true, 2000, 3000);
           const magnet = new MagnetPickup(spawnPoint.x, spawnPoint.y);
           GameContext.magnetPickups.push(magnet);
           GameContext.nextMagnetSpawnTime = now + 300000;
+        }
+      }
+    }
+
+    // Nuke pickup spawning - every 6 minutes, max 1 at a time
+    if (
+      !GameContext.dungeon1Active &&
+      !GameContext.sectorTransitionActive &&
+      GameContext.gameActive &&
+      !GameContext.gamePaused &&
+      GameContext.initialSpawnDone
+    ) {
+      const existingNukes = GameContext.nukePickups.filter(n => !n.dead);
+      if (existingNukes.length === 0) {
+        if (!GameContext.nextNukeSpawnTime) {
+          GameContext.nextNukeSpawnTime = GameContext.gameStartTime + 360000; // 6 minutes
+        }
+        if (now >= GameContext.nextNukeSpawnTime) {
+          const spawnPoint = findSpawnPointRelative(true, 2000, 3000);
+          const nuke = new NukePickup(spawnPoint.x, spawnPoint.y);
+          GameContext.nukePickups.push(nuke);
+          GameContext.nextNukeSpawnTime = now + 360000; // Next in 6 minutes
+          showOverlayMessage("NUKE DETECTED", "#ff4400", 2000);
         }
       }
     }
@@ -1260,8 +1299,7 @@ export function gameLoopLogic(opts = null) {
       if (!GameContext.caveMode) {
         if (elapsedMinutes < 2) targetBases = 1;
         else if (elapsedMinutes < 5) targetBases = 2;
-        else if (elapsedMinutes < 10) targetBases = 3;
-        else targetBases = 4;
+        else targetBases = 3; // Cap at 3 pinwheels max
       }
 
       const currentPinwheels = GameContext.caveMode
@@ -1599,6 +1637,16 @@ export function gameLoopLogic(opts = null) {
     if (doDraw) {
       if (isInView(m.pos.x, m.pos.y, 60)) m.draw(ctx, pickupRes);
       else if (typeof m.cull === "function") m.cull();
+    }
+  }
+  // Update nuke pickups and skip dead ones
+  for (let i = GameContext.nukePickups.length - 1; i >= 0; i--) {
+    const n = GameContext.nukePickups[i];
+    if (!n || n.dead) continue;
+    if (doUpdate) n.update(GameContext.player, deltaTime);
+    if (doDraw) {
+      if (isInView(n.pos.x, n.pos.y, 60)) n.draw(ctx, pickupRes);
+      else if (typeof n.cull === "function") n.cull();
     }
   }
   // Update shooting stars and skip dead ones
@@ -2019,6 +2067,14 @@ export function gameLoopLogic(opts = null) {
 
     immediateCompactArray(GameContext.magnetPickups);
 
+    immediateCompactArray(GameContext.nukePickups);
+
+    // Decrement nuke flash timer
+    if (GameContext.nukeFlashTimer > 0) {
+      GameContext.nukeFlashTimer -= deltaTime / 16.67;
+      if (GameContext.nukeFlashTimer < 0) GameContext.nukeFlashTimer = 0;
+    }
+
     compactParticles(GameContext.particles);
     immediateCompactArray(GameContext.lightningArcs, pixiCleanupObject);
     immediateCompactArray(GameContext.shootingStars, pixiCleanupObject);
@@ -2086,6 +2142,7 @@ export function gameLoopLogic(opts = null) {
     drawContractIndicator();
     drawHealthPackIndicator();
     drawMagnetPickupIndicator();
+    drawNukePickupIndicator();
     drawMiniEventIndicator();
     updateMiniEventUI();
     // Boss HP bars (including main boss, dungeon bosses, destroyer, station) at bottom of screen
@@ -2096,6 +2153,17 @@ export function gameLoopLogic(opts = null) {
       try {
         updateCrtFilter();
       } catch (e) {}
+    }
+
+    // Nuke screen flash effect
+    if (GameContext.nukeFlashTimer > 0) {
+      const alpha = GameContext.nukeFlashTimer / 30; // 30 frames = 0.5 seconds
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = alpha * 0.7;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
     }
 
     // Render Pixi overlay (MOVED from Update loop)

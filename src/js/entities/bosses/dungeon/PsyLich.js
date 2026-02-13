@@ -7,7 +7,7 @@ import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.j
 import { DungeonDrone } from "./DungeonDrone.js";
 import { SoulDrainTether } from "./SoulDrainTether.js";
 import { WarpBioPod } from "../../zones/WarpBioPod.js";
-import { HealthPowerUp, Coin } from "../../pickups/index.js";
+import { HealthPowerUp, Coin, SpaceNugget } from "../../pickups/index.js";
 import { showOverlayMessage } from "../../../utils/ui-helpers.js";
 import { pixiCleanupObject, getRenderAlpha } from "../../../rendering/pixi-context.js";
 
@@ -41,7 +41,7 @@ export class PsyLich extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 4500;
+    const baseHp = 5625; // Increased by 25% from 4500
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
     this.livesRemaining = 2; // Has 3 lives total
@@ -479,7 +479,13 @@ export class PsyLich extends Enemy {
     ) {
       nuggetCount += GameContext.player.stats.bountyBossBonus;
     }
-    if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
+    for (let i = 0; i < nuggetCount; i++) {
+      const n = new SpaceNugget(this.pos.x, this.pos.y, 1);
+      n.vel.x = (Math.random() - 0.5) * 2;
+      n.vel.y = (Math.random() - 0.5) * 2;
+      GameContext.nuggets.push(n);
+    }
+    playSound("coin");
     GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
     GameContext.bossActive = false;

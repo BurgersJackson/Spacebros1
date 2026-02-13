@@ -8,6 +8,8 @@ import { GameContext, getEnemyHpScaling } from "../../core/game-context.js";
 import { SIM_STEP_MS } from "../../core/constants.js";
 import { playSound } from "../../audio/audio-manager.js";
 import { Bullet } from "../projectiles/Bullet.js";
+import { Coin } from "../pickups/Coin.js";
+import { SpaceNugget } from "../pickups/SpaceNugget.js";
 
 import {
   pixiBaseLayer,
@@ -555,7 +557,39 @@ export class Pinwheel extends Entity {
 
     if (_spawnLargeExplosion) _spawnLargeExplosion(this.pos.x, this.pos.y, 2.0);
 
-    // Award nuggets directly: 5 nuggets
-    if (_awardNuggetsInstant) _awardNuggetsInstant(5, { noSound: false, sound: "coin" });
+    // Drop gold coins (same total as other paths: 6 * 5 = 30)
+    let remaining = 30;
+    while (remaining > 0) {
+      const coinValue = Math.min(10, remaining);
+      const coin = new Coin(this.pos.x, this.pos.y, coinValue);
+      coin.vel.x = (Math.random() - 0.5) * 3;
+      coin.vel.y = (Math.random() - 0.5) * 3;
+      GameContext.coins.push(coin);
+      remaining -= coinValue;
+    }
+    playSound("coin");
+
+    // Drop 5 nuggets for player to pick up
+    for (let i = 0; i < 5; i++) {
+      const n = new SpaceNugget(this.pos.x, this.pos.y, 1);
+      n.vel.x = (Math.random() - 0.5) * 2;
+      n.vel.y = (Math.random() - 0.5) * 2;
+      GameContext.nuggets.push(n);
+    }
+
+    // Death bookkeeping (difficulty, respawn, UI)
+    GameContext.pinwheelsDestroyed++;
+    GameContext.pinwheelsDestroyedTotal++;
+    const totalDestroyed =
+      GameContext.pinwheelsDestroyedTotal + GameContext.gunboatsDestroyedTotal;
+    GameContext.difficultyTier = 1 + Math.floor(totalDestroyed / 6);
+    GameContext.score += 10000;
+    const baseEl = document.getElementById("bases-display");
+    if (baseEl) baseEl.innerText = `${GameContext.pinwheelsDestroyedTotal}`;
+    GameContext.enemies.forEach(e => {
+      if (e.assignedBase === this) e.type = "roamer";
+    });
+    const delay = 10000 + Math.random() * 10000;
+    GameContext.baseRespawnTimers.push(Date.now() + delay);
   }
 }

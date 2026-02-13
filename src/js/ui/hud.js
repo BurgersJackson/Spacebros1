@@ -31,6 +31,15 @@ function transformPolygon(vertices, x, y, scale, rotation) {
   return result;
 }
 
+/** When arrow is near bottom of screen, place text above it so it stays readable. */
+function getArrowTextPlacement(arrowY, screenH, offset = 25) {
+  const nearBottom = arrowY > screenH - 80;
+  return {
+    y: nearBottom ? arrowY - offset : arrowY + offset,
+    anchorY: nearBottom ? 1 : 0
+  };
+}
+
 export function clearPixiUiText() {
   for (const text of pixiUiTextObjects) {
     if (text && text.parent) {
@@ -101,7 +110,7 @@ export function drawStationIndicator() {
   pixiArrowsGraphics.endFill();
 
   const dist = Math.hypot(dx, dy);
-  const text = new PIXI.Text((dist / 1000).toFixed(1) + "km", {
+  const text = new PIXI.Text("STATION " + (dist / 1000).toFixed(1) + "km", {
     fontFamily: "Courier New",
     fontWeight: "bold",
     fontSize: 14,
@@ -111,8 +120,9 @@ export function drawStationIndicator() {
     dropShadowColor: 0x000000,
     dropShadowBlur: 4
   });
-  text.anchor.set(0.5, 0);
-  text.position.set(arrowX, arrowY + 25);
+  const placement = getArrowTextPlacement(arrowY, screenH);
+  text.anchor.set(0.5, placement.anchorY);
+  text.position.set(arrowX, placement.y);
   pixiUiOverlayLayer.addChild(text);
   pixiUiTextObjects.push(text);
 }
@@ -192,8 +202,9 @@ export function drawDestroyerIndicator() {
     dropShadowColor: 0x000000,
     dropShadowBlur: 4
   });
-  text.anchor.set(0.5, 0);
-  text.position.set(arrowX, arrowY + 25);
+  const placement = getArrowTextPlacement(arrowY, screenH);
+  text.anchor.set(0.5, placement.anchorY);
+  text.position.set(arrowX, placement.y);
   pixiUiOverlayLayer.addChild(text);
   pixiUiTextObjects.push(text);
 }
@@ -268,8 +279,9 @@ export function drawWarpGateIndicator() {
     dropShadowColor: 0x000000,
     dropShadowBlur: 4
   });
+  const nearBottom = arrowY > screenH - 80;
   text1.anchor.set(0.5, 1);
-  text1.position.set(arrowX, arrowY - 18);
+  text1.position.set(arrowX, nearBottom ? arrowY - 43 : arrowY - 18);
   pixiUiOverlayLayer.addChild(text1);
   pixiUiTextObjects.push(text1);
 
@@ -283,8 +295,9 @@ export function drawWarpGateIndicator() {
     dropShadowColor: 0x000000,
     dropShadowBlur: 4
   });
-  text2.anchor.set(0.5, 0);
-  text2.position.set(arrowX, arrowY + 25);
+  const placement2 = getArrowTextPlacement(arrowY, screenH);
+  text2.anchor.set(0.5, placement2.anchorY);
+  text2.position.set(arrowX, placement2.y);
   pixiUiOverlayLayer.addChild(text2);
   pixiUiTextObjects.push(text2);
 }
@@ -360,7 +373,8 @@ export function drawContractIndicator() {
   pixiArrowsGraphics.endFill();
 
   const dist = Math.hypot(dx, dy);
-  const text = new PIXI.Text((dist / 1000).toFixed(1) + "km", {
+  const contractLabel = GameContext.activeContract.title || "CONTRACT";
+  const text = new PIXI.Text(contractLabel + " " + (dist / 1000).toFixed(1) + "km", {
     fontFamily: "Courier New",
     fontWeight: "bold",
     fontSize: 14,
@@ -370,8 +384,9 @@ export function drawContractIndicator() {
     dropShadowColor: 0x000000,
     dropShadowBlur: 4
   });
-  text.anchor.set(0.5, 0);
-  text.position.set(arrowX, arrowY + 25);
+  const placement = getArrowTextPlacement(arrowY, screenH);
+  text.anchor.set(0.5, placement.anchorY);
+  text.position.set(arrowX, placement.y);
   pixiUiOverlayLayer.addChild(text);
   pixiUiTextObjects.push(text);
 }
@@ -454,7 +469,8 @@ export function drawHealthPackIndicator() {
   pixiArrowsGraphics.drawPolygon(transformed);
   pixiArrowsGraphics.endFill();
 
-  const text = new PIXI.Text("HEALTH", {
+  const dist = Math.hypot(dx, dy);
+  const text = new PIXI.Text("HEALTH " + (dist / 1000).toFixed(1) + "km", {
     fontFamily: "Courier New",
     fontWeight: "bold",
     fontSize: 12,
@@ -464,8 +480,9 @@ export function drawHealthPackIndicator() {
     dropShadowColor: 0x000000,
     dropShadowBlur: 4
   });
-  text.anchor.set(0.5, 0);
-  text.position.set(arrowX, arrowY + 25);
+  const placement = getArrowTextPlacement(arrowY, screenH);
+  text.anchor.set(0.5, placement.anchorY);
+  text.position.set(arrowX, placement.y);
   pixiUiOverlayLayer.addChild(text);
   pixiUiTextObjects.push(text);
 }
@@ -543,7 +560,8 @@ export function drawMagnetPickupIndicator() {
   pixiArrowsGraphics.drawPolygon(transformed);
   pixiArrowsGraphics.endFill();
 
-  const text = new PIXI.Text("MAGNET", {
+  const dist = Math.hypot(dx, dy);
+  const text = new PIXI.Text("MAGNET " + (dist / 1000).toFixed(1) + "km", {
     fontFamily: "Courier New",
     fontWeight: "bold",
     fontSize: 12,
@@ -553,8 +571,100 @@ export function drawMagnetPickupIndicator() {
     dropShadowColor: 0x000000,
     dropShadowBlur: 4
   });
-  text.anchor.set(0.5, 0);
-  text.position.set(arrowX, arrowY + 25);
+  const placement = getArrowTextPlacement(arrowY, screenH);
+  text.anchor.set(0.5, placement.anchorY);
+  text.position.set(arrowX, placement.y);
+  pixiUiOverlayLayer.addChild(text);
+  pixiUiTextObjects.push(text);
+}
+
+export function drawNukePickupIndicator() {
+  if (
+    !GameContext.nukePickups ||
+    !GameContext.player ||
+    GameContext.player.dead ||
+    !pixiArrowsGraphics ||
+    !canvas ||
+    !pixiUiOverlayLayer
+  )
+    return;
+
+  let nearestNuke = null;
+  let nearestDist = Infinity;
+
+  for (const pickup of GameContext.nukePickups) {
+    if (!pickup || pickup.dead) continue;
+    const dist = Math.hypot(
+      pickup.pos.x - GameContext.player.pos.x,
+      pickup.pos.y - GameContext.player.pos.y
+    );
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearestNuke = pickup;
+    }
+  }
+
+  if (!nearestNuke) return;
+
+  const screenW = canvas.width;
+  const screenH = canvas.height;
+  const z = GameContext.currentZoom || ZOOM_LEVEL;
+  const camX = GameContext.player.pos.x - screenW / (2 * z);
+  const camY = GameContext.player.pos.y - screenH / (2 * z);
+  const viewW = screenW / z;
+  const viewH = screenH / z;
+
+  if (
+    nearestNuke.pos.x > camX &&
+    nearestNuke.pos.x < camX + viewW &&
+    nearestNuke.pos.y > camY &&
+    nearestNuke.pos.y < camY + viewH
+  ) {
+    return;
+  }
+
+  const dx = nearestNuke.pos.x - GameContext.player.pos.x;
+  const dy = nearestNuke.pos.y - GameContext.player.pos.y;
+  const angle = Math.atan2(dy, dx);
+
+  const margin = 60;
+  const cx = screenW / 2;
+  const cy = screenH / 2;
+  const vx = Math.cos(angle);
+  const vy = Math.sin(angle);
+
+  const bx = cx - margin;
+  const by = cy - margin;
+  const tx = Math.abs(vx) > 0.001 ? bx / Math.abs(vx) : Infinity;
+  const ty = Math.abs(vy) > 0.001 ? by / Math.abs(vy) : Infinity;
+  const t = Math.min(tx, ty);
+
+  const arrowX = cx + vx * t;
+  const arrowY = cy + vy * t;
+  const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.2;
+
+  const arrowShape = [15, 0, -15, 12, -15, -12];
+  const transformed = transformPolygon(arrowShape, arrowX, arrowY, pulse, angle);
+
+  pixiArrowsGraphics.lineStyle(2, 0x000000);
+  pixiArrowsGraphics.beginFill(0xff4400);
+  pixiArrowsGraphics.drawPolygon(transformed);
+  pixiArrowsGraphics.endFill();
+
+  const dist = Math.hypot(dx, dy);
+  const text = new PIXI.Text("NUKE " + (dist / 1000).toFixed(1) + "km", {
+    fontFamily: "Courier New",
+    fontWeight: "bold",
+    fontSize: 12,
+    fill: 0xff4400,
+    align: "center",
+    dropShadow: true,
+    dropShadowColor: 0x000000,
+    dropShadowBlur: 4
+  });
+  const placement = getArrowTextPlacement(arrowY, screenH);
+  text.anchor.set(0.5, placement.anchorY);
+  text.position.set(arrowX, placement.y);
   pixiUiOverlayLayer.addChild(text);
   pixiUiTextObjects.push(text);
 }
@@ -615,7 +725,7 @@ export function drawMiniEventIndicator() {
   pixiArrowsGraphics.endFill();
 
   const dist = Math.hypot(dx, dy);
-  const text = new PIXI.Text((dist / 1000).toFixed(1) + "km", {
+  const text = new PIXI.Text("EVENT " + (dist / 1000).toFixed(1) + "km", {
     fontFamily: "Courier New",
     fontWeight: "bold",
     fontSize: 14,
@@ -625,8 +735,9 @@ export function drawMiniEventIndicator() {
     dropShadowColor: 0x000000,
     dropShadowBlur: 4
   });
-  text.anchor.set(0.5, 0);
-  text.position.set(arrowX, arrowY + 25);
+  const placement = getArrowTextPlacement(arrowY, screenH);
+  text.anchor.set(0.5, placement.anchorY);
+  text.position.set(arrowX, placement.y);
   text.alpha = blink;
   pixiUiOverlayLayer.addChild(text);
   pixiUiTextObjects.push(text);
@@ -822,24 +933,30 @@ export function updateTurboUI(state = GameContext) {
 export function updateContractUI(state = GameContext) {
   const el = document.getElementById("contract-display");
   if (!el) return;
-  const activeContract = state ? state.activeContract : null;
-  if (!activeContract) {
-    el.innerText = "CONTRACT: NONE";
-    return;
+
+  // Show quest progress instead of contracts
+  const fightsCompleted = state.arenaFightsCompleted || 0;
+  const fightTarget = state.arenaFightTarget || 3;
+
+  // Check if station exists (final boss)
+  if (state.spaceStation && !state.spaceStation.dead) {
+    el.innerText = "QUEST: DESTROY THE STATION";
+    el.style.color = "#f80";
+  } else if (state.stationSpawnAt) {
+    // Waiting for station to spawn - show boss kills complete with countdown
+    const remainMs = Math.max(0, state.stationSpawnAt - Date.now());
+    const remainSec = Math.ceil(remainMs / 1000);
+    el.innerText = `BOSS KILLS: ${fightTarget}/${fightTarget} - STATION IN ${remainSec}s`;
+    el.style.color = "#f80";
+  } else if (fightsCompleted >= fightTarget) {
+    // All bosses killed and station destroyed, waiting for warp
+    el.innerText = "QUEST: SECTOR CLEARED";
+    el.style.color = "#0f0";
+  } else {
+    // Show boss kill progress
+    el.innerText = `BOSS KILLS: ${fightsCompleted}/${fightTarget}`;
+    el.style.color = "#0f0";
   }
-  let extra = "";
-  if (activeContract.type === "scan_beacon") {
-    if (activeContract.state === "active")
-      extra = ` (SCANNING ${Math.floor((activeContract.progress || 0) * 100)}%)`;
-    else extra = " (GO TO BEACON)";
-  } else if (activeContract.type === "gate_run") {
-    const remain = Math.max(0, (activeContract.endsAt || 0) - Date.now());
-    extra = ` (GATE ${activeContract.gateIndex + 1}/${activeContract.gateCount} ${formatTime(remain)})`;
-  } else if (activeContract.type === "anomaly") {
-    if (activeContract.coreCollected) extra = " (ESCAPE ZONE)";
-    else extra = activeContract.state === "inside" ? " (FIND CORE)" : " (ENTER ZONE)";
-  }
-  el.innerText = `CONTRACT: ${activeContract.title}${extra}`;
 }
 
 /**

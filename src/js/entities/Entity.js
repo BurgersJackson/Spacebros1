@@ -3,131 +3,131 @@
  * Foundation for all game objects with position, velocity, and rendering.
  */
 
-import { Vector } from '../core/math.js';
-import { SIM_STEP_MS } from '../core/constants.js';
+import { Vector } from "../core/math.js";
+import { SIM_STEP_MS } from "../core/constants.js";
 
 /**
  * Base Entity class
  * Represents a game object with position, velocity, and lifecycle state.
  */
 export class Entity {
-    constructor(x, y) {
-        this.pos = new Vector(x, y);
-        this.vel = new Vector(0, 0);
-        this.dead = false;
-        this.radius = 10;
-        this.angle = 0;
-        
-        // Store previous position for interpolation
-        this.prevPos = new Vector(x, y);
-    }
+  constructor(x, y) {
+    this.pos = new Vector(x, y);
+    this.vel = new Vector(0, 0);
+    this.dead = false;
+    this.radius = 10;
+    this.angle = 0;
 
-    /**
-     * Update entity state
-     * @param {number} deltaTime - Time elapsed since last update in milliseconds
-     */
-    update(deltaTime = SIM_STEP_MS) {
-        // Save current position as previous before modifying
-        this.prevPos.x = this.pos.x;
-        this.prevPos.y = this.pos.y;
+    // Store previous position for interpolation
+    this.prevPos = new Vector(x, y);
+  }
 
-        // Scale velocity by deltaTime to maintain consistent movement across different frame rates
-        const scale = deltaTime / 16.67; // 16.67ms = 1/60th second
-        
-        this.pos.x += this.vel.x * scale;
-        this.pos.y += this.vel.y * scale;
-    }
+  /**
+   * Update entity state
+   * @param {number} deltaTime - Time elapsed since last update in milliseconds
+   */
+  update(deltaTime = SIM_STEP_MS) {
+    // Save current position as previous before modifying
+    this.prevPos.x = this.pos.x;
+    this.prevPos.y = this.pos.y;
 
-    /**
-     * Get interpolated render position.
-     * @param {number} alpha - Interpolation factor (0..1)
-     * @returns {Object} {x, y}
-     */
-    getRenderPos(alpha) {
-        // Always return a plain object for consistency (never return Vector references)
-        // This prevents issues where PixiJS or other code might modify the Vector object
-        if (alpha <= 0) return { x: this.prevPos.x, y: this.prevPos.y };
-        if (alpha >= 1) return { x: this.pos.x, y: this.pos.y };
-        return {
-            x: this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha,
-            y: this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
-        };
-    }
+    // Scale velocity by deltaTime to maintain consistent movement across different frame rates
+    const scale = deltaTime / 16.67; // 16.67ms = 1/60th second
 
-    /**
-     * Draw entity (override in subclasses).
-     * @param {CanvasRenderingContext2D} ctx - Canvas context
-     */
-    draw(ctx) {
-        // Override in subclasses
-    }
+    this.pos.x += this.vel.x * scale;
+    this.pos.y += this.vel.y * scale;
+  }
 
-    /**
-     * Check if this entity collides with another.
-     * @param {Entity} other - Other entity
-     * @returns {boolean}
-     */
-    collidesWith(other) {
-        if (!other) return false;
-        const dx = other.pos.x - this.pos.x;
-        const dy = other.pos.y - this.pos.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        return dist < (this.radius + other.radius);
-    }
+  /**
+   * Get interpolated render position.
+   * @param {number} alpha - Interpolation factor (0..1)
+   * @returns {Object} {x, y}
+   */
+  getRenderPos(alpha) {
+    // Always return a plain object for consistency (never return Vector references)
+    // This prevents issues where PixiJS or other code might modify the Vector object
+    if (alpha <= 0) return { x: this.prevPos.x, y: this.prevPos.y };
+    if (alpha >= 1) return { x: this.pos.x, y: this.pos.y };
+    return {
+      x: this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha,
+      y: this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
+    };
+  }
 
-    /**
-     * Get squared distance to another entity (faster than distance).
-     * @param {Entity} other 
-     * @returns {number}
-     */
-    distSqTo(other) {
-        const dx = other.pos.x - this.pos.x;
-        const dy = other.pos.y - this.pos.y;
-        return dx * dx + dy * dy;
-    }
+  /**
+   * Draw entity (override in subclasses).
+   * @param {CanvasRenderingContext2D} ctx - Canvas context
+   */
+  draw(ctx) {
+    // Override in subclasses
+  }
 
-    /**
-     * Get distance to another entity.
-     * @param {Entity} other 
-     * @returns {number}
-     */
-    distTo(other) {
-        return Math.sqrt(this.distSqTo(other));
-    }
+  /**
+   * Check if this entity collides with another.
+   * @param {Entity} other - Other entity
+   * @returns {boolean}
+   */
+  collidesWith(other) {
+    if (!other) return false;
+    const dx = other.pos.x - this.pos.x;
+    const dy = other.pos.y - this.pos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    return dist < this.radius + other.radius;
+  }
 
-    /**
-     * Get angle to another entity.
-     * @param {Entity} other 
-     * @returns {number}
-     */
-    angleTo(other) {
-        return Math.atan2(other.pos.y - this.pos.y, other.pos.x - this.pos.x);
-    }
+  /**
+   * Get squared distance to another entity (faster than distance).
+   * @param {Entity} other
+   * @returns {number}
+   */
+  distSqTo(other) {
+    const dx = other.pos.x - this.pos.x;
+    const dy = other.pos.y - this.pos.y;
+    return dx * dx + dy * dy;
+  }
 
-    /**
-     * Mark entity as dead for removal.
-     */
-    kill() {
-        this.dead = true;
-    }
+  /**
+   * Get distance to another entity.
+   * @param {Entity} other
+   * @returns {number}
+   */
+  distTo(other) {
+    return Math.sqrt(this.distSqTo(other));
+  }
 
-    /**
-     * Check if entity is within view bounds.
-     * @param {number} camX - Camera X
-     * @param {number} camY - Camera Y
-     * @param {number} viewWidth - View width
-     * @param {number} viewHeight - View height
-     * @param {number} margin - Extra margin
-     * @returns {boolean}
-     */
-    isInView(camX, camY, viewWidth, viewHeight, margin = 100) {
-        const halfW = viewWidth / 2 + margin;
-        const halfH = viewHeight / 2 + margin;
-        return (
-            this.pos.x > camX - halfW &&
-            this.pos.x < camX + halfW &&
-            this.pos.y > camY - halfH &&
-            this.pos.y < camY + halfH
-        );
-    }
+  /**
+   * Get angle to another entity.
+   * @param {Entity} other
+   * @returns {number}
+   */
+  angleTo(other) {
+    return Math.atan2(other.pos.y - this.pos.y, other.pos.x - this.pos.x);
+  }
+
+  /**
+   * Mark entity as dead for removal.
+   */
+  kill() {
+    this.dead = true;
+  }
+
+  /**
+   * Check if entity is within view bounds.
+   * @param {number} camX - Camera X
+   * @param {number} camY - Camera Y
+   * @param {number} viewWidth - View width
+   * @param {number} viewHeight - View height
+   * @param {number} margin - Extra margin
+   * @returns {boolean}
+   */
+  isInView(camX, camY, viewWidth, viewHeight, margin = 100) {
+    const halfW = viewWidth / 2 + margin;
+    const halfH = viewHeight / 2 + margin;
+    return (
+      this.pos.x > camX - halfW &&
+      this.pos.x < camX + halfW &&
+      this.pos.y > camY - halfH &&
+      this.pos.y < camY + halfH
+    );
+  }
 }

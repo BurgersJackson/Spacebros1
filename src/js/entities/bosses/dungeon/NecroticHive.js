@@ -6,9 +6,9 @@ import { Bullet } from "../../projectiles/Bullet.js";
 import { FlagshipGuidedMissile } from "../../projectiles/FlagshipGuidedMissile.js";
 import { DungeonDrone } from "./DungeonDrone.js";
 import { WarpBioPod } from "../../zones/WarpBioPod.js";
-import { HealthPowerUp, Coin } from "../../pickups/index.js";
+import { HealthPowerUp, Coin, SpaceNugget } from "../../pickups/index.js";
 import { showOverlayMessage } from "../../../utils/ui-helpers.js";
-import { pixiCleanupObject, getRenderAlpha } from "../../../rendering/pixi-context.js";
+import { pixiCleanupObject, pixiVectorLayer } from "../../../rendering/pixi-context.js";
 
 let _spawnBossExplosion = null;
 let _spawnLargeExplosion = null;
@@ -43,7 +43,7 @@ export class NecroticHive extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 5500;
+    const baseHp = 6875; // Increased by 25% from 5500
     this.hp = Math.round(baseHp * hpScale);
     this.maxHp = this.hp;
 
@@ -419,6 +419,14 @@ export class NecroticHive extends Enemy {
       } catch (e) {}
       this._pixiDebugGfx = null;
     }
+    if (this._pixiInvulGfx) {
+      try {
+        if (this._pixiInvulGfx.parent)
+          this._pixiInvulGfx.parent.removeChild(this._pixiInvulGfx);
+        this._pixiInvulGfx.destroy(true);
+      } catch (e) {}
+      this._pixiInvulGfx = null;
+    }
 
     // Kill all drones
     this.drones.forEach(d => {
@@ -454,7 +462,12 @@ export class NecroticHive extends Enemy {
     ) {
       nuggetCount += GameContext.player.stats.bountyBossBonus;
     }
-    if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
+    for (let i = 0; i < nuggetCount; i++) {
+      const n = new SpaceNugget(this.pos.x, this.pos.y, 1);
+      n.vel.x = (Math.random() - 0.5) * 2;
+      n.vel.y = (Math.random() - 0.5) * 2;
+      GameContext.nuggets.push(n);
+    }
     GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
 
     GameContext.bossActive = false;
@@ -492,19 +505,50 @@ export class NecroticHive extends Enemy {
 
   draw(ctx) {
     super.draw(ctx);
-    if (this.dead) return;
+    if (this.dead) {
+      if (this._pixiInvulGfx) {
+        try {
+          if (this._pixiInvulGfx.parent)
+            this._pixiInvulGfx.parent.removeChild(this._pixiInvulGfx);
+          this._pixiInvulGfx.destroy(true);
+        } catch (e) {}
+        this._pixiInvulGfx = null;
+      }
+      return;
+    }
 
-    // Draw vulnerability indicator
-    if (this.vulnerableTimer > 0) {
-      const rPos = this.getRenderPos(getRenderAlpha());
-      ctx.save();
-      ctx.globalAlpha = 0.3 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.3;
-      ctx.strokeStyle = "#ff0";
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(rPos.x, rPos.y, this.radius + 20, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
+    // Same as Cruiser: use cached render position from Enemy.draw() so shield is in sync with sprite/segment shields
+    const rPos = this._cachedRenderPos || this.pos;
+
+    // Invulnerability shield (when segment shields are up) - same pattern as Cruiser: Pixi ring at _cachedRenderPos
+    const showInvulRing =
+      this.vulnerableTimer <= 0 &&
+      this.shieldSegments &&
+      this.shieldSegments.length > 0 &&
+      this.shieldSegments.some(s => s > 0);
+    // Vulnerability indicator (when boss can be damaged) - also use Pixi at _cachedRenderPos
+    const showVulnerableRing = this.vulnerableTimer > 0;
+    if ((showInvulRing || showVulnerableRing) && pixiVectorLayer) {
+      let invulGfx = this._pixiInvulGfx;
+      if (!invulGfx) {
+        invulGfx = new PIXI.Graphics();
+        pixiVectorLayer.addChild(invulGfx);
+        this._pixiInvulGfx = invulGfx;
+      } else if (!invulGfx.parent) {
+        pixiVectorLayer.addChild(invulGfx);
+      }
+      invulGfx.position.set(rPos.x, rPos.y);
+      invulGfx.clear();
+      const alpha = 0.35 + Math.abs(Math.sin(Date.now() * 0.01)) * (showVulnerableRing ? 0.3 : 0.25);
+      invulGfx.lineStyle(4, 0xffff00, alpha);
+      invulGfx.drawCircle(
+        0,
+        0,
+        showVulnerableRing ? this.radius + 20 : this.shieldRadius + 5
+      );
+      invulGfx.visible = true;
+    } else if (this._pixiInvulGfx) {
+      this._pixiInvulGfx.visible = false;
     }
   }
 }

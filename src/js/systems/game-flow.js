@@ -605,14 +605,20 @@ export function returnToMainMenuFromDeath() {
   if (startScreen) {
     startScreen.style.display = "block";
     // Reset start screen text to default
-    document.querySelector("#start-screen h1").innerText = "SPACEBROS";
-    document.querySelector("#start-screen h1").style.color = "";
-    document.getElementById("start-btn").innerText = "INITIATE LAUNCH";
+    const startScreenH1 = document.querySelector("#start-screen h1");
+    if (startScreenH1) {
+      startScreenH1.innerText = "SPACEBROS";
+      startScreenH1.style.color = "";
+    }
+    const startBtn = document.getElementById("start-btn");
+    if (startBtn) {
+      startBtn.innerText = "INITIATE LAUNCH";
+    }
 
     // Focus the start button
     setTimeout(() => {
-      const startBtn = document.getElementById("start-btn");
-      if (startBtn) startBtn.focus();
+      const startBtnFocus = document.getElementById("start-btn");
+      if (startBtnFocus) startBtnFocus.focus();
     }, 100);
 
     // Reset menu selection

@@ -3,7 +3,7 @@ import { GameContext } from "../../core/game-context.js";
 import { SIM_FPS, SIM_STEP_MS } from "../../core/constants.js";
 import { playSound, setMusicMode, musicEnabled } from "../../audio/audio-manager.js";
 import { Bullet, CruiserMineBomb, FlagshipGuidedMissile } from "../projectiles/index.js";
-import { HealthPowerUp, Coin } from "../pickups/index.js";
+import { HealthPowerUp, Coin, SpaceNugget } from "../pickups/index.js";
 import { showOverlayMessage } from "../../utils/ui-helpers.js";
 import { stopArenaCountdown } from "../../systems/event-scheduler.js";
 import {
@@ -39,7 +39,7 @@ export class Cruiser extends Enemy {
     const hpScale = 1 + boost * 0.35;
     // Shield segment HP: same as strongest dungeon boss (ChitinusPrime) = 20 per shard
     const shieldStrength = 20;
-    const baseCruiserHp = 7000;
+    const baseCruiserHp = 8750; // Increased by 25% from 7000
     this.type = "cruiser";
     this.isCruiser = true;
     this.isGunboat = true;
@@ -299,7 +299,13 @@ export class Cruiser extends Enemy {
     ) {
       nuggetCount += GameContext.player.stats.bountyBossBonus;
     }
-    if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
+    for (let i = 0; i < nuggetCount; i++) {
+      const n = new SpaceNugget(this.pos.x, this.pos.y, 1);
+      n.vel.x = (Math.random() - 0.5) * 2;
+      n.vel.y = (Math.random() - 0.5) * 2;
+      GameContext.nuggets.push(n);
+    }
+    playSound("coin");
     GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
     // Check for other cruisers in enemies array
     const otherCruisers = GameContext.enemies.filter(e => e && e.type === "cruiser");

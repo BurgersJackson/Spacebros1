@@ -2,4 +2,4 @@
  * Audio Module Index
  */
 
-export * from './audio-manager.js';
+export * from "./audio-manager.js";

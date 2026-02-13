@@ -645,7 +645,8 @@ registerContractHandlers({
   showOverlayMessage,
   playSound,
   clearArrayWithPixiCleanup,
-  filterArrayWithPixiCleanup
+  filterArrayWithPixiCleanup,
+  showLevelUpMenu
 });
 
 function findSpawnPointRelative(random = false, min = 1500, max = 2500) {
@@ -890,7 +891,9 @@ registerCollisionDependencies({
   setProjectileImpactSoundContext,
   awardCoinsInstant,
   awardNuggetsInstant,
-  FloatingText
+  FloatingText,
+  getWidth: () => width,
+  getHeight: () => height
 });
 
 registerGameLoopDependencies({
@@ -996,7 +999,8 @@ registerPoiDependencies({
 
 registerMiniEventDefendCacheDependencies({
   spawnParticles,
-  getSimNowMs: getGameNowMs
+  getSimNowMs: getGameNowMs,
+  showLevelUpMenu
 });
 
 registerShootingStarDependencies({

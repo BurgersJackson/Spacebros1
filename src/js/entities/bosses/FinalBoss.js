@@ -53,7 +53,7 @@ export class FinalBoss extends Entity {
     this.isFinalBoss = true;
     this.sizeScale = 3;
     this.radius = 110 * this.sizeScale;
-    this.hp = 10000; // Double HP (scaled 10x from 1000)
+    this.hp = 12500; // Increased by 25%
     this.maxHp = this.hp;
 
     // Crystalline shield system - indestructible shards (cave monster pattern)

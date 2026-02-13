@@ -1,6 +1,6 @@
 /**
  * PixiJS Rendering Context
- * 
+ *
  * This module provides a centralized access point for all PixiJS rendering resources.
  * Entity classes can import from this module to get access to layers, pools, textures,
  * and utility functions without needing complex dependency injection.
@@ -13,48 +13,48 @@
 // ============================================================================
 
 export {
-    // Sprite pools
-    pixiBulletSpritePool,
-    pixiParticleSpritePool,
-    pixiEnemySpritePools,
-    pixiPickupSpritePool,
-    pixiAsteroidSpritePool,
-    pixiStarSpritePool,
+  // Sprite pools
+  pixiBulletSpritePool,
+  pixiParticleSpritePool,
+  pixiEnemySpritePools,
+  pixiPickupSpritePool,
+  pixiAsteroidSpritePool,
+  pixiStarSpritePool,
 
-    // Functions
-    initPixi,
-    updatePixiCamera,
-    renderPixi,
-    clearPixiPools,
-    isPixiReady
-} from './pixi-setup.js';
+  // Functions
+  initPixi,
+  updatePixiCamera,
+  renderPixi,
+  clearPixiPools,
+  isPixiReady
+} from "./pixi-setup.js";
 
 // ============================================================================
 // RE-EXPORTS FROM SPRITE-POOLS (Sprite allocation/cleanup utilities)
 // ============================================================================
 
 export {
-    allocPixiSprite,
-    releasePixiSprite,
-    destroyBulletSprite,
-    releasePixiEnemySprite,
-    pixiCleanupObject,
-    clearArrayWithPixiCleanup,
-    getEnemySpritePool
-} from './sprite-pools.js';
+  allocPixiSprite,
+  releasePixiSprite,
+  destroyBulletSprite,
+  releasePixiEnemySprite,
+  pixiCleanupObject,
+  clearArrayWithPixiCleanup,
+  getEnemySpritePool
+} from "./sprite-pools.js";
 
 // ============================================================================
 // RE-EXPORTS FROM TEXTURE-LOADER (Textures & Anchors)
 // ============================================================================
 
 export {
-    pixiTextures,
-    pixiTextureAnchors,
-    pixiTextureRotOffsets,
-    pixiTextureBaseScales,
-    pixiTextureScaleToRadius,
-    loadAllTextures
-} from './texture-loader.js';
+  pixiTextures,
+  pixiTextureAnchors,
+  pixiTextureRotOffsets,
+  pixiTextureBaseScales,
+  pixiTextureScaleToRadius,
+  loadAllTextures
+} from "./texture-loader.js";
 
 // ============================================================================
 // MUTABLE RENDERING STATE (Updated each frame by main.js)
@@ -108,23 +108,23 @@ export let pixiParticleWarpTexture = null;
 // ============================================================================
 
 export function getRenderAlpha() {
-    return _renderAlpha;
+  return _renderAlpha;
 }
 
 export function getAsteroidImages() {
-    return _asteroidImages;
+  return _asteroidImages;
 }
 
 export function getAsteroidIndestructibleImage() {
-    return _asteroidIndestructibleImage;
+  return _asteroidIndestructibleImage;
 }
 
 export function isAsteroidTexturesReady() {
-    return _asteroidTexturesExternalReady;
+  return _asteroidTexturesExternalReady;
 }
 
 export function isAsteroidIndestructibleTextureReady() {
-    return _asteroidIndestructibleTextureReady;
+  return _asteroidIndestructibleTextureReady;
 }
 
 // ============================================================================
@@ -135,35 +135,35 @@ export function isAsteroidIndestructibleTextureReady() {
  * Update the render interpolation alpha.
  */
 export function setRenderAlpha(alpha) {
-    _renderAlpha = alpha;
+  _renderAlpha = alpha;
 }
 
 /**
  * Set asteroid canvas fallback images.
  */
 export function setAsteroidImages(images) {
-    _asteroidImages = images;
+  _asteroidImages = images;
 }
 
 /**
  * Set indestructible asteroid canvas fallback image.
  */
 export function setAsteroidIndestructibleImage(image) {
-    _asteroidIndestructibleImage = image;
+  _asteroidIndestructibleImage = image;
 }
 
 /**
  * Set asteroid textures ready flag.
  */
 export function setAsteroidTexturesReady(ready) {
-    _asteroidTexturesExternalReady = ready;
+  _asteroidTexturesExternalReady = ready;
 }
 
 /**
  * Set indestructible asteroid texture ready flag.
  */
 export function setAsteroidIndestructibleTextureReady(ready) {
-    _asteroidIndestructibleTextureReady = ready;
+  _asteroidIndestructibleTextureReady = ready;
 }
 
 /**
@@ -171,27 +171,29 @@ export function setAsteroidIndestructibleTextureReady(ready) {
  * @param {Object} ctx - Object containing all layers and app refs
  */
 export function setPixiContext(ctx) {
-    if (ctx.pixiApp !== undefined) pixiApp = ctx.pixiApp;
-    if (ctx.pixiWorldRoot !== undefined) pixiWorldRoot = ctx.pixiWorldRoot;
-    if (ctx.pixiScreenRoot !== undefined) pixiScreenRoot = ctx.pixiScreenRoot;
+  if (ctx.pixiApp !== undefined) pixiApp = ctx.pixiApp;
+  if (ctx.pixiWorldRoot !== undefined) pixiWorldRoot = ctx.pixiWorldRoot;
+  if (ctx.pixiScreenRoot !== undefined) pixiScreenRoot = ctx.pixiScreenRoot;
 
-    if (ctx.pixiAsteroidLayer !== undefined) pixiAsteroidLayer = ctx.pixiAsteroidLayer;
-    if (ctx.pixiPickupLayer !== undefined) pixiPickupLayer = ctx.pixiPickupLayer;
-    if (ctx.pixiPlayerLayer !== undefined) pixiPlayerLayer = ctx.pixiPlayerLayer;
-    if (ctx.pixiBaseLayer !== undefined) pixiBaseLayer = ctx.pixiBaseLayer;
-    if (ctx.pixiEnemyLayer !== undefined) pixiEnemyLayer = ctx.pixiEnemyLayer;
-    if (ctx.pixiBossLayer !== undefined) pixiBossLayer = ctx.pixiBossLayer;
-    if (ctx.pixiVectorLayer !== undefined) pixiVectorLayer = ctx.pixiVectorLayer;
-    if (ctx.pixiBulletLayer !== undefined) pixiBulletLayer = ctx.pixiBulletLayer;
-    if (ctx.pixiParticleLayer !== undefined) pixiParticleLayer = ctx.pixiParticleLayer;
+  if (ctx.pixiAsteroidLayer !== undefined) pixiAsteroidLayer = ctx.pixiAsteroidLayer;
+  if (ctx.pixiPickupLayer !== undefined) pixiPickupLayer = ctx.pixiPickupLayer;
+  if (ctx.pixiPlayerLayer !== undefined) pixiPlayerLayer = ctx.pixiPlayerLayer;
+  if (ctx.pixiBaseLayer !== undefined) pixiBaseLayer = ctx.pixiBaseLayer;
+  if (ctx.pixiEnemyLayer !== undefined) pixiEnemyLayer = ctx.pixiEnemyLayer;
+  if (ctx.pixiBossLayer !== undefined) pixiBossLayer = ctx.pixiBossLayer;
+  if (ctx.pixiVectorLayer !== undefined) pixiVectorLayer = ctx.pixiVectorLayer;
+  if (ctx.pixiBulletLayer !== undefined) pixiBulletLayer = ctx.pixiBulletLayer;
+  if (ctx.pixiParticleLayer !== undefined) pixiParticleLayer = ctx.pixiParticleLayer;
 
-    if (ctx.pixiNebulaLayer !== undefined) pixiNebulaLayer = ctx.pixiNebulaLayer;
-    if (ctx.pixiStarLayer !== undefined) pixiStarLayer = ctx.pixiStarLayer;
-    if (ctx.pixiStarTilingLayer !== undefined) pixiStarTilingLayer = ctx.pixiStarTilingLayer;
-    if (ctx.pixiCaveGridLayer !== undefined) pixiCaveGridLayer = ctx.pixiCaveGridLayer;
-    if (ctx.pixiCaveGridSprite !== undefined) pixiCaveGridSprite = ctx.pixiCaveGridSprite;
+  if (ctx.pixiNebulaLayer !== undefined) pixiNebulaLayer = ctx.pixiNebulaLayer;
+  if (ctx.pixiStarLayer !== undefined) pixiStarLayer = ctx.pixiStarLayer;
+  if (ctx.pixiStarTilingLayer !== undefined) pixiStarTilingLayer = ctx.pixiStarTilingLayer;
+  if (ctx.pixiCaveGridLayer !== undefined) pixiCaveGridLayer = ctx.pixiCaveGridLayer;
+  if (ctx.pixiCaveGridSprite !== undefined) pixiCaveGridSprite = ctx.pixiCaveGridSprite;
 
-    if (ctx.pixiTextureWhite !== undefined) pixiTextureWhite = ctx.pixiTextureWhite;
-    if (ctx.pixiParticleSmokeTexture !== undefined) pixiParticleSmokeTexture = ctx.pixiParticleSmokeTexture;
-    if (ctx.pixiParticleWarpTexture !== undefined) pixiParticleWarpTexture = ctx.pixiParticleWarpTexture;
+  if (ctx.pixiTextureWhite !== undefined) pixiTextureWhite = ctx.pixiTextureWhite;
+  if (ctx.pixiParticleSmokeTexture !== undefined)
+    pixiParticleSmokeTexture = ctx.pixiParticleSmokeTexture;
+  if (ctx.pixiParticleWarpTexture !== undefined)
+    pixiParticleWarpTexture = ctx.pixiParticleWarpTexture;
 }

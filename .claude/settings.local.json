@@ -32,7 +32,10 @@
       "Bash(echo \"Exit code: $?\")",
       "Bash(npx eslint:*)",
       "Bash(ssh-keygen:*)",
-      "Bash(git remote set-url origin:*)"
+      "Bash(git remote set-url origin:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run format)"
     ]
   },
   "outputStyle": "default"

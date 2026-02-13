@@ -3,7 +3,7 @@
  * Optimization helpers for hot paths in the game loop.
  */
 
-import { SpatialHash } from './math.js';
+import { SpatialHash } from "./math.js";
 
 // --- View Frustum Culling ---
 
@@ -12,15 +12,15 @@ import { SpatialHash } from './math.js';
  * Updated once per frame in gameLoopLogic.
  */
 export const viewBounds = {
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    // Extended bounds for entities that should update even slightly off-screen
-    extLeft: 0,
-    extRight: 0,
-    extTop: 0,
-    extBottom: 0
+  left: 0,
+  right: 0,
+  top: 0,
+  bottom: 0,
+  // Extended bounds for entities that should update even slightly off-screen
+  extLeft: 0,
+  extRight: 0,
+  extTop: 0,
+  extBottom: 0
 };
 
 /**
@@ -34,18 +34,18 @@ export const viewBounds = {
  * @param {number} extendedMargin - Extended margin for update culling (default: 500)
  */
 export function updateViewBounds(camX, camY, viewW, viewH, margin = 200, extendedMargin = 500) {
-    const halfW = viewW / 2;
-    const halfH = viewH / 2;
+  const halfW = viewW / 2;
+  const halfH = viewH / 2;
 
-    viewBounds.left = camX - halfW - margin;
-    viewBounds.right = camX + halfW + margin;
-    viewBounds.top = camY - halfH - margin;
-    viewBounds.bottom = camY + halfH + margin;
+  viewBounds.left = camX - halfW - margin;
+  viewBounds.right = camX + halfW + margin;
+  viewBounds.top = camY - halfH - margin;
+  viewBounds.bottom = camY + halfH + margin;
 
-    viewBounds.extLeft = camX - halfW - extendedMargin;
-    viewBounds.extRight = camX + halfW + extendedMargin;
-    viewBounds.extTop = camY - halfH - extendedMargin;
-    viewBounds.extBottom = camY + halfH + extendedMargin;
+  viewBounds.extLeft = camX - halfW - extendedMargin;
+  viewBounds.extRight = camX + halfW + extendedMargin;
+  viewBounds.extTop = camY - halfH - extendedMargin;
+  viewBounds.extBottom = camY + halfH + extendedMargin;
 }
 
 /**
@@ -55,8 +55,7 @@ export function updateViewBounds(camX, camY, viewW, viewH, margin = 200, extende
  * @returns {boolean}
  */
 export function isInView(x, y) {
-    return x > viewBounds.left && x < viewBounds.right &&
-        y > viewBounds.top && y < viewBounds.bottom;
+  return x > viewBounds.left && x < viewBounds.right && y > viewBounds.top && y < viewBounds.bottom;
 }
 
 /**
@@ -68,9 +67,13 @@ export function isInView(x, y) {
  * @returns {boolean}
  */
 export function isInViewRadius(x, y, radius = 0) {
-    const r = Math.max(0, radius || 0);
-    return x > (viewBounds.left - r) && x < (viewBounds.right + r) &&
-        y > (viewBounds.top - r) && y < (viewBounds.bottom + r);
+  const r = Math.max(0, radius || 0);
+  return (
+    x > viewBounds.left - r &&
+    x < viewBounds.right + r &&
+    y > viewBounds.top - r &&
+    y < viewBounds.bottom + r
+  );
 }
 
 /**
@@ -81,8 +84,12 @@ export function isInViewRadius(x, y, radius = 0) {
  * @returns {boolean}
  */
 export function isInExtendedView(x, y) {
-    return x > viewBounds.extLeft && x < viewBounds.extRight &&
-        y > viewBounds.extTop && y < viewBounds.extBottom;
+  return (
+    x > viewBounds.extLeft &&
+    x < viewBounds.extRight &&
+    y > viewBounds.extTop &&
+    y < viewBounds.extBottom
+  );
 }
 
 /**
@@ -91,7 +98,7 @@ export function isInExtendedView(x, y) {
  * @returns {boolean}
  */
 export function entityInView(entity) {
-    return isInView(entity.pos.x, entity.pos.y);
+  return isInView(entity.pos.x, entity.pos.y);
 }
 
 /**
@@ -100,7 +107,7 @@ export function entityInView(entity) {
  * @returns {boolean}
  */
 export function entityInExtendedView(entity) {
-    return isInExtendedView(entity.pos.x, entity.pos.y);
+  return isInExtendedView(entity.pos.x, entity.pos.y);
 }
 
 // --- Bullet Spatial Hash ---
@@ -117,14 +124,14 @@ export const bulletGrid = new SpatialHash(150);
  * @param {Array} bullets - Array of bullet objects
  */
 export function rebuildBulletGrid(bullets) {
-    bulletGrid.clear();
-    const len = bullets.length;
-    for (let i = 0; i < len; i++) {
-        const b = bullets[i];
-        if (!b.dead) {
-            bulletGrid.insert(b);
-        }
+  bulletGrid.clear();
+  const len = bullets.length;
+  for (let i = 0; i < len; i++) {
+    const b = bullets[i];
+    if (!b.dead) {
+      bulletGrid.insert(b);
     }
+  }
 }
 
 // --- Array Cleanup Utilities ---
@@ -137,21 +144,21 @@ export function rebuildBulletGrid(bullets) {
  * @returns {number} Number of items removed
  */
 export function compactArray(arr, cleanup = null) {
-    let writeIdx = 0;
-    const len = arr.length;
+  let writeIdx = 0;
+  const len = arr.length;
 
-    for (let i = 0; i < len; i++) {
-        const item = arr[i];
-        if (item.dead) {
-            if (cleanup) cleanup(item);
-        } else {
-            arr[writeIdx++] = item;
-        }
+  for (let i = 0; i < len; i++) {
+    const item = arr[i];
+    if (item.dead) {
+      if (cleanup) cleanup(item);
+    } else {
+      arr[writeIdx++] = item;
     }
+  }
 
-    const removed = len - writeIdx;
-    arr.length = writeIdx;
-    return removed;
+  const removed = len - writeIdx;
+  arr.length = writeIdx;
+  return removed;
 }
 
 /**
@@ -162,52 +169,52 @@ export function compactArray(arr, cleanup = null) {
  * @returns {number} Number of items removed
  */
 export function compactArrayWith(arr, keepFn, cleanup = null) {
-    let writeIdx = 0;
-    const len = arr.length;
+  let writeIdx = 0;
+  const len = arr.length;
 
-    for (let i = 0; i < len; i++) {
-        const item = arr[i];
-        if (keepFn(item)) {
-            arr[writeIdx++] = item;
-        } else if (cleanup) {
-            cleanup(item);
-        }
+  for (let i = 0; i < len; i++) {
+    const item = arr[i];
+    if (keepFn(item)) {
+      arr[writeIdx++] = item;
+    } else if (cleanup) {
+      cleanup(item);
     }
+  }
 
-    const removed = len - writeIdx;
-    arr.length = writeIdx;
-    return removed;
+  const removed = len - writeIdx;
+  arr.length = writeIdx;
+  return removed;
 }
 
 // --- Distance Utilities ---
 
 /**
  * Squared distance between two points (faster than actual distance).
- * @param {number} x1 
- * @param {number} y1 
- * @param {number} x2 
- * @param {number} y2 
+ * @param {number} x1
+ * @param {number} y1
+ * @param {number} x2
+ * @param {number} y2
  * @returns {number}
  */
 export function distSq(x1, y1, x2, y2) {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    return dx * dx + dy * dy;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  return dx * dx + dy * dy;
 }
 
 /**
  * Check if distance between two points is less than threshold (using squared comparison).
- * @param {number} x1 
- * @param {number} y1 
- * @param {number} x2 
- * @param {number} y2 
- * @param {number} threshold 
+ * @param {number} x1
+ * @param {number} y1
+ * @param {number} x2
+ * @param {number} y2
+ * @param {number} threshold
  * @returns {boolean}
  */
 export function distLessThan(x1, y1, x2, y2, threshold) {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    return (dx * dx + dy * dy) < (threshold * threshold);
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  return dx * dx + dy * dy < threshold * threshold;
 }
 
 /**
@@ -215,28 +222,28 @@ export function distLessThan(x1, y1, x2, y2, threshold) {
  * Update these if collision radii change.
  */
 export const thresholdsSq = {
-    bullet_enemy: 0,      // Updated dynamically
-    bullet_player: 0,      // Updated dynamically
-    pickup_player: 0,      // Updated dynamically
-    magnet_range: 0        // Updated dynamically
+  bullet_enemy: 0, // Updated dynamically
+  bullet_player: 0, // Updated dynamically
+  pickup_player: 0, // Updated dynamically
+  magnet_range: 0 // Updated dynamically
 };
 
 /**
  * Update pre-computed squared thresholds.
  * Call when player radius or magnet range changes.
- * @param {Object} config 
+ * @param {Object} config
  */
 export function updateThresholds(config) {
-    if (config.bulletEnemy) {
-        thresholdsSq.bullet_enemy = config.bulletEnemy * config.bulletEnemy;
-    }
-    if (config.bulletPlayer) {
-        thresholdsSq.bullet_player = config.bulletPlayer * config.bulletPlayer;
-    }
-    if (config.pickupPlayer) {
-        thresholdsSq.pickup_player = config.pickupPlayer * config.pickupPlayer;
-    }
-    if (config.magnetRange) {
-        thresholdsSq.magnet_range = config.magnetRange * config.magnetRange;
-    }
+  if (config.bulletEnemy) {
+    thresholdsSq.bullet_enemy = config.bulletEnemy * config.bulletEnemy;
+  }
+  if (config.bulletPlayer) {
+    thresholdsSq.bullet_player = config.bulletPlayer * config.bulletPlayer;
+  }
+  if (config.pickupPlayer) {
+    thresholdsSq.pickup_player = config.pickupPlayer * config.pickupPlayer;
+  }
+  if (config.magnetRange) {
+    thresholdsSq.magnet_range = config.magnetRange * config.magnetRange;
+  }
 }

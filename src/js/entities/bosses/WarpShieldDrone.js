@@ -30,8 +30,8 @@ export class WarpShieldDrone extends Entity {
     this.orbitRadius = orbitRadius;
     this.orbitAngle = angle;
     this.orbitSpeed = 0;
-    this.hp = 3000;
-    this.maxHp = 3000;
+    this.hp = 3750;
+    this.maxHp = 3750;
     this.radius = 58;
     this.collisionRadius = 130;
     this.isWarpShieldDrone = true;
@@ -345,4 +345,3 @@ export class WarpShieldDrone extends Entity {
     }
   }
 }
-

@@ -33,7 +33,7 @@ let _canvas = null;
 /**
  * Spawns larger particles (3x size) but fewer (1/3 count) for warp boss effects
  */
-function _spawnLargeParticles(x, y, count = 10, color = '#fff') {
+function _spawnLargeParticles(x, y, count = 10, color = "#fff") {
   // Spawn 1/3 as many particles (round to nearest int, minimum 1)
   const actualCount = Math.max(1, Math.round(count / 3));
   // Create particles manually with 3x size
@@ -64,7 +64,7 @@ export class WarpSentinelBoss extends Entity {
     this.isWarpBoss = true;
     this.sizeScale = 3;
     this.radius = 110 * this.sizeScale;
-    this.hp = 5000;
+    this.hp = 6250;
     this.maxHp = this.hp;
 
     this.maxShieldHp = 9990;
@@ -956,4 +956,3 @@ export class WarpSentinelBoss extends Entity {
     playSound("powerup");
   }
 }
-

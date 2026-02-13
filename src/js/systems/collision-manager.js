@@ -10,6 +10,7 @@ import {
 import { CavePinwheel1, CavePinwheel2, CavePinwheel3 } from "../entities/cave/index.js";
 import { WarpShieldDrone } from "../entities/bosses/index.js";
 import { Shockwave } from "../entities/projectiles/Shockwave.js";
+import { ZOOM_LEVEL } from "../core/constants.js";
 
 let _spawnParticles = null;
 let _playSound = null;
@@ -27,6 +28,8 @@ let _setProjectileImpactSoundContext = null;
 let _awardCoinsInstant = null;
 let _awardNuggetsInstant = null;
 let _FloatingText = null;
+let _getWidth = null;
+let _getHeight = null;
 
 /**
  * @param {Object} deps
@@ -50,6 +53,8 @@ export function registerCollisionDependencies(deps) {
   if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
   if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
   if (deps.FloatingText) _FloatingText = deps.FloatingText;
+  if (deps.getWidth) _getWidth = deps.getWidth;
+  if (deps.getHeight) _getHeight = deps.getHeight;
 }
 
 /** Log only when GameContext.DEBUG_SHIELD_BYPASS is true (Pinwheel/Gunboat shield debugging). */
@@ -172,6 +177,163 @@ function applyLifesteal(x, y) {
 
     // Reset counter
     GameContext.player.lifestealKills = 0;
+  }
+}
+
+/**
+ * Execute the nuke effect - destroys all on-screen entities except bosses.
+ * Damages bosses on screen by 50% of their current health.
+ */
+function executeNukeEffect() {
+  if (!GameContext.player) return;
+
+  // Get viewport bounds
+  const width = _getWidth ? _getWidth() : 1920;
+  const height = _getHeight ? _getHeight() : 1080;
+  const zoom = GameContext.currentZoom || ZOOM_LEVEL;
+  const camX = GameContext.player.pos.x - width / (2 * zoom);
+  const camY = GameContext.player.pos.y - height / (2 * zoom);
+  const viewW = width / zoom;
+  const viewH = height / zoom;
+
+  // Helper to check if entity is on screen
+  const isOnScreen = entity => {
+    if (!entity || !entity.pos) return false;
+    return (
+      entity.pos.x > camX &&
+      entity.pos.x < camX + viewW &&
+      entity.pos.y > camY &&
+      entity.pos.y < camY + viewH
+    );
+  };
+
+  let destroyedCount = 0;
+
+  // Destroy on-screen enemies (non-boss)
+  for (const e of GameContext.enemies) {
+    if (!e || e.dead) continue;
+    if (isOnScreen(e) && !e.isDungeonBoss && !e.isCruiser) {
+      e.dead = true;
+      destroyedCount++;
+    }
+  }
+
+  // Destroy on-screen pinwheels
+  for (const p of GameContext.pinwheels) {
+    if (!p || p.dead) continue;
+    if (isOnScreen(p)) {
+      p.dead = true;
+      destroyedCount++;
+    }
+  }
+
+  // Destroy on-screen cave pinwheels
+  for (const p of GameContext.cavePinwheels) {
+    if (!p || p.dead) continue;
+    if (isOnScreen(p)) {
+      p.dead = true;
+      destroyedCount++;
+    }
+  }
+
+  // Destroy on-screen bullets
+  for (const b of GameContext.bullets) {
+    if (!b || b.dead) continue;
+    if (isOnScreen(b)) {
+      b.dead = true;
+      destroyedCount++;
+    }
+  }
+
+  // Destroy on-screen guided missiles
+  for (const m of GameContext.guidedMissiles) {
+    if (!m || m.dead) continue;
+    if (isOnScreen(m)) {
+      m.dead = true;
+      destroyedCount++;
+    }
+  }
+
+  // Destroy on-screen boss bombs
+  for (const b of GameContext.bossBombs) {
+    if (!b || b.dead) continue;
+    if (isOnScreen(b)) {
+      b.dead = true;
+      destroyedCount++;
+    }
+  }
+
+  // Destroy on-screen breakable asteroids
+  for (const a of GameContext.environmentAsteroids) {
+    if (!a || a.dead) continue;
+    if (isOnScreen(a) && a.breakable !== false) {
+      a.dead = true;
+      destroyedCount++;
+    }
+  }
+
+  // Damage bosses by 25% current HP
+  const damageBoss = boss => {
+    if (!boss || boss.dead || !isOnScreen(boss)) return;
+    const damage = Math.ceil(boss.hp * 0.25);
+    if (typeof boss.takeHit === "function") {
+      boss.takeHit(damage);
+    } else {
+      boss.hp -= damage;
+    }
+    // Show floating damage text
+    if (_FloatingText) {
+      GameContext.floatingTexts.push(
+        new _FloatingText(boss.pos.x, boss.pos.y - 50, `NUKE! -${damage}`, "#ff4400", 60, {
+          fontSize: 50
+        })
+      );
+    }
+  };
+
+  // Damage main boss
+  if (GameContext.bossActive && GameContext.boss) {
+    damageBoss(GameContext.boss);
+  }
+
+  // Damage dungeon bosses
+  damageBoss(GameContext.necroticHive);
+  damageBoss(GameContext.cerebralPsion);
+  damageBoss(GameContext.fleshforge);
+  damageBoss(GameContext.vortexMatriarch);
+  damageBoss(GameContext.chitinusPrime);
+  damageBoss(GameContext.psyLich);
+
+  // Damage space station
+  damageBoss(GameContext.spaceStation);
+
+  // Damage destroyer
+  damageBoss(GameContext.destroyer);
+
+  // Visual effects
+  if (_playSound) _playSound("base_explode");
+  if (_showOverlayMessage)
+    _showOverlayMessage(`NUKE DETONATED - ${destroyedCount} DESTROYED`, "#ff4400", 2000);
+
+  // Screen shake
+  GameContext.shakeTimer = 45;
+  GameContext.shakeMagnitude = 25;
+
+  // Screen flash
+  GameContext.nukeFlashTimer = 30;
+
+  // Spawn shockwave from player position
+  if (typeof Shockwave !== "undefined") {
+    GameContext.shockwaves.push(
+      new Shockwave(GameContext.player.pos.x, GameContext.player.pos.y, "#ff4400", 800, 40)
+    );
+  }
+
+  // Spawn orange particles at player position
+  if (_spawnParticles) {
+    _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 50, "#ff4400");
+    _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 30, "#ff8800");
+    _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 20, "#ffff00");
   }
 }
 
@@ -941,7 +1103,7 @@ export function resolveEntityCollision() {
         // Positional collision handled in main loop, only apply damage/effects here
         const ramDamage = 5; // Fixed damage for ramming the Cruiser
         GameContext.player.takeHit(ramDamage);
-        applyThornArmor(ramDamage, e);
+        applyThornArmor(ramDamage, GameContext.boss);
 
         if (_spawnParticles)
           _spawnParticles(
@@ -1095,15 +1257,35 @@ export function resolveEntityCollision() {
       if (dist < GameContext.player.radius + m.radius) {
         if (_playSound) _playSound("powerup");
         if (_showOverlayMessage)
-          _showOverlayMessage("MAGNET ACTIVATED - ALL COINS MAGNETIZED", "#0ff", 2000);
+          _showOverlayMessage("MAGNET ACTIVATED - COINS & NUGGETS MAGNETIZED", "#0ff", 2000);
         // Magnetize all coins on the map
         for (let coin of GameContext.coins) {
           if (!coin.dead) {
             coin.magnetized = true;
           }
         }
+        // Magnetize all nuggets on the map
+        for (let nugget of GameContext.nuggets) {
+          if (!nugget.dead) {
+            nugget.magnetized = true;
+          }
+        }
         if (typeof m.kill === "function") m.kill();
         else m.dead = true;
+      }
+    }
+
+    // Nuke pickup collection
+    for (let n of GameContext.nukePickups) {
+      if (n.dead) continue;
+      const dist = Math.hypot(
+        GameContext.player.pos.x - n.pos.x,
+        GameContext.player.pos.y - n.pos.y
+      );
+      if (dist < GameContext.player.radius + n.radius) {
+        executeNukeEffect();
+        if (typeof n.kill === "function") n.kill();
+        else n.dead = true;
       }
     }
 
@@ -1161,7 +1343,7 @@ export function resolveEntityCollision() {
           GameContext.player.vel.x += Math.cos(angle) * 2;
           GameContext.player.vel.y += Math.sin(angle) * 2;
           GameContext.player.takeHit(2);
-          applyThornArmor(2, e);
+          applyThornArmor(2, t);
           if (_updateHealthUI) _updateHealthUI();
           if (_playSound) _playSound("hit");
           if (_spawnParticles)
@@ -1221,27 +1403,7 @@ export function resolveEntityCollision() {
             if (_playSound) _playSound("explode");
             if (b.hp <= 0) {
               applyLifesteal(b.pos.x, b.pos.y);
-              b.dead = true;
-              if (_playSound) _playSound("base_explode");
-              if (_spawnLargeExplosion) _spawnLargeExplosion(b.pos.x, b.pos.y, 2.0);
-              // Award coins directly: 6 coins * 5 value = 30 total
-              if (_awardCoinsInstant) _awardCoinsInstant(30, { noSound: false, sound: "coin" });
-              // Award nugget directly
-              if (_awardNuggetsInstant) _awardNuggetsInstant(1, { noSound: false, sound: "coin" });
-              GameContext.pinwheelsDestroyed++;
-              GameContext.pinwheelsDestroyedTotal++;
-              // Update difficulty tier based on total pinwheels and gunboats destroyed
-              const totalDestroyed =
-                GameContext.pinwheelsDestroyedTotal + GameContext.gunboatsDestroyedTotal;
-              GameContext.difficultyTier = 1 + Math.floor(totalDestroyed / 6);
-              GameContext.score += 10000;
-              const baseEl = document.getElementById("bases-display");
-              if (baseEl) baseEl.innerText = `${GameContext.pinwheelsDestroyedTotal}`;
-              GameContext.enemies.forEach(e => {
-                if (e.assignedBase === b) e.type = "roamer";
-              });
-              const delay = 10000 + Math.random() * 10000;
-              GameContext.baseRespawnTimers.push(Date.now() + delay);
+              b.kill();
             }
             hitEntity = true;
             break;
@@ -1260,27 +1422,7 @@ export function resolveEntityCollision() {
             if (_playSound) _playSound("explode");
             if (b.hp <= 0) {
               applyLifesteal(b.pos.x, b.pos.y);
-              b.dead = true;
-              if (_playSound) _playSound("base_explode");
-              if (_spawnLargeExplosion) _spawnLargeExplosion(b.pos.x, b.pos.y, 2.0);
-              // Award coins directly: 6 coins * 5 value = 30 total
-              if (_awardCoinsInstant) _awardCoinsInstant(30, { noSound: false, sound: "coin" });
-              // Award nugget directly
-              if (_awardNuggetsInstant) _awardNuggetsInstant(1, { noSound: false, sound: "coin" });
-              GameContext.pinwheelsDestroyed++;
-              GameContext.pinwheelsDestroyedTotal++;
-              // Update difficulty tier based on total pinwheels and gunboats destroyed
-              const totalDestroyed =
-                GameContext.pinwheelsDestroyedTotal + GameContext.gunboatsDestroyedTotal;
-              GameContext.difficultyTier = 1 + Math.floor(totalDestroyed / 6);
-              GameContext.score += 10000;
-              const baseEl = document.getElementById("bases-display");
-              if (baseEl) baseEl.innerText = `${GameContext.pinwheelsDestroyedTotal}`;
-              GameContext.enemies.forEach(e => {
-                if (e.assignedBase === b) e.type = "roamer";
-              });
-              const delay = 10000 + Math.random() * 10000;
-              GameContext.baseRespawnTimers.push(Date.now() + delay);
+              b.kill();
             }
             hitEntity = true;
             break;
@@ -2439,14 +2581,7 @@ export function processBulletCollisions() {
                 }
 
                 if (e.hp <= 0) {
-                  e.dead = true;
-                  if (_playSound) _playSound("base_explode");
-                  if (_spawnLargeExplosion) _spawnLargeExplosion(e.pos.x, e.pos.y, 2.0);
-                  // Award coins directly: 6 coins * 5 value = 30 total
-                  if (_awardCoinsInstant) _awardCoinsInstant(30, { noSound: false, sound: "coin" });
-                  // Award nugget directly
-                  if (_awardNuggetsInstant)
-                    _awardNuggetsInstant(1, { noSound: false, sound: "coin" });
+                  e.kill();
                 }
                 break;
               }
@@ -2852,14 +2987,7 @@ export function processBulletCollisions() {
                 }
 
                 if (e.hp <= 0) {
-                  e.dead = true;
-                  if (_playSound) _playSound("base_explode");
-                  if (_spawnLargeExplosion) _spawnLargeExplosion(e.pos.x, e.pos.y, 2.0);
-                  // Award coins directly: 6 coins * 5 value = 30 total
-                  if (_awardCoinsInstant) _awardCoinsInstant(30, { noSound: false, sound: "coin" });
-                  // Award nugget directly
-                  if (_awardNuggetsInstant)
-                    _awardNuggetsInstant(1, { noSound: false, sound: "coin" });
+                  e.kill();
                 }
                 break;
               }

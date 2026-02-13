@@ -29,6 +29,9 @@ export const GameContext = {
   goldNuggets: [],
   powerups: [],
   magnetPickups: [],
+  nukePickups: [],
+  nextNukeSpawnTime: null,
+  nukeFlashTimer: 0,
   shootingStars: [],
   drones: [],
   caches: [],
@@ -68,6 +71,7 @@ export const GameContext = {
   },
   stationArena: { x: 0, y: 0, radius: 2800, active: false },
   caveWarpCountdownAt: null,
+  stationSpawnAt: null,
   arenaFightsCompleted: 0,
   arenaFightTarget: 3,
   caveBossArena: { x: 0, y: 0, radius: 2500, active: false, bossSpawned: false },
@@ -280,6 +284,9 @@ export const GameContext = {
     this.goldNuggets = [];
     this.powerups = [];
     this.magnetPickups = [];
+    this.nukePickups = [];
+    this.nextNukeSpawnTime = null;
+    this.nukeFlashTimer = 0;
     this.shootingStars = [];
     this.drones = [];
     this.caches = [];
@@ -352,6 +359,7 @@ export const GameContext = {
     this.arenaFightsCompleted = 0;
     this.arenaFightTarget = 3;
     this.caveWarpCountdownAt = null;
+    this.stationSpawnAt = null;
     this.rerollTokens = 0;
     this.metaExtraLifeCount = 0;
     this.shownUpgradesThisRun = new Set();

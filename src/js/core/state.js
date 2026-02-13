@@ -3,8 +3,8 @@
  * Centralized state for all game entities and systems.
  */
 
-import { SpatialHash } from './math.js';
-import { ASTEROID_GRID_CELL_SIZE, ZOOM_LEVEL } from './constants.js';
+import { SpatialHash } from "./math.js";
+import { ASTEROID_GRID_CELL_SIZE, ZOOM_LEVEL } from "./constants.js";
 
 // --- Entity Collections ---
 export let player = null;
@@ -64,8 +64,13 @@ export let aspectRatio = GAME_VIEWPORT_WIDTH / GAME_VIEWPORT_HEIGHT;
 
 // --- Input State ---
 export const keys = {
-    w: false, a: false, s: false, d: false,
-    space: false, shift: false, e: false
+  w: false,
+  a: false,
+  s: false,
+  d: false,
+  space: false,
+  shift: false,
+  e: false
 };
 export const mouseScreen = { x: 0, y: 0 };
 export const mouseWorld = { x: 0, y: 0 };
@@ -76,12 +81,12 @@ export let lastGamepadInputAt = 0;
 // --- Gamepad State ---
 export let gamepadIndex = null;
 export const gpState = {
-    move: { x: 0, y: 0 },
-    aim: { x: 0, y: 0 },
-    fire: false,
-    warp: false,
-    turbo: false,
-    pausePressed: false
+  move: { x: 0, y: 0 },
+  aim: { x: 0, y: 0 },
+  fire: false,
+  warp: false,
+  turbo: false,
+  pausePressed: false
 };
 export let usingGamepad = false;
 export let menuDebounce = 0;
@@ -95,92 +100,131 @@ export let simNowMs = 0;
 export let simLastPerfAt = 0;
 
 // --- FPS Counter ---
-export let fpsLastFrameAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+export let fpsLastFrameAt =
+  typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
 export let fpsSmoothMs = 16.7;
 export let fpsNextUiAt = 0;
 export let fpsUiVisible = null;
 
 // --- State Setters ---
-export function setPlayer(p) { player = p; }
-export function setGameActive(active) { gameActive = active; }
-export function setGamePaused(paused) { gamePaused = paused; }
-export function setSectorIndex(idx) { sectorIndex = idx; }
-export function setMenuSelectionIndex(idx) { menuSelectionIndex = idx; }
-export function setCurrentZoom(zoom) { currentZoom = zoom; }
-export function setDimensions(w, h) { 
-    // Clamp to game viewport size to prevent seeing more game world
-    width = Math.min(w, GAME_VIEWPORT_WIDTH);
-    height = Math.min(h, GAME_VIEWPORT_HEIGHT);
+export function setPlayer(p) {
+  player = p;
+}
+export function setGameActive(active) {
+  gameActive = active;
+}
+export function setGamePaused(paused) {
+  gamePaused = paused;
+}
+export function setSectorIndex(idx) {
+  sectorIndex = idx;
+}
+export function setMenuSelectionIndex(idx) {
+  menuSelectionIndex = idx;
+}
+export function setCurrentZoom(zoom) {
+  currentZoom = zoom;
+}
+export function setDimensions(w, h) {
+  // Clamp to game viewport size to prevent seeing more game world
+  width = Math.min(w, GAME_VIEWPORT_WIDTH);
+  height = Math.min(h, GAME_VIEWPORT_HEIGHT);
 }
 
 // --- Internal Resolution Setter ---
 export function setInternalResolution(w, h) {
-    internalWidth = w;
-    internalHeight = h;
-    // Keep aspect ratio based on game viewport, not internal resolution
-    aspectRatio = GAME_VIEWPORT_WIDTH / GAME_VIEWPORT_HEIGHT;
-    // Don't update game dimensions - keep viewport fixed at 1920x1080
-    // Higher internal resolution only affects rendering quality
+  internalWidth = w;
+  internalHeight = h;
+  // Keep aspect ratio based on game viewport, not internal resolution
+  aspectRatio = GAME_VIEWPORT_WIDTH / GAME_VIEWPORT_HEIGHT;
+  // Don't update game dimensions - keep viewport fixed at 1920x1080
+  // Higher internal resolution only affects rendering quality
 }
-export function setUsingGamepad(val) { usingGamepad = val; }
-export function setGamepadIndex(idx) { gamepadIndex = idx; }
-export function setOverlayTimeout(t) { overlayTimeout = t; }
-export function setLastMouseInputAt(t) { lastMouseInputAt = t; }
-export function setLastGamepadInputAt(t) { lastGamepadInputAt = t; }
-export function setMenuDebounce(t) { menuDebounce = t; }
+export function setUsingGamepad(val) {
+  usingGamepad = val;
+}
+export function setGamepadIndex(idx) {
+  gamepadIndex = idx;
+}
+export function setOverlayTimeout(t) {
+  overlayTimeout = t;
+}
+export function setLastMouseInputAt(t) {
+  lastMouseInputAt = t;
+}
+export function setLastGamepadInputAt(t) {
+  lastGamepadInputAt = t;
+}
+export function setMenuDebounce(t) {
+  menuDebounce = t;
+}
 
 // --- Camera Shake ---
 export function setShake(timer, magnitude) {
-    shakeTimer = timer;
-    shakeMagnitude = magnitude;
+  shakeTimer = timer;
+  shakeMagnitude = magnitude;
 }
 export function setShakeOffset(x, y) {
-    shakeOffsetX = x;
-    shakeOffsetY = y;
+  shakeOffsetX = x;
+  shakeOffsetY = y;
 }
 
 // --- FPS State ---
-export function setFpsLastFrameAt(t) { fpsLastFrameAt = t; }
-export function setFpsSmoothMs(ms) { fpsSmoothMs = ms; }
-export function setFpsNextUiAt(t) { fpsNextUiAt = t; }
-export function setFpsUiVisible(v) { fpsUiVisible = v; }
+export function setFpsLastFrameAt(t) {
+  fpsLastFrameAt = t;
+}
+export function setFpsSmoothMs(ms) {
+  fpsSmoothMs = ms;
+}
+export function setFpsNextUiAt(t) {
+  fpsNextUiAt = t;
+}
+export function setFpsUiVisible(v) {
+  fpsUiVisible = v;
+}
 
 // --- Simulation State ---
-export function setSimAccMs(ms) { simAccMs = ms; }
-export function setSimNowMs(ms) { simNowMs = ms; }
-export function setSimLastPerfAt(t) { simLastPerfAt = t; }
+export function setSimAccMs(ms) {
+  simAccMs = ms;
+}
+export function setSimNowMs(ms) {
+  simNowMs = ms;
+}
+export function setSimLastPerfAt(t) {
+  simLastPerfAt = t;
+}
 
 /**
  * Clear all entity arrays for game reset.
  */
 export function clearAllEntities() {
-    enemies.length = 0;
-    bullets.length = 0;
-    particles.length = 0;
-    explosions.length = 0;
-    pickups.length = 0;
-    floatingTexts.length = 0;
-    pinwheels.length = 0;
-    warpGates.length = 0;
-    cruisers.length = 0;
-    stations.length = 0;
-    drones.length = 0;
-    environmentAsteroids.length = 0;
-    asteroidRespawnTimers.length = 0;
-    baseRespawnTimers.length = 0;
-    warpParticles.length = 0;
-    shockwaves.length = 0;
-    asteroidGrid.clear();
+  enemies.length = 0;
+  bullets.length = 0;
+  particles.length = 0;
+  explosions.length = 0;
+  pickups.length = 0;
+  floatingTexts.length = 0;
+  pinwheels.length = 0;
+  warpGates.length = 0;
+  cruisers.length = 0;
+  stations.length = 0;
+  drones.length = 0;
+  environmentAsteroids.length = 0;
+  asteroidRespawnTimers.length = 0;
+  baseRespawnTimers.length = 0;
+  warpParticles.length = 0;
+  shockwaves.length = 0;
+  asteroidGrid.clear();
 }
 
 /**
  * Clear an array and call cleanup on each entity if available.
  */
 export function clearArrayWithCleanup(arr, cleanupFn = null) {
-    if (cleanupFn) {
-        for (let i = 0; i < arr.length; i++) {
-            cleanupFn(arr[i]);
-        }
+  if (cleanupFn) {
+    for (let i = 0; i < arr.length; i++) {
+      cleanupFn(arr[i]);
     }
-    arr.length = 0;
+  }
+  arr.length = 0;
 }

@@ -6,4 +6,5 @@ export * from "./Coin.js";
 export * from "./GoldNugget.js";
 export * from "./HealthPowerUp.js";
 export * from "./MagnetPickup.js";
+export * from "./NukePickup.js";
 export * from "./SpaceNugget.js";

@@ -4,6 +4,7 @@ import { SIM_STEP_MS, ZOOM_LEVEL } from "../../core/constants.js";
 import { playSound } from "../../audio/audio-manager.js";
 import { Enemy } from "../enemies/Enemy.js";
 import { Coin } from "../pickups/Coin.js";
+import { SpaceNugget } from "../pickups/SpaceNugget.js";
 import { showOverlayMessage } from "../../utils/ui-helpers.js";
 import { clearArrayWithPixiCleanup, pixiCleanupObject } from "../../rendering/pixi-context.js";
 
@@ -290,7 +291,13 @@ export class SuperFlagshipBoss extends Flagship {
     ) {
       nuggetCount += GameContext.player.stats.bountyBossBonus;
     }
-    if (_awardNuggetsInstant) _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
+    for (let i = 0; i < nuggetCount; i++) {
+      const n = new SpaceNugget(this.pos.x, this.pos.y, 1);
+      n.vel.x = (Math.random() - 0.5) * 2;
+      n.vel.y = (Math.random() - 0.5) * 2;
+      GameContext.nuggets.push(n);
+    }
+    playSound("coin");
 
     GameContext.bossActive = false;
     GameContext.bossArena.active = false;
