@@ -10,13 +10,17 @@ import { pixiPickupSpritePool } from "../../rendering/pixi-setup.js";
 
 /**
  * Premium currency pickup with magnetization.
+ * @param {number} x - X position
+ * @param {number} y - Y position
+ * @param {number} value - Nugget value (default 1)
+ * @param {number} sizeScale - Scale for radius and rendering, 1 = default, 1.5 = 50% larger (e.g. drops from ships)
  */
 export class SpaceNugget extends Entity {
-  constructor(x, y, value = 1) {
+  constructor(x, y, value = 1, sizeScale = 1) {
     super(x, y);
     this._pixiPool = "pickup";
     this.value = value;
-    this.radius = 10;
+    this.radius = 10 * sizeScale;
     this.sprite = null;
     this.vel.x = (Math.random() - 0.5) * 0.6;
     this.vel.y = (Math.random() - 0.5) * 0.6;
@@ -86,11 +90,12 @@ export class SpaceNugget extends Entity {
     // Canvas fallback
     ctx.save();
     ctx.translate(this.pos.x, this.pos.y);
-    const scale = 1.0 + Math.sin(this.flash * 0.12) * 0.25;
-    ctx.scale(scale, scale);
+    const pulse = 1.0 + Math.sin(this.flash * 0.12) * 0.25;
+    const sizeScale = this.radius / 10;
+    ctx.scale(pulse * sizeScale, pulse * sizeScale);
     ctx.rotate(this.flash * 0.05);
 
-    // Create gradient
+    // Create gradient (base size 10)
     const grad = ctx.createLinearGradient(-10, -10, 10, 10);
     grad.addColorStop(0, "#ff0");
     grad.addColorStop(0.5, "#ffa500");

@@ -91,6 +91,7 @@ export let pixiCaveGridSprite = null;
 
 export let pixiAsteroidLayer = null;
 export let pixiPickupLayer = null;
+export let pixiCoinLayer = null;
 export let pixiPlayerLayer = null;
 export let pixiBaseLayer = null;
 export let pixiEnemyLayer = null;
@@ -177,6 +178,7 @@ export function setPixiContext(ctx) {
 
   if (ctx.pixiAsteroidLayer !== undefined) pixiAsteroidLayer = ctx.pixiAsteroidLayer;
   if (ctx.pixiPickupLayer !== undefined) pixiPickupLayer = ctx.pixiPickupLayer;
+  if (ctx.pixiCoinLayer !== undefined) pixiCoinLayer = ctx.pixiCoinLayer;
   if (ctx.pixiPlayerLayer !== undefined) pixiPlayerLayer = ctx.pixiPlayerLayer;
   if (ctx.pixiBaseLayer !== undefined) pixiBaseLayer = ctx.pixiBaseLayer;
   if (ctx.pixiEnemyLayer !== undefined) pixiEnemyLayer = ctx.pixiEnemyLayer;

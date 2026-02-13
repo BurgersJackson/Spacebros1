@@ -51,6 +51,7 @@ export function resetPixiOverlaySprites() {
     pixiStarLayer,
     pixiAsteroidLayer,
     pixiPickupLayer,
+    pixiCoinLayer,
     pixiPlayerLayer,
     pixiBaseLayer,
     pixiEnemyLayer,
@@ -84,6 +85,7 @@ export function resetPixiOverlaySprites() {
   if (pixiStarLayer) pixiStarLayer.removeChildren();
   if (pixiAsteroidLayer) pixiAsteroidLayer.removeChildren();
   if (pixiPickupLayer) pixiPickupLayer.removeChildren();
+  if (pixiCoinLayer) pixiCoinLayer.removeChildren();
   if (pixiPlayerLayer) pixiPlayerLayer.removeChildren();
   if (pixiBaseLayer) pixiBaseLayer.removeChildren();
   if (pixiEnemyLayer) pixiEnemyLayer.removeChildren();
@@ -114,6 +116,7 @@ export function cleanupPixiWorldRootExtras() {
   const {
     pixiAsteroidLayer,
     pixiPickupLayer,
+    pixiCoinLayer,
     pixiPlayerLayer,
     pixiBaseLayer,
     pixiEnemyLayer,
@@ -125,6 +128,7 @@ export function cleanupPixiWorldRootExtras() {
 
   if (pixiAsteroidLayer) keep.add(pixiAsteroidLayer);
   if (pixiPickupLayer) keep.add(pixiPickupLayer);
+  if (pixiCoinLayer) keep.add(pixiCoinLayer);
   if (pixiPlayerLayer) keep.add(pixiPlayerLayer);
   if (pixiBaseLayer) keep.add(pixiBaseLayer);
   if (pixiEnemyLayer) keep.add(pixiEnemyLayer);

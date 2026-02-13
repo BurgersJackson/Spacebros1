@@ -7,6 +7,7 @@ export const pixiTextures = {
   coin1: null,
   coin5: null,
   coin10: null,
+  coinPickup: null, // Dedicated key for Coin entity (never shared with nugget)
   nugget: null,
   gateKey: null,
   health: null,

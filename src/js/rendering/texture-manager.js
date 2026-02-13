@@ -7,6 +7,7 @@ import {
   loadAllTextures
 } from "./texture-loader.js";
 import {
+  pixiApp,
   setAsteroidImages,
   setAsteroidIndestructibleImage,
   setAsteroidTexturesReady,
@@ -102,6 +103,10 @@ let monster4Loaded = false;
 let nuggetImage = null;
 let nuggetTexture = null;
 let nuggetLoaded = false;
+
+let coinImage = null;
+let coinTexture = null;
+let coinLoaded = false;
 
 let medkitImage = null;
 let medkitTexture = null;
@@ -225,6 +230,17 @@ export function initTextureAssets() {
     nuggetLoaded = false;
   });
   nuggetImage.src = NUGGET_URL;
+
+  coinImage = new Image();
+  coinImage.decoding = "async";
+  coinImage.addEventListener("load", () => {
+    coinLoaded = true;
+    applyCoinTexture();
+  });
+  coinImage.addEventListener("error", () => {
+    coinLoaded = false;
+  });
+  coinImage.src = "assets/coin1.png";
 
   medkitImage = new Image();
   medkitImage.decoding = "async";
@@ -814,6 +830,36 @@ export function applyNuggetTexture() {
     nuggetTexture = tex;
     pixiTextures.nugget = tex;
   } catch (e) {}
+}
+
+/**
+ * Apply loaded coin image to pixiTextures.coin1/coin5/coin10 (used by Coin).
+ * @returns {void}
+ */
+export function applyCoinTexture() {
+  if (!coinLoaded || coinTexture || !window.PIXI || !pixiTextures) return;
+  try {
+    // Destroy any existing coin textures first
+    if (pixiTextures.coin1) {
+      try { pixiTextures.coin1.destroy(true); } catch (e) {}
+    }
+
+    // Create coin texture from coin image using a dedicated BaseTexture (no shared cache with nugget)
+    const base = new PIXI.BaseTexture(coinImage);
+    const tex = new PIXI.Texture(base);
+    try {
+      tex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+      tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON;
+    } catch (e) {}
+
+    coinTexture = tex;
+    pixiTextures.coin1 = tex;
+    pixiTextures.coin5 = tex;
+    pixiTextures.coin10 = tex;
+    pixiTextures.coinPickup = tex;
+  } catch (e) {
+    console.error("[COIN] Failed to apply coin texture:", e);
+  }
 }
 
 /**

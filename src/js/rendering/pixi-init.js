@@ -11,6 +11,7 @@ import { NEBULA_ALPHA } from "../core/constants.js";
 import {
   applyGunboatTextures,
   applyNuggetTexture,
+  applyCoinTexture,
   applyHealthTexture,
   applyCruiserTexture,
   applyAsteroidTextures,
@@ -45,6 +46,7 @@ export function initPixiOverlay(options) {
     pixiArrowsGraphics: null,
     pixiAsteroidLayer: null,
     pixiPickupLayer: null,
+    pixiCoinLayer: null,
     pixiPlayerLayer: null,
     pixiBaseLayer: null,
     pixiEnemyLayer: null,
@@ -239,6 +241,7 @@ export function initPixiOverlay(options) {
     scale: true,
     alpha: true
   });
+  const pixiCoinLayer = new PIXI.Container();
   const pixiPlayerLayer = new PIXI.Container();
   const pixiBaseLayer = new PIXI.Container();
   const pixiEnemyLayer = new PIXI.Container();
@@ -254,6 +257,7 @@ export function initPixiOverlay(options) {
 
   pixiWorldRoot.addChild(pixiAsteroidLayer);
   pixiWorldRoot.addChild(pixiPickupLayer);
+  pixiWorldRoot.addChild(pixiCoinLayer);
   pixiWorldRoot.addChild(pixiPlayerLayer);
   pixiWorldRoot.addChild(pixiBaseLayer);
   pixiWorldRoot.addChild(pixiEnemyLayer);
@@ -310,6 +314,7 @@ export function initPixiOverlay(options) {
     pixiScreenRoot,
     pixiAsteroidLayer,
     pixiPickupLayer,
+    pixiCoinLayer,
     pixiPlayerLayer,
     pixiBaseLayer,
     pixiEnemyLayer,
@@ -463,25 +468,46 @@ export function initPixiOverlay(options) {
   };
 
   {
-    const makeCoin = fillHex => {
-      const g = new PIXI.Graphics();
-      const pts = [0, -8, 8, 0, 0, 8, -8, 0];
-      g.lineStyle(24, fillHex, 0.15);
-      g.drawPolygon(pts);
-      g.lineStyle(12, fillHex, 0.4);
-      g.drawPolygon(pts);
-      g.lineStyle(2, 0xffffff, 1);
-      g.beginFill(fillHex, 1);
-      g.drawPolygon(pts);
-      g.endFill();
-      return genTexture(g).tex;
+    // Create coin texture FIRST to avoid cache pollution from nugget
+    // Use a synchronous canvas-based approach
+    const makeCoinTexture = () => {
+      const c = document.createElement("canvas");
+      c.width = 64;
+      c.height = 64;
+      const cctx = c.getContext("2d");
+      cctx.translate(32, 32);
+
+      // Draw diamond shape for coin
+      cctx.fillStyle = "#ffff00";
+      cctx.strokeStyle = "#ffffff";
+      cctx.lineWidth = 3;
+      cctx.beginPath();
+      cctx.moveTo(0, -20);
+      cctx.lineTo(20, 0);
+      cctx.lineTo(0, 20);
+      cctx.lineTo(-20, 0);
+      cctx.closePath();
+      cctx.fill();
+      cctx.stroke();
+
+      // Use renderer to generate texture to avoid cache issues
+      const tempSprite = new PIXI.Sprite(PIXI.Texture.from(c));
+      const tex = pixiApp.renderer.generateTexture(tempSprite);
+      tempSprite.destroy(true);
+      return tex;
     };
-    pixiTextures.coin1 = makeCoin(0xffff00);
-    pixiTextures.coin5 = makeCoin(0xffff00);
-    pixiTextures.coin10 = makeCoin(0xffff00);
+
+    // Create and assign coin texture BEFORE nugget
+    const coinTex = makeCoinTexture();
+    pixiTextures.coin1 = coinTex;
+    pixiTextures.coin5 = coinTex;
+    pixiTextures.coin10 = coinTex;
+    pixiTextures.coinPickup = coinTex;
+
+    // Then try to load the PNG (will overwrite if successful)
+    applyCoinTexture();
 
     // Health pickup: medkit texture (loaded by texture-manager.js)
-    // Texture will be set when medkit.png loads via applyHealthTexture()
     applyHealthTexture();
 
     const makeNugget = () => {
@@ -964,6 +990,7 @@ export function initPixiOverlay(options) {
     pixiArrowsGraphics,
     pixiAsteroidLayer,
     pixiPickupLayer,
+    pixiCoinLayer,
     pixiPlayerLayer,
     pixiBaseLayer,
     pixiEnemyLayer,

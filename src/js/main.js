@@ -456,6 +456,7 @@ let pixiArrowsGraphics = null; // Graphics object for directional arrows
 // World-space layers
 let pixiAsteroidLayer = null;
 let pixiPickupLayer = null;
+let pixiCoinLayer = null;
 let pixiPlayerLayer = null;
 let pixiBaseLayer = null;
 let pixiEnemyLayer = null;
@@ -490,6 +491,7 @@ const pixiInit = initPixiOverlay({
   pixiArrowsGraphics,
   pixiAsteroidLayer,
   pixiPickupLayer,
+  pixiCoinLayer,
   pixiPlayerLayer,
   pixiBaseLayer,
   pixiEnemyLayer,
@@ -515,6 +517,7 @@ registerPixiCleanupDependencies({
     pixiStarLayer,
     pixiAsteroidLayer,
     pixiPickupLayer,
+    pixiCoinLayer,
     pixiPlayerLayer,
     pixiBaseLayer,
     pixiEnemyLayer,
@@ -925,6 +928,7 @@ registerGameLoopLogicDependencies({
   getPixiBulletLayer: () => pixiBulletLayer,
   getPixiParticleLayer: () => pixiParticleLayer,
   getPixiPickupLayer: () => pixiPickupLayer,
+  getPixiCoinLayer: () => pixiCoinLayer,
   getPixiVectorLayer: () => pixiVectorLayer,
   getPixiBulletTextures: () => pixiBulletTextures,
   getPixiTextures: () => pixiTextures,

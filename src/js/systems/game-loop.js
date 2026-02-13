@@ -88,6 +88,7 @@ let _getPixiArrowsGraphics = null;
 let _getPixiBulletLayer = null;
 let _getPixiParticleLayer = null;
 let _getPixiPickupLayer = null;
+let _getPixiCoinLayer = null;
 let _getPixiVectorLayer = null;
 let _getPixiBulletTextures = null;
 let _getPixiTextures = null;
@@ -122,6 +123,7 @@ let pixiArrowsGraphics = null;
 let pixiBulletLayer = null;
 let pixiParticleLayer = null;
 let pixiPickupLayer = null;
+let pixiCoinLayer = null;
 let pixiVectorLayer = null;
 let pixiBulletTextures = null;
 let pixiTextures = null;
@@ -213,6 +215,7 @@ export function registerGameLoopLogicDependencies(deps) {
   if (deps.getPixiBulletLayer) _getPixiBulletLayer = deps.getPixiBulletLayer;
   if (deps.getPixiParticleLayer) _getPixiParticleLayer = deps.getPixiParticleLayer;
   if (deps.getPixiPickupLayer) _getPixiPickupLayer = deps.getPixiPickupLayer;
+  if (deps.getPixiCoinLayer) _getPixiCoinLayer = deps.getPixiCoinLayer;
   if (deps.getPixiVectorLayer) _getPixiVectorLayer = deps.getPixiVectorLayer;
   if (deps.getPixiBulletTextures) _getPixiBulletTextures = deps.getPixiBulletTextures;
   if (deps.getPixiTextures) _getPixiTextures = deps.getPixiTextures;
@@ -402,6 +405,7 @@ export function gameLoopLogic(opts = null) {
   if (_getPixiBulletLayer) pixiBulletLayer = _getPixiBulletLayer();
   if (_getPixiParticleLayer) pixiParticleLayer = _getPixiParticleLayer();
   if (_getPixiPickupLayer) pixiPickupLayer = _getPixiPickupLayer();
+  if (_getPixiCoinLayer) pixiCoinLayer = _getPixiCoinLayer();
   if (_getPixiVectorLayer) pixiVectorLayer = _getPixiVectorLayer();
   if (_getPixiBulletTextures) pixiBulletTextures = _getPixiBulletTextures();
   if (_getPixiTextures) pixiTextures = _getPixiTextures();
@@ -1502,6 +1506,10 @@ export function gameLoopLogic(opts = null) {
   window.cachedPickupRes.pool = pixiPickupSpritePool;
   const pickupRes = window.cachedPickupRes;
 
+  if (!window.cachedCoinRes) window.cachedCoinRes = { layer: null };
+  window.cachedCoinRes.layer = pixiCoinLayer;
+  const coinRes = window.cachedCoinRes;
+
   if (!window.cachedParticleRes)
     window.cachedParticleRes = {
       layer: null,
@@ -1613,7 +1621,7 @@ export function gameLoopLogic(opts = null) {
     if (!c || c.dead) continue;
     if (doUpdate) c.update(GameContext.player, deltaTime);
     if (doDraw) {
-      if (isInView(c.pos.x, c.pos.y, 50)) c.draw(ctx, pickupRes);
+      if (isInView(c.pos.x, c.pos.y, 50)) c.draw(ctx, coinRes);
       else if (typeof c.cull === "function") c.cull();
     }
   }

@@ -4,12 +4,14 @@
  */
 
 import { Entity } from "../Entity.js";
-import { colorToPixi } from "../../rendering/colors.js";
-import { allocPixiSprite, releasePixiSprite } from "../../rendering/sprite-pools.js";
+import { releasePixiSprite } from "../../rendering/sprite-pools.js";
 import { pixiPickupSpritePool } from "../../rendering/pixi-setup.js";
+
+const COIN_TEXTURE_URL = "assets/coin1.png";
 
 /**
  * Coin pickup with magnetization and value-based coloring.
+ * Loads coin1.png in its own Image and creates a dedicated texture (no shared Pixi cache with nugget).
  */
 export class Coin extends Entity {
   constructor(x, y, value = 1) {
@@ -65,6 +67,31 @@ export class Coin extends Entity {
   draw(ctx, pixiResources = null) {
     if (this.dead) return;
 
+    // Use coin-only texture from URL so we never share state with nugget/pixiTextures
+    const tex = Coin._getCoinTexture();
+    if (pixiResources?.layer && tex && tex.width > 0 && tex.height > 0) {
+      let spr = this.sprite;
+      if (!spr) {
+        spr = new PIXI.Sprite(tex);
+        spr.anchor.set(0.5);
+        pixiResources.layer.addChild(spr);
+      }
+      if (spr) {
+        spr.texture = tex;
+        spr.visible = true;
+        spr.position.set(this.pos.x, this.pos.y);
+        const pulse = 1.0 + Math.sin(this.flash * 0.1) * 0.2;
+        const base = (this.radius * 2) / Math.max(1, tex.width, tex.height);
+        spr.scale.set(base * pulse);
+        spr.rotation = this.flash * 0.05;
+        spr.tint = 0xffffff;
+        spr.alpha = 1;
+        this.sprite = spr;
+        return;
+      }
+    }
+
+    // Canvas fallback (when Pixi not ready or texture still loading)
     ctx.save();
     ctx.translate(this.pos.x, this.pos.y);
     const scale = 1.0 + Math.sin(this.flash * 0.1) * 0.2;
@@ -87,12 +114,32 @@ export class Coin extends Entity {
   }
 
   /**
-   * Get appropriate texture based on coin value.
+   * Get the coin texture. Loads coin1.png in a dedicated Image and creates
+   * BaseTexture+Texture so we never share Pixi cache with nugget.
    */
-  _getTexture(textures) {
-    if (this.value >= 10) return textures.coin10 || textures.coin1;
-    if (this.value >= 5) return textures.coin5 || textures.coin1;
-    return textures.coin1;
+  static _getCoinTexture() {
+    if (!window.PIXI) return null;
+    if (Coin._coinTexture) return Coin._coinTexture;
+    if (Coin._coinImageLoading) return null;
+    if (!Coin._coinImage) {
+      Coin._coinImage = new Image();
+      Coin._coinImage.crossOrigin = "";
+      Coin._coinImageLoading = true;
+      Coin._coinImage.onload = () => {
+        Coin._coinImageLoading = false;
+        try {
+          const base = new PIXI.BaseTexture(Coin._coinImage);
+          Coin._coinTexture = new PIXI.Texture(base);
+        } catch (e) {
+          console.warn("[Coin] Failed to create texture from image:", e);
+        }
+      };
+      Coin._coinImage.onerror = () => {
+        Coin._coinImageLoading = false;
+      };
+      Coin._coinImage.src = COIN_TEXTURE_URL;
+    }
+    return Coin._coinTexture || null;
   }
 
   /**

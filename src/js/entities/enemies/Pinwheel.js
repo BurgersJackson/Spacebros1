@@ -571,7 +571,7 @@ export class Pinwheel extends Entity {
 
     // Drop 5 nuggets for player to pick up
     for (let i = 0; i < 5; i++) {
-      const n = new SpaceNugget(this.pos.x, this.pos.y, 1);
+      const n = new SpaceNugget(this.pos.x, this.pos.y, 1, 1.5);
       n.vel.x = (Math.random() - 0.5) * 2;
       n.vel.y = (Math.random() - 0.5) * 2;
       GameContext.nuggets.push(n);
