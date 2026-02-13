@@ -218,6 +218,13 @@ export function applyUpgrade(id, tier) {
         GameContext.player.stats.slowFieldDuration = 720;
       }
       break;
+    case "xp_magnet":
+      if (tier === 1) GameContext.player.magnetRadius = 300;
+      if (tier === 2) GameContext.player.magnetRadius = 450;
+      if (tier === 3) GameContext.player.magnetRadius = 600;
+      if (tier === 4) GameContext.player.magnetRadius = 750;
+      if (tier === 5) GameContext.player.magnetRadius = 900;
+      break;
     case "companion_drones": {
       const ensureDrone = t => {
         if (!GameContext.drones.find(d => d.type === t) && spawnDrone) spawnDrone(t);

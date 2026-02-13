@@ -1074,7 +1074,7 @@ export function resolveEntityCollision() {
       if (dist < GameContext.player.radius + p.radius) {
         if (_playSound) _playSound("powerup");
         const healthBonus = GameContext.player.stats.luckyHealthDrop || 0;
-        const finalHealth = Math.ceil(10 * (1 + healthBonus));
+        const finalHealth = Math.ceil(15 * (1 + healthBonus));
         GameContext.player.hp = Math.min(
           GameContext.player.hp + finalHealth,
           GameContext.player.maxHp

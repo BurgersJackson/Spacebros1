@@ -316,6 +316,16 @@ export const UPGRADE_DATA = {
           tier4: "Stops 10s, +25% Area",
           tier5: "Stops 12s, +50% Area",
           notes: "Freezes enemies."
+        },
+        {
+          id: "xp_magnet",
+          name: "XP Magnet",
+          tier1: "2x magnet range",
+          tier2: "3x magnet range",
+          tier3: "4x magnet range",
+          tier4: "5x magnet range",
+          tier5: "6x magnet range",
+          notes: "Faster leveling."
         }
       ]
     },
@@ -792,9 +802,9 @@ export const META_SHOP_UPGRADE_DATA = {
   batteryCapacitor: {
     name: "Battery Capacitor",
     description: "Stores energy over time. Discharge manually for massive AOE damage.",
-    tier1: "100 dmg, 800u blast (60s charge)",
-    tier2: "200 dmg, 900u blast (60s charge)",
-    tier3: "300 dmg, 1000u blast (60s charge)",
+    tier1: "1000 dmg, 800u blast (60s charge)",
+    tier2: "2000 dmg, 900u blast (60s charge)",
+    tier3: "3000 dmg, 1000u blast (60s charge)",
     tier4: "Increases effectiveness further",
     tier5: "Increases effectiveness further",
     tier6: "Increases effectiveness further",
@@ -803,5 +813,35 @@ export const META_SHOP_UPGRADE_DATA = {
     tier9: "Increases effectiveness further",
     tier10: "MAX TIER REACHED",
     notes: "Press F / Gamepad Y to discharge. Manual control only, never auto-fires."
+  },
+  magnetBooster: {
+    name: "Magnet Booster",
+    description: "Increase pickup magnet radius",
+    tier1: "+100 magnet radius (150 -> 250)",
+    tier2: "+200 total (350)",
+    tier3: "+300 total (450)",
+    tier4: "Increases effectiveness further",
+    tier5: "Increases effectiveness further",
+    tier6: "Increases effectiveness further",
+    tier7: "Increases effectiveness further",
+    tier8: "Increases effectiveness further",
+    tier9: "Increases effectiveness further",
+    tier10: "MAX TIER REACHED",
+    notes: "Larger collection radius for all pickups."
+  },
+  nuggetMagnet: {
+    name: "Nugget Magnet",
+    description: "Space nuggets are attracted from further away",
+    tier1: "+25% nugget magnet range",
+    tier2: "+50% nugget magnet range",
+    tier3: "+75% nugget magnet range",
+    tier4: "Increases effectiveness further",
+    tier5: "Increases effectiveness further",
+    tier6: "Increases effectiveness further",
+    tier7: "Increases effectiveness further",
+    tier8: "Increases effectiveness further",
+    tier9: "Increases effectiveness further",
+    tier10: "MAX TIER REACHED",
+    notes: "Makes collecting space nuggets much easier."
   }
 };

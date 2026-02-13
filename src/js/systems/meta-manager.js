@@ -87,7 +87,9 @@ export function loadMetaProfile() {
         comboMeter: 0,
         startingWeapon: 0,
         secondWind: 0,
-        batteryCapacitor: 0
+        batteryCapacitor: 0,
+        magnetBooster: 0,
+        nuggetMagnet: 0
       },
       GameContext.metaProfile.purchases
     );
@@ -154,7 +156,9 @@ export function resetMetaProfile() {
       bountyHunter: 0,
       comboMeter: 0,
       startingWeapon: 0,
-      secondWind: 0
+      secondWind: 0,
+      magnetBooster: 0,
+      nuggetMagnet: 0
     }
   };
 }
@@ -501,12 +505,30 @@ export function applyMetaUpgrades(spawnDroneFn) {
   const batteryCapacitorTier = GameContext.metaProfile.purchases.batteryCapacitor || 0;
   if (batteryCapacitorTier > 0) {
     GameContext.player.batteryUnlocked = true;
-    GameContext.player.batteryDamage = batteryCapacitorTier * 100;
+    GameContext.player.batteryDamage = batteryCapacitorTier * 1000;
     const baseRanges = { 1: 800, 2: 900, 3: 1000 };
     if (baseRanges[batteryCapacitorTier]) {
       GameContext.player.batteryRange = baseRanges[batteryCapacitorTier];
     } else if (batteryCapacitorTier > 3) {
       GameContext.player.batteryRange = 1000 + (batteryCapacitorTier - 3) * 100;
     }
+  }
+
+  const magnetBoosterTier = GameContext.metaProfile.purchases.magnetBooster || 0;
+  if (magnetBoosterTier > 0) {
+    let radiusBonus = 100 * Math.min(magnetBoosterTier, 3);
+    if (magnetBoosterTier > 3) {
+      radiusBonus += 50 * (magnetBoosterTier - 3);
+    }
+    GameContext.player.magnetRadius = 150 + radiusBonus;
+  }
+
+  const nuggetMagnetTier = GameContext.metaProfile.purchases.nuggetMagnet || 0;
+  if (nuggetMagnetTier > 0) {
+    let nuggetMagnetBonus = 0.25 * Math.min(nuggetMagnetTier, 3);
+    if (nuggetMagnetTier > 3) {
+      nuggetMagnetBonus += 0.1 * (nuggetMagnetTier - 3);
+    }
+    GameContext.player.stats.nuggetMagnetBonus = nuggetMagnetBonus;
   }
 }

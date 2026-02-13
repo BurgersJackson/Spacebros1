@@ -199,6 +199,20 @@ export function updateMetaUI() {
         batteryEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
     }
 
+    const magnetEl = document.getElementById('meta-magnet');
+    if (magnetEl) {
+        const tier = GameContext.metaProfile.purchases.magnetBooster || 0;
+        const cost = getMetaUpgradeCost('magnetBooster', 25);
+        magnetEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+
+    const nuggetMagEl = document.getElementById('meta-nuggetmag');
+    if (nuggetMagEl) {
+        const tier = GameContext.metaProfile.purchases.nuggetMagnet || 0;
+        const cost = getMetaUpgradeCost('nuggetMagnet', 30);
+        nuggetMagEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
+    }
+
     const upgradeButtonMap = {
         'buy-start-dmg': 'startDamage',
         'buy-passive-hp': 'passiveHp',
@@ -230,7 +244,9 @@ export function updateMetaUI() {
         'buy-combo': 'comboMeter',
         'buy-startweapon': 'startingWeapon',
         'buy-secondwind': 'secondWind',
-        'buy-battery': 'batteryCapacitor'
+        'buy-battery': 'batteryCapacitor',
+        'buy-magnet': 'magnetBooster',
+        'buy-nuggetmag': 'nuggetMagnet'
     };
     Object.entries(upgradeButtonMap).forEach(([btnId, upgradeId]) => {
         const button = document.getElementById(btnId);
@@ -308,7 +324,8 @@ export function showMetaShopUpgradeModal(upgradeId, clickedButton) {
         'dashDuration': 30, 'autoReroll': 50,
         'contractSpeed': 40, 'startingRerolls': 30,
         'luckyDrop': 55, 'bountyHunter': 45, 'comboMeter': 50,
-        'startingWeapon': 60, 'secondWind': 70, 'batteryCapacitor': 45
+        'startingWeapon': 60, 'secondWind': 70, 'batteryCapacitor': 45,
+        'magnetBooster': 25, 'nuggetMagnet': 30
     };
     const baseCost = baseCostMap[upgradeId] || 50;
     const cost = getMetaUpgradeCost(upgradeId, baseCost);

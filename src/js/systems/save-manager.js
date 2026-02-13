@@ -318,7 +318,9 @@ export function createNewProfile(name) {
       comboMeter: 0,
       startingWeapon: 0,
       secondWind: 0,
-      batteryCapacitor: 0
+      batteryCapacitor: 0,
+      magnetBooster: 0,
+      nuggetMagnet: 0
     }
   };
 

@@ -880,7 +880,7 @@ export function gameLoopLogic(opts = null) {
           GameContext.nextMagnetSpawnTime = GameContext.gameStartTime + 300000;
         }
         if (now >= GameContext.nextMagnetSpawnTime) {
-          const spawnPoint = findSpawnPointRelative(GameContext, true, 1000, 2500);
+          const spawnPoint = findSpawnPointRelative(GameContext, true, 2000, 3000);
           const magnet = new MagnetPickup(spawnPoint.x, spawnPoint.y);
           GameContext.magnetPickups.push(magnet);
           GameContext.nextMagnetSpawnTime = now + 300000;

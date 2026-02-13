@@ -41,7 +41,7 @@ export class Coin extends Entity {
 
     if (this.magnetized) {
       const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
-      const speed = 12 + 1000 / Math.max(10, dist);
+      const speed = (12 + 1000 / Math.max(10, dist)) * 3;
       this.vel.x = Math.cos(angle) * speed;
       this.vel.y = Math.sin(angle) * speed;
     } else {
