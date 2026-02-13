@@ -24,6 +24,7 @@ export function setupGameWorld() {
   GameContext.spaceNuggets = 0;
   deps.clearArrayWithPixiCleanup(GameContext.powerups);
   deps.clearArrayWithPixiCleanup(GameContext.magnetPickups);
+  deps.clearArrayWithPixiCleanup(GameContext.nukePickups);
   deps.clearArrayWithPixiCleanup(GameContext.shootingStars);
   deps.clearArrayWithPixiCleanup(GameContext.drones);
   deps.clearArrayWithPixiCleanup(GameContext.caches);
@@ -74,6 +75,10 @@ export function setupGameWorld() {
   GameContext.arenaFightsCompleted = 0;
   GameContext.arenaFightTarget = 3;
   GameContext.caveWarpCountdownAt = null;
+  GameContext.stationSpawnAt = null;
+  GameContext.nextSpaceStationTime = null;
+  GameContext.nextMagnetSpawnTime = null;
+  GameContext.nextNukeSpawnTime = null;
   // Unlock vertical scrolling warp gate at game start (first level only)
   GameContext.verticalScrollingWarpGateUnlocked = true;
   GameContext.gunboatRespawnAt = null;
