@@ -116,6 +116,16 @@ export class NukePickup extends Entity {
     }
 
     ctx.restore();
+
+    // Draw label above pickup
+    ctx.save();
+    ctx.font = "bold 12px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ff4400";
+    ctx.shadowColor = "#ff4400";
+    ctx.shadowBlur = 4;
+    ctx.fillText("NUKE", this.pos.x, this.pos.y - 40);
+    ctx.restore();
   }
 
   cull() {

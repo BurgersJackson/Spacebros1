@@ -113,9 +113,10 @@ export function handleSpaceStationDestroyed() {
   GameContext.spaceStation = null;
   GameContext.stationHealthBarVisible = false;
 
-  // Level 1: don't end level; warp opens in 10s (game-loop sets caveWarpCountdownAt), player goes to warp boss
+  // Level 1: don't end level; warp opens in 2 minutes, player goes to warp boss
   if (GameContext.currentLevel === 1) {
-    showOverlayMessage("WARP OPENING IN 10s - BOSS AHEAD", "#f80", 5000);
+    GameContext.caveWarpCountdownAt = Date.now() + 120000; // 2 minutes
+    showOverlayMessage("WARP OPENING IN 2 MINUTES - BOSS AHEAD", "#f80", 5000);
     GameContext.score += 50000;
     return;
   }

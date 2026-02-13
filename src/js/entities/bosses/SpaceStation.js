@@ -64,14 +64,14 @@ export class SpaceStation extends Entity {
     this.shieldRadius = Math.floor(600 * 0.65);
     this.innerShieldRadius = Math.floor(560 * 0.65);
 
-    this.shieldSegments = new Array(36).fill(100);
-    this.innerShieldSegments = new Array(32).fill(100);
+    this.shieldSegments = new Array(36).fill(150);
+    this.innerShieldSegments = new Array(32).fill(150);
 
     this.shieldRotation = 0;
     this.innerShieldRotation = 0;
     this.shieldRotationSpeed = 0.0105; // 50% faster than hull (0.007 * 1.5)
     this.shieldRegenTimer = 0;
-    this.shieldRegenInterval = 1500; // 1 shard every 1.5 seconds
+    this.shieldRegenInterval = 1000; // 1 shard every 1 second
 
     this.turretReload = 250;
     this.defenderSpawnTimer = 0;
@@ -108,7 +108,7 @@ export class SpaceStation extends Entity {
     this.shieldRegenTimer += deltaTime;
     if (this.shieldRegenTimer >= this.shieldRegenInterval) {
       this.shieldRegenTimer = 0;
-      const maxSeg = 100;
+      const maxSeg = 150;
       let healed = false;
       for (let i = 0; i < this.shieldSegments.length && !healed; i++) {
         if (this.shieldSegments[i] < maxSeg) {

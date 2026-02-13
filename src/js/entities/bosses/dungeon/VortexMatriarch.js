@@ -399,6 +399,12 @@ export class VortexMatriarch extends Enemy {
     if (this.dead) return;
     this.dead = true;
 
+    // Track boss kill for quest progress and statistics
+    GameContext.bossKills++;
+    if (!GameContext.caveMode && !GameContext.dungeon1Active) {
+      GameContext.arenaFightsCompleted++;
+    }
+
     // Clear shield segments to prevent visuals from persisting
     if (this.shieldSegments && this.shieldSegments.length > 0) {
       this.shieldSegments = [];
@@ -481,9 +487,15 @@ export class VortexMatriarch extends Enemy {
 
     GameContext.bossActive = false;
     if (GameContext.vortexMatriarch === this) GameContext.vortexMatriarch = null;
-    // Leave GameContext.boss set so game-loop can count arena fight and spawn space station
 
-    showOverlayMessage("VORTEX MATRIARCH DESTROYED", "#0af", 3000);
+    GameContext.bossesDestroyedCount++;
+    if (GameContext.bossesDestroyedCount >= 3 && !GameContext.spaceStation) {
+      GameContext.pendingStations = 1;
+      GameContext.nextSpaceStationTime = Date.now() + 30000;
+      showOverlayMessage("VORTEX MATRIARCH DESTROYED - SPACE STATION IN 30s", "#f80", 4000);
+    } else {
+      showOverlayMessage("VORTEX MATRIARCH DESTROYED", "#0af", 3000);
+    }
     if (musicEnabled) setMusicMode("normal");
   }
 

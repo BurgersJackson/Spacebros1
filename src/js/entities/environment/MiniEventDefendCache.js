@@ -88,8 +88,8 @@ export class MiniEventDefendCache extends Entity {
     if (d < this.radius) {
       this.progressMs += dt;
     } else if (this.progressMs > 0) {
-      // Decay progress at half the fill speed when player leaves the area
-      this.progressMs -= dt * 0.5;
+      // Decay progress at 1/3 fill speed (takes 3x as long to decay as it does to complete)
+      this.progressMs -= dt * (1 / 3);
       if (this.progressMs < 0) this.progressMs = 0;
     }
 

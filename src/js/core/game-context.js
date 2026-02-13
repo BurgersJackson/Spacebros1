@@ -6,6 +6,7 @@ export const GameContext = {
   canResumeGame: false,
   gameEnded: false,
   gameMode: "normal",
+  hardcoreMode: false,
   gameStartTime: 0,
   pauseStartTime: 0,
   pausedAccumMs: 0,

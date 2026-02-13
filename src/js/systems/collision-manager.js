@@ -1116,6 +1116,42 @@ export function resolveEntityCollision() {
       }
     }
 
+    // Space Station collision with player
+    if (GameContext.spaceStation && !GameContext.spaceStation.dead) {
+      const dist = Math.hypot(
+        GameContext.player.pos.x - GameContext.spaceStation.pos.x,
+        GameContext.player.pos.y - GameContext.spaceStation.pos.y
+      );
+
+      // Use shield radius if shields are up, otherwise use hull radius
+      const stationCollisionRadius =
+        GameContext.spaceStation.shieldSegments && GameContext.spaceStation.shieldSegments.some(s => s > 0)
+          ? GameContext.spaceStation.shieldRadius
+          : GameContext.spaceStation.radius;
+
+      if (dist < GameContext.player.radius + stationCollisionRadius) {
+        const ramDamage = 8;
+        GameContext.player.takeHit(ramDamage);
+
+        // Push player away from station
+        const angle = Math.atan2(
+          GameContext.player.pos.y - GameContext.spaceStation.pos.y,
+          GameContext.player.pos.x - GameContext.spaceStation.pos.x
+        );
+        GameContext.player.vel.x += Math.cos(angle) * 4;
+        GameContext.player.vel.y += Math.sin(angle) * 4;
+
+        if (_spawnParticles)
+          _spawnParticles(
+            (GameContext.player.pos.x + GameContext.spaceStation.pos.x) / 2,
+            (GameContext.player.pos.y + GameContext.spaceStation.pos.y) / 2,
+            15,
+            "#0ff"
+          );
+        if (_playSound) _playSound("hit");
+      }
+    }
+
     for (let c of GameContext.coins) {
       if (c.dead) continue;
       const dist = Math.hypot(

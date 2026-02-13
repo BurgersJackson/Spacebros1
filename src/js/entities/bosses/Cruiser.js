@@ -5,7 +5,6 @@ import { playSound, setMusicMode, musicEnabled } from "../../audio/audio-manager
 import { Bullet, CruiserMineBomb, FlagshipGuidedMissile } from "../projectiles/index.js";
 import { HealthPowerUp, Coin, SpaceNugget } from "../pickups/index.js";
 import { showOverlayMessage } from "../../utils/ui-helpers.js";
-import { stopArenaCountdown } from "../../systems/event-scheduler.js";
 import {
   pixiCleanupObject,
   clearArrayWithPixiCleanup,
@@ -216,6 +215,11 @@ export class Cruiser extends Enemy {
     this.dead = true;
     GameContext.bossKills++;
 
+    // Track arena fight progress if not in cave mode
+    if (!GameContext.caveMode && !GameContext.dungeon1Active) {
+      GameContext.arenaFightsCompleted++;
+    }
+
     if (this._pixiInvulGfx) {
       try {
         if (this._pixiInvulGfx.parent) this._pixiInvulGfx.parent.removeChild(this._pixiInvulGfx);
@@ -307,6 +311,13 @@ export class Cruiser extends Enemy {
     }
     playSound("coin");
     GameContext.powerups.push(new HealthPowerUp(this.pos.x, this.pos.y));
+    // Every cruiser kill counts toward the 3-bosses quest
+    GameContext.bossesDestroyedCount++;
+    if (GameContext.bossesDestroyedCount >= 3 && !GameContext.spaceStation) {
+      GameContext.pendingStations = 1;
+      GameContext.nextSpaceStationTime = Date.now() + 30000;
+    }
+
     // Check for other cruisers in enemies array
     const otherCruisers = GameContext.enemies.filter(e => e && e.type === "cruiser");
     if (otherCruisers.length > 0) {
@@ -318,18 +329,14 @@ export class Cruiser extends Enemy {
       showOverlayMessage("CRUISER DESTROYED - ANOTHER APPROACHING", "#f80", 3000);
       // bossActive stays true
     } else {
-      // No other cruisers; leave GameContext.boss set so game-loop can count arena fight and spawn space station
+      // No other cruisers; end boss phase
       GameContext.bossActive = false;
-      GameContext.bossesDestroyedCount++;
       if (GameContext.bossesDestroyedCount >= 3) {
-        GameContext.pendingStations = 1;
-        GameContext.nextSpaceStationTime = Date.now() + 30000;
         showOverlayMessage("CRUISER DESTROYED - SPACE STATION IN 30s", "#f80", 4000);
       } else {
         showOverlayMessage("CRUISER DESTROYED", "#0f0", 3000);
       }
       if (musicEnabled) setMusicMode("normal");
-      stopArenaCountdown();
     }
     // Timer is handled by game-loop.js - keeps running for multiple cruisers
   }

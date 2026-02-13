@@ -358,6 +358,12 @@ export class ChitinusPrime extends Enemy {
     if (this.dead) return;
     this.dead = true;
 
+    // Track boss kill for quest progress and statistics
+    GameContext.bossKills++;
+    if (!GameContext.caveMode && !GameContext.dungeon1Active) {
+      GameContext.arenaFightsCompleted++;
+    }
+
     // Clear shield segments to prevent visuals from persisting
     if (this.shieldSegments && this.shieldSegments.length > 0) {
       this.shieldSegments = [];
@@ -434,9 +440,15 @@ export class ChitinusPrime extends Enemy {
 
     GameContext.bossActive = false;
     if (GameContext.chitinusPrime === this) GameContext.chitinusPrime = null;
-    // Leave GameContext.boss set so game-loop can count arena fight and spawn space station
 
-    showOverlayMessage("CHITINUS PRIME DESTROYED", "#ff0", 3000);
+    GameContext.bossesDestroyedCount++;
+    if (GameContext.bossesDestroyedCount >= 3 && !GameContext.spaceStation) {
+      GameContext.pendingStations = 1;
+      GameContext.nextSpaceStationTime = Date.now() + 30000;
+      showOverlayMessage("CHITINUS PRIME DESTROYED - SPACE STATION IN 30s", "#f80", 4000);
+    } else {
+      showOverlayMessage("CHITINUS PRIME DESTROYED", "#ff0", 3000);
+    }
     if (musicEnabled) setMusicMode("normal");
   }
 

@@ -40,7 +40,12 @@ export function initLevelSelection() {
 
   const missionStartBtn = document.getElementById("mission-start-btn");
   if (missionStartBtn) {
-    missionStartBtn.addEventListener("click", startSelectedLevel);
+    missionStartBtn.addEventListener("click", () => startSelectedLevel(false));
+  }
+
+  const missionHardcoreBtn = document.getElementById("mission-hardcore-btn");
+  if (missionHardcoreBtn) {
+    missionHardcoreBtn.addEventListener("click", () => startSelectedLevel(true));
   }
 
   const missionBackBtn = document.getElementById("mission-back-btn");
@@ -109,9 +114,10 @@ export function hideMissionModal(showStartScreen = true) {
   }, 100);
 }
 
-export function startSelectedLevel() {
+export function startSelectedLevel(hardcore = false) {
   if (GameContextRef) {
     GameContextRef.currentLevel = selectedLevel;
+    GameContextRef.hardcoreMode = hardcore;
   }
   if (initAudioRef) initAudioRef();
   if (startGameRef) startGameRef();

@@ -872,6 +872,12 @@ export function updateXpUI(state = GameContext) {
   if (levelEl) levelEl.innerText = player.level;
   const scoreEl = document.getElementById("score");
   if (scoreEl) scoreEl.innerText = state.score;
+
+  // Hardcore mode indicator
+  const hardcoreEl = document.getElementById("hardcore-indicator");
+  if (hardcoreEl) {
+    hardcoreEl.style.display = state.hardcoreMode ? "block" : "none";
+  }
 }
 
 /**

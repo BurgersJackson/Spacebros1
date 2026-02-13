@@ -229,6 +229,11 @@ export function getMetaUpgradeCost(upgradeId, baseCost) {
 }
 
 export function applyMetaUpgrades(spawnDroneFn) {
+  // Skip all meta upgrades in hardcore mode
+  if (GameContext.hardcoreMode) {
+    return;
+  }
+
   const startDamageTier = GameContext.metaProfile.purchases.startDamage || 0;
   if (startDamageTier > 0) {
     GameContext.player.stats.damageMult *= 1 + 0.1 * startDamageTier;

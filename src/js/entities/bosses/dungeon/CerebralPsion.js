@@ -390,6 +390,12 @@ export class CerebralPsion extends Enemy {
     if (this.dead) return;
     this.dead = true;
 
+    // Track boss kill for quest progress and statistics
+    GameContext.bossKills++;
+    if (!GameContext.caveMode && !GameContext.dungeon1Active) {
+      GameContext.arenaFightsCompleted++;
+    }
+
     // Clear shield segments to prevent visuals from persisting
     if (this.shieldSegments && this.shieldSegments.length > 0) {
       this.shieldSegments = [];
@@ -472,9 +478,15 @@ export class CerebralPsion extends Enemy {
 
     GameContext.bossActive = false;
     if (GameContext.cerebralPsion === this) GameContext.cerebralPsion = null;
-    // Leave GameContext.boss set so game-loop can count arena fight and spawn space station
 
-    showOverlayMessage("CEREBRAL PSION DESTROYED", "#f0f", 3000);
+    GameContext.bossesDestroyedCount++;
+    if (GameContext.bossesDestroyedCount >= 3 && !GameContext.spaceStation) {
+      GameContext.pendingStations = 1;
+      GameContext.nextSpaceStationTime = Date.now() + 30000;
+      showOverlayMessage("CEREBRAL PSION DESTROYED - SPACE STATION IN 30s", "#f80", 4000);
+    } else {
+      showOverlayMessage("CEREBRAL PSION DESTROYED", "#f0f", 3000);
+    }
     if (musicEnabled) setMusicMode("normal");
   }
 

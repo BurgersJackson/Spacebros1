@@ -209,15 +209,11 @@ import {
   setReturningFromModal as setReturningFromModalSystem
 } from "./systems/meta-manager.js";
 import {
-  getArenaCountdownTimeLeft,
   isArenaCountdownActive,
   scheduleNextMiniEvent,
   scheduleNextRadiationStorm,
   scheduleNextShootingStar,
-  setArenaCountdownTimeLeft,
-  startArenaCountdown,
-  stopArenaCountdown,
-  updateArenaCountdownDisplay
+  stopArenaCountdown
 } from "./systems/event-scheduler.js";
 import {
   completeContract as completeContractSystem,
@@ -981,7 +977,8 @@ registerGameLoopLogicDependencies({
   findSpawnPointRelative,
   resolveEntityCollision,
   processBulletCollisions,
-  ShootingStar
+  ShootingStar,
+  updateContractUI
 });
 
 // Register dependencies for extracted entity classes

@@ -398,52 +398,6 @@
         z-index: 5;
       }
 
-      #arena-countdown {
-        position: absolute;
-        top: 15%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        text-align: center;
-        font-size: 48px;
-        font-weight: bold;
-        letter-spacing: 4px;
-        display: none;
-        width: 100%;
-        z-index: 6;
-        will-change: transform; /* Hint browser for animation optimization */
-      }
-
-      /* Base countdown state (10-6 seconds) */
-      #arena-countdown.countdown-normal {
-        color: #f80;
-        text-shadow: 0 0 20px #f80;
-        font-size: 48px;
-      }
-
-      /* Warning state (5-4 seconds) */
-      #arena-countdown.countdown-warning {
-        color: #ff0;
-        text-shadow: 0 0 25px #ff0;
-        font-size: 56px;
-      }
-
-      /* Critical state (3-1 seconds) */
-      #arena-countdown.countdown-critical {
-        color: #f00;
-        text-shadow: 0 0 30px #f00;
-        font-size: 64px;
-        animation: pulse 0.5s ease-in-out infinite alternate;
-      }
-
-      @keyframes pulse {
-        from {
-          transform: translate(-50%, -50%) scale(1);
-        }
-        to {
-          transform: translate(-50%, -50%) scale(1.1);
-        }
-      }
-
       h1 {
         font-size: 48px;
         margin-bottom: 20px;
@@ -939,6 +893,7 @@
 
     <div id="ui-layer">
       <div id="fps-counter">FPS --</div>
+      <div id="hardcore-indicator" style="display: none; position: absolute; top: 40px; left: 10px; color: #f44; font-weight: bold; font-size: 14px; text-shadow: 0 0 5px #f44;">HARDCORE MODE</div>
       <div id="hud">
         <div class="hud-left">
           <div>SCORE: <span id="score">0</span></div>
@@ -989,7 +944,6 @@
         </div>
 
         <div id="overlay-message"></div>
-        <div id="arena-countdown"></div>
 
         <div class="hud-left">
           <div>LVL: <span id="level-display">1</span></div>
@@ -1432,7 +1386,7 @@
     <div
       id="level-mission-modal"
       class="menu-screen"
-      style="display: none; width: 500px; padding: 30px"
+      style="display: none; width: 520px; padding: 30px"
     >
       <h2 id="mission-title" style="color: #0ff; margin-top: 0">MISSION BRIEFING</h2>
       <p
@@ -1441,8 +1395,14 @@
       >
         Mission description here
       </p>
-      <button id="mission-start-btn">START MISSION</button>
-      <button id="mission-back-btn" style="margin-left: 10px">BACK</button>
+      <div style="margin: 20px 0;">
+        <button id="mission-start-btn">START MISSION</button>
+        <button id="mission-hardcore-btn" style="margin-left: 10px; background: #600; border-color: #f44;">START HARDCORE</button>
+        <button id="mission-back-btn" style="margin-left: 10px">BACK</button>
+      </div>
+      <div style="color: #888; font-size: 12px; margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;">
+        <strong style="color: #f44;">HARDCORE MODE:</strong> All shop upgrades are disabled. You start with base stats and only earn upgrades during the run. Your shop purchases are preserved for normal runs.
+      </div>
     </div>
 
     <div id="pause-menu" class="menu-screen">

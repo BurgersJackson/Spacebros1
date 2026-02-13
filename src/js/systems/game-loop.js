@@ -42,13 +42,7 @@ import { CaveGunboat1, CaveGunboat2 } from "../entities/cave/index.js";
 import {
   scheduleNextMiniEvent,
   scheduleNextRadiationStorm,
-  scheduleNextShootingStar,
-  getArenaCountdownTimeLeft,
-  isArenaCountdownActive,
-  setArenaCountdownTimeLeft,
-  startArenaCountdown,
-  stopArenaCountdown,
-  updateArenaCountdownDisplay
+  scheduleNextShootingStar
 } from "./event-scheduler.js";
 import { updateContract as updateContractSystem } from "./contract-manager.js";
 import { updateBossHealthBars, drawNukePickupIndicator } from "../ui/hud.js";
@@ -174,6 +168,7 @@ let completeSectorWarp = null;
 let findSpawnPointRelative = null;
 let resolveEntityCollision = null;
 let processBulletCollisions = null;
+let updateContractUI = null;
 
 let shakeOffsetX = 0;
 let shakeOffsetY = 0;
@@ -276,6 +271,7 @@ export function registerGameLoopLogicDependencies(deps) {
   if (deps.findSpawnPointRelative) findSpawnPointRelative = deps.findSpawnPointRelative;
   if (deps.resolveEntityCollision) resolveEntityCollision = deps.resolveEntityCollision;
   if (deps.processBulletCollisions) processBulletCollisions = deps.processBulletCollisions;
+  if (deps.updateContractUI) updateContractUI = deps.updateContractUI;
 }
 
 /**
@@ -648,44 +644,6 @@ export function gameLoopLogic(opts = null) {
       }
       GameContext.cruiserTimerPausedAt = null;
     }
-    // Arena countdown: start 10 seconds before cruiser spawns
-    try {
-      if (
-        !GameContext.sectorTransitionActive &&
-        !warpActive &&
-        !GameContext.caveMode &&
-        !GameContext.verticalScrollingMode &&
-        !inAnomaly &&
-        !inStationFight &&
-        !inTractorBeam &&
-        !waitingForResume &&
-        GameContext.dreadManager.timerActive &&
-        !GameContext.bossActive &&
-        GameContext.dreadManager.timerAt
-      ) {
-        const remainingMs = GameContext.dreadManager.timerAt - now;
-        if (remainingMs <= 10000 && remainingMs > 0) {
-          if (!isArenaCountdownActive()) {
-            startArenaCountdown();
-          }
-          const remainingSecs = Math.ceil(remainingMs / 1000);
-          if (remainingSecs > 0 && remainingSecs <= 10) {
-            if (remainingSecs !== getArenaCountdownTimeLeft()) {
-              setArenaCountdownTimeLeft(remainingSecs);
-              updateArenaCountdownDisplay();
-            }
-          }
-        } else {
-          if (isArenaCountdownActive()) {
-            stopArenaCountdown();
-          }
-        }
-      } else {
-        if (isArenaCountdownActive()) {
-          stopArenaCountdown();
-        }
-      }
-    } catch (e) {}
     // Unique boss spawn: if timer active and no boss present, spawn from unique pool
     try {
       if (
@@ -719,6 +677,17 @@ export function gameLoopLogic(opts = null) {
         // Pick random boss from available
         const bossType = available[Math.floor(Math.random() * available.length)];
         GameContext.bossesSpawnedThisLevel.push(bossType);
+
+        // Boss display names
+        const bossDisplayNames = {
+          "Cruiser": "CRUISER",
+          "NecroticHive": "NECROTIC HIVE",
+          "CerebralPsion": "CEREBRAL PSION",
+          "Fleshforge": "FLESHFORGE",
+          "VortexMatriarch": "VORTEX MATRIARCH",
+          "ChitinusPrime": "CHITINUS PRIME",
+          "PsyLich": "PSY LICH"
+        };
 
         // Spawn the selected boss
         GameContext.cruiserEncounterCount++;
@@ -754,6 +723,8 @@ export function gameLoopLogic(opts = null) {
           default:
             newBoss = new Cruiser(GameContext.cruiserEncounterCount);
         }
+        // Set display name on boss for defeat message
+        newBoss.displayName = bossDisplayNames[bossType] || "BOSS";
         // First boss becomes the main boss, subsequent bosses go to enemies array
         if (!GameContext.bossActive || !GameContext.boss) {
           GameContext.boss = newBoss;
@@ -772,7 +743,9 @@ export function gameLoopLogic(opts = null) {
               (GameContext.dreadManager.maxDelayMs - GameContext.dreadManager.minDelayMs + 1)
           );
         GameContext.dreadManager.timerAt = Date.now() + cruiserDelay;
-        showOverlayMessage("WARNING: HOSTILE APPROACHING", "#f00", 4000);
+        // Show boss name when spawning
+        const bossDisplayName = bossDisplayNames[bossType] || "BOSS";
+        showOverlayMessage(bossDisplayName, "#f00", 3000);
         playSound("boss_spawn");
         if (isMusicEnabled && isMusicEnabled()) setMusicMode("cruiser");
       }
@@ -782,6 +755,8 @@ export function gameLoopLogic(opts = null) {
 
     // Track arena fight completion (boss defeats)
     // Skip if in dungeon - Dungeon1Zone handles counting those kills
+    // Note: arenaFightsCompleted is now incremented in each boss's kill() method
+    // This section handles cleanup and showing messages after Cruiser death
     if (
       !GameContext.caveMode &&
       !GameContext.dungeon1Active &&
@@ -789,12 +764,9 @@ export function gameLoopLogic(opts = null) {
       GameContext.boss.dead &&
       !GameContext.spaceStation
     ) {
-      GameContext.arenaFightsCompleted++;
-      showOverlayMessage(
-        `ARENA FIGHT ${Math.min(GameContext.arenaFightsCompleted, GameContext.arenaFightTarget)}/${GameContext.arenaFightTarget} COMPLETED`,
-        "#0f0",
-        3000
-      );
+      // Get defeated boss name for display
+      const defeatedBossName = GameContext.boss.displayName || GameContext.boss.bossType || "BOSS";
+      showOverlayMessage(`${defeatedBossName} DEFEATED`, "#0f0", 2000);
 
       // Clear boss
       if (GameContext.boss) {
@@ -815,6 +787,14 @@ export function gameLoopLogic(opts = null) {
       }
     }
 
+    // Update quest UI periodically (every 500ms)
+    if (updateContractUI) {
+      if (!GameContext._lastContractUIUpdate || now - GameContext._lastContractUIUpdate > 500) {
+        GameContext._lastContractUIUpdate = now;
+        updateContractUI();
+      }
+    }
+
     // Check if station spawn timer has expired
     if (
       GameContext.stationSpawnAt &&
@@ -827,6 +807,25 @@ export function gameLoopLogic(opts = null) {
       GameContext.stationArena.y = GameContext.spaceStation.pos.y;
       GameContext.stationArena.radius = 2800;
       GameContext.stationArena.active = false;
+
+      // Spawn a random dungeon boss to help defend the space station
+      const bossPool = [
+        { cls: NecroticHive, name: "NecroticHive" },
+        { cls: CerebralPsion, name: "CerebralPsion" },
+        { cls: Fleshforge, name: "Fleshforge" },
+        { cls: VortexMatriarch, name: "VortexMatriarch" },
+        { cls: ChitinusPrime, name: "ChitinusPrime" },
+        { cls: PsyLich, name: "PsyLich" }
+      ];
+      const bossChoice = bossPool[Math.floor(Math.random() * bossPool.length)];
+      const bossOffset = {
+        x: GameContext.spaceStation.pos.x + 600,
+        y: GameContext.spaceStation.pos.y
+      };
+      const dungeonBoss = new bossChoice.cls(bossOffset.x, bossOffset.y);
+      dungeonBoss.assignedBase = GameContext.spaceStation;
+      GameContext.enemies.push(dungeonBoss);
+
       showOverlayMessage("FINAL BOSS: DESTROY THE SPACE STATION", "#f80", 5000);
       playSound("station_spawn");
     }
@@ -841,11 +840,11 @@ export function gameLoopLogic(opts = null) {
       !GameContext.warpCompletedOnce &&
       !GameContext.caveWarpCountdownAt
     ) {
-      GameContext.caveWarpCountdownAt = Date.now() + 10000;
+      GameContext.caveWarpCountdownAt = Date.now() + 120000; // 2 minutes
       if (GameContext.currentLevel === 1) {
-        showOverlayMessage("WARP OPENING IN 10s - BOSS AHEAD", "#0ff", 3000);
+        showOverlayMessage("WARP OPENING IN 2 MINUTES - BOSS AHEAD", "#0ff", 3000);
       } else {
-        showOverlayMessage("SPACE STATION DESTROYED - WARPING TO LEVEL 2 IN 10s", "#0ff", 3000);
+        showOverlayMessage("SPACE STATION DESTROYED - WARPING TO LEVEL 2 IN 2 MINUTES", "#0ff", 3000);
       }
     }
 
@@ -877,6 +876,25 @@ export function gameLoopLogic(opts = null) {
       GameContext.stationArena.y = GameContext.spaceStation.pos.y;
       GameContext.stationArena.radius = 2800;
       GameContext.stationArena.active = false;
+
+      // Spawn a random dungeon boss to help defend the space station
+      const bossPool2 = [
+        { cls: NecroticHive, name: "NecroticHive" },
+        { cls: CerebralPsion, name: "CerebralPsion" },
+        { cls: Fleshforge, name: "Fleshforge" },
+        { cls: VortexMatriarch, name: "VortexMatriarch" },
+        { cls: ChitinusPrime, name: "ChitinusPrime" },
+        { cls: PsyLich, name: "PsyLich" }
+      ];
+      const bossChoice2 = bossPool2[Math.floor(Math.random() * bossPool2.length)];
+      const bossOffset2 = {
+        x: GameContext.spaceStation.pos.x + 600,
+        y: GameContext.spaceStation.pos.y
+      };
+      const dungeonBoss2 = new bossChoice2.cls(bossOffset2.x, bossOffset2.y);
+      dungeonBoss2.assignedBase = GameContext.spaceStation;
+      GameContext.enemies.push(dungeonBoss2);
+
       showOverlayMessage("SPACE STATION SPAWNED - DESTROY THE BARRIER?", "#f80", 5000);
       playSound("station_spawn");
       GameContext.nextSpaceStationTime = null;

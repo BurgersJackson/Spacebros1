@@ -88,6 +88,16 @@ export class MagnetPickup extends Entity {
     ctx.stroke();
 
     ctx.restore();
+
+    // Draw label above pickup
+    ctx.save();
+    ctx.font = "bold 12px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#00ffff";
+    ctx.shadowColor = "#00ffff";
+    ctx.shadowBlur = 4;
+    ctx.fillText("MAGNET", this.pos.x, this.pos.y - 40);
+    ctx.restore();
   }
 
   cull() {

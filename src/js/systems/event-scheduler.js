@@ -1,19 +1,16 @@
 import { GameContext } from "../core/game-context.js";
 
-let arenaCountdownActive = false;
-let arenaCountdownTimeLeft = 0;
-let arenaCountdownElement = null;
-
+// Stub functions for backwards compatibility (arena countdown removed)
 export function isArenaCountdownActive() {
-  return arenaCountdownActive;
+  return false;
 }
 
-export function getArenaCountdownTimeLeft() {
-  return arenaCountdownTimeLeft;
+export function startArenaCountdown() {
+  // No-op - arena countdown removed
 }
 
-export function setArenaCountdownTimeLeft(value) {
-  arenaCountdownTimeLeft = value;
+export function stopArenaCountdown() {
+  // No-op - arena countdown removed
 }
 
 export function scheduleNextShootingStar() {
@@ -33,52 +30,4 @@ export function scheduleNextMiniEvent(fromNow = Date.now()) {
   const min = 120000;
   const max = 210000;
   GameContext.nextMiniEventAt = fromNow + min + Math.floor(Math.random() * (max - min + 1));
-}
-
-export function startArenaCountdown() {
-  if (arenaCountdownActive) return;
-
-  arenaCountdownActive = true;
-  arenaCountdownTimeLeft = 10;
-
-  if (!arenaCountdownElement) {
-    arenaCountdownElement = document.getElementById("arena-countdown");
-  }
-
-  updateArenaCountdownDisplay();
-}
-
-export function updateArenaCountdownDisplay() {
-  if (!arenaCountdownElement) {
-    arenaCountdownElement = document.getElementById("arena-countdown");
-  }
-  const el = arenaCountdownElement;
-  if (!el) return;
-
-  if (arenaCountdownTimeLeft <= 0) {
-    el.style.display = "none";
-    el.className = "";
-    return;
-  }
-
-  el.innerText = `ARENA FIGHT\n${arenaCountdownTimeLeft}`;
-  el.style.display = "block";
-
-  el.className = "";
-  if (arenaCountdownTimeLeft <= 3) {
-    el.classList.add("countdown-critical");
-  } else if (arenaCountdownTimeLeft <= 5) {
-    el.classList.add("countdown-warning");
-  } else {
-    el.classList.add("countdown-normal");
-  }
-}
-
-export function stopArenaCountdown() {
-  arenaCountdownActive = false;
-  const el = arenaCountdownElement;
-  if (el) {
-    el.style.display = "none";
-    el.className = "";
-  }
 }
