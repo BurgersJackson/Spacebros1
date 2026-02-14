@@ -65,7 +65,8 @@ export class WarpBioPod extends Entity {
         damage: 1,
         radius: 12, // 3x larger (4 * 3 = 12)
         color: "#f0f",
-        life: 180
+        life: 180,
+        ignoreShields: true
       });
       b.owner = this.owner;
       GameContext.bullets.push(b);

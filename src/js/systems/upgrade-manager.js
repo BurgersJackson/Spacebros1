@@ -35,7 +35,8 @@ export function applyUpgrade(id, tier) {
   switch (id) {
     case "turret_damage":
       {
-        const table = { 0: 1.0, 1: 1.5, 2: 2.0, 3: 3.0 };
+        // Match UPGRADE_DATA: +20%, +40%, +70%, +100%, +140% total
+        const table = { 0: 1.0, 1: 1.2, 2: 1.4, 3: 1.7, 4: 2.0, 5: 2.4 };
         const prev = table[prevTier] || getDiminishingValue(prevTier, table, 0.99);
         const next = table[tier] || getDiminishingValue(tier, table, 0.99);
         const ratio = prev > 0 ? next / prev : 1.0;

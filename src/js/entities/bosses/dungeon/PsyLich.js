@@ -276,8 +276,8 @@ export class PsyLich extends Enemy {
           // Extend duration for massive drain
           if (this.soulDrainTether) {
             this.soulDrainTether.life = 180;
-            this.soulDrainTether.damagePerSecond = 8;
-            this.soulDrainTether.healPerSecond = 8;
+            this.soulDrainTether.damagePerSecond = 1;
+            this.soulDrainTether.healPerSecond = 10;
           }
         }
       }

@@ -17,7 +17,7 @@ export function updateMetaUI() {
   const startEl = document.getElementById("meta-start-dmg");
   if (startEl) {
     const tier = GameContext.metaProfile.purchases.startDamage || 0;
-    const cost = getMetaUpgradeCost("startDamage", 10);
+    const cost = getMetaUpgradeCost("startDamage", 90);
     startEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
   }
   const passiveEl = document.getElementById("meta-passive-hp");
@@ -199,7 +199,7 @@ export function updateMetaUI() {
   const batteryEl = document.getElementById("meta-battery");
   if (batteryEl) {
     const tier = GameContext.metaProfile.purchases.batteryCapacitor || 0;
-    const cost = getMetaUpgradeCost("batteryCapacitor", 45);
+    const cost = getMetaUpgradeCost("batteryCapacitor", 95);
     batteryEl.innerText = tier > 0 ? `TIER ${tier} (NEXT: ${cost})` : `BUY (${cost} NUGS)`;
   }
 
@@ -318,7 +318,7 @@ export function showMetaShopUpgradeModal(upgradeId, clickedButton) {
 
   const currentTier = GameContext.metaProfile.purchases[upgradeId] || 0;
   const baseCostMap = {
-    startDamage: 10,
+    startDamage: 90,
     passiveHp: 15,
     hullPlating: 30,
     shieldCore: 30,
@@ -348,7 +348,7 @@ export function showMetaShopUpgradeModal(upgradeId, clickedButton) {
     comboMeter: 50,
     startingWeapon: 60,
     secondWind: 70,
-    batteryCapacitor: 45,
+    batteryCapacitor: 95,
     magnetBooster: 25,
     nuggetMagnet: 30
   };

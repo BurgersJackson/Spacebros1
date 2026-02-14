@@ -130,7 +130,7 @@ export class MiniEventDefendCache extends Entity {
   success() {
     if (this.dead) return;
     this.kill();
-    playSound("powerup");
+    playSound("levelup");
     GameContext.player.addXp(60);
     if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 40, "#ff0");
     showOverlayMessage("EVENT COMPLETE - CHOOSE AN UPGRADE!", "#0f0", 2200, 1);

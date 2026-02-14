@@ -223,7 +223,9 @@ export function getMetaUpgradeCost(upgradeId, baseCost) {
     }
   }
 
-  const multiplier = Math.pow(1.3, currentTier * 0.5);
+  // First upgrade +50%, then +50% per tier: t1=1.5x, t2=2x, t3=2.5x, t4=3x, ...
+  const nextTier = currentTier + 1;
+  const multiplier = 1 + 0.5 * nextTier;
   const cost = Math.ceil(baseCost * multiplier * discount);
   return cost;
 }

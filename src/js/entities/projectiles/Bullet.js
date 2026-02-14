@@ -191,9 +191,12 @@ export class Bullet extends Entity {
    */
   draw(ctx, pixiResources = null) {
     if (this.dead) {
-      if (this.sprite && pixiResources?.pool) {
-        releasePixiSprite(pixiResources.pool, this.sprite);
-        this.sprite = null;
+      if (this.sprite) {
+        this.sprite.visible = false;
+        if (pixiResources?.pool) {
+          releasePixiSprite(pixiResources.pool, this.sprite);
+          this.sprite = null;
+        }
       }
       return;
     }

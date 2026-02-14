@@ -384,6 +384,16 @@ export function startGame() {
     deps.setupGameWorld();
     deps.updateContractUI();
 
+    // Level 1: show objectives for a few seconds before enemies spawn (spawn at 8s)
+    if (GameContext.sectorIndex === 1 && deps.showOverlayMessage) {
+      deps.showOverlayMessage(
+        "OBJECTIVES: Defeat 3 cruiser bosses • Destroy the space station • Defeat the warp boss. Complete contracts for free upgrades!",
+        "#fa0",
+        6000,
+        5
+      );
+    }
+
     if (deps.getMusicEnabled && deps.getMusicEnabled()) {
       deps.initAudio();
       deps.startMusic();

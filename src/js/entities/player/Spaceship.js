@@ -405,20 +405,35 @@ export class Spaceship extends Entity {
       // Check if turbo button is pressed
       const turboPressed = keys.e || gpState.turbo || mouseState.rightDown;
 
+      // Helper to instantly set velocity to turbo max speed in facing direction
+      const activateTurboBoost = () => {
+        this.turboBoost.activeFrames = this.turboBoost.durationFrames;
+        this.turboBoost.cooldownFrames = this.turboBoost.cooldownTotalFrames;
+        playSound("powerup");
+
+        // Instantly set velocity to max turbo speed in facing direction
+        const slowMult =
+          this.caveSlowFrames > 0 ? Math.max(0.4, Math.min(1.0, this.caveSlowMult || 0.62)) : 1.0;
+        const turboMaxSpeed =
+          this.maxSpeed *
+          this.stats.speedMult *
+          (this.stats.speedBonusFromMit || 1.0) *
+          this.turboBoost.speedMult *
+          slowMult;
+        this.vel.x = Math.cos(this.angle) * turboMaxSpeed;
+        this.vel.y = Math.sin(this.angle) * turboMaxSpeed;
+      };
+
       // Trigger on press (not press -> press transition)
       if (turboPressed && !this.turboBoost.buttonHeld) {
         if (this.turboBoost.activeFrames <= 0 && this.turboBoost.cooldownFrames <= 0) {
-          this.turboBoost.activeFrames = this.turboBoost.durationFrames;
-          this.turboBoost.cooldownFrames = this.turboBoost.cooldownTotalFrames;
-          playSound("powerup");
+          activateTurboBoost();
         }
       }
       // Re-trigger if button is still held and cooldown just expired
       else if (turboPressed && cooldownJustExpired) {
         if (this.turboBoost.activeFrames <= 0) {
-          this.turboBoost.activeFrames = this.turboBoost.durationFrames;
-          this.turboBoost.cooldownFrames = this.turboBoost.cooldownTotalFrames;
-          playSound("powerup");
+          activateTurboBoost();
         }
       }
 
@@ -1722,6 +1737,17 @@ export class Spaceship extends Entity {
   }
   drawLaser(ctx) {
     if (!this.visible || this.dead) {
+      if (this._pixiLaserGfx) {
+        try {
+          this._pixiLaserGfx.clear();
+        } catch (e) {}
+        this._pixiLaserGfx.visible = false;
+      }
+      return;
+    }
+
+    // Slacker special doesn't show turret aiming line
+    if (this.shipType === "slacker") {
       if (this._pixiLaserGfx) {
         try {
           this._pixiLaserGfx.clear();

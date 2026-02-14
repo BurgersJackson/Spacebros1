@@ -1016,7 +1016,7 @@
 
       <button id="resume-btn-start">RESUME GAME</button>
       <button id="profile-btn">SELECT PROFILE</button>
-      <button id="upgrades-btn" style="margin-top: 10px">UPGRADES STORE</button>
+      <button id="upgrades-btn" style="margin-top: 10px; background: #640; border-color: #fa0; color: #fa0;">UPGRADES STORE</button>
       <button id="settings-btn" style="margin-top: 10px">SETTINGS</button>
       <button id="desktop-quit-start-btn" style="margin-top: 10px">QUIT TO DESKTOP</button>
     </div>
@@ -1217,9 +1217,7 @@
       <div id="meta-shop" class="meta-shop">
         <div>Meta Nuggets: <span id="meta-bank">0</span></div>
         <div class="meta-grid">
-          <div class="meta-item">
-            <button id="buy-start-dmg">START DAMAGE BOOST</button><span id="meta-start-dmg"></span>
-          </div>
+          <!-- Ordered by base cost ascending (15 → 90) -->
           <div class="meta-item">
             <button id="buy-passive-hp">PASSIVE +HP</button><span id="meta-passive-hp"></span>
           </div>
@@ -1228,10 +1226,38 @@
             ><span>Tokens: <span id="meta-reroll-count">0</span></span>
           </div>
           <div class="meta-item">
+            <button id="buy-speed">SPEED TUNING</button><span id="meta-speed"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-magnet">MAGNET BOOSTER</button><span id="meta-magnet"></span>
+          </div>
+          <div class="meta-item">
             <button id="buy-hull">HULL PLATING</button><span id="meta-hull"></span>
           </div>
           <div class="meta-item">
             <button id="buy-shield-core">SHIELD CORE</button><span id="meta-shield-core"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-shieldregen">SHIELD RECHARGE</button><span id="meta-shieldregen"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-dashdur">DASH DURATION</button><span id="meta-dashdur"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-startreroll">STARTING REROLLS</button
+            ><span id="meta-startreroll"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-nuggetmag">NUGGET MAGNET</button><span id="meta-nuggetmag"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-nuke">GLOBAL DEFENSE RING</button><span id="meta-nuke"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-thorn">THORN ARMOR</button><span id="meta-thorn"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-dashcd">DASH COOLDOWN</button><span id="meta-dashcd"></span>
           </div>
           <div class="meta-item">
             <button id="buy-static">STATIC BLUEPRINT</button><span id="meta-static"></span>
@@ -1240,13 +1266,23 @@
             <button id="buy-missile">MISSILE PRIMER</button><span id="meta-missile"></span>
           </div>
           <div class="meta-item">
-            <button id="buy-magnet">MAGNET BOOSTER</button><span id="meta-magnet"></span>
+            <button id="buy-drone">DRONE FABRICATOR</button><span id="meta-drone"></span>
           </div>
           <div class="meta-item">
-            <button id="buy-nuke">GLOBAL DEFENSE RING</button><span id="meta-nuke"></span>
+            <button id="buy-contractspeed">CONTRACT SPEED</button
+            ><span id="meta-contractspeed"></span>
           </div>
           <div class="meta-item">
-            <button id="buy-speed">SPEED TUNING</button><span id="meta-speed"></span>
+            <button id="buy-lifesteal">LIFESTEAL</button><span id="meta-lifesteal"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-piercing">PIERCING ROUNDS</button><span id="meta-piercing"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-evasion">EVASION BOOST</button><span id="meta-evasion"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-bounty">BOUNTY HUNTER</button><span id="meta-bounty"></span>
           </div>
           <div class="meta-item">
             <button id="buy-bank-mult">BANK MULTIPLIER</button><span id="meta-bank-mult"></span>
@@ -1255,70 +1291,34 @@
             <button id="buy-discount">SHOP DISCOUNT</button><span id="meta-discount"></span>
           </div>
           <div class="meta-item">
-            <button id="buy-extra-life">EXTRA LIFE</button><span id="meta-extra-life"></span>
-          </div>
-          <div class="meta-item">
-            <button id="buy-drone">DRONE FABRICATOR</button><span id="meta-drone"></span>
-          </div>
-          <!-- New Upgrades -->
-          <div class="meta-item">
-            <button id="buy-piercing">PIERCING ROUNDS</button><span id="meta-piercing"></span>
-          </div>
-          <div class="meta-item">
-            <button id="buy-explosive">EXPLOSIVE ROUNDS</button><span id="meta-explosive"></span>
-          </div>
-          <div class="meta-item">
             <button id="buy-crit">CRITICAL STRIKE</button><span id="meta-crit"></span>
-          </div>
-          <div class="meta-item">
-            <button id="buy-split">SPLIT SHOT</button><span id="meta-split"></span>
-          </div>
-          <div class="meta-item">
-            <button id="buy-thorn">THORN ARMOR</button><span id="meta-thorn"></span>
-          </div>
-          <div class="meta-item">
-            <button id="buy-lifesteal">LIFESTEAL</button><span id="meta-lifesteal"></span>
-          </div>
-          <div class="meta-item">
-            <button id="buy-evasion">EVASION BOOST</button><span id="meta-evasion"></span>
-          </div>
-          <div class="meta-item">
-            <button id="buy-shieldregen">SHIELD RECHARGE</button><span id="meta-shieldregen"></span>
-          </div>
-          <div class="meta-item">
-            <button id="buy-dashcd">DASH COOLDOWN</button><span id="meta-dashcd"></span>
-          </div>
-          <div class="meta-item">
-            <button id="buy-dashdur">DASH DURATION</button><span id="meta-dashdur"></span>
           </div>
           <div class="meta-item">
             <button id="buy-autoreroll">AUTO-REROLL</button><span id="meta-autoreroll"></span>
           </div>
           <div class="meta-item">
-            <button id="buy-nuggetmag">NUGGET MAGNET</button><span id="meta-nuggetmag"></span>
+            <button id="buy-combo">COMBO METER</button><span id="meta-combo"></span>
           </div>
           <div class="meta-item">
-            <button id="buy-contractspeed">CONTRACT SPEED</button
-            ><span id="meta-contractspeed"></span>
-          </div>
-          <div class="meta-item">
-            <button id="buy-startreroll">STARTING REROLLS</button
-            ><span id="meta-startreroll"></span>
+            <button id="buy-explosive">EXPLOSIVE ROUNDS</button><span id="meta-explosive"></span>
           </div>
           <div class="meta-item">
             <button id="buy-lucky">LUCKY DROP</button><span id="meta-lucky"></span>
           </div>
           <div class="meta-item">
-            <button id="buy-bounty">BOUNTY HUNTER</button><span id="meta-bounty"></span>
+            <button id="buy-extra-life">EXTRA LIFE</button><span id="meta-extra-life"></span>
           </div>
           <div class="meta-item">
-            <button id="buy-combo">COMBO METER</button><span id="meta-combo"></span>
+            <button id="buy-split">SPLIT SHOT</button><span id="meta-split"></span>
           </div>
           <div class="meta-item">
             <button id="buy-startweapon">STARTING WEAPON</button><span id="meta-startweapon"></span>
           </div>
           <div class="meta-item">
             <button id="buy-secondwind">SECOND WIND</button><span id="meta-secondwind"></span>
+          </div>
+          <div class="meta-item">
+            <button id="buy-start-dmg">START DAMAGE BOOST</button><span id="meta-start-dmg"></span>
           </div>
           <div class="meta-item">
             <button id="buy-battery">BATTERY CAPACITOR</button><span id="meta-battery"></span>
@@ -1421,6 +1421,17 @@
           min-height: 1.5em;
         "
       ></div>
+      <div
+        style="
+          color: #fa0;
+          font-size: 11px;
+          text-align: center;
+          margin: 0 0 14px 0;
+          line-height: 1.4;
+        "
+      >
+        Complete contracts and objectives to earn free upgrades during the run.
+      </div>
       <button id="resume-btn">RESUME</button>
       <button id="pause-upgrades-btn">UPGRADES</button>
       <button id="pause-settings-btn">SETTINGS</button>

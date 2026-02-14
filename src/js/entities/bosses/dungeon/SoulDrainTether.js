@@ -9,8 +9,8 @@ export class SoulDrainTether extends Entity {
     this.owner = owner;
     this.radius = 10;
     this.range = 900;
-    this.damagePerSecond = 5;
-    this.healPerSecond = 5;
+    this.damagePerSecond = 1;
+    this.healPerSecond = 10; // 10 heal per 1 damage to player
     this.life = 120;
     this.t = 0;
     this._pixiGfx = null;

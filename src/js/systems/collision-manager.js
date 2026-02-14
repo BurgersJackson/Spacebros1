@@ -311,7 +311,7 @@ function executeNukeEffect() {
   damageBoss(GameContext.destroyer);
 
   // Visual effects
-  if (_playSound) _playSound("base_explode");
+  if (_playSound) _playSound("nuke_explode");
   if (_showOverlayMessage)
     _showOverlayMessage(`NUKE DETONATED - ${destroyedCount} DESTROYED`, "#ff4400", 2000);
 
@@ -1574,6 +1574,7 @@ export function processBulletCollisions() {
 
             if (
               !hit &&
+              !b.ignoreShields &&
               GameContext.player.outerShieldSegments &&
               GameContext.player.outerShieldSegments.some(s => s > 0) &&
               dist < GameContext.player.outerShieldRadius + b.radius * 1.5 &&
@@ -1600,6 +1601,7 @@ export function processBulletCollisions() {
             }
             if (
               !hit &&
+              !b.ignoreShields &&
               dist < GameContext.player.shieldRadius + b.radius * 1.5 &&
               dist > GameContext.player.shieldRadius - b.radius * 2
             ) {

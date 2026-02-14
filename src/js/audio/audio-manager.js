@@ -340,6 +340,63 @@ export function playSound(type, volumeMult = 1) {
         osc.stop(now + 0.3);
         break;
       }
+      case "nuke_explode": {
+        // Massive multi-layered nuclear explosion sound
+        // Layer 1: Deep rumbling bass
+        const osc1 = audioCtx.createOscillator();
+        const gain1 = audioCtx.createGain();
+        osc1.type = "sawtooth";
+        osc1.frequency.setValueAtTime(60, now);
+        osc1.frequency.exponentialRampToValueAtTime(15, now + 2.5);
+        gain1.gain.setValueAtTime(0.5 * volumeMult, now);
+        gain1.gain.exponentialRampToValueAtTime(0.01, now + 2.5);
+        osc1.connect(gain1);
+        gain1.connect(audioCtx.destination);
+
+        // Layer 2: Mid-frequency crash
+        const osc2 = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.type = "square";
+        osc2.frequency.setValueAtTime(200, now);
+        osc2.frequency.exponentialRampToValueAtTime(30, now + 1.5);
+        gain2.gain.setValueAtTime(0.35 * volumeMult, now);
+        gain2.gain.exponentialRampToValueAtTime(0.01, now + 1.5);
+        osc2.connect(gain2);
+        gain2.connect(audioCtx.destination);
+
+        // Layer 3: High frequency attack
+        const osc3 = audioCtx.createOscillator();
+        const gain3 = audioCtx.createGain();
+        osc3.type = "sawtooth";
+        osc3.frequency.setValueAtTime(800, now);
+        osc3.frequency.exponentialRampToValueAtTime(50, now + 0.8);
+        gain3.gain.setValueAtTime(0.25 * volumeMult, now);
+        gain3.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+        osc3.connect(gain3);
+        gain3.connect(audioCtx.destination);
+
+        // Layer 4: Sub-bass rumble
+        const osc4 = audioCtx.createOscillator();
+        const gain4 = audioCtx.createGain();
+        osc4.type = "sine";
+        osc4.frequency.setValueAtTime(30, now);
+        osc4.frequency.linearRampToValueAtTime(10, now + 3);
+        gain4.gain.setValueAtTime(0.4 * volumeMult, now);
+        gain4.gain.linearRampToValueAtTime(0.2 * volumeMult, now + 0.5);
+        gain4.gain.exponentialRampToValueAtTime(0.01, now + 3);
+        osc4.connect(gain4);
+        gain4.connect(audioCtx.destination);
+
+        osc1.start(now);
+        osc2.start(now);
+        osc3.start(now);
+        osc4.start(now);
+        osc1.stop(now + 2.5);
+        osc2.stop(now + 1.5);
+        osc3.stop(now + 0.8);
+        osc4.stop(now + 3);
+        break;
+      }
       case "levelup": {
         const { osc, gain } = createOsc("square", 440, 0.6, 0.2);
         osc.frequency.setValueAtTime(440, now);

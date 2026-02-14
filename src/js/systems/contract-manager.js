@@ -38,14 +38,13 @@ export function completeContract(success = true) {
   if (!GameContext.activeContract) return;
   const contractId = GameContext.activeContract.id;
   if (success) {
-    if (playSoundFn) playSoundFn("powerup");
-
     const rewardScore =
       GameContext.activeContract.rewardScore !== undefined
         ? GameContext.activeContract.rewardScore
         : 5000;
     GameContext.score += rewardScore;
     if (showOverlayMessageFn) showOverlayMessageFn("CONTRACT COMPLETE - CHOOSE AN UPGRADE!", "#0f0", 2000);
+    if (playSoundFn) playSoundFn("levelup");
     if (showLevelUpMenuFn) showLevelUpMenuFn();
   } else {
     if (showOverlayMessageFn) showOverlayMessageFn("CONTRACT FAILED", "#f00", 1500);
