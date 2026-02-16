@@ -403,6 +403,48 @@ function isCruiserOrDungeonBossActive() {
   return hasDungeonBoss || hasCruiser || isMainBossCruiser || isMainBossDungeonBoss;
 }
 
+/**
+ * Count active boss mobs (cruisers and dungeon bosses).
+ * Does NOT include Space Station or Destroyer.
+ * @returns {number} Number of active boss mobs
+ */
+function countActiveBossMobs() {
+  let count = 0;
+
+  // Count main boss if it's a cruiser or dungeon boss
+  if (GameContext.boss && !GameContext.boss.dead) {
+    if (GameContext.boss.isCruiser || GameContext.boss.isDungeonBoss) {
+      count++;
+    }
+  }
+
+  // Count dungeon boss references
+  const dungeonBossRefs = [
+    GameContext.necroticHive,
+    GameContext.cerebralPsion,
+    GameContext.fleshforge,
+    GameContext.vortexMatriarch,
+    GameContext.chitinusPrime,
+    GameContext.psyLich
+  ];
+  for (const boss of dungeonBossRefs) {
+    if (boss && !boss.dead) {
+      count++;
+    }
+  }
+
+  // Count cruisers and dungeon bosses in enemies array
+  for (const e of GameContext.enemies) {
+    if (!e || e.dead) continue;
+    // Avoid double-counting bosses that are also in dungeonBossRefs
+    if ((e.isCruiser || e.isDungeonBoss) && !dungeonBossRefs.includes(e)) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
 export function gameLoopLogic(opts = null) {
   if (_getWidth) width = _getWidth();
   if (_getHeight) height = _getHeight();
@@ -747,12 +789,15 @@ export function gameLoopLogic(opts = null) {
         // Set display name on boss for defeat message
         newBoss.displayName = bossDisplayNames[bossType] || "BOSS";
         // First boss becomes the main boss, subsequent bosses go to enemies array
+        // Max 2 boss mobs at once (plus space station is separate)
+        const currentBossCount = countActiveBossMobs();
         if (!GameContext.bossActive || !GameContext.boss) {
           GameContext.boss = newBoss;
           GameContext.bossActive = true;
-        } else {
+        } else if (currentBossCount < 2) {
           GameContext.enemies.push(newBoss);
         }
+        // If already 2 boss mobs active, skip spawning but still restart timer
         // Keep arena fights clean
         GameContext.radiationStorm = null;
         scheduleNextRadiationStorm(Date.now() + 60000);
@@ -829,7 +874,7 @@ export function gameLoopLogic(opts = null) {
       GameContext.stationArena.radius = 2800;
       GameContext.stationArena.active = false;
 
-      // Spawn a random dungeon boss to help defend the space station
+      // Spawn a random dungeon boss to help defend the space station (max 2 boss mobs total)
       const bossPool = [
         { cls: NecroticHive, name: "NecroticHive" },
         { cls: CerebralPsion, name: "CerebralPsion" },
@@ -838,14 +883,16 @@ export function gameLoopLogic(opts = null) {
         { cls: ChitinusPrime, name: "ChitinusPrime" },
         { cls: PsyLich, name: "PsyLich" }
       ];
-      const bossChoice = bossPool[Math.floor(Math.random() * bossPool.length)];
-      const bossOffset = {
-        x: GameContext.spaceStation.pos.x + 600,
-        y: GameContext.spaceStation.pos.y
-      };
-      const dungeonBoss = new bossChoice.cls(bossOffset.x, bossOffset.y);
-      dungeonBoss.assignedBase = GameContext.spaceStation;
-      GameContext.enemies.push(dungeonBoss);
+      if (countActiveBossMobs() < 2) {
+        const bossChoice = bossPool[Math.floor(Math.random() * bossPool.length)];
+        const bossOffset = {
+          x: GameContext.spaceStation.pos.x + 600,
+          y: GameContext.spaceStation.pos.y
+        };
+        const dungeonBoss = new bossChoice.cls(bossOffset.x, bossOffset.y);
+        dungeonBoss.assignedBase = GameContext.spaceStation;
+        GameContext.enemies.push(dungeonBoss);
+      }
 
       showOverlayMessage("FINAL BOSS: DESTROY THE SPACE STATION", "#f80", 5000);
       playSound("station_spawn");
@@ -902,7 +949,7 @@ export function gameLoopLogic(opts = null) {
       GameContext.stationArena.radius = 2800;
       GameContext.stationArena.active = false;
 
-      // Spawn a random dungeon boss to help defend the space station
+      // Spawn a random dungeon boss to help defend the space station (max 2 boss mobs total)
       const bossPool2 = [
         { cls: NecroticHive, name: "NecroticHive" },
         { cls: CerebralPsion, name: "CerebralPsion" },
@@ -911,14 +958,16 @@ export function gameLoopLogic(opts = null) {
         { cls: ChitinusPrime, name: "ChitinusPrime" },
         { cls: PsyLich, name: "PsyLich" }
       ];
-      const bossChoice2 = bossPool2[Math.floor(Math.random() * bossPool2.length)];
-      const bossOffset2 = {
-        x: GameContext.spaceStation.pos.x + 600,
-        y: GameContext.spaceStation.pos.y
-      };
-      const dungeonBoss2 = new bossChoice2.cls(bossOffset2.x, bossOffset2.y);
-      dungeonBoss2.assignedBase = GameContext.spaceStation;
-      GameContext.enemies.push(dungeonBoss2);
+      if (countActiveBossMobs() < 2) {
+        const bossChoice2 = bossPool2[Math.floor(Math.random() * bossPool2.length)];
+        const bossOffset2 = {
+          x: GameContext.spaceStation.pos.x + 600,
+          y: GameContext.spaceStation.pos.y
+        };
+        const dungeonBoss2 = new bossChoice2.cls(bossOffset2.x, bossOffset2.y);
+        dungeonBoss2.assignedBase = GameContext.spaceStation;
+        GameContext.enemies.push(dungeonBoss2);
+      }
 
       showOverlayMessage("SPACE STATION SPAWNED - DESTROY THE BARRIER?", "#f80", 5000);
       playSound("station_spawn");

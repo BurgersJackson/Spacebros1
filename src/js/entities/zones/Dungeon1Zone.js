@@ -20,8 +20,51 @@ let _filterArrayWithPixiCleanup = null;
 
 export function registerDungeon1ZoneDependencies(deps) {
   if (deps.clearArrayWithPixiCleanup) _clearArrayWithPixiCleanup = deps.clearArrayWithPixiCleanup;
-  if (deps.filterArrayWithPixiCleanup)
+  if (deps.filterArrayWithPixiCleanup) {
     _filterArrayWithPixiCleanup = deps.filterArrayWithPixiCleanup;
+  }
+}
+
+/**
+ * Count active boss mobs (cruisers and dungeon bosses).
+ * Does NOT include Space Station or Destroyer.
+ * @returns {number} Number of active boss mobs
+ */
+function countActiveBossMobs() {
+  let count = 0;
+
+  // Count main boss if it's a cruiser or dungeon boss
+  if (GameContext.boss && !GameContext.boss.dead) {
+    if (GameContext.boss.isCruiser || GameContext.boss.isDungeonBoss) {
+      count++;
+    }
+  }
+
+  // Count dungeon boss references
+  const dungeonBossRefs = [
+    GameContext.necroticHive,
+    GameContext.cerebralPsion,
+    GameContext.fleshforge,
+    GameContext.vortexMatriarch,
+    GameContext.chitinusPrime,
+    GameContext.psyLich
+  ];
+  for (const boss of dungeonBossRefs) {
+    if (boss && !boss.dead) {
+      count++;
+    }
+  }
+
+  // Count cruisers and dungeon bosses in enemies array
+  for (const e of GameContext.enemies) {
+    if (!e || e.dead) continue;
+    // Avoid double-counting bosses that are also in dungeonBossRefs
+    if ((e.isCruiser || e.isDungeonBoss) && !dungeonBossRefs.includes(e)) {
+      count++;
+    }
+  }
+
+  return count;
 }
 
 export class Dungeon1Zone extends Entity {
@@ -174,6 +217,16 @@ export class Dungeon1Zone extends Entity {
 
     this.dungeonEnemies = [];
 
+    // Check if we can spawn a boss (max 2 boss mobs at once)
+    if (countActiveBossMobs() >= 2) {
+      // Too many bosses already, skip spawning and mark as complete
+      this.state = "complete";
+      GameContext.dungeon1Arena.active = false;
+      GameContext.dungeon1Arena.growing = false;
+      showOverlayMessage("DUNGEON COMPLETE (Too many bosses active)", "#0f0", 2200, 3);
+      return;
+    }
+
     // Spawn random dungeon boss from the pool
     const bossType =
       GameContext.dungeonBossPool[Math.floor(Math.random() * GameContext.dungeonBossPool.length)];
@@ -285,11 +338,11 @@ export class Dungeon1Zone extends Entity {
     return;
   }
 
-  bulletHitsWall(bullet) {
+  bulletHitsWall(_bullet) {
     return false;
   }
 
-  draw(ctx) {
+  draw(_ctx) {
     return;
   }
 
@@ -308,11 +361,11 @@ export class Dungeon1Zone extends Entity {
           if (typeof enemy.kill === "function") {
             try {
               enemy.kill();
-            } catch (e) {}
+            } catch (_e) {}
           }
           try {
             pixiCleanupObject(enemy);
-          } catch (e) {}
+          } catch (_e) {}
         }
       }
       this.dungeonEnemies.length = 0;
