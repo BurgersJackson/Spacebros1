@@ -64,8 +64,8 @@ export class SpaceStation extends Entity {
     this.shieldRadius = Math.floor(600 * 0.65);
     this.innerShieldRadius = Math.floor(560 * 0.65);
 
-    this.shieldSegments = new Array(36).fill(150);
-    this.innerShieldSegments = new Array(32).fill(150);
+    this.shieldSegments = new Array(36).fill(100);
+    this.innerShieldSegments = new Array(32).fill(100);
 
     this.shieldRotation = 0;
     this.innerShieldRotation = 0;
@@ -108,7 +108,7 @@ export class SpaceStation extends Entity {
     this.shieldRegenTimer += deltaTime;
     if (this.shieldRegenTimer >= this.shieldRegenInterval) {
       this.shieldRegenTimer = 0;
-      const maxSeg = 150;
+      const maxSeg = 100;
       let healed = false;
       for (let i = 0; i < this.shieldSegments.length && !healed; i++) {
         if (this.shieldSegments[i] < maxSeg) {

@@ -533,10 +533,9 @@ export class NecroticHive extends Enemy {
     const rPos = this._cachedRenderPos || this.pos;
 
     // Invulnerability shield (when segment shields are up) - same pattern as Cruiser: Pixi ring at _cachedRenderPos
-    const showInvulRing =
-      this.shieldSegments &&
-      this.shieldSegments.length > 0 &&
-      this.shieldSegments.some(s => s > 0);
+    const hasOuterShield = this.shieldSegments && this.shieldSegments.length > 0 && this.shieldSegments.some(s => s > 0);
+    const hasInnerShield = this.innerShieldSegments && this.innerShieldSegments.length > 0 && this.innerShieldSegments.some(s => s > 0);
+    const showInvulRing = hasOuterShield || hasInnerShield;
     if (showInvulRing && pixiVectorLayer) {
       let invulGfx = this._pixiInvulGfx;
       if (!invulGfx) {
@@ -550,7 +549,9 @@ export class NecroticHive extends Enemy {
       invulGfx.clear();
       const alpha = 0.35 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.25;
       invulGfx.lineStyle(4, 0xffff00, alpha);
-      invulGfx.drawCircle(0, 0, this.shieldRadius + 5);
+      // Use outer shield radius if outer shields active, otherwise inner shield radius
+      const activeShieldRadius = hasOuterShield ? this.shieldRadius : this.innerShieldRadius;
+      invulGfx.drawCircle(0, 0, activeShieldRadius + 5);
       invulGfx.visible = true;
     } else if (this._pixiInvulGfx) {
       this._pixiInvulGfx.visible = false;
