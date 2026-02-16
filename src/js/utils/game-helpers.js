@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { GameContext } from "../core/game-context.js";
+import { MAX_BULLETS } from "../core/constants.js";
 import { Explosion } from "../entities/index.js";
 import { getElapsedGameTime } from "../core/game-context.js";
 
@@ -158,4 +159,22 @@ export function compactArray(arr) {
     }
   }
   arr.length = alive;
+}
+
+/**
+ * Push a bullet to the bullets array, enforcing MAX_BULLETS cap.
+ * If at cap, kills the oldest bullet to make room.
+ * @param {Object} bullet - The bullet to push
+ * @returns {Object} The pushed bullet
+ */
+export function pushBullet(bullet) {
+  if (GameContext.bullets.length >= MAX_BULLETS) {
+    // Kill oldest bullet to make room
+    const oldest = GameContext.bullets[0];
+    if (oldest && !oldest.dead) {
+      oldest.dead = true;
+    }
+  }
+  GameContext.bullets.push(bullet);
+  return bullet;
 }

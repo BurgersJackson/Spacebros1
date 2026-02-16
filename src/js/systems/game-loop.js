@@ -7,7 +7,7 @@ import {
 } from "../core/constants.js";
 import { globalProfiler } from "../core/profiler.js";
 import { globalJitterMonitor } from "../core/jitter-monitor.js";
-import { updateViewBounds, isInView, rebuildBulletGrid } from "../core/performance.js";
+import { updateViewBounds, isInView, isInViewRadius, rebuildBulletGrid } from "../core/performance.js";
 import { updatePixiBackground, updatePixiCaveGrid } from "../rendering/background-renderer.js";
 import { drawMinimap } from "../rendering/minimap-renderer.js";
 import { setRenderAlpha } from "../rendering/pixi-context.js";
@@ -156,6 +156,7 @@ let processLightningEffects = null;
 let compactArray = null;
 let compactParticles = null;
 let immediateCompactArray = null;
+let conditionalCompactArray = null;
 let globalStaggeredCleanup = null;
 let destroyBulletSprite = null;
 let pixiCleanupObject = null;
@@ -269,6 +270,7 @@ export function registerGameLoopLogicDependencies(deps) {
   if (deps.compactArray) compactArray = deps.compactArray;
   if (deps.compactParticles) compactParticles = deps.compactParticles;
   if (deps.immediateCompactArray) immediateCompactArray = deps.immediateCompactArray;
+  if (deps.conditionalCompactArray) conditionalCompactArray = deps.conditionalCompactArray;
   if (deps.globalStaggeredCleanup) globalStaggeredCleanup = deps.globalStaggeredCleanup;
   if (deps.destroyBulletSprite) destroyBulletSprite = deps.destroyBulletSprite;
   if (deps.pixiCleanupObject) pixiCleanupObject = deps.pixiCleanupObject;
@@ -1721,7 +1723,7 @@ export function gameLoopLogic(opts = null) {
     if (!c || c.dead) continue;
     if (doUpdate) c.update(GameContext.player, deltaTime);
     if (doDraw) {
-      if (isInView(c.pos.x, c.pos.y, 50)) c.draw(ctx, coinRes);
+      if (isInViewRadius(c.pos.x, c.pos.y, 50)) c.draw(ctx, coinRes);
       else if (typeof c.cull === "function") c.cull();
     }
   }
@@ -1731,7 +1733,7 @@ export function gameLoopLogic(opts = null) {
     if (!n || n.dead) continue;
     if (doUpdate) n.update(GameContext.player, deltaTime);
     if (doDraw) {
-      if (isInView(n.pos.x, n.pos.y, 50)) n.draw(ctx, pickupRes);
+      if (isInViewRadius(n.pos.x, n.pos.y, 50)) n.draw(ctx, pickupRes);
       else if (typeof n.cull === "function") n.cull();
     }
   }
@@ -1741,7 +1743,7 @@ export function gameLoopLogic(opts = null) {
     if (!gn || gn.dead) continue;
     if (doUpdate) gn.update(GameContext.player, deltaTime);
     if (doDraw) {
-      if (isInView(gn.pos.x, gn.pos.y, 50)) gn.draw(ctx, pickupRes);
+      if (isInViewRadius(gn.pos.x, gn.pos.y, 50)) gn.draw(ctx, pickupRes);
       else if (typeof gn.cull === "function") gn.cull();
     }
   }
@@ -1751,7 +1753,7 @@ export function gameLoopLogic(opts = null) {
     if (!p || p.dead) continue;
     if (doUpdate) p.update(GameContext.player, deltaTime);
     if (doDraw) {
-      if (isInView(p.pos.x, p.pos.y, 60)) p.draw(ctx, pickupRes);
+      if (isInViewRadius(p.pos.x, p.pos.y, 60)) p.draw(ctx, pickupRes);
       else if (typeof p.cull === "function") p.cull();
     }
   }
@@ -1761,7 +1763,7 @@ export function gameLoopLogic(opts = null) {
     if (!m || m.dead) continue;
     if (doUpdate) m.update(GameContext.player, deltaTime);
     if (doDraw) {
-      if (isInView(m.pos.x, m.pos.y, 60)) m.draw(ctx, pickupRes);
+      if (isInViewRadius(m.pos.x, m.pos.y, 60)) m.draw(ctx, pickupRes);
       else if (typeof m.cull === "function") m.cull();
     }
   }
@@ -1959,12 +1961,20 @@ export function gameLoopLogic(opts = null) {
       GameContext.bossArena.active = true;
       GameContext.bossArena.growing = false;
     }
-    if (doDraw) GameContext.boss.draw(ctx);
+    // Draw culling: skip boss draw when far off-screen
+    const bossDrawRadius = 400;
+    if (doDraw && isInViewRadius(GameContext.boss.pos.x, GameContext.boss.pos.y, bossDrawRadius)) {
+      GameContext.boss.draw(ctx);
+    }
   }
 
   if (GameContext.spaceStation) {
     if (doUpdate) GameContext.spaceStation.update(deltaTime);
-    if (doDraw) GameContext.spaceStation.draw(ctx);
+    // Draw culling: skip station draw when far off-screen (station radius ~340, shields ~390)
+    const stationDrawRadius = 500;
+    if (doDraw && isInViewRadius(GameContext.spaceStation.pos.x, GameContext.spaceStation.pos.y, stationDrawRadius)) {
+      GameContext.spaceStation.draw(ctx);
+    }
     // Station HP bar is now shown in bottom boss-health-bars row (updateBossHealthBars)
     const sContainer = document.getElementById("station-health-container");
     if (sContainer) sContainer.style.display = "none";
@@ -1979,7 +1989,11 @@ export function gameLoopLogic(opts = null) {
   // Destroyer.draw() hides Pixi when out of view to avoid ghost at stale position)
   if (GameContext.destroyer) {
     if (doUpdate) GameContext.destroyer.update(deltaTime);
-    if (doDraw) GameContext.destroyer.draw(ctx);
+    // Draw culling: skip destroyer draw when far off-screen
+    const destroyerDrawRadius = 400;
+    if (doDraw && isInViewRadius(GameContext.destroyer.pos.x, GameContext.destroyer.pos.y, destroyerDrawRadius)) {
+      GameContext.destroyer.draw(ctx);
+    }
   }
 
   const bulletPixiResources =
@@ -2019,7 +2033,7 @@ export function gameLoopLogic(opts = null) {
   for (let i = GameContext.napalmZones.length - 1; i >= 0; i--) {
     const z = GameContext.napalmZones[i];
     if (doUpdate) z.update(deltaTime);
-    if (doDraw && isInView(z.pos.x, z.pos.y, z.radius + 50)) z.draw(ctx);
+    if (doDraw && isInViewRadius(z.pos.x, z.pos.y, z.radius + 50)) z.draw(ctx);
     if (z.dead) {
       GameContext.napalmZones.splice(i, 1);
     }
@@ -2032,7 +2046,7 @@ export function gameLoopLogic(opts = null) {
     try {
       if (doUpdate) p.update(deltaTime);
       if (doDraw) {
-        if (isInView(p.pos.x, p.pos.y, 20)) p.draw(ctx, particleRes, alpha);
+        if (isInViewRadius(p.pos.x, p.pos.y, 20)) p.draw(ctx, particleRes, alpha);
         else if (typeof p.cull === "function") p.cull();
       }
     } catch (_e) {
@@ -2121,12 +2135,12 @@ export function gameLoopLogic(opts = null) {
     // Process staggered cleanup queue (spreads cleanup across frames)
     globalStaggeredCleanup.process();
 
-    // Use immediate cleanup for critical arrays that need per-frame compacting
-    // Use staggered cleanup for large arrays that can wait
-    immediateCompactArray(GameContext.bullets, b => {
+    // Use conditional cleanup for heaviest arrays (only compact when needed)
+    // Bullets: compact if >50 items and >10% dead
+    conditionalCompactArray(GameContext.bullets, b => {
       if (b._poolType === "bullet" && b.sprite && pixiBulletSpritePool) destroyBulletSprite(b);
       else pixiCleanupObject(b);
-    });
+    }, { minSize: 50, minDeadRatio: 0.1 });
     immediateCompactArray(GameContext.bossBombs);
     immediateCompactArray(GameContext.warpBioPods, pixiCleanupObject);
     immediateCompactArray(GameContext.guidedMissiles, m => {
@@ -2135,10 +2149,11 @@ export function gameLoopLogic(opts = null) {
       }
       pixiCleanupObject(m);
     });
-    immediateCompactArray(GameContext.enemies, pixiCleanupObject);
+    // Enemies: compact if >30 items and >15% dead (enemies are expensive to iterate)
+    conditionalCompactArray(GameContext.enemies, pixiCleanupObject, { minSize: 30, minDeadRatio: 0.15 });
     immediateCompactArray(GameContext.pinwheels, pixiCleanupObject);
     immediateCompactArray(GameContext.cavePinwheels, pixiCleanupObject);
-    immediateCompactArray(GameContext.environmentAsteroids, pixiCleanupObject);
+    conditionalCompactArray(GameContext.environmentAsteroids, pixiCleanupObject, { minSize: 30, minDeadRatio: 0.2 });
 
     // Explosion cleanup with safety check for uncleaned sprites
     for (let i = GameContext.explosions.length - 1; i >= 0; i--) {

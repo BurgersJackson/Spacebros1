@@ -1,4 +1,5 @@
 import { GameContext } from "../core/game-context.js";
+import { MAX_PARTICLES } from "../core/constants.js";
 import { immediateCompactArray } from "../core/staggered-cleanup.js";
 import { Particle, SmokeParticle, Explosion, Shockwave, LightningArc } from "../entities/index.js";
 import {
@@ -13,6 +14,14 @@ const particlePool = [];
 const smokeParticlePool = [];
 
 export function emitParticle(x, y, vx, vy, color = "#fff", life = 30) {
+  // Enforce particle cap: kill oldest if at limit
+  if (GameContext.particles.length >= MAX_PARTICLES) {
+    const oldest = GameContext.particles[0];
+    if (oldest) {
+      oldest.life = 0;
+      oldest.dead = true;
+    }
+  }
   let p = particlePool.length > 0 ? particlePool.pop() : null;
   if (!p) p = new Particle(x, y, vx, vy, color, life);
   else p.reset(x, y, vx, vy, color, life);
@@ -21,6 +30,14 @@ export function emitParticle(x, y, vx, vy, color = "#fff", life = 30) {
 }
 
 export function emitSmokeParticle(x, y, vx, vy, color = "#aaa") {
+  // Enforce particle cap: kill oldest if at limit
+  if (GameContext.particles.length >= MAX_PARTICLES) {
+    const oldest = GameContext.particles[0];
+    if (oldest) {
+      oldest.life = 0;
+      oldest.dead = true;
+    }
+  }
   let p = smokeParticlePool.length > 0 ? smokeParticlePool.pop() : null;
   if (!p) p = new SmokeParticle(x, y, vx, vy, color);
   else p.reset(x, y, vx, vy, color);

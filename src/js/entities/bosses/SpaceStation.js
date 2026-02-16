@@ -80,6 +80,8 @@ export class SpaceStation extends Entity {
     this.clusterBombInterval = 3200;
     this.shieldsDirty = true;
     this._pixiInnerGfx = null;
+    this._lastShieldRedrawAt = 0; // Throttle shield redraws
+    this._shieldRedrawInterval = 50; // Min ms between redraws
 
     this.laserCooldown = 560;
     this.laserCharge = 0;
@@ -542,28 +544,33 @@ export class SpaceStation extends Entity {
           }
 
           if (this.shieldsDirty) {
-            const drawRing = (graphics, segments, radius, color) => {
-              if (!segments || segments.length === 0) return;
-              graphics.clear();
-              const count = segments.length;
-              const arcLen = (Math.PI * 2) / count;
-              graphics.lineStyle(8, color, 0.8);
-              for (let i = 0; i < count; i++) {
-                if (segments[i] > 0) {
-                  const a0 = i * arcLen + 0.02;
-                  const a1 = (i + 1) * arcLen - 0.02;
-                  graphics.moveTo(Math.cos(a0) * radius, Math.sin(a0) * radius);
-                  graphics.arc(0, 0, radius, a0, a1);
+            // Throttle shield redraws to avoid redrawing every frame during rapid hits
+            const canRedraw = now - this._lastShieldRedrawAt >= this._shieldRedrawInterval;
+            if (canRedraw) {
+              this._lastShieldRedrawAt = now;
+              const drawRing = (graphics, segments, radius, color) => {
+                if (!segments || segments.length === 0) return;
+                graphics.clear();
+                const count = segments.length;
+                const arcLen = (Math.PI * 2) / count;
+                graphics.lineStyle(8, color, 0.8);
+                for (let i = 0; i < count; i++) {
+                  if (segments[i] > 0) {
+                    const a0 = i * arcLen + 0.02;
+                    const a1 = (i + 1) * arcLen - 0.02;
+                    graphics.moveTo(Math.cos(a0) * radius, Math.sin(a0) * radius);
+                    graphics.arc(0, 0, radius, a0, a1);
+                  }
                 }
-              }
-              graphics.endFill();
-            };
+                graphics.endFill();
+              };
 
-            if (gfx && hasOuter) drawRing(gfx, this.shieldSegments, this.shieldRadius, 0x00ffff);
-            if (innerGfx && hasInner)
-              drawRing(innerGfx, this.innerShieldSegments, this.innerShieldRadius, 0xff00ff);
+              if (gfx && hasOuter) drawRing(gfx, this.shieldSegments, this.shieldRadius, 0x00ffff);
+              if (innerGfx && hasInner)
+                drawRing(innerGfx, this.innerShieldSegments, this.innerShieldRadius, 0xff00ff);
 
-            this.shieldsDirty = false;
+              this.shieldsDirty = false;
+            }
           }
         } else {
           if (this._pixiGfx) {

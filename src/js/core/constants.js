@@ -22,6 +22,10 @@ export const GAME_DURATION_MS = 30 * 60 * 1000;
 // --- Pixi Sprite Pool Limits ---
 export const PIXI_SPRITE_POOL_MAX = 30000;
 
+// --- Entity Caps for Performance ---
+export const MAX_PARTICLES = 500;
+export const MAX_BULLETS = 300;
+
 // --- Spatial Hash Settings ---
 export const ASTEROID_GRID_CELL_SIZE = 300;
 

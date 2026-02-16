@@ -44,7 +44,10 @@ export class SpaceNugget extends Entity {
 
     if (this.magnetized) {
       const angle = Math.atan2(player.pos.y - this.pos.y, player.pos.x - this.pos.x);
-      const speed = 11 + 900 / Math.max(10, dist);
+      // Match coin speed: (12 + 1000/dist) * 3, capped to prevent overshooting
+      const rawSpeed = (12 + 1000 / Math.max(10, dist)) * 3;
+      const maxSpeed = dist * 0.8; // Don't move more than 80% of distance per frame
+      const speed = Math.min(rawSpeed, maxSpeed);
       this.vel.x = Math.cos(angle) * speed;
       this.vel.y = Math.sin(angle) * speed;
     } else {

@@ -163,3 +163,36 @@ export function immediateCompactArray(array, cleanupFn = null) {
 
   return removedCount;
 }
+
+/**
+ * Conditional compact: only compact if array is large or has many dead items.
+ * This reduces per-frame overhead for small arrays with few dead items.
+ * @param {Array} array - Array to compact
+ * @param {Function} cleanupFn - Optional cleanup function
+ * @param {Object} options - Options: { minSize: 100, minDeadRatio: 0.1 }
+ * @returns {number} Number of items removed
+ */
+export function conditionalCompactArray(array, cleanupFn = null, options = {}) {
+  if (!array || array.length === 0) return 0;
+
+  const minSize = options.minSize ?? 100;
+  const minDeadRatio = options.minDeadRatio ?? 0.1;
+
+  // For small arrays, always compact
+  if (array.length < minSize) {
+    return immediateCompactArray(array, cleanupFn);
+  }
+
+  // For larger arrays, check if there are enough dead items to warrant cleanup
+  let deadCount = 0;
+  for (let i = 0; i < array.length; i++) {
+    if (array[i] && array[i].dead) deadCount++;
+  }
+
+  // Only compact if dead ratio exceeds threshold
+  if (deadCount / array.length >= minDeadRatio) {
+    return immediateCompactArray(array, cleanupFn);
+  }
+
+  return 0;
+}

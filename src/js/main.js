@@ -10,7 +10,7 @@ import {
 import { GameContext } from "./core/game-context.js";
 import { globalProfiler } from "./core/profiler.js";
 import { globalJitterMonitor } from "./core/jitter-monitor.js";
-import { globalStaggeredCleanup, immediateCompactArray } from "./core/staggered-cleanup.js";
+import { globalStaggeredCleanup, immediateCompactArray, conditionalCompactArray } from "./core/staggered-cleanup.js";
 import {
   updateViewBounds,
   viewBounds,
@@ -968,6 +968,7 @@ registerGameLoopLogicDependencies({
   compactArray: helperCompactArray,
   compactParticles,
   immediateCompactArray,
+  conditionalCompactArray,
   globalStaggeredCleanup,
   destroyBulletSprite,
   pixiCleanupObject,

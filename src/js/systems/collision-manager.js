@@ -3277,12 +3277,20 @@ export function processBulletCollisions() {
         }
 
         if (!hit && !b.isEnemy && GameContext.spaceStation && !GameContext.spaceStation.dead) {
-          const dist = Math.hypot(
-            b.pos.x - GameContext.spaceStation.pos.x,
-            b.pos.y - GameContext.spaceStation.pos.y
-          );
+          // Early-out: skip station checks if bullet is clearly too far away
+          // Use squared distance for efficiency (avoid Math.hypot unless needed)
+          const dx = b.pos.x - GameContext.spaceStation.pos.x;
+          const dy = b.pos.y - GameContext.spaceStation.pos.y;
+          const distSq = dx * dx + dy * dy;
+          const maxHitRadius = GameContext.spaceStation.shieldRadius + b.radius + 50;
+          const maxHitRadiusSq = maxHitRadius * maxHitRadius;
 
-          const outerShieldsUp =
+          if (distSq > maxHitRadiusSq) {
+            // Bullet is too far from station, skip all station collision checks
+          } else {
+            const dist = Math.sqrt(distSq);
+
+            const outerShieldsUp =
             GameContext.spaceStation.shieldSegments &&
             GameContext.spaceStation.shieldSegments.some(s => s > 0);
           const innerShieldsUp =
@@ -3445,6 +3453,7 @@ export function processBulletCollisions() {
               }
             }
           }
+          } // end of else (bullet is within range of station)
         }
 
         if (!hit && !b.isEnemy && GameContext.destroyer && !GameContext.destroyer.dead) {
