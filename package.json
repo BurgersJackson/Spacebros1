@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Neon Space Cave (Electron wrapper)",
+  "description": "SpaceBros - A 2D space shooter with neon graphics and upgrade systems",
   "main": "electron/main.js",
   "author": "",
   "license": "UNLICENSED",
@@ -38,8 +38,8 @@
     "vitest": "^4.0.17"
   },
   "build": {
-    "appId": "com.spacebros.neonspacecave",
-    "productName": "Neon Space Cave",
+    "appId": "com.spacebros.spacebros",
+    "productName": "SpaceBros",
     "files": [
       "package.json",
       "electron/**/*",
@@ -51,10 +51,12 @@
     "directories": {
       "output": "dist"
     },
+    "icon": "assets/gameicon.png",
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "assets/gameicon.png"
     },
     "linux": {
       "target": [
@@ -64,6 +66,12 @@
       ],
       "category": "Game",
       "description": "A 2D space shooter with neon graphics and upgrade systems"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.games"
     }
   }
 }
