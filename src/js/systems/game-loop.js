@@ -7,12 +7,7 @@ import {
 } from "../core/constants.js";
 import { globalProfiler } from "../core/profiler.js";
 import { globalJitterMonitor } from "../core/jitter-monitor.js";
-import {
-  updateViewBounds,
-  isInView,
-  isInViewRadius,
-  rebuildBulletGrid
-} from "../core/performance.js";
+import { updateViewBounds, isInView, rebuildBulletGrid } from "../core/performance.js";
 import { updatePixiBackground, updatePixiCaveGrid } from "../rendering/background-renderer.js";
 import { drawMinimap } from "../rendering/minimap-renderer.js";
 import { setRenderAlpha } from "../rendering/pixi-context.js";
@@ -68,10 +63,13 @@ let _setSimLastPerfAt = null;
 let _fpsCounterEl = null;
 
 let fpsLastFrameAt =
-  typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+  typeof globalThis.performance !== "undefined" && globalThis.performance.now
+    ? globalThis.performance.now()
+    : Date.now();
 let fpsSmoothMs = 16.7;
 let fpsNextUiAt = 0;
 let fpsUiVisible = null;
+// eslint-disable-next-line no-unused-vars
 let animationId = null;
 
 let _getWidth = null;
@@ -117,6 +115,7 @@ let pixiScreenRoot = null;
 let pixiNebulaLayer = null;
 let pixiStarLayer = null;
 let pixiStarTilingLayer = null;
+// eslint-disable-next-line no-unused-vars
 let pixiCaveGridSprite = null;
 let pixiMinimapGraphics = null;
 let pixiArrowsGraphics = null;
@@ -172,7 +171,9 @@ let resolveEntityCollision = null;
 let processBulletCollisions = null;
 let updateContractUI = null;
 
+// eslint-disable-next-line no-unused-vars
 let shakeOffsetX = 0;
+// eslint-disable-next-line no-unused-vars
 let shakeOffsetY = 0;
 let renderAlpha = 1.0;
 
@@ -191,7 +192,9 @@ export function registerGameLoopDependencies(deps) {
   if (deps.fpsCounterEl !== undefined) _fpsCounterEl = deps.fpsCounterEl;
 
   fpsLastFrameAt =
-    typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+    typeof globalThis.performance !== "undefined" && globalThis.performance.now
+      ? globalThis.performance.now()
+      : Date.now();
   fpsSmoothMs = 16.7;
   fpsNextUiAt = 0;
   fpsUiVisible = null;
@@ -220,12 +223,15 @@ export function registerGameLoopLogicDependencies(deps) {
   if (deps.getPixiBulletTextures) _getPixiBulletTextures = deps.getPixiBulletTextures;
   if (deps.getPixiTextures) _getPixiTextures = deps.getPixiTextures;
   if (deps.getPixiTextureWhite) _getPixiTextureWhite = deps.getPixiTextureWhite;
-  if (deps.getPixiParticleGlowTexture)
+  if (deps.getPixiParticleGlowTexture) {
     _getPixiParticleGlowTexture = deps.getPixiParticleGlowTexture;
-  if (deps.getPixiParticleSmokeTexture)
+  }
+  if (deps.getPixiParticleSmokeTexture) {
     _getPixiParticleSmokeTexture = deps.getPixiParticleSmokeTexture;
-  if (deps.getPixiParticleWarpTexture)
+  }
+  if (deps.getPixiParticleWarpTexture) {
     _getPixiParticleWarpTexture = deps.getPixiParticleWarpTexture;
+  }
   if (deps.getPixiBulletSpritePool) _getPixiBulletSpritePool = deps.getPixiBulletSpritePool;
   if (deps.getPixiParticleSpritePool) _getPixiParticleSpritePool = deps.getPixiParticleSpritePool;
   if (deps.getPixiPickupSpritePool) _getPixiPickupSpritePool = deps.getPixiPickupSpritePool;
@@ -253,10 +259,12 @@ export function registerGameLoopLogicDependencies(deps) {
   if (deps.drawMagnetPickupIndicator) drawMagnetPickupIndicator = deps.drawMagnetPickupIndicator;
   if (deps.drawMiniEventIndicator) drawMiniEventIndicator = deps.drawMiniEventIndicator;
   if (deps.clearPixiUiText) clearPixiUiText = deps.clearPixiUiText;
-  if (deps.processStaggeredBombExplosions)
+  if (deps.processStaggeredBombExplosions) {
     processStaggeredBombExplosions = deps.processStaggeredBombExplosions;
-  if (deps.processStaggeredParticleBursts)
+  }
+  if (deps.processStaggeredParticleBursts) {
     processStaggeredParticleBursts = deps.processStaggeredParticleBursts;
+  }
   if (deps.processLightningEffects) processLightningEffects = deps.processLightningEffects;
   if (deps.compactArray) compactArray = deps.compactArray;
   if (deps.compactParticles) compactParticles = deps.compactParticles;
@@ -296,7 +304,9 @@ function mainLoop() {
     }
 
     const t =
-      typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+      typeof globalThis.performance !== "undefined" && globalThis.performance.now
+        ? globalThis.performance.now()
+        : Date.now();
     const dt = Math.max(0, Math.min(250, t - fpsLastFrameAt));
     fpsLastFrameAt = t;
     fpsSmoothMs = fpsSmoothMs * 0.9 + dt * 0.1;
@@ -313,7 +323,9 @@ function mainLoop() {
 
   if (GameContext.gameActive && !GameContext.gamePaused) {
     const frameStart =
-      typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+      typeof globalThis.performance !== "undefined" && globalThis.performance.now
+        ? globalThis.performance.now()
+        : Date.now();
 
     let simLastPerfAt = _getSimLastPerfAt ? _getSimLastPerfAt() : 0;
     let simNowMs = _getSimNowMs ? _getSimNowMs() : 0;
@@ -361,8 +373,9 @@ function mainLoop() {
 }
 
 function triggerFinalBattle() {
-  if (showOverlayMessage)
+  if (showOverlayMessage) {
     showOverlayMessage("TIME LIMIT REACHED - PREPARE FOR FINAL BATTLE", "#f00", 5000, 5);
+  }
   if (playSound) playSound("warp_scream");
 
   setTimeout(() => {
@@ -500,9 +513,10 @@ export function gameLoopLogic(opts = null) {
       const tEl = document.getElementById("game-timer");
       if (tEl && GameContext.gameStartTime) {
         let elapsed = now - GameContext.gameStartTime - GameContext.pausedAccumMs;
-        if (GameContext.pauseStartTime)
+        if (GameContext.pauseStartTime) {
           elapsed =
             GameContext.pauseStartTime - GameContext.gameStartTime - GameContext.pausedAccumMs;
+        }
         if (elapsed < 0) elapsed = 0;
         tEl.innerText = formatTime(elapsed);
 
@@ -624,7 +638,7 @@ export function gameLoopLogic(opts = null) {
           inAnomaly = d < az.radius + 900;
         }
       }
-    } catch (e) {}
+    } catch (_e) {}
     const inStationFight = !!(
       GameContext.stationArena.active &&
       GameContext.spaceStation &&
@@ -687,13 +701,13 @@ export function gameLoopLogic(opts = null) {
 
         // Boss display names
         const bossDisplayNames = {
-          "Cruiser": "CRUISER",
-          "NecroticHive": "NECROTIC HIVE",
-          "CerebralPsion": "CEREBRAL PSION",
-          "Fleshforge": "FLESHFORGE",
-          "VortexMatriarch": "VORTEX MATRIARCH",
-          "ChitinusPrime": "CHITINUS PRIME",
-          "PsyLich": "PSY LICH"
+          Cruiser: "CRUISER",
+          NecroticHive: "NECROTIC HIVE",
+          CerebralPsion: "CEREBRAL PSION",
+          Fleshforge: "FLESHFORGE",
+          VortexMatriarch: "VORTEX MATRIARCH",
+          ChitinusPrime: "CHITINUS PRIME",
+          PsyLich: "PSY LICH"
         };
 
         // Spawn the selected boss
@@ -851,7 +865,11 @@ export function gameLoopLogic(opts = null) {
       if (GameContext.currentLevel === 1) {
         showOverlayMessage("WARP OPENING IN 2 MINUTES - BOSS AHEAD", "#0ff", 3000);
       } else {
-        showOverlayMessage("SPACE STATION DESTROYED - WARPING TO LEVEL 2 IN 2 MINUTES", "#0ff", 3000);
+        showOverlayMessage(
+          "SPACE STATION DESTROYED - WARPING TO LEVEL 2 IN 2 MINUTES",
+          "#0ff",
+          3000
+        );
       }
     }
 
@@ -1091,8 +1109,9 @@ export function gameLoopLogic(opts = null) {
       !GameContext.gamePaused &&
       GameContext.initialSpawnDone
     ) {
-      if (GameContext.radiationStorm && GameContext.radiationStorm.dead)
+      if (GameContext.radiationStorm && GameContext.radiationStorm.dead) {
         GameContext.radiationStorm = null;
+      }
       if (
         !nukeSuppressSpawns &&
         (!GameContext.radiationStorm || GameContext.radiationStorm.dead) &&
@@ -1158,9 +1177,10 @@ export function gameLoopLogic(opts = null) {
     ) {
       // Time-based pacing for roamer count and strength
       let elapsed = now - GameContext.gameStartTime - GameContext.pausedAccumMs;
-      if (GameContext.pauseStartTime)
+      if (GameContext.pauseStartTime) {
         elapsed =
           GameContext.pauseStartTime - GameContext.gameStartTime - GameContext.pausedAccumMs;
+      }
       if (elapsed < 0) elapsed = 0;
       const elapsedMinutes = elapsed / 60000;
 
@@ -1231,7 +1251,8 @@ export function gameLoopLogic(opts = null) {
           }
         }
       }
-    } else {
+    } else if (warpActive || GameContext.dungeon1Active || GameContext.sectorTransitionActive) {
+      // Only clear queue for permanent mode transitions, not temporary nuke suppression
       GameContext.roamerRespawnQueue = [];
     }
 
@@ -1282,26 +1303,33 @@ export function gameLoopLogic(opts = null) {
     globalProfiler.end("GameLogic");
     globalProfiler.start("SpatialHash");
     GameContext.asteroidGrid.clear();
-    for (let i = 0; i < GameContext.environmentAsteroids.length; i++)
+    for (let i = 0; i < GameContext.environmentAsteroids.length; i++) {
       GameContext.asteroidGrid.insert(GameContext.environmentAsteroids[i]);
+    }
 
     GameContext.targetGrid.clear();
-    for (let i = 0; i < GameContext.enemies.length; i++)
+    for (let i = 0; i < GameContext.enemies.length; i++) {
       GameContext.targetGrid.insert(GameContext.enemies[i]);
-    for (let i = 0; i < GameContext.pinwheels.length; i++)
+    }
+    for (let i = 0; i < GameContext.pinwheels.length; i++) {
       GameContext.targetGrid.insert(GameContext.pinwheels[i]);
-    for (let i = 0; i < GameContext.cavePinwheels.length; i++)
+    }
+    for (let i = 0; i < GameContext.cavePinwheels.length; i++) {
       GameContext.targetGrid.insert(GameContext.cavePinwheels[i]);
-    for (let i = 0; i < GameContext.shootingStars.length; i++)
+    }
+    for (let i = 0; i < GameContext.shootingStars.length; i++) {
       GameContext.targetGrid.insert(GameContext.shootingStars[i]);
+    }
     if (GameContext.contractEntities) {
       if (GameContext.contractEntities.fortresses) {
-        for (let i = 0; i < GameContext.contractEntities.fortresses.length; i++)
+        for (let i = 0; i < GameContext.contractEntities.fortresses.length; i++) {
           GameContext.targetGrid.insert(GameContext.contractEntities.fortresses[i]);
+        }
       }
       if (GameContext.contractEntities.wallTurrets) {
-        for (let i = 0; i < GameContext.contractEntities.wallTurrets.length; i++)
+        for (let i = 0; i < GameContext.contractEntities.wallTurrets.length; i++) {
           GameContext.targetGrid.insert(GameContext.contractEntities.wallTurrets[i]);
+        }
       }
     }
     if (GameContext.warpZone && GameContext.warpZone.turrets) {
@@ -1311,8 +1339,9 @@ export function gameLoopLogic(opts = null) {
       }
     }
     if (GameContext.boss && !GameContext.boss.dead) GameContext.targetGrid.insert(GameContext.boss);
-    if (GameContext.destroyer && !GameContext.destroyer.dead)
+    if (GameContext.destroyer && !GameContext.destroyer.dead) {
       GameContext.targetGrid.insert(GameContext.destroyer);
+    }
 
     // Build bullet spatial hash for efficient collision detection
     rebuildBulletGrid(GameContext.bullets);
@@ -1328,9 +1357,10 @@ export function gameLoopLogic(opts = null) {
     ) {
       // Ramp base count up over the first few minutes (start easier).
       let elapsed = now - GameContext.gameStartTime - GameContext.pausedAccumMs;
-      if (GameContext.pauseStartTime)
+      if (GameContext.pauseStartTime) {
         elapsed =
           GameContext.pauseStartTime - GameContext.gameStartTime - GameContext.pausedAccumMs;
+      }
       if (elapsed < 0) elapsed = 0;
       const elapsedMinutes = elapsed / 60000;
 
@@ -1376,8 +1406,9 @@ export function gameLoopLogic(opts = null) {
   const targetZoom = ZOOM_LEVEL * 0.85;
   if (doUpdate) {
     GameContext.currentZoom += (targetZoom - GameContext.currentZoom) * 0.08;
-    if (Math.abs(GameContext.currentZoom - targetZoom) < 0.001)
+    if (Math.abs(GameContext.currentZoom - targetZoom) < 0.001) {
       GameContext.currentZoom = targetZoom;
+    }
   }
   const zoom = GameContext.currentZoom;
 
@@ -1438,7 +1469,7 @@ export function gameLoopLogic(opts = null) {
     ctx.filter = "none";
     try {
       ctx.setLineDash([]);
-    } catch (e) {}
+    } catch (_e) {}
 
     ctx.fillStyle = "#000";
     // Clear entire canvas (use canvas dimensions, not viewport)
@@ -1456,7 +1487,7 @@ export function gameLoopLogic(opts = null) {
     ctx.save();
     ctx.scale(renderScaleX, renderScaleY);
 
-    const caveActiveBg =
+    const _caveActiveBg =
       GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active;
     if (pixiApp && pixiApp.renderer) {
       // PixiJS renderer should use internal resolution for quality
@@ -1497,7 +1528,7 @@ export function gameLoopLogic(opts = null) {
         pixiNebulaLayer
       });
     } else {
-      for (let s of GameContext.starfield) {
+      for (const s of GameContext.starfield) {
         let x = (s.x - camX * s.parallax) % width;
         let y = (s.y - camY * s.parallax) % height;
         if (x < 0) x += width;
@@ -1527,7 +1558,7 @@ export function gameLoopLogic(opts = null) {
   window.cachedCoinRes.layer = pixiCoinLayer;
   const coinRes = window.cachedCoinRes;
 
-  if (!window.cachedParticleRes)
+  if (!window.cachedParticleRes) {
     window.cachedParticleRes = {
       layer: null,
       whiteTexture: null,
@@ -1536,6 +1567,7 @@ export function gameLoopLogic(opts = null) {
       warpTexture: null,
       pool: null
     };
+  }
   window.cachedParticleRes.layer = pixiParticleLayer;
   window.cachedParticleRes.whiteTexture = pixiTextureWhite;
   window.cachedParticleRes.glowTexture = pixiParticleGlowTexture;
@@ -1554,26 +1586,28 @@ export function gameLoopLogic(opts = null) {
   }
   const wg = GameContext.warpGate;
   if (wg && !wg.dead) {
-    if (doUpdate)
+    if (doUpdate) {
       wg.update(deltaTime, {
         getGameNowMs: () => Date.now(), // Use wall clock time to match suppressWarpGateUntil
         suppressUntil: GameContext.suppressWarpGateUntil,
         showMessage: showOverlayMessage,
         enterWarp: enterWarpMaze
       });
+    }
     if (doDraw) wg.draw(ctx);
   }
 
   // Vertical scrolling warp gate
   const vsg = GameContext.verticalScrollingWarpGate;
   if (vsg && !vsg.dead) {
-    if (doUpdate)
+    if (doUpdate) {
       vsg.update(deltaTime, {
         getGameNowMs: () => Date.now(),
         suppressUntil: 0,
         showMessage: showOverlayMessage,
         enterWarp: enterVerticalScrollingZone
       });
+    }
     if (doDraw) vsg.draw(ctx);
   }
   if (caveActive) {
@@ -1774,11 +1808,11 @@ export function gameLoopLogic(opts = null) {
           if (typeof drone.kill === "function") {
             try {
               drone.kill();
-            } catch (e) {}
+            } catch (_e) {}
           }
           try {
             pixiCleanupObject(drone);
-          } catch (e) {}
+          } catch (_e) {}
         }
         window.monsterDrones.splice(i, 1);
         continue;
@@ -1952,7 +1986,7 @@ export function gameLoopLogic(opts = null) {
         if (isInView(p.pos.x, p.pos.y, 20)) p.draw(ctx, particleRes, alpha);
         else if (typeof p.cull === "function") p.cull();
       }
-    } catch (e) {
+    } catch (_e) {
       // Particles are cheap, just kill on error
       p.life = 0;
     }
@@ -2195,7 +2229,7 @@ export function gameLoopLogic(opts = null) {
     if (updateCrtFilter) {
       try {
         updateCrtFilter();
-      } catch (e) {}
+      } catch (_e) {}
     }
 
     // Nuke screen flash effect
@@ -2214,7 +2248,7 @@ export function gameLoopLogic(opts = null) {
       globalProfiler.start("PixiRender");
       try {
         pixiApp.renderer.render(pixiApp.stage);
-      } catch (e) {}
+      } catch (_e) {}
       globalProfiler.end("PixiRender");
     }
   }

@@ -36,12 +36,14 @@ function loadAudioSettingsFromStorage() {
     const data = JSON.parse(raw);
     if (data && typeof data === "object") {
       if (typeof data.musicEnabled === "boolean") musicEnabled = data.musicEnabled;
-      if (typeof data.musicVolume === "number" && isFinite(data.musicVolume))
+      if (typeof data.musicVolume === "number" && isFinite(data.musicVolume)) {
         musicVolume = clamp01(data.musicVolume);
-      if (typeof data.sfxVolume === "number" && isFinite(data.sfxVolume))
+      }
+      if (typeof data.sfxVolume === "number" && isFinite(data.sfxVolume)) {
         sfxVolume = clamp01(data.sfxVolume);
+      }
     }
-  } catch (e) {
+  } catch (_e) {
     // Ignore corrupted/missing settings
   }
 }
@@ -59,7 +61,7 @@ function saveAudioSettingsToStorage() {
         sfxVolume
       })
     );
-  } catch (e) {
+  } catch (_e) {
     // Ignore storage failures (quota, denied, etc)
   }
 }
@@ -95,10 +97,10 @@ function stopLegacyMusicNodes() {
   musicNodes.forEach(n => {
     try {
       n.stop();
-    } catch (e) {}
+    } catch (_e) {}
     try {
       n.disconnect();
-    } catch (e) {}
+    } catch (_e) {}
   });
   musicNodes = [];
 }
@@ -122,10 +124,10 @@ export function setMusicMode(mode = null) {
     if (backgroundMusicAudio) {
       try {
         backgroundMusicAudio.pause();
-      } catch (e) {}
+      } catch (_e) {}
       try {
         backgroundMusicAudio.currentTime = 0;
-      } catch (e) {}
+      } catch (_e) {}
     }
     backgroundMusicAudio = new Audio(musicUrl);
     backgroundMusicAudio.loop = true;
@@ -140,7 +142,7 @@ export function setMusicMode(mode = null) {
   try {
     const p = backgroundMusicAudio.play();
     if (p && typeof p.catch === "function") p.catch(() => {});
-  } catch (e) {}
+  } catch (_e) {}
 }
 
 /**
@@ -184,10 +186,10 @@ export function stopMusic() {
   if (backgroundMusicAudio) {
     try {
       backgroundMusicAudio.pause();
-    } catch (e) {}
+    } catch (_e) {}
     try {
       backgroundMusicAudio.currentTime = 0;
-    } catch (e) {}
+    } catch (_e) {}
   }
 }
 
@@ -230,8 +232,9 @@ export function playSound(type, volumeMult = 1) {
     !ENABLE_PROJECTILE_IMPACT_SOUNDS &&
     inProjectileImpactSoundContext &&
     (type === "hit" || type === "shield_hit")
-  )
+  ) {
     return;
+  }
   if (!(volumeMult > 0)) return;
 
   // Apply global SFX volume
@@ -262,18 +265,18 @@ export function playSound(type, volumeMult = 1) {
       return src;
     };
 
-    const stopLoop = key => {
+    const _stopLoop = key => {
       const loop = sfxLoops[key];
       if (!loop) return;
       try {
         loop.gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
-      } catch (e) {}
+      } catch (_e) {}
       try {
         loop.osc.stop(now + 0.1);
-      } catch (e) {}
+      } catch (_e) {}
       try {
         if (loop.noise) loop.noise.stop(now + 0.1);
-      } catch (e) {}
+      } catch (_e) {}
       delete sfxLoops[key];
     };
 
@@ -647,7 +650,7 @@ export function playSound(type, volumeMult = 1) {
         break;
       }
     }
-  } catch (e) {}
+  } catch (_e) {}
 }
 
 /**
@@ -686,7 +689,7 @@ export function playMp3Sfx(url, opts = {}) {
     a.currentTime = 0;
     const p = a.play();
     if (p && typeof p.catch === "function") p.catch(() => {});
-  } catch (e) {}
+  } catch (_e) {}
 }
 
 /**

@@ -225,7 +225,6 @@ export const GameContext = {
   simAccMs: 0,
   simNowMs: 0,
   simLastPerfAt: 0,
-  frameNow: 0,
   width: 1920,
   height: 1080,
   internalWidth: 1920,

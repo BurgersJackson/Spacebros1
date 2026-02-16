@@ -42,14 +42,16 @@ export function registerCollisionDependencies(deps) {
   if (deps.addPickupFloatingText) _addPickupFloatingText = deps.addPickupFloatingText;
   if (deps.showOverlayMessage) _showOverlayMessage = deps.showOverlayMessage;
   if (deps.killPlayer) _killPlayer = deps.killPlayer;
-  if (deps.handleSpaceStationDestroyed)
+  if (deps.handleSpaceStationDestroyed) {
     _handleSpaceStationDestroyed = deps.handleSpaceStationDestroyed;
+  }
   if (deps.spawnLightningArc) _spawnLightningArc = deps.spawnLightningArc;
   if (deps.spawnLargeExplosion) _spawnLargeExplosion = deps.spawnLargeExplosion;
   if (deps.destroyBulletSprite) _destroyBulletSprite = deps.destroyBulletSprite;
   if (deps.updateContractUI) _updateContractUI = deps.updateContractUI;
-  if (deps.setProjectileImpactSoundContext)
+  if (deps.setProjectileImpactSoundContext) {
     _setProjectileImpactSoundContext = deps.setProjectileImpactSoundContext;
+  }
   if (deps.awardCoinsInstant) _awardCoinsInstant = deps.awardCoinsInstant;
   if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
   if (deps.FloatingText) _FloatingText = deps.FloatingText;
@@ -60,7 +62,7 @@ export function registerCollisionDependencies(deps) {
 /** Log only when GameContext.DEBUG_SHIELD_BYPASS is true (Pinwheel/Gunboat shield debugging). */
 function _shieldBypassLog(...args) {
   if (typeof GameContext.DEBUG_SHIELD_BYPASS !== "undefined" && GameContext.DEBUG_SHIELD_BYPASS) {
-    console.log("[SHIELD DEBUG]", ...args);
+    console.warn("[SHIELD DEBUG]", ...args);
   }
 }
 
@@ -105,7 +107,6 @@ function showDamageFloatingText(x, y, damage, isCrit = false) {
   const color = isCrit ? "#ff0" : "#fff";
   const roundedDamage = Math.round(damage);
   const text = isCrit ? `${roundedDamage}!` : `${roundedDamage}`;
-  const key = `dmg_${Math.floor(x / 50)}_${Math.floor(y / 50)}`;
   if (_FloatingText) {
     GameContext.floatingTexts.push(new _FloatingText(x, y, text, color, 45, { fontSize: 50 }));
   }
@@ -121,8 +122,7 @@ function showDamageFloatingText(x, y, damage, isCrit = false) {
  * @param {string} color - Text color
  * @param {Object} opts - Additional options
  */
-function getOrCreateFloatingText(floatingTexts, key, x, y, amount, color, opts = {}) {
-  const maxAge = opts.maxAge || 600;
+function _getOrCreateFloatingText(floatingTexts, key, x, y, amount, color, opts = {}) {
   for (let i = 0; i < floatingTexts.length; i++) {
     const ft = floatingTexts[i];
     if (ft.key === key && !ft.dead && ft.age < 20) {
@@ -213,7 +213,12 @@ function executeNukeEffect() {
   for (const e of GameContext.enemies) {
     if (!e || e.dead) continue;
     if (isOnScreen(e) && !e.isDungeonBoss && !e.isCruiser) {
-      e.dead = true;
+      // Use kill() to properly add roamers to respawn queue
+      if (typeof e.kill === "function") {
+        e.kill();
+      } else {
+        e.dead = true;
+      }
       destroyedCount++;
     }
   }
@@ -312,8 +317,9 @@ function executeNukeEffect() {
 
   // Visual effects
   if (_playSound) _playSound("nuke_explode");
-  if (_showOverlayMessage)
+  if (_showOverlayMessage) {
     _showOverlayMessage(`NUKE DETONATED - ${destroyedCount} DESTROYED`, "#ff4400", 2000);
+  }
 
   // Screen shake
   GameContext.shakeTimer = 45;
@@ -470,10 +476,12 @@ export function checkWallCollision(entity, elasticity = 0) {
             GameContext.player.hp -= 1;
             if (_playSound) _playSound("hit");
             if (_updateHealthUI) _updateHealthUI();
-            if (_spawnParticles)
+            if (_spawnParticles) {
               _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 5, "#f00");
-            if (_showOverlayMessage)
+            }
+            if (_showOverlayMessage) {
               _showOverlayMessage("WARNING: ARENA WALL DAMAGE", "#f00", 1000);
+            }
             if (GameContext.player.hp <= 0) {
               if (_killPlayer) _killPlayer();
               else GameContext.player.dead = true;
@@ -510,8 +518,9 @@ export function checkWallCollision(entity, elasticity = 0) {
             GameContext.player.hp -= 1;
             if (_playSound) _playSound("hit");
             if (_updateHealthUI) _updateHealthUI();
-            if (_spawnParticles)
+            if (_spawnParticles) {
               _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 5, "#f00");
+            }
             if (_showOverlayMessage) _showOverlayMessage("STATION FIELD DAMAGE", "#f80", 1000);
             if (GameContext.player.hp <= 0) {
               if (_killPlayer) _killPlayer();
@@ -550,8 +559,9 @@ export function checkWallCollision(entity, elasticity = 0) {
             GameContext.player.hp -= 1;
             if (_playSound) _playSound("hit");
             if (_updateHealthUI) _updateHealthUI();
-            if (_spawnParticles)
+            if (_spawnParticles) {
               _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 5, "#f80");
+            }
             if (_showOverlayMessage) _showOverlayMessage("ARENA BOUNDARY DAMAGE", "#f80", 1000);
             if (GameContext.player.hp <= 0) {
               if (_killPlayer) _killPlayer();
@@ -591,8 +601,9 @@ export function checkWallCollision(entity, elasticity = 0) {
             GameContext.player.hp -= 1;
             if (_playSound) _playSound("hit");
             if (_updateHealthUI) _updateHealthUI();
-            if (_spawnParticles)
+            if (_spawnParticles) {
               _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 5, "#f80");
+            }
             if (_showOverlayMessage) _showOverlayMessage("DUNGEON BOUNDARY", "#f80", 1000);
             if (GameContext.player.hp <= 0) {
               if (_killPlayer) _killPlayer();
@@ -656,12 +667,13 @@ export function checkBulletWallCollision(bullet) {
     );
     if (az) {
       const dA = Math.hypot(bullet.pos.x - az.pos.x, bullet.pos.y - az.pos.y);
-      if (dA < az.radius + 900 && az.bulletHitsWall(bullet))
+      if (dA < az.radius + 900 && az.bulletHitsWall(bullet)) {
         return { kind: "anomaly_wall", obj: null };
+      }
     }
   }
   const nearby = GameContext.asteroidGrid.query(bullet.pos.x, bullet.pos.y);
-  for (let ast of nearby) {
+  for (const ast of nearby) {
     if (ast.dead) continue;
     const dx = bullet.pos.x - ast.pos.x;
     const dy = bullet.pos.y - ast.pos.y;
@@ -686,10 +698,11 @@ export function resolveEntityCollision() {
     ...(GameContext.contractEntities.fortresses || [])
   ].filter(e => e && !e.dead);
   if (GameContext.destroyer && !GameContext.destroyer.dead) allEntities.push(GameContext.destroyer);
-  if (GameContext.bossActive && GameContext.boss && !GameContext.boss.dead)
+  if (GameContext.bossActive && GameContext.boss && !GameContext.boss.dead) {
     allEntities.push(GameContext.boss);
+  }
 
-  const activeAnomalyZone =
+  const _activeAnomalyZone =
     GameContext.activeContract &&
     GameContext.activeContract.type === "anomaly" &&
     GameContext.contractEntities &&
@@ -699,7 +712,7 @@ export function resolveEntityCollision() {
         )
       : null;
 
-  const activeCave =
+  const _activeCave =
     GameContext.caveMode && GameContext.caveLevel && GameContext.caveLevel.active
       ? GameContext.caveLevel
       : null;
@@ -722,18 +735,22 @@ export function resolveEntityCollision() {
       if (e1.isWarpBoss && e2 !== GameContext.player) continue;
       if (e2.isWarpBoss && e1 !== GameContext.player) continue;
       // Destroyer only collides with player, skip destroyer vs other enemies
-      if ((e1 instanceof Destroyer || e1 instanceof Destroyer2) && e2 !== GameContext.player)
+      if ((e1 instanceof Destroyer || e1 instanceof Destroyer2) && e2 !== GameContext.player) {
         continue;
-      if ((e2 instanceof Destroyer || e2 instanceof Destroyer2) && e1 !== GameContext.player)
+      }
+      if ((e2 instanceof Destroyer || e2 instanceof Destroyer2) && e1 !== GameContext.player) {
         continue;
+      }
       // Cave bosses only collide with player, skip cave boss vs other enemies
       if (e1.isCaveBoss && e2 !== GameContext.player) continue;
       if (e2.isCaveBoss && e1 !== GameContext.player) continue;
       // Shield drones only collide with player, skip shield drone vs other entities
-      if ((e1 instanceof WarpShieldDrone || e1.isWarpShieldDrone) && e2 !== GameContext.player)
+      if ((e1 instanceof WarpShieldDrone || e1.isWarpShieldDrone) && e2 !== GameContext.player) {
         continue;
-      if ((e2 instanceof WarpShieldDrone || e2.isWarpShieldDrone) && e1 !== GameContext.player)
+      }
+      if ((e2 instanceof WarpShieldDrone || e2.isWarpShieldDrone) && e1 !== GameContext.player) {
         continue;
+      }
       // Cruiser only collides with player, skip cruiser vs other enemies
       if (e1 instanceof Cruiser && e2 !== GameContext.player) continue;
       if (e2 instanceof Cruiser && e1 !== GameContext.player) continue;
@@ -753,10 +770,12 @@ export function resolveEntityCollision() {
       if (e1.isCaveBoss) r1 = e1.shieldRadius || e1.radius;
       if (e2.isCaveBoss) r2 = e2.shieldRadius || e2.radius;
       // Cruiser uses shield radius if shields are up, otherwise hull radius
-      if (e1 instanceof Cruiser)
+      if (e1 instanceof Cruiser) {
         r1 = e1.shieldSegments && e1.shieldSegments.some(s => s > 0) ? e1.shieldRadius : e1.radius;
-      if (e2 instanceof Cruiser)
+      }
+      if (e2 instanceof Cruiser) {
         r2 = e2.shieldSegments && e2.shieldSegments.some(s => s > 0) ? e2.shieldRadius : e2.radius;
+      }
 
       const isStatic1 =
         e1 instanceof Pinwheel || e1 instanceof SpaceStation || e1.isDungeonBoss || e1.isCaveBoss;
@@ -765,10 +784,12 @@ export function resolveEntityCollision() {
       const e1IsDestroyer = e1 instanceof Destroyer || e1 instanceof Destroyer2;
       const e2IsDestroyer = e2 instanceof Destroyer || e2 instanceof Destroyer2;
 
-      if (isStatic1 && e1.shieldSegments && e1.shieldSegments.some(s => s > 0))
+      if (isStatic1 && e1.shieldSegments && e1.shieldSegments.some(s => s > 0)) {
         r1 = e1.shieldRadius;
-      if (isStatic2 && e2.shieldSegments && e2.shieldSegments.some(s => s > 0))
+      }
+      if (isStatic2 && e2.shieldSegments && e2.shieldSegments.some(s => s > 0)) {
         r2 = e2.shieldRadius;
+      }
 
       const dx = e2.pos.x - e1.pos.x;
       const dy = e2.pos.y - e1.pos.y;
@@ -847,13 +868,14 @@ export function resolveEntityCollision() {
           !GameContext.player.lastWarpBossBlockAt ||
           now - GameContext.player.lastWarpBossBlockAt > 200
         ) {
-          if (_spawnParticles)
+          if (_spawnParticles) {
             _spawnParticles(
               (GameContext.player.pos.x + GameContext.boss.pos.x) / 2,
               (GameContext.player.pos.y + GameContext.boss.pos.y) / 2,
               5,
               "#0ff"
             );
+          }
           if (_playSound) _playSound("shield_hit");
           GameContext.player.lastWarpBossBlockAt = now;
         }
@@ -868,16 +890,17 @@ export function resolveEntityCollision() {
     ...GameContext.cavePinwheels,
     ...(GameContext.contractEntities.fortresses || [])
   ];
-  if (GameContext.boss && GameContext.bossActive && !GameContext.boss.dead)
+  if (GameContext.boss && GameContext.bossActive && !GameContext.boss.dead) {
     damageable.push(GameContext.boss);
+  }
   if (GameContext.destroyer && !GameContext.destroyer.dead) damageable.push(GameContext.destroyer);
 
-  for (let entity of damageable) {
+  for (const entity of damageable) {
     if (entity.dead) continue;
     // Cruiser doesn't collide with asteroids
     if (entity instanceof Cruiser) continue;
     const nearbyAsteroids = GameContext.asteroidGrid.query(entity.pos.x, entity.pos.y);
-    for (let ast of nearbyAsteroids) {
+    for (const ast of nearbyAsteroids) {
       if (ast.dead) continue;
       const dx = entity.pos.x - ast.pos.x;
       const dy = entity.pos.y - ast.pos.y;
@@ -955,8 +978,7 @@ export function resolveEntityCollision() {
           GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 10);
 
           if (Date.now() - GameContext.player.lastAsteroidHitTime > 1000) {
-            if (GameContext.player.invincibilityOnHit > 0) {
-            }
+            // invincibilityOnHit check (no action needed, just skip damage visual)
 
             if (Date.now() - GameContext.player.lastAsteroidHitTime > 1000) {
               const asteroidDamage = isIndestructibleWall ? 2 : 1;
@@ -967,13 +989,14 @@ export function resolveEntityCollision() {
                 if (_spawnParticles) _spawnParticles(ast.pos.x, ast.pos.y, 8, "#aa8");
                 if (_playSound) _playSound("hit");
               } else {
-                if (_spawnParticles)
+                if (_spawnParticles) {
                   _spawnParticles(
                     GameContext.player.pos.x - nx * GameContext.player.radius,
                     GameContext.player.pos.y - ny * GameContext.player.radius,
                     6,
                     "#08f"
                   );
+                }
                 if (_playSound) _playSound("hit");
               }
             }
@@ -984,7 +1007,7 @@ export function resolveEntityCollision() {
   }
 
   if (GameContext.player && !GameContext.player.dead) {
-    for (let e of GameContext.enemies) {
+    for (const e of GameContext.enemies) {
       if (e.dead) continue;
       const isRoamer = e.type === "roamer" || e.type === "elite_roamer";
       const isDefender = e.type === "defender";
@@ -1014,13 +1037,14 @@ export function resolveEntityCollision() {
               e.vel.y -= ny * pushForce;
             }
 
-            if (_spawnParticles)
+            if (_spawnParticles) {
               _spawnParticles(
                 (GameContext.player.pos.x + e.pos.x) / 2,
                 (GameContext.player.pos.y + e.pos.y) / 2,
                 5,
                 isShieldDrone ? "#0af" : "#fff"
               );
+            }
             continue;
           }
 
@@ -1049,13 +1073,14 @@ export function resolveEntityCollision() {
           GameContext.player.takeHit(ramDamage);
           applyThornArmor(ramDamage, e);
 
-          if (_spawnParticles)
+          if (_spawnParticles) {
             _spawnParticles(
               (GameContext.player.pos.x + e.pos.x) / 2,
               (GameContext.player.pos.y + e.pos.y) / 2,
               12,
               "#f44"
             );
+          }
           if (_playSound) _playSound("hit");
         }
       }
@@ -1083,13 +1108,14 @@ export function resolveEntityCollision() {
           // Deal 10 damage bypassing shields
           GameContext.player.hp -= 10;
           if (_updateHealthUI) _updateHealthUI();
-          if (_spawnParticles)
+          if (_spawnParticles) {
             _spawnParticles(
               (GameContext.player.pos.x + GameContext.boss.pos.x) / 2,
               (GameContext.player.pos.y + GameContext.boss.pos.y) / 2,
               20,
               "#ff0066"
             );
+          }
           if (_playSound) _playSound("hit");
           if (GameContext.player.hp <= 0 && _killPlayer) _killPlayer();
         }
@@ -1108,13 +1134,14 @@ export function resolveEntityCollision() {
         GameContext.player.takeHit(ramDamage);
         applyThornArmor(ramDamage, GameContext.boss);
 
-        if (_spawnParticles)
+        if (_spawnParticles) {
           _spawnParticles(
             (GameContext.player.pos.x + GameContext.boss.pos.x) / 2,
             (GameContext.player.pos.y + GameContext.boss.pos.y) / 2,
             15,
             "#f44"
           );
+        }
         if (_playSound) _playSound("hit");
       }
     }
@@ -1128,7 +1155,8 @@ export function resolveEntityCollision() {
 
       // Use shield radius if shields are up, otherwise use hull radius
       const stationCollisionRadius =
-        GameContext.spaceStation.shieldSegments && GameContext.spaceStation.shieldSegments.some(s => s > 0)
+        GameContext.spaceStation.shieldSegments &&
+        GameContext.spaceStation.shieldSegments.some(s => s > 0)
           ? GameContext.spaceStation.shieldRadius
           : GameContext.spaceStation.radius;
 
@@ -1144,18 +1172,19 @@ export function resolveEntityCollision() {
         GameContext.player.vel.x += Math.cos(angle) * 4;
         GameContext.player.vel.y += Math.sin(angle) * 4;
 
-        if (_spawnParticles)
+        if (_spawnParticles) {
           _spawnParticles(
             (GameContext.player.pos.x + GameContext.spaceStation.pos.x) / 2,
             (GameContext.player.pos.y + GameContext.spaceStation.pos.y) / 2,
             15,
             "#0ff"
           );
+        }
         if (_playSound) _playSound("hit");
       }
     }
 
-    for (let c of GameContext.coins) {
+    for (const c of GameContext.coins) {
       if (c.dead) continue;
       const dist = Math.hypot(
         GameContext.player.pos.x - c.pos.x,
@@ -1225,7 +1254,7 @@ export function resolveEntityCollision() {
       }
     }
 
-    for (let n of GameContext.nuggets) {
+    for (const n of GameContext.nuggets) {
       if (n.dead) continue;
       const dist = Math.hypot(
         GameContext.player.pos.x - n.pos.x,
@@ -1243,7 +1272,7 @@ export function resolveEntityCollision() {
       }
     }
 
-    for (let gn of GameContext.goldNuggets) {
+    for (const gn of GameContext.goldNuggets) {
       if (gn.dead) continue;
       const dist = Math.hypot(
         GameContext.player.pos.x - gn.pos.x,
@@ -1255,8 +1284,9 @@ export function resolveEntityCollision() {
           Math.floor(Math.random() * (gn.nuggetMax - gn.nuggetMin + 1)) + gn.nuggetMin;
         const coinAmount = Math.floor(Math.random() * (gn.coinMax - gn.coinMin + 1)) + gn.coinMin;
         if (_awardCoinsInstant) _awardCoinsInstant(coinAmount, { noSound: false, sound: "coin" });
-        if (_awardNuggetsInstant)
+        if (_awardNuggetsInstant) {
           _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
+        }
         if (_addPickupFloatingText) {
           _addPickupFloatingText("gold", coinAmount, "#ffd700");
           _addPickupFloatingText("nugs", nuggetCount, "#ff0");
@@ -1266,7 +1296,7 @@ export function resolveEntityCollision() {
       }
     }
 
-    for (let p of GameContext.powerups) {
+    for (const p of GameContext.powerups) {
       if (p.dead) continue;
       const dist = Math.hypot(
         GameContext.player.pos.x - p.pos.x,
@@ -1287,7 +1317,7 @@ export function resolveEntityCollision() {
       }
     }
 
-    for (let m of GameContext.magnetPickups) {
+    for (const m of GameContext.magnetPickups) {
       if (m.dead) continue;
       const dist = Math.hypot(
         GameContext.player.pos.x - m.pos.x,
@@ -1295,16 +1325,17 @@ export function resolveEntityCollision() {
       );
       if (dist < GameContext.player.radius + m.radius) {
         if (_playSound) _playSound("powerup");
-        if (_showOverlayMessage)
+        if (_showOverlayMessage) {
           _showOverlayMessage("MAGNET ACTIVATED - COINS & NUGGETS MAGNETIZED", "#0ff", 2000);
+        }
         // Magnetize all coins on the map
-        for (let coin of GameContext.coins) {
+        for (const coin of GameContext.coins) {
           if (!coin.dead) {
             coin.magnetized = true;
           }
         }
         // Magnetize all nuggets on the map
-        for (let nugget of GameContext.nuggets) {
+        for (const nugget of GameContext.nuggets) {
           if (!nugget.dead) {
             nugget.magnetized = true;
           }
@@ -1315,7 +1346,7 @@ export function resolveEntityCollision() {
     }
 
     // Nuke pickup collection
-    for (let n of GameContext.nukePickups) {
+    for (const n of GameContext.nukePickups) {
       if (n.dead) continue;
       const dist = Math.hypot(
         GameContext.player.pos.x - n.pos.x,
@@ -1328,7 +1359,7 @@ export function resolveEntityCollision() {
       }
     }
 
-    for (let c of GameContext.caches) {
+    for (const c of GameContext.caches) {
       if (c.dead) continue;
       const dist = Math.hypot(
         GameContext.player.pos.x - c.pos.x,
@@ -1349,8 +1380,9 @@ export function resolveEntityCollision() {
         ) {
           if (!GameContext.activeContract.coreCollected) {
             GameContext.activeContract.coreCollected = true;
-            if (_showOverlayMessage)
+            if (_showOverlayMessage) {
               _showOverlayMessage("CORE ACQUIRED - ESCAPE ANOMALY", "#0f0", 2000);
+            }
             if (_updateContractUI) _updateContractUI();
           }
         }
@@ -1366,7 +1398,7 @@ export function resolveEntityCollision() {
       GameContext.caveLevel.active &&
       GameContext.caveLevel.wallTurrets
     ) {
-      for (let t of GameContext.caveLevel.wallTurrets) {
+      for (const t of GameContext.caveLevel.wallTurrets) {
         if (!t || t.dead) continue;
         const dist = Math.hypot(
           GameContext.player.pos.x - t.pos.x,
@@ -1385,13 +1417,14 @@ export function resolveEntityCollision() {
           applyThornArmor(2, t);
           if (_updateHealthUI) _updateHealthUI();
           if (_playSound) _playSound("hit");
-          if (_spawnParticles)
+          if (_spawnParticles) {
             _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 8, "#f00");
+          }
         }
       }
     }
 
-    for (let s of GameContext.shootingStars) {
+    for (const s of GameContext.shootingStars) {
       if (s.dead) continue;
 
       if (GameContext.player && !GameContext.player.dead && !GameContext.player.invulnerable) {
@@ -1403,8 +1436,9 @@ export function resolveEntityCollision() {
           GameContext.player.takeHit(s.damage);
           if (_updateHealthUI) _updateHealthUI();
           if (_playSound) _playSound("explode");
-          if (_spawnParticles)
+          if (_spawnParticles) {
             _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 20, "#f00");
+          }
           if (_showOverlayMessage) _showOverlayMessage("HIT BY SHOOTING STAR!", "#f00", 2000);
           s.dead = true;
           if (GameContext.player.hp <= 0) {
@@ -1416,7 +1450,7 @@ export function resolveEntityCollision() {
       }
 
       let hitEntity = false;
-      for (let e of GameContext.enemies) {
+      for (const e of GameContext.enemies) {
         if (!e || e.dead) continue;
         if (e.isDungeonBoss) continue;
         const dist = Math.hypot(s.pos.x - e.pos.x, s.pos.y - e.pos.y);
@@ -1431,7 +1465,7 @@ export function resolveEntityCollision() {
         }
       }
       if (!hitEntity) {
-        for (let b of GameContext.pinwheels) {
+        for (const b of GameContext.pinwheels) {
           if (!b || b.dead) continue;
           const dist = Math.hypot(s.pos.x - b.pos.x, s.pos.y - b.pos.y);
           if (dist < s.radius + b.radius) {
@@ -1450,7 +1484,7 @@ export function resolveEntityCollision() {
         }
       }
       if (!hitEntity) {
-        for (let b of GameContext.cavePinwheels) {
+        for (const b of GameContext.cavePinwheels) {
           if (!b || b.dead) continue;
           const dist = Math.hypot(s.pos.x - b.pos.x, s.pos.y - b.pos.y);
           if (dist < s.radius + b.radius) {
@@ -1483,8 +1517,9 @@ export function resolveEntityCollision() {
           ) {
             GameContext.boss.hp -= s.damage;
             showDamageFloatingText(GameContext.boss.pos.x, GameContext.boss.pos.y, s.damage, false);
-            if (_spawnParticles)
+            if (_spawnParticles) {
               _spawnParticles(GameContext.boss.pos.x, GameContext.boss.pos.y, 22, "#fa0");
+            }
             if (_playSound) _playSound("explode");
             if (GameContext.boss.hp <= 0) {
               GameContext.boss.kill();
@@ -1507,13 +1542,14 @@ export function resolveEntityCollision() {
             s.damage,
             false
           );
-          if (_spawnParticles)
+          if (_spawnParticles) {
             _spawnParticles(
               GameContext.spaceStation.pos.x,
               GameContext.spaceStation.pos.y,
               22,
               "#fa0"
             );
+          }
           if (_playSound) _playSound("explode");
           if (GameContext.spaceStation.hp <= 0) {
             if (_handleSpaceStationDestroyed) _handleSpaceStationDestroyed();
@@ -1527,7 +1563,7 @@ export function resolveEntityCollision() {
       }
 
       const nearby = GameContext.asteroidGrid.query(s.pos.x, s.pos.y);
-      for (let ast of nearby) {
+      for (const ast of nearby) {
         if (ast.dead) continue;
         const dist = Math.hypot(s.pos.x - ast.pos.x, s.pos.y - ast.pos.y);
         if (dist < s.radius + ast.radius) {
@@ -1650,7 +1686,7 @@ export function processBulletCollisions() {
 
           if (hit) continue;
           const nearby = GameContext.targetGrid.query(b.pos.x, b.pos.y, 250);
-          for (let e of nearby) {
+          for (const e of nearby) {
             if (e.dead) continue;
             if (hit) break;
 
@@ -1689,7 +1725,7 @@ export function processBulletCollisions() {
                 // Clamp bullet position to collision point to prevent visual pass-through
                 const dist = Math.sqrt(distSq);
                 if (dist > 0) {
-                  const overlap = hitRadius - dist;
+                  const _overlap = hitRadius - dist;
                   const nx = dx / dist;
                   const ny = dy / dist;
                   b.pos.x = e.pos.x + nx * (e.radius + b.radius);
@@ -1707,16 +1743,16 @@ export function processBulletCollisions() {
                   GameContext.player.chainLightningRange &&
                   !b.isEnemy
                 ) {
-                  let chainCount = GameContext.player.chainLightningCount;
+                  const chainCount = GameContext.player.chainLightningCount;
                   let chainSource = e;
-                  let chainTargets = new Set();
+                  const chainTargets = new Set();
                   chainTargets.add(e);
 
                   for (let chain = 0; chain < chainCount; chain++) {
                     let nearestTarget = null;
                     let nearestDist = GameContext.player.chainLightningRange;
 
-                    for (let other of nearby) {
+                    for (const other of nearby) {
                       if (other.dead) continue;
                       const isEnemy = other instanceof Enemy;
                       const isPinwheel = other instanceof Pinwheel;
@@ -1752,7 +1788,7 @@ export function processBulletCollisions() {
                       );
                       chainTargets.add(nearestTarget);
 
-                      if (_spawnLightningArc)
+                      if (_spawnLightningArc) {
                         _spawnLightningArc(
                           chainSource.pos.x,
                           chainSource.pos.y,
@@ -1760,8 +1796,10 @@ export function processBulletCollisions() {
                           nearestTarget.pos.y,
                           "#0ff"
                         );
-                      if (_spawnParticles)
+                      }
+                      if (_spawnParticles) {
                         _spawnParticles(nearestTarget.pos.x, nearestTarget.pos.y, 3, "#0ff");
+                      }
                       if (_playSound) _playSound("hit");
 
                       if (nearestTarget.hp <= 0) {
@@ -1811,8 +1849,9 @@ export function processBulletCollisions() {
                 GameContext.boss &&
                 e === GameContext.boss &&
                 !e.isDungeonBoss
-              )
+              ) {
                 continue;
+              }
               // Skip damage if Cruiser is invulnerable
               if (e instanceof Cruiser && e.invulnerableTimer > 0) continue;
 
@@ -2121,16 +2160,16 @@ export function processBulletCollisions() {
                   GameContext.player.chainLightningRange &&
                   !b.isEnemy
                 ) {
-                  let chainCount = GameContext.player.chainLightningCount;
+                  const chainCount = GameContext.player.chainLightningCount;
                   let chainSource = e;
-                  let chainTargets = new Set();
+                  const chainTargets = new Set();
                   chainTargets.add(e);
 
                   for (let chain = 0; chain < chainCount; chain++) {
                     let nearestTarget = null;
                     let nearestDist = GameContext.player.chainLightningRange;
 
-                    for (let other of nearby) {
+                    for (const other of nearby) {
                       if (other.dead) continue;
                       const isEnemy = other instanceof Enemy;
                       const isPinwheel = other instanceof Pinwheel;
@@ -2156,7 +2195,7 @@ export function processBulletCollisions() {
                       const chainDamage = b.damage * Math.pow(0.7, chain + 1);
                       trackChainLightningDamage(chainDamage);
                       if (nearestTarget === GameContext.destroyer) {
-                        const hpBefore = nearestTarget.hp;
+                        const _hpBefore = nearestTarget.hp;
                         nearestTarget.hp -= chainDamage;
                         showDamageFloatingText(
                           nearestTarget.pos.x,
@@ -2175,7 +2214,7 @@ export function processBulletCollisions() {
                       }
                       chainTargets.add(nearestTarget);
 
-                      if (_spawnLightningArc)
+                      if (_spawnLightningArc) {
                         _spawnLightningArc(
                           chainSource.pos.x,
                           chainSource.pos.y,
@@ -2183,8 +2222,10 @@ export function processBulletCollisions() {
                           nearestTarget.pos.y,
                           "#0ff"
                         );
-                      if (_spawnParticles)
+                      }
+                      if (_spawnParticles) {
                         _spawnParticles(nearestTarget.pos.x, nearestTarget.pos.y, 3, "#0ff");
+                      }
                       if (_playSound) _playSound("hit");
 
                       if (nearestTarget.hp <= 0) {
@@ -2524,16 +2565,16 @@ export function processBulletCollisions() {
                   GameContext.player.chainLightningRange &&
                   !b.isEnemy
                 ) {
-                  let chainCount = GameContext.player.chainLightningCount;
+                  const chainCount = GameContext.player.chainLightningCount;
                   let chainSource = e;
-                  let chainTargets = new Set();
+                  const chainTargets = new Set();
                   chainTargets.add(e);
 
                   for (let chain = 0; chain < chainCount; chain++) {
                     let nearestTarget = null;
                     let nearestDist = GameContext.player.chainLightningRange;
 
-                    for (let other of nearby) {
+                    for (const other of nearby) {
                       if (other.dead) continue;
                       const isEnemy = other instanceof Enemy;
                       const isPinwheel = other instanceof Pinwheel;
@@ -2559,7 +2600,7 @@ export function processBulletCollisions() {
                       const chainDamage = b.damage * Math.pow(0.7, chain + 1);
                       trackChainLightningDamage(chainDamage);
                       if (nearestTarget === GameContext.destroyer) {
-                        const hpBefore = nearestTarget.hp;
+                        const _hpBefore = nearestTarget.hp;
                         nearestTarget.hp -= chainDamage;
                         showDamageFloatingText(
                           nearestTarget.pos.x,
@@ -2578,7 +2619,7 @@ export function processBulletCollisions() {
                       }
                       chainTargets.add(nearestTarget);
 
-                      if (_spawnLightningArc)
+                      if (_spawnLightningArc) {
                         _spawnLightningArc(
                           chainSource.pos.x,
                           chainSource.pos.y,
@@ -2586,8 +2627,10 @@ export function processBulletCollisions() {
                           nearestTarget.pos.y,
                           "#0ff"
                         );
-                      if (_spawnParticles)
+                      }
+                      if (_spawnParticles) {
                         _spawnParticles(nearestTarget.pos.x, nearestTarget.pos.y, 3, "#0ff");
+                      }
                       if (_playSound) _playSound("hit");
 
                       if (nearestTarget.hp <= 0) {
@@ -2930,16 +2973,16 @@ export function processBulletCollisions() {
                   GameContext.player.chainLightningRange &&
                   !b.isEnemy
                 ) {
-                  let chainCount = GameContext.player.chainLightningCount;
+                  const chainCount = GameContext.player.chainLightningCount;
                   let chainSource = e;
-                  let chainTargets = new Set();
+                  const chainTargets = new Set();
                   chainTargets.add(e);
 
                   for (let chain = 0; chain < chainCount; chain++) {
                     let nearestTarget = null;
                     let nearestDist = GameContext.player.chainLightningRange;
 
-                    for (let other of nearby) {
+                    for (const other of nearby) {
                       if (other.dead) continue;
                       const isEnemy = other instanceof Enemy;
                       const isPinwheel = other instanceof Pinwheel;
@@ -2965,7 +3008,7 @@ export function processBulletCollisions() {
                       const chainDamage = b.damage * Math.pow(0.7, chain + 1);
                       trackChainLightningDamage(chainDamage);
                       if (nearestTarget === GameContext.destroyer) {
-                        const hpBefore = nearestTarget.hp;
+                        const _hpBefore = nearestTarget.hp;
                         nearestTarget.hp -= chainDamage;
                         showDamageFloatingText(
                           nearestTarget.pos.x,
@@ -2984,7 +3027,7 @@ export function processBulletCollisions() {
                       }
                       chainTargets.add(nearestTarget);
 
-                      if (_spawnLightningArc)
+                      if (_spawnLightningArc) {
                         _spawnLightningArc(
                           chainSource.pos.x,
                           chainSource.pos.y,
@@ -2992,8 +3035,10 @@ export function processBulletCollisions() {
                           nearestTarget.pos.y,
                           "#0ff"
                         );
-                      if (_spawnParticles)
+                      }
+                      if (_spawnParticles) {
                         _spawnParticles(nearestTarget.pos.x, nearestTarget.pos.y, 3, "#0ff");
+                      }
                       if (_playSound) _playSound("hit");
 
                       if (nearestTarget.hp <= 0) {
@@ -3039,7 +3084,7 @@ export function processBulletCollisions() {
               GameContext.contractEntities.fortresses.length > 0
             ) {
               const fortresses = GameContext.contractEntities.fortresses;
-              for (let f of fortresses) {
+              for (const f of fortresses) {
                 if (!f || f.dead) continue;
                 if (b.isEnemy && b.owner !== GameContext.player) continue;
                 const dx = b.pos.x - f.pos.x;
@@ -3085,7 +3130,7 @@ export function processBulletCollisions() {
               GameContext.contractEntities.wallTurrets.length > 0
             ) {
               const wallTurrets = GameContext.contractEntities.wallTurrets;
-              for (let t of wallTurrets) {
+              for (const t of wallTurrets) {
                 if (!t || t.dead) continue;
                 if (b.isEnemy && b.owner !== GameContext.player) continue;
                 const dx = b.pos.x - t.pos.x;
@@ -3138,7 +3183,7 @@ export function processBulletCollisions() {
           GameContext.caveLevel.wallTurrets &&
           GameContext.caveLevel.wallTurrets.length > 0
         ) {
-          for (let t of GameContext.caveLevel.wallTurrets) {
+          for (const t of GameContext.caveLevel.wallTurrets) {
             if (!t || t.dead) continue;
             if (typeof t.hitByPlayerBullet === "function" && t.hitByPlayerBullet(b)) {
               hit = true;
@@ -3156,7 +3201,7 @@ export function processBulletCollisions() {
           GameContext.caveLevel.switches &&
           GameContext.caveLevel.switches.length > 0
         ) {
-          for (let s of GameContext.caveLevel.switches) {
+          for (const s of GameContext.caveLevel.switches) {
             if (!s || s.dead) continue;
             if (typeof s.hitByPlayerBullet === "function" && s.hitByPlayerBullet(b)) {
               hit = true;
@@ -3174,7 +3219,7 @@ export function processBulletCollisions() {
           GameContext.caveLevel.relays &&
           GameContext.caveLevel.relays.length > 0
         ) {
-          for (let r of GameContext.caveLevel.relays) {
+          for (const r of GameContext.caveLevel.relays) {
             if (!r || r.dead) continue;
             if (typeof r.hitByPlayerBullet === "function" && r.hitByPlayerBullet(b)) {
               hit = true;
@@ -3192,7 +3237,7 @@ export function processBulletCollisions() {
           GameContext.caveLevel.critters &&
           GameContext.caveLevel.critters.length > 0
         ) {
-          for (let c of GameContext.caveLevel.critters) {
+          for (const c of GameContext.caveLevel.critters) {
             if (!c || c.dead) continue;
             const dist = Math.hypot(b.pos.x - c.pos.x, b.pos.y - c.pos.y);
             if (dist < c.radius + b.radius) {
@@ -3204,7 +3249,7 @@ export function processBulletCollisions() {
                 GameContext.caveLevel.wallTurrets &&
                 GameContext.caveLevel.wallTurrets.length > 0
               ) {
-                for (let t of GameContext.caveLevel.wallTurrets) {
+                for (const t of GameContext.caveLevel.wallTurrets) {
                   if (!t || t.dead) continue;
                   const dt = Math.hypot(t.pos.x - c.pos.x, t.pos.y - c.pos.y);
                   if (dt < 900) {
@@ -3220,7 +3265,7 @@ export function processBulletCollisions() {
         }
 
         if (!hit && !b.isEnemy && GameContext.warpBioPods && GameContext.warpBioPods.length > 0) {
-          for (let p of GameContext.warpBioPods) {
+          for (const p of GameContext.warpBioPods) {
             if (!p || p.dead) continue;
             const dist = Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y);
             if (dist < p.radius + b.radius) {
@@ -3549,7 +3594,7 @@ export function processBulletCollisions() {
               b.vel.x = 0;
               b.vel.y = 0;
             } else {
-              const hpBefore = GameContext.destroyer.hp;
+              const _hpBefore = GameContext.destroyer.hp;
               trackDamageByWeaponType(b, b.damage);
               GameContext.destroyer.hp -= b.damage;
               showDamageFloatingText(

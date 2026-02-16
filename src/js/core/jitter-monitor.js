@@ -27,7 +27,7 @@ export class JitterMonitor {
   recordFrame(frameTimeMs) {
     if (!this.enabled) return;
 
-    const now = performance.now();
+    const now = globalThis.performance.now();
     this.frameTimes.push(frameTimeMs);
 
     // Maintain circular buffer
@@ -92,9 +92,9 @@ export class JitterMonitor {
 
     if (this.recentSpikes.length > 0) {
       // console.warn('Recent Frame Spikes:');
-      this.recentSpikes.forEach((spike, i) => {
-        const timeSince = ((performance.now() - spike.time) / 1000).toFixed(1);
-        // console.warn(`  ${i + 1}. ${spike.duration.toFixed(1)}ms (${timeSince}s ago)`);
+      this.recentSpikes.forEach(spike => {
+        // const timeSince = ((globalThis.performance.now() - spike.time) / 1000).toFixed(1);
+        // console.warn(`  ${spike.duration.toFixed(1)}ms (${timeSince}s ago)`);
         if (spike.stack) {
           // console.warn('     Likely from:', spike.stack);
         }
@@ -155,7 +155,9 @@ export class JitterMonitor {
         const lines = stack.split("\n").slice(2, 5);
         return lines.map(l => l.trim().substring(0, 50)).join(" → ");
       }
-    } catch (e) {}
+    } catch (_e) {
+      // Ignore stack trace errors
+    }
     return null;
   }
 
