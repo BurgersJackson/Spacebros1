@@ -1780,7 +1780,7 @@ export function processBulletCollisions() {
                     }
 
                     if (nearestTarget) {
-                      const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                      const chainDamage = b.damage * [0.90, 0.80, 0.60, 0.50, 0.35][chain] || 0.35;
                       trackChainLightningDamage(chainDamage);
                       nearestTarget.hp -= chainDamage;
                       showDamageFloatingText(
@@ -2195,7 +2195,7 @@ export function processBulletCollisions() {
                     }
 
                     if (nearestTarget) {
-                      const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                      const chainDamage = b.damage * [0.90, 0.80, 0.60, 0.50, 0.35][chain] || 0.35;
                       trackChainLightningDamage(chainDamage);
                       if (nearestTarget === GameContext.destroyer) {
                         const _hpBefore = nearestTarget.hp;
@@ -2600,7 +2600,7 @@ export function processBulletCollisions() {
                     }
 
                     if (nearestTarget) {
-                      const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                      const chainDamage = b.damage * [0.90, 0.80, 0.60, 0.50, 0.35][chain] || 0.35;
                       trackChainLightningDamage(chainDamage);
                       if (nearestTarget === GameContext.destroyer) {
                         const _hpBefore = nearestTarget.hp;
@@ -3008,7 +3008,7 @@ export function processBulletCollisions() {
                     }
 
                     if (nearestTarget) {
-                      const chainDamage = b.damage * Math.pow(0.7, chain + 1);
+                      const chainDamage = b.damage * [0.90, 0.80, 0.60, 0.50, 0.35][chain] || 0.35;
                       trackChainLightningDamage(chainDamage);
                       if (nearestTarget === GameContext.destroyer) {
                         const _hpBefore = nearestTarget.hp;

@@ -1935,13 +1935,6 @@ export function gameLoopLogic(opts = null) {
     GameContext.player.draw(ctx, alpha);
   }
 
-  // FloatingTexts - always update, cull drawing by view
-  for (let i = 0, len = GameContext.floatingTexts.length; i < len; i++) {
-    const t = GameContext.floatingTexts[i];
-    if (doUpdate) t.update(deltaTime);
-    if (doDraw && isInView(t.pos.x, t.pos.y)) t.draw(ctx, alpha);
-  }
-
   // Drones - always close to player, no culling needed
   for (let i = 0, len = GameContext.drones.length; i < len; i++) {
     const d = GameContext.drones[i];
@@ -2143,6 +2136,13 @@ export function gameLoopLogic(opts = null) {
     }
   }
   if (doUpdate) compactArray(GameContext.shockwaves);
+
+  // FloatingTexts - drawn AFTER all entities so damage numbers appear on top
+  for (let i = 0, len = GameContext.floatingTexts.length; i < len; i++) {
+    const t = GameContext.floatingTexts[i];
+    if (doUpdate) t.update(deltaTime);
+    if (doDraw && isInView(t.pos.x, t.pos.y)) t.draw(ctx, 1.0);
+  }
 
   globalProfiler.end("Entities");
 
