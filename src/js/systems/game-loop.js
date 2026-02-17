@@ -887,12 +887,16 @@ export function gameLoopLogic(opts = null) {
       ];
       if (countActiveBossMobs() < 2) {
         const bossChoice = bossPool[Math.floor(Math.random() * bossPool.length)];
-        const bossOffset = {
-          x: GameContext.spaceStation.pos.x + 600,
-          y: GameContext.spaceStation.pos.y
-        };
-        const dungeonBoss = new bossChoice.cls(bossOffset.x, bossOffset.y);
+        // Pass encounterIndex (not x,y) - boss spawns relative to player then moves to station
+        const dungeonBoss = new bossChoice.cls(GameContext.cruiserEncounterCount);
         dungeonBoss.assignedBase = GameContext.spaceStation;
+        // Set the GameContext reference for this boss type so systems can find it
+        if (bossChoice.name === "NecroticHive") GameContext.necroticHive = dungeonBoss;
+        else if (bossChoice.name === "CerebralPsion") GameContext.cerebralPsion = dungeonBoss;
+        else if (bossChoice.name === "Fleshforge") GameContext.fleshforge = dungeonBoss;
+        else if (bossChoice.name === "VortexMatriarch") GameContext.vortexMatriarch = dungeonBoss;
+        else if (bossChoice.name === "ChitinusPrime") GameContext.chitinusPrime = dungeonBoss;
+        else if (bossChoice.name === "PsyLich") GameContext.psyLich = dungeonBoss;
         GameContext.enemies.push(dungeonBoss);
       }
 
@@ -962,12 +966,16 @@ export function gameLoopLogic(opts = null) {
       ];
       if (countActiveBossMobs() < 2) {
         const bossChoice2 = bossPool2[Math.floor(Math.random() * bossPool2.length)];
-        const bossOffset2 = {
-          x: GameContext.spaceStation.pos.x + 600,
-          y: GameContext.spaceStation.pos.y
-        };
-        const dungeonBoss2 = new bossChoice2.cls(bossOffset2.x, bossOffset2.y);
+        // Pass encounterIndex (not x,y) - boss spawns relative to player then moves to station
+        const dungeonBoss2 = new bossChoice2.cls(GameContext.cruiserEncounterCount);
         dungeonBoss2.assignedBase = GameContext.spaceStation;
+        // Set the GameContext reference for this boss type so systems can find it
+        if (bossChoice2.name === "NecroticHive") GameContext.necroticHive = dungeonBoss2;
+        else if (bossChoice2.name === "CerebralPsion") GameContext.cerebralPsion = dungeonBoss2;
+        else if (bossChoice2.name === "Fleshforge") GameContext.fleshforge = dungeonBoss2;
+        else if (bossChoice2.name === "VortexMatriarch") GameContext.vortexMatriarch = dungeonBoss2;
+        else if (bossChoice2.name === "ChitinusPrime") GameContext.chitinusPrime = dungeonBoss2;
+        else if (bossChoice2.name === "PsyLich") GameContext.psyLich = dungeonBoss2;
         GameContext.enemies.push(dungeonBoss2);
       }
 
@@ -1038,16 +1046,16 @@ export function gameLoopLogic(opts = null) {
       let targetLevel2 = 0;
 
       // Fixed condition order (was broken - else if with ascending values)
-      // Reduced total gunboats to keep enemy count manageable
+      // Max 2 gunboats total at any time
       if (elapsedMinutes >= 20) {
         targetLevel1 = 0;
-        targetLevel2 = 3; // Reduced from 5
+        targetLevel2 = 2;
       } else if (elapsedMinutes >= 15) {
         targetLevel1 = 1;
-        targetLevel2 = 2;
+        targetLevel2 = 1;
       } else if (elapsedMinutes >= 10) {
         targetLevel1 = 2;
-        targetLevel2 = 1;
+        targetLevel2 = 0;
       } else if (elapsedMinutes >= 5) {
         targetLevel1 = 2;
       }

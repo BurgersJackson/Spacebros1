@@ -36,7 +36,8 @@
       "Bash(npm run lint)",
       "Bash(npm run lint:*)",
       "Bash(npm run format)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(git status:*)"
     ]
   },
   "outputStyle": "default"
