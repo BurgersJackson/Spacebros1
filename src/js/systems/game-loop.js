@@ -1037,17 +1037,20 @@ export function gameLoopLogic(opts = null) {
       let targetLevel1 = 1;
       let targetLevel2 = 0;
 
-      if (elapsedMinutes >= 5) targetLevel1 = 2;
-      else if (elapsedMinutes >= 10) {
-        targetLevel1 = 3;
-        targetLevel2 = 1;
-      } else if (elapsedMinutes >= 15) {
-        targetLevel1 = 3;
-        targetLevel2 = 2;
-      } else if (elapsedMinutes >= 20) {
+      // Fixed condition order (was broken - else if with ascending values)
+      // Reduced total gunboats to keep enemy count manageable
+      if (elapsedMinutes >= 20) {
         targetLevel1 = 0;
-        targetLevel2 = 5;
-      } else if (elapsedMinutes >= 25) targetLevel2 = 6;
+        targetLevel2 = 3; // Reduced from 5
+      } else if (elapsedMinutes >= 15) {
+        targetLevel1 = 1;
+        targetLevel2 = 2;
+      } else if (elapsedMinutes >= 10) {
+        targetLevel1 = 2;
+        targetLevel2 = 1;
+      } else if (elapsedMinutes >= 5) {
+        targetLevel1 = 2;
+      }
 
       const currentLevel1 = GameContext.enemies.filter(
         e => e.isGunboat && e.gunboatLevel === 1
@@ -1235,17 +1238,17 @@ export function gameLoopLogic(opts = null) {
       if (elapsed < 0) elapsed = 0;
       const elapsedMinutes = elapsed / 60000;
 
-      const baseRoamers = GameContext.currentLevel === 2 ? 5 : 4;
-      GameContext.maxRoamers = 13;
-      const rampMinutes = 25; // slower ramp
+      const baseRoamers = GameContext.currentLevel === 2 ? 3 : 2;
+      GameContext.maxRoamers = 7; // Reduced from 13 - fewer but tougher enemies
+      const rampMinutes = 25; // Ramp completes before 30min game end
       const rampT = Math.min(1, elapsedMinutes / rampMinutes);
       const difficultyBonus =
-        Math.max(0, GameContext.difficultyTier + GameContext.player.level * 0.1 - 1) * 0.3;
-      const earlyEnemyFactor = elapsedMinutes < 4 ? 0.75 : 1.0;
-      const targetRoamers = Math.floor(
+        Math.max(0, GameContext.difficultyTier + GameContext.player.level * 0.1 - 1) * 0.2;
+      const earlyEnemyFactor = elapsedMinutes < 4 ? 0.8 : 1.0; // Increased from 0.6 to ensure minimum roamers
+      const targetRoamers = Math.max(3, Math.floor(
         (baseRoamers + (GameContext.maxRoamers - baseRoamers) * rampT + difficultyBonus) *
           earlyEnemyFactor
-      );
+      )); // Minimum 3 roamers at all times
 
       const currentRoamers = GameContext.enemies.filter(
         e => e.type === "roamer" || e.type === "elite_roamer" || e.type === "hunter"
@@ -1274,6 +1277,13 @@ export function gameLoopLogic(opts = null) {
         GameContext.roamerRespawnQueue[i] -= deltaTime;
         if (GameContext.roamerRespawnQueue[i] <= 0) {
           GameContext.roamerRespawnQueue.splice(i, 1);
+          // Re-check current count before spawning to prevent over-spawning
+          const currentNow = GameContext.enemies.filter(
+            e => e.type === "roamer" || e.type === "elite_roamer" || e.type === "hunter"
+          ).length;
+          if (currentNow >= targetRoamers) {
+            continue; // Skip spawn if already at or above target
+          }
           let type = "roamer";
           const currentElite = GameContext.enemies.filter(e => e.type === "elite_roamer").length;
           const currentHunter = GameContext.enemies.filter(e => e.type === "hunter").length;
@@ -1415,11 +1425,12 @@ export function gameLoopLogic(opts = null) {
       if (elapsed < 0) elapsed = 0;
       const elapsedMinutes = elapsed / 60000;
 
-      let targetBases = GameContext.caveMode ? 3 : 3;
+      let targetBases = GameContext.caveMode ? 3 : 2;
       if (!GameContext.caveMode) {
-        if (elapsedMinutes < 2) targetBases = 1;
-        else if (elapsedMinutes < 5) targetBases = 2;
-        else targetBases = 3; // Cap at 3 pinwheels max
+        if (elapsedMinutes < 3) targetBases = 1;
+        else if (elapsedMinutes < 10) targetBases = 2;
+        else if (elapsedMinutes < 20) targetBases = 2;
+        else targetBases = 3; // 3 pinwheels in late game (20+ min)
       }
 
       const currentPinwheels = GameContext.caveMode

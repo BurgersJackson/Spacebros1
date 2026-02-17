@@ -98,16 +98,16 @@ export class Enemy extends Entity {
     if (this.type === "roamer") {
       const elapsedMs = Date.now() - GameContext.gameStartTime - (GameContext.pausedAccumMs || 0);
       const elapsedMinutes = elapsedMs / 60000;
-      const baseHp = elapsedMinutes < 5 ? 50 : 100;
-      this.hp = (baseHp + GameContext.difficultyTier * 10) * scale;
+      const baseHp = elapsedMinutes < 5 ? 200 : 250;
+      this.hp = (baseHp + GameContext.difficultyTier * 15) * scale;
     } else if (this.type === "elite_roamer") {
-      this.hp = (160 + GameContext.difficultyTier * 20) * scale;
+      this.hp = (350 + GameContext.difficultyTier * 25) * scale;
       this.shieldRadius = 38; // Increased for better hit detection // reduced 25%
       this.shieldSegments = new Array(6).fill(10);
       this.radius = 19; // reduced 25% (was 25)
       this.maxSpeed *= 1.05;
     } else if (this.type === "hunter") {
-      this.hp = (220 + GameContext.difficultyTier * 30) * scale;
+      this.hp = (400 + GameContext.difficultyTier * 35) * scale;
       this.radius = 22; // Base radius (will be multiplied by 3 to get 66)
       this.maxSpeed = 13.0 + GameContext.difficultyTier * 0.5; // doubled
       this.thrustPower = 1.2; // quadrupled (0.3 * 4)
@@ -115,7 +115,7 @@ export class Enemy extends Entity {
       this.shieldRadius = 45; // Increased for better hit detection // Base shield radius (will be multiplied by 3 to get 90)
       this.shootTimer = 20; // 40 / 2
     } else if (this.type === "defender") {
-      this.hp = (150 + (GameContext.difficultyTier - 1) * 20) * scale;
+      this.hp = (250 + (GameContext.difficultyTier - 1) * 25) * scale;
       this.radius = 20; // Same base radius as roamer
     }
 
@@ -373,6 +373,7 @@ export class Enemy extends Entity {
 
     let total = count * val;
     if (this.isGunboat) total += 10 + 5 * 2;
+    total = Math.ceil(total * 1.1); // 10% bonus since fewer enemies now
 
     // Spawn physical coins instead of awarding instantly
     if (total > 0) {
@@ -848,12 +849,12 @@ export class Enemy extends Entity {
           const bx = this.pos.x + Math.cos(angle) * 25;
           const by = this.pos.y + Math.sin(angle) * 25;
           GameContext.bullets.push(
-            new Bullet(bx, by, angle, 11, { owner: "enemy", damage: 1, life: 300, color: "#f0f" })
+            new Bullet(bx, by, angle, 11, { owner: "enemy", damage: 2, life: 300, color: "#f0f" })
           );
           if (this.modifier === "split") {
             const a2 = angle + (Math.random() - 0.5) * 0.2;
             GameContext.bullets.push(
-              new Bullet(bx, by, a2, 11, { owner: "enemy", damage: 1, life: 300, color: "#f0f" })
+              new Bullet(bx, by, a2, 11, { owner: "enemy", damage: 2, life: 300, color: "#f0f" })
             );
           }
           if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, angle);
@@ -864,7 +865,7 @@ export class Enemy extends Entity {
             const bx = this.pos.x + Math.cos(a) * 20;
             const by = this.pos.y + Math.sin(a) * 20;
             GameContext.bullets.push(
-              new Bullet(bx, by, a, 16, { owner: "enemy", damage: 1, life: 180 })
+              new Bullet(bx, by, a, 16, { owner: "enemy", damage: 2, life: 180 })
             );
             if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, a);
           }
@@ -873,7 +874,7 @@ export class Enemy extends Entity {
           const bx = this.pos.x + Math.cos(angle) * 20;
           const by = this.pos.y + Math.sin(angle) * 20;
           GameContext.bullets.push(
-            new Bullet(bx, by, angle, 16, { owner: "enemy", damage: 1, life: 180 })
+            new Bullet(bx, by, angle, 16, { owner: "enemy", damage: 2, life: 180 })
           );
           if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, angle);
           this.shootTimer = 13; // 50% faster

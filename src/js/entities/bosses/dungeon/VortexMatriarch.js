@@ -75,12 +75,12 @@ export class VortexMatriarch extends Enemy {
     this.eventHorizonPullRadius = 1500;
     this.eventHorizonDamage = 30;
 
-    // Defender limit - maximum 8 defenders at once
-    this.maxDefenders = 8;
+    // Void pulse ability (shield-bypassing)
+    this.voidPulses = [];
 
     this.phaseSeq = [
       { name: "GRAVITY_WELL", duration: 140 },
-      { name: "DEFENDERS_CALL", duration: 160 },
+      { name: "VOID_PULSE", duration: 160 },
       { name: "REFLECTION", duration: 130 },
       { name: "ORBITAL_BOMBARDMENT", duration: 180 },
       { name: "SINGULARITY", duration: 150 }
@@ -234,36 +234,57 @@ export class VortexMatriarch extends Enemy {
         }
         playSound("shotgun");
       }
-    } else if (this.phaseName === "DEFENDERS_CALL") {
-      if (this.phaseTick % 60 === 0) {
-        // Count current defenders
-        let defenderCount = 0;
-        for (const enemy of GameContext.enemies) {
-          if (!enemy.dead && enemy.type === "defender") {
-            defenderCount++;
+    } else if (this.phaseName === "VOID_PULSE") {
+      // Expanding void pulses that bypass shields
+      if (this.phaseTick % 55 === 0) {
+        // Create expanding void pulse ring
+        if (!this.voidPulses) this.voidPulses = [];
+        this.voidPulses.push({
+          x: this.pos.x,
+          y: this.pos.y,
+          radius: this.radius,
+          maxRadius: 900,
+          speed: 8,
+          damage: 2,
+          color: "#a0f"
+        });
+        playSound("heavy_shoot");
+        showOverlayMessage("VOID PULSE!", "#a0f", 800);
+      }
+      // Update and apply void pulse damage (shield-bypassing)
+      if (this.voidPulses) {
+        for (let i = this.voidPulses.length - 1; i >= 0; i--) {
+          const pulse = this.voidPulses[i];
+          pulse.radius += pulse.speed;
+          // Check if player is caught in the expanding ring (within ring thickness)
+          if (GameContext.player && !GameContext.player.dead) {
+            const dist = Math.hypot(
+              GameContext.player.pos.x - pulse.x,
+              GameContext.player.pos.y - pulse.y
+            );
+            // Ring has thickness of ~40 units
+            if (dist >= pulse.radius - 20 && dist <= pulse.radius + 20) {
+              // Shield-bypassing damage using ignoreShields=true
+              GameContext.player.takeHit(pulse.damage, true);
+              if (_spawnParticles) {
+                _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, pulse.color);
+              }
+            }
           }
-        }
-
-        // Only spawn if below limit
-        if (defenderCount < this.maxDefenders) {
-          // Spawn hive defenders (up to 4, but capped by remaining slots)
-          const toSpawn = Math.min(4, this.maxDefenders - defenderCount);
-          for (let i = 0; i < toSpawn; i++) {
-            const a = Math.random() * Math.PI * 2;
-            const d = 600 + Math.random() * 300;
-            const e = new Enemy("defender", {
-              x: this.pos.x + Math.cos(a) * d,
-              y: this.pos.y + Math.sin(a) * d
-            });
-            e.despawnImmune = true;
-            GameContext.enemies.push(e);
+          // Spawn visual particles along the ring edge
+          if (this.phaseTick % 3 === 0 && _spawnParticles) {
+            const angle = Math.random() * Math.PI * 2;
+            const px = pulse.x + Math.cos(angle) * pulse.radius;
+            const py = pulse.y + Math.sin(angle) * pulse.radius;
+            _spawnParticles(px, py, 2, pulse.color);
           }
-          if (toSpawn > 0) {
-            showOverlayMessage("DEFENDERS DEPLOYED", "#0af", 1200);
+          // Remove expired pulses
+          if (pulse.radius >= pulse.maxRadius) {
+            this.voidPulses.splice(i, 1);
           }
         }
       }
-      // Tractor beam pull
+      // Tractor beam pull (kept from original)
       if (this.phaseTick % 5 === 0 && GameContext.player && !GameContext.player.dead) {
         const dx = this.pos.x - GameContext.player.pos.x;
         const dy = this.pos.y - GameContext.player.pos.y;
@@ -448,6 +469,9 @@ export class VortexMatriarch extends Enemy {
     });
     this.gravityWells = [];
 
+    // Clean up void pulses
+    this.voidPulses = [];
+
     pixiCleanupObject(this);
     if (_spawnBossExplosion) _spawnBossExplosion(this.pos.x, this.pos.y, 3.8, 26);
     if (_spawnLargeExplosion) _spawnLargeExplosion(this.pos.x, this.pos.y, 3.8);
@@ -525,5 +549,6 @@ export class VortexMatriarch extends Enemy {
   }
 }
 
-// VORTEX MATRIARCH DEFENDER LIMIT: Maximum 8 defenders at once
-// Modified to prevent defender overflow during DEFENDERS_CALL phase
+// VORTEX MATRIARCH: VOID_PULSE phase replaces DEFENDERS_CALL
+// Creates expanding shield-bypassing rings instead of spawning defenders
+// This prevents framerate issues from too many defender entities
