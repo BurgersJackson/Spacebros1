@@ -71,10 +71,9 @@ export class SpaceStation extends Entity {
     this.innerShieldRotation = 0;
     this.shieldRotationSpeed = 0.0105; // 50% faster than hull (0.007 * 1.5)
     this.shieldRegenTimer = 0;
-    this.shieldRegenInterval = 1000; // 1 shard every 1 second
+    this.shieldRegenInterval = 1500;
 
     this.turretReload = 250;
-    this.defenderSpawnTimer = 0;
     this.minefieldTimer = 2500;
     this.clusterBombTimer = 3200;
     this.clusterBombInterval = 3200;
@@ -270,29 +269,6 @@ export class SpaceStation extends Entity {
             showOverlayMessage("STATION LASER LOCK", "#ff0", 900, 2);
           }
         }
-
-        this.manageDefenders(deltaTime);
-      }
-    }
-  }
-
-  manageDefenders(deltaTime = 16.67) {
-    let myDefenderCount = 0;
-    for (let i = 0; i < GameContext.enemies.length; i++) {
-      const e = GameContext.enemies[i];
-      if (e && !e.dead && e.assignedBase === this) myDefenderCount++;
-    }
-    if (myDefenderCount < 4) {
-      if (this.defenderSpawnTimer <= 0) {
-        const angle = Math.random() * Math.PI * 2;
-        const d = this.radius + 70;
-        const sx = this.pos.x + Math.cos(angle) * d;
-        const sy = this.pos.y + Math.sin(angle) * d;
-        GameContext.enemies.push(new Enemy("defender", { x: sx, y: sy }, this));
-        if (_spawnParticles) _spawnParticles(sx, sy, 15, "#0f0");
-        this.defenderSpawnTimer = 180;
-      } else {
-        this.defenderSpawnTimer -= deltaTime / 16.67;
       }
     }
   }

@@ -107,36 +107,54 @@ export function initPixiOverlay(options) {
 
   const makeGlowTexture = () => {
     const g = new PIXI.Graphics();
-    g.beginFill(0xffffff, 0.15);
+    g.beginFill(0xffffff, 0.03);
+    g.drawCircle(0, 0, 32);
+    g.beginFill(0xffffff, 0.08);
+    g.drawCircle(0, 0, 24);
+    g.beginFill(0xffffff, 0.18);
     g.drawCircle(0, 0, 16);
-    g.beginFill(0xffffff, 0.4);
-    g.drawCircle(0, 0, 8);
+    g.beginFill(0xffffff, 0.45);
+    g.drawCircle(0, 0, 10);
+    g.beginFill(0xffffff, 0.8);
+    g.drawCircle(0, 0, 6);
     g.beginFill(0xffffff, 1);
-    g.drawCircle(0, 0, 4);
+    g.drawCircle(0, 0, 3);
     const tex = pixiApp.renderer.generateTexture(g);
     g.destroy(true);
     return tex;
   };
   const makeLaserTexture = () => {
     const g = new PIXI.Graphics();
-    g.beginFill(0xffffff, 0.15);
-    g.drawRoundedRect(-24, -8, 48, 16, 8);
-    g.beginFill(0xffffff, 0.5);
-    g.drawRoundedRect(-18, -5, 36, 10, 5);
+    g.beginFill(0xffffff, 0.04);
+    g.drawRoundedRect(-40, -12, 80, 24, 12);
+    g.beginFill(0xffffff, 0.12);
+    g.drawRoundedRect(-32, -8, 64, 16, 8);
+    g.beginFill(0xffffff, 0.3);
+    g.drawRoundedRect(-24, -5, 48, 10, 5);
+    g.beginFill(0xffffff, 0.6);
+    g.drawRoundedRect(-20, -3, 40, 6, 3);
+    g.beginFill(0xffffff, 0.9);
+    g.drawRoundedRect(-16, -2, 32, 4, 2);
     g.beginFill(0xffffff, 1);
-    g.drawRoundedRect(-14, -2, 28, 4, 2);
+    g.drawRoundedRect(-12, -1, 24, 2, 1);
     const tex = pixiApp.renderer.generateTexture(g);
     g.destroy(true);
     return tex;
   };
   const makeSquareTexture = () => {
     const g = new PIXI.Graphics();
-    g.beginFill(0xffffff, 0.15);
-    g.drawRoundedRect(-16, -16, 32, 32, 4);
-    g.beginFill(0xffffff, 0.5);
-    g.drawRoundedRect(-10, -10, 20, 20, 3);
+    g.beginFill(0xffffff, 0.04);
+    g.drawRoundedRect(-24, -24, 48, 48, 6);
+    g.beginFill(0xffffff, 0.12);
+    g.drawRoundedRect(-18, -18, 36, 36, 5);
+    g.beginFill(0xffffff, 0.3);
+    g.drawRoundedRect(-12, -12, 24, 24, 4);
+    g.beginFill(0xffffff, 0.6);
+    g.drawRoundedRect(-8, -8, 16, 16, 3);
+    g.beginFill(0xffffff, 0.9);
+    g.drawRoundedRect(-5, -5, 10, 10, 2);
     g.beginFill(0xffffff, 1);
-    g.drawRoundedRect(-4, -4, 8, 8, 2);
+    g.drawRoundedRect(-3, -3, 6, 6, 1);
     const tex = pixiApp.renderer.generateTexture(g);
     g.destroy(true);
     return tex;
@@ -150,8 +168,17 @@ export function initPixiOverlay(options) {
     const len = 64;
     const w = 18;
 
-    g.beginFill(0xffaa00, 0.4);
-    g.drawEllipse(0, 0, (len * 1.2) / 2, (w * 1.4) / 2);
+    g.beginFill(0xffaa00, 0.03);
+    g.drawEllipse(0, 0, (len * 1.8) / 2, (w * 2.2) / 2);
+    g.endFill();
+    g.beginFill(0xffaa00, 0.08);
+    g.drawEllipse(0, 0, (len * 1.5) / 2, (w * 1.8) / 2);
+    g.endFill();
+    g.beginFill(0xffaa00, 0.18);
+    g.drawEllipse(0, 0, (len * 1.25) / 2, (w * 1.5) / 2);
+    g.endFill();
+    g.beginFill(0xffaa00, 0.35);
+    g.drawEllipse(0, 0, (len * 1.1) / 2, (w * 1.2) / 2);
     g.endFill();
 
     g.beginFill(0xffaa00);

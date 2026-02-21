@@ -174,12 +174,18 @@ export function initPixi(width, height) {
  */
 function makeGlowTexture() {
   const g = new PIXI.Graphics();
-  g.beginFill(0xffffff, 0.16);
-  g.drawCircle(0, 0, 12);
-  g.beginFill(0xffffff, 0.6);
-  g.drawCircle(0, 0, 7);
+  g.beginFill(0xffffff, 0.03);
+  g.drawCircle(0, 0, 32);
+  g.beginFill(0xffffff, 0.08);
+  g.drawCircle(0, 0, 24);
+  g.beginFill(0xffffff, 0.18);
+  g.drawCircle(0, 0, 16);
+  g.beginFill(0xffffff, 0.45);
+  g.drawCircle(0, 0, 10);
+  g.beginFill(0xffffff, 0.8);
+  g.drawCircle(0, 0, 6);
   g.beginFill(0xffffff, 1);
-  g.drawCircle(0, 0, 4);
+  g.drawCircle(0, 0, 3);
   const tex = pixiApp.renderer.generateTexture(g);
   g.destroy(true);
   return tex;
@@ -190,12 +196,18 @@ function makeGlowTexture() {
  */
 function makeLaserTexture() {
   const g = new PIXI.Graphics();
-  g.beginFill(0xffffff, 0.18);
-  g.drawRoundedRect(-20, -4, 40, 8, 4);
-  g.beginFill(0xffffff, 0.65);
-  g.drawRoundedRect(-16, -3, 32, 6, 3);
+  g.beginFill(0xffffff, 0.04);
+  g.drawRoundedRect(-40, -12, 80, 24, 12);
+  g.beginFill(0xffffff, 0.12);
+  g.drawRoundedRect(-32, -8, 64, 16, 8);
+  g.beginFill(0xffffff, 0.3);
+  g.drawRoundedRect(-24, -5, 48, 10, 5);
+  g.beginFill(0xffffff, 0.6);
+  g.drawRoundedRect(-20, -3, 40, 6, 3);
+  g.beginFill(0xffffff, 0.9);
+  g.drawRoundedRect(-16, -2, 32, 4, 2);
   g.beginFill(0xffffff, 1);
-  g.drawRoundedRect(-14, -2, 28, 4, 2);
+  g.drawRoundedRect(-12, -1, 24, 2, 1);
   const tex = pixiApp.renderer.generateTexture(g);
   g.destroy(true);
   return tex;
@@ -206,12 +218,18 @@ function makeLaserTexture() {
  */
 function makeSquareTexture() {
   const g = new PIXI.Graphics();
-  g.beginFill(0xffffff, 0.22);
-  g.drawRoundedRect(-6, -6, 12, 12, 2);
+  g.beginFill(0xffffff, 0.04);
+  g.drawRoundedRect(-24, -24, 48, 48, 6);
+  g.beginFill(0xffffff, 0.12);
+  g.drawRoundedRect(-18, -18, 36, 36, 5);
+  g.beginFill(0xffffff, 0.3);
+  g.drawRoundedRect(-12, -12, 24, 24, 4);
   g.beginFill(0xffffff, 0.6);
+  g.drawRoundedRect(-8, -8, 16, 16, 3);
+  g.beginFill(0xffffff, 0.9);
   g.drawRoundedRect(-5, -5, 10, 10, 2);
   g.beginFill(0xffffff, 1);
-  g.drawRoundedRect(-4, -4, 8, 8, 2);
+  g.drawRoundedRect(-3, -3, 6, 6, 1);
   const tex = pixiApp.renderer.generateTexture(g);
   g.destroy(true);
   return tex;

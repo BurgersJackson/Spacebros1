@@ -220,16 +220,16 @@ export class Bullet extends Entity {
 
           const size = (this.radius || 4) * 2;
           if (this.style === "missile") {
-            spr.width = 20;
-            spr.height = 20;
+            spr.width = 32;
+            spr.height = 32;
             spr.tint = 0xffffff;
           } else if (this.style === "laser") {
-            spr.width = size * 6;
-            spr.height = size * 3.5;
+            spr.width = size * 10;
+            spr.height = size * 6;
             spr.tint = colorToPixi(this.color);
           } else {
-            spr.width = size * 4;
-            spr.height = size * 4;
+            spr.width = size * 8;
+            spr.height = size * 8;
             spr.tint = colorToPixi(this.color);
           }
 
@@ -244,7 +244,7 @@ export class Bullet extends Entity {
     ctx.translate(this.pos.x, this.pos.y);
     ctx.rotate(this.angle);
     ctx.fillStyle = this.color;
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 20;
     ctx.shadowColor = this.color;
 
     if (this.style === "laser") {

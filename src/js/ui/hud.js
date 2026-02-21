@@ -855,6 +855,15 @@ export function updateHealthUI(state = GameContext) {
   else healthFill.style.backgroundColor = "#0f0";
   const ht = document.getElementById("health-text");
   if (ht) ht.innerText = `${Math.max(0, Math.floor(player.hp))} / ${player.maxHp}`;
+
+  const vignette = document.getElementById("low-health-vignette");
+  if (vignette) {
+    if (player.hp <= 10 && player.hp > 0) {
+      vignette.classList.add("active");
+    } else {
+      vignette.classList.remove("active");
+    }
+  }
 }
 
 /**
