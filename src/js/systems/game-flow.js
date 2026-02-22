@@ -142,13 +142,9 @@ export function killPlayer() {
 }
 
 export function startGame() {
-  console.log("[DEBUG] startGame() called");
-
   if (!GameContext.currentProfileName) {
-    console.log("[START] No profile selected, checking for auto-create");
     const existing = deps.listSaveSlots();
     if (existing.length === 0) {
-      console.log("[START] Auto-creating default profile");
       const newName = "profile1";
       const template = {
         version: 1,

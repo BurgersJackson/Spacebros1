@@ -10,6 +10,7 @@ let typewriterInterval = null;
 let currentCharIndex = 0;
 let fullText = "";
 let objectivesScreenVisible = false;
+let seenGamepadRelease = false;
 
 const LEVEL_OBJECTIVES = {
   1: [
@@ -59,6 +60,7 @@ export function showObjectivesScreen() {
   textEl.textContent = "";
 
   screen.style.display = "block";
+  seenGamepadRelease = false;
 
   GameContext.gamePaused = true;
   GameContext.pauseStartTime = deps.getGameNowMs();
@@ -157,20 +159,34 @@ function handleSkipKey(e) {
 }
 
 export function handleGamepadInputForObjectives() {
-  if (!objectivesScreenVisible) return false;
+  if (!objectivesScreenVisible) {
+    seenGamepadRelease = false;
+    return false;
+  }
 
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   const gp = pads[GameContext.gamepadIndex];
 
-  if (!gp) return false;
-
-  if (gp.buttons[0] && gp.buttons[0].pressed) {
-    GameContext.lastGamepadInputAt = Date.now();
-    skipOrClose();
-    return true;
+  if (!gp) {
+    seenGamepadRelease = false;
+    return false;
   }
 
-  return false;
+  const confirmPressed = gp.buttons[0] && gp.buttons[0].pressed;
+
+  if (!confirmPressed) {
+    seenGamepadRelease = true;
+    return false;
+  }
+
+  if (!seenGamepadRelease) {
+    return false;
+  }
+
+  seenGamepadRelease = false;
+  GameContext.lastGamepadInputAt = Date.now();
+  skipOrClose();
+  return true;
 }
 
 function skipOrClose() {
