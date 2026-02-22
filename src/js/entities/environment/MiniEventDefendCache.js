@@ -115,7 +115,7 @@ export class MiniEventDefendCache extends Entity {
     }
   }
   spawnWave() {
-    const cap = 22;
+    const cap = 10;
     if (GameContext.enemies.length >= cap) return;
     const count = 2 + Math.floor(Math.random() * 2);
     for (let i = 0; i < count; i++) {

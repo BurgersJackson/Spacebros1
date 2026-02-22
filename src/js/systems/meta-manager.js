@@ -36,7 +36,8 @@ export function loadMetaProfile() {
 
     GameContext.metaProfile = {
       bank: 0,
-      purchases: {}
+      purchases: {},
+      unlockedLevels: [1]
     };
 
     if (raw) {
@@ -48,6 +49,9 @@ export function loadMetaProfile() {
             GameContext.metaProfile.purchases,
             saved.purchases
           );
+        }
+        if (saved.unlockedLevels && Array.isArray(saved.unlockedLevels)) {
+          GameContext.metaProfile.unlockedLevels = saved.unlockedLevels;
         }
       } catch (e) {
         console.warn("Failed to parse meta profile, using defaults", e);
@@ -116,6 +120,13 @@ export function loadMetaProfile() {
       } else if (GameContext.metaProfile.purchases[key] === false) {
         GameContext.metaProfile.purchases[key] = 0;
       }
+    }
+
+    if (
+      GameContext.metaProfile.unlockedLevels &&
+      Array.isArray(GameContext.metaProfile.unlockedLevels)
+    ) {
+      GameContext.unlockedLevels = [...GameContext.metaProfile.unlockedLevels];
     }
   } catch (e) {
     console.warn("failed to load meta profile", e);
@@ -223,9 +234,9 @@ export function getMetaUpgradeCost(upgradeId, baseCost) {
     }
   }
 
-  // First upgrade +50%, then +50% per tier: t1=1.5x, t2=2x, t3=2.5x, t4=3x, ...
+  // Doubling cost: t1=1x, t2=2x, t3=4x, t4=8x, ...
   const nextTier = currentTier + 1;
-  const multiplier = 1 + 0.5 * nextTier;
+  const multiplier = Math.pow(2, nextTier - 1);
   const cost = Math.ceil(baseCost * multiplier * discount);
   return cost;
 }

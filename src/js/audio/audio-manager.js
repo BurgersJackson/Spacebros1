@@ -520,34 +520,35 @@ export function playSound(type, volumeMult = 1) {
         break;
       }
       case "contract": {
-        // 3-note arcade chirp
+        // Soft, pleasant chime - 3 gentle notes
         const oscA = audioCtx.createOscillator();
         const oscB = audioCtx.createOscillator();
         const g = audioCtx.createGain();
-        oscA.type = "square";
-        oscB.type = "triangle";
+        oscA.type = "sine";
+        oscB.type = "sine";
         g.gain.setValueAtTime(0.0001, now);
-        g.gain.exponentialRampToValueAtTime(0.22 * volumeMult, now + 0.03);
-        g.gain.exponentialRampToValueAtTime(0.14 * volumeMult, now + 0.45);
-        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.95);
+        g.gain.linearRampToValueAtTime(0.12 * volumeMult, now + 0.08);
+        g.gain.setValueAtTime(0.12 * volumeMult, now + 0.35);
+        g.gain.linearRampToValueAtTime(0.08 * volumeMult, now + 0.7);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 1.1);
         const seq = [
-          { t: 0.0, f: 880 },
-          { t: 0.28, f: 1320 },
-          { t: 0.56, f: 1760 }
+          { t: 0.0, f: 440 },
+          { t: 0.32, f: 550 },
+          { t: 0.64, f: 660 }
         ];
         for (const n of seq) {
           oscA.frequency.setValueAtTime(n.f, now + n.t);
-          oscA.frequency.exponentialRampToValueAtTime(n.f * 1.06, now + n.t + 0.18);
-          oscB.frequency.setValueAtTime(n.f * 0.5, now + n.t);
-          oscB.frequency.exponentialRampToValueAtTime(n.f * 0.5 * 1.04, now + n.t + 0.18);
+          oscA.frequency.exponentialRampToValueAtTime(n.f * 0.98, now + n.t + 0.25);
+          oscB.frequency.setValueAtTime(n.f * 2, now + n.t);
+          oscB.frequency.exponentialRampToValueAtTime(n.f * 2 * 0.97, now + n.t + 0.25);
         }
         oscA.connect(g);
         oscB.connect(g);
         g.connect(audioCtx.destination);
         oscA.start(now);
         oscB.start(now);
-        oscA.stop(now + 0.95);
-        oscB.stop(now + 0.95);
+        oscA.stop(now + 1.1);
+        oscB.stop(now + 1.1);
         break;
       }
       case "warp_growl":

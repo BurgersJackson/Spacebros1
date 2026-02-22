@@ -266,6 +266,7 @@ export const GameContext = {
     this.difficultyTier = 1;
     this.sectorIndex = 1;
     this.spaceNuggets = 0;
+    this.maxUpgradeTier = 3;
     this.bullets = [];
     this.bossBombs = [];
     this.warpBioPods = [];

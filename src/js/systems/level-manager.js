@@ -4,6 +4,7 @@ let getActiveMenuElementsRef = null;
 let updateMenuVisualsRef = null;
 let initAudioRef = null;
 let saveGameRef = null;
+let saveMetaProfileRef = null;
 
 let selectedLevel = 1;
 
@@ -30,6 +31,7 @@ export function registerLevelManagerDependencies(deps) {
   if (deps.updateMenuVisuals) updateMenuVisualsRef = deps.updateMenuVisuals;
   if (deps.initAudio) initAudioRef = deps.initAudio;
   if (deps.saveGame) saveGameRef = deps.saveGame;
+  if (deps.saveMetaProfile) saveMetaProfileRef = deps.saveMetaProfile;
 }
 
 export function initLevelSelection() {
@@ -144,8 +146,16 @@ export function unlockLevel(level) {
     unlocked.push(level);
     unlocked.sort((a, b) => a - b);
     setUnlockedLevels(unlocked);
+
+    if (GameContextRef.metaProfile) {
+      GameContextRef.metaProfile.unlockedLevels = [...unlocked];
+    }
+
     updateLevelButtons();
 
+    if (saveMetaProfileRef) {
+      saveMetaProfileRef();
+    }
     if (GameContextRef && GameContextRef.currentProfileName && saveGameRef) {
       saveGameRef(GameContextRef.currentProfileName, true);
     }

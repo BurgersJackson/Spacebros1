@@ -133,7 +133,8 @@ import {
   initLevelSelection,
   registerLevelManagerDependencies,
   unlockLevel as levelManagerUnlockLevel,
-  updatePauseMenuObjectives
+  updatePauseMenuObjectives,
+  updateLevelButtons
 } from "./systems/level-manager.js";
 import { clearOverlayMessageTimeout, formatTime, showOverlayMessage } from "./utils/ui-helpers.js";
 import {
@@ -695,7 +696,8 @@ registerSettingsManagerDependencies({
   isCrtFilterEnabled,
   toggleCrtFilter,
   isVectrexFilterEnabled,
-  toggleVectrexFilter
+  toggleVectrexFilter,
+  updateLevelButtons
 });
 
 registerWorldSetupDependencies({
@@ -1454,7 +1456,8 @@ registerLevelManagerDependencies({
   getActiveMenuElements,
   updateMenuVisuals,
   initAudio,
-  saveGame: saveGameSystem
+  saveGame: saveGameSystem,
+  saveMetaProfile: saveMetaProfileSystem
 });
 initLevelSelection();
 

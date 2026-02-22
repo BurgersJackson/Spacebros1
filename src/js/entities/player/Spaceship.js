@@ -95,6 +95,7 @@ export class Spaceship extends Entity {
     this.xp = 0;
     this.level = 1;
     this.nextLevelXp = 100;
+    this.firstUpgradeDone = false;
     this.inventory = {}; // Track upgrade tiers
 
     // Stats
@@ -123,7 +124,7 @@ export class Spaceship extends Entity {
 
     this.invulnerable = 90; // halved for 60Hz
     this.visible = true;
-    this.maxHp = 25; // starting health hp
+    this.maxHp = 50; // starting health hp
     this.hp = this.maxHp;
 
     this.lastAsteroidHitTime = 0;
@@ -280,16 +281,23 @@ export class Spaceship extends Entity {
 
   addXp(amount) {
     this.xp += amount;
-    if (this.xp >= this.nextLevelXp) {
+    if (!this.firstUpgradeDone && this.level === 1) {
+      this.levelUp();
+    } else if (this.xp >= this.nextLevelXp) {
       this.levelUp();
     }
     _updateXpUI();
   }
 
   levelUp() {
+    const isFirstUpgrade = this.level === 1 && !this.firstUpgradeDone;
     this.level++;
-    this.xp -= this.nextLevelXp;
-    this.nextLevelXp = Math.floor(this.nextLevelXp * 1.2);
+    if (isFirstUpgrade) {
+      this.firstUpgradeDone = true;
+    } else {
+      this.xp -= this.nextLevelXp;
+      this.nextLevelXp = Math.floor(this.nextLevelXp * 1.2);
+    }
 
     // Pause and Show Menu
     playSound("levelup");

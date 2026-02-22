@@ -867,6 +867,14 @@ export function updateHealthUI(state = GameContext) {
       vignette.classList.remove("active");
     }
   }
+  const warningVignette = document.getElementById("warning-vignette");
+  if (warningVignette) {
+    if (player.hp <= 20 && player.hp > 10) {
+      warningVignette.classList.add("active");
+    } else {
+      warningVignette.classList.remove("active");
+    }
+  }
 }
 
 /**

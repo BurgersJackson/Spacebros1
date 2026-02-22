@@ -9,6 +9,41 @@ import { updateHealthUI, updateTurboUI } from "../ui/hud.js";
 import { showOverlayMessage } from "../utils/ui-helpers.js";
 import { spawnDrone } from "./spawn-manager.js";
 
+let _showOverlayMessage = showOverlayMessage;
+export function registerUpgradeManagerDependencies(deps) {
+  if (deps.showOverlayMessage) _showOverlayMessage = deps.showOverlayMessage;
+}
+
+export function getMaxUpgradeTier() {
+  return GameContext.maxUpgradeTier || 3;
+}
+
+function getAllUpgradeIds() {
+  const ids = [];
+  UPGRADE_DATA.categories.forEach(cat => {
+    cat.upgrades.forEach(up => ids.push(up.id));
+  });
+  return ids;
+}
+
+export function checkAndUnlockNextTier() {
+  const currentMax = getMaxUpgradeTier();
+  if (currentMax >= 5) return false;
+
+  const allIds = getAllUpgradeIds();
+  const inventory = GameContext.player?.inventory || {};
+
+  const allAtOrAboveLevel = allIds.every(id => (inventory[id] || 0) >= currentMax);
+
+  if (allAtOrAboveLevel) {
+    GameContext.maxUpgradeTier = currentMax + 1;
+    const tierName = GameContext.maxUpgradeTier === 4 ? "TIER 4" : "TIER 5";
+    _showOverlayMessage(`${tierName} UPGRADES UNLOCKED!`, "#f0f", 3000);
+    return true;
+  }
+  return false;
+}
+
 /**
  * @param {string} id
  * @param {number} tier
@@ -364,6 +399,7 @@ export function applyUpgrade(id, tier) {
   }
 
   showOverlayMessage(`${id.replace("_", " ").toUpperCase()} UPGRADED!`, "#ff0", 1500);
+  checkAndUnlockNextTier();
 }
 
 /**
@@ -375,30 +411,13 @@ export function applyRandomUpgrade() {
 
   const validUpgrades = [];
 
-  let tier2Count = 0;
-  let tier4Count = 0;
-  Object.values(GameContext.player.inventory).forEach(tier => {
-    if (tier === 2) tier2Count++;
-    if (tier === 3) tier2Count++;
-    if (tier === 4) tier4Count++;
-    if (tier === 5) tier4Count++;
-  });
-
   UPGRADE_DATA.categories.forEach(cat => {
     cat.upgrades.forEach(up => {
       const currentTier = GameContext.player.inventory[up.id] || 0;
       const nextTier = currentTier + 1;
 
-      // DISABLED: Higher level upgrades (4-5) - uncomment to re-enable
-      // if (nextTier >= 3 && tier2Count < 5) {
-      //   return;
-      // }
-      // if (nextTier >= 5 && tier4Count < 5) {
-      //   return;
-      // }
-
-      // Cap upgrades at level 3
-      if (nextTier > 3) {
+      const maxTier = getMaxUpgradeTier();
+      if (nextTier > maxTier) {
         return;
       }
 

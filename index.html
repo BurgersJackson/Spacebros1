@@ -718,6 +718,42 @@
         animation: lowHealthPulse 1.5s ease-in-out infinite;
       }
 
+      /* Yellow Warning Vignette Effect */
+      #warning-vignette {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 14;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        background: radial-gradient(
+          ellipse at center,
+          transparent 0%,
+          transparent 40%,
+          rgba(180, 150, 0, 0.2) 70%,
+          rgba(180, 150, 0, 0.35) 85%,
+          rgba(180, 150, 0, 0.5) 100%
+        );
+      }
+
+      #warning-vignette.active {
+        opacity: 1;
+        animation: warningPulse 2s ease-in-out infinite;
+      }
+
+      @keyframes warningPulse {
+        0%,
+        100% {
+          opacity: 0.5;
+        }
+        50% {
+          opacity: 0.8;
+        }
+      }
+
       @keyframes lowHealthPulse {
         0%,
         100% {
@@ -928,6 +964,7 @@
     </div>
 
     <div id="low-health-vignette"></div>
+    <div id="warning-vignette"></div>
 
     <div id="ui-layer">
       <div id="fps-counter">FPS --</div>

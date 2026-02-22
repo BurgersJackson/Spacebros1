@@ -26,7 +26,7 @@ export class Gunboat extends Enemy {
     this.hp = baseHp * getEnemyHpScaling() * getLevelHpScaling();
     this.maxSpeed = 8.0;
     this.thrustPower = 0.88;
-    this.shootTimer = this.gunboatLevel === 1 ? 11 : 9;
+    this.shootTimer = this.gunboatLevel === 1 ? 22 : 18;
 
     // Shield scaling - same as Pinwheel
     let outerCount = 12;

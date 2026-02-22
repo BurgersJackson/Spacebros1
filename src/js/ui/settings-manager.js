@@ -28,6 +28,7 @@ let isCrtFilterEnabledRef = null;
 let toggleCrtFilterRef = null;
 let isVectrexFilterEnabledRef = null;
 let toggleVectrexFilterRef = null;
+let updateLevelButtonsRef = null;
 
 let selectedProfileName = null;
 
@@ -65,6 +66,7 @@ export function registerSettingsManagerDependencies(deps) {
   toggleCrtFilterRef = deps.toggleCrtFilter;
   isVectrexFilterEnabledRef = deps.isVectrexFilterEnabled;
   toggleVectrexFilterRef = deps.toggleVectrexFilter;
+  updateLevelButtonsRef = deps.updateLevelButtons;
 }
 
 function formatPlayTime(ms) {
@@ -115,6 +117,9 @@ export function selectProfile(name) {
   selectProfileRecordRef(name);
   GameContextRef.metaProfile = { purchases: {}, bank: 0 };
   loadMetaProfileRef();
+  if (updateLevelButtonsRef) {
+    updateLevelButtonsRef();
+  }
   updateStartScreenDisplay();
   showOverlayMessageRef(`SELECTED: ${name}`, "#ff0", 1200);
 }
@@ -129,6 +134,9 @@ function createNewProfile() {
   selectProfileRecordRef(newName);
   GameContextRef.metaProfile = { purchases: {}, bank: 0 };
   loadMetaProfileRef();
+  if (updateLevelButtonsRef) {
+    updateLevelButtonsRef();
+  }
   updateStartScreenDisplay();
   showSaveMenu();
   showOverlayMessageRef(`CREATED: ${newName}`, "#0f0", 1200);
@@ -566,6 +574,9 @@ export function initProfileSystem() {
   if (!autoCreated) {
     loadMetaProfileRef();
   }
+  if (updateLevelButtonsRef) {
+    updateLevelButtonsRef();
+  }
   updateMetaUIRef();
   updateStartScreenDisplay();
 
@@ -854,10 +865,24 @@ export function initSettingsMenu() {
   const qPause = document.getElementById("desktop-quit-pause-btn");
 
   if (qStart) {
-    qStart.addEventListener("click", () => window.SpacebrosApp.settings.quit());
+    qStart.addEventListener("click", () => {
+      if (GameContextRef.currentProfileName) {
+        try {
+          autoSaveToCurrentProfile();
+          saveMetaProfileRef();
+        } catch (e) {}
+      }
+      window.SpacebrosApp.settings.quit();
+    });
   }
   if (qPause) {
     qPause.addEventListener("click", () => {
+      if (GameContextRef.currentProfileName) {
+        try {
+          autoSaveToCurrentProfile();
+          saveMetaProfileRef();
+        } catch (e) {}
+      }
       window.SpacebrosApp.settings.quit();
     });
   }

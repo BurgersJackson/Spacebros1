@@ -1,6 +1,6 @@
 import { GameContext } from "../core/game-context.js";
 import { UPGRADE_DATA } from "../core/constants.js";
-import { applyUpgrade } from "../systems/upgrade-manager.js";
+import { applyUpgrade, getMaxUpgradeTier } from "../systems/upgrade-manager.js";
 import { updateHealthUI, updateNuggetUI } from "./hud.js";
 import { showOverlayMessage } from "../utils/ui-helpers.js";
 import { playSound, isMusicEnabled, startMusic } from "../audio/audio-manager.js";
@@ -28,17 +28,6 @@ export function showLevelUpMenu() {
 
   const validUpgrades = [];
 
-  let tier2Count = 0;
-  let tier4Count = 0;
-  if (GameContext.player && GameContext.player.inventory) {
-    Object.values(GameContext.player.inventory).forEach(tier => {
-      if (tier === 2) tier2Count++;
-      if (tier === 3) tier2Count++;
-      if (tier === 4) tier4Count++;
-      if (tier === 5) tier4Count++;
-    });
-  }
-
   UPGRADE_DATA.categories.forEach(cat => {
     cat.upgrades.forEach(up => {
       const currentTier =
@@ -48,16 +37,8 @@ export function showLevelUpMenu() {
         0;
       const nextTier = currentTier + 1;
 
-      // DISABLED: Higher level upgrades (4-5) - uncomment to re-enable
-      // if (nextTier >= 3 && tier2Count < 5) {
-      //   return;
-      // }
-      // if (nextTier >= 5 && tier4Count < 5) {
-      //   return;
-      // }
-
-      // Cap upgrades at level 3
-      if (nextTier > 3) {
+      const maxTier = getMaxUpgradeTier();
+      if (nextTier > maxTier) {
         return;
       }
 

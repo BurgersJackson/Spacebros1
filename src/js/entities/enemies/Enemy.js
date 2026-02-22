@@ -96,21 +96,21 @@ export class Enemy extends Entity {
     const scale = getEnemyHpScaling();
     const levelScale = getLevelHpScaling();
 
-    const l2FireRateMult = GameContext.currentLevel === 2 ? 0.6 : 1;
+    const l2FireRateMult = 1;
 
     if (this.type === "roamer") {
       const elapsedMs = Date.now() - GameContext.gameStartTime - (GameContext.pausedAccumMs || 0);
       const elapsedMinutes = elapsedMs / 60000;
       const baseHp = elapsedMinutes < 5 ? 200 : 250;
       this.hp = (baseHp + GameContext.difficultyTier * 15) * scale * levelScale;
-      this.shootTimer = 13 * l2FireRateMult;
+      this.shootTimer = 26 * l2FireRateMult;
     } else if (this.type === "elite_roamer") {
       this.hp = (350 + GameContext.difficultyTier * 25) * scale * levelScale;
       this.shieldRadius = 38;
       this.shieldSegments = new Array(6).fill(10);
       this.radius = 19;
       this.maxSpeed *= 1.05;
-      this.shootTimer = 10 * l2FireRateMult;
+      this.shootTimer = 20 * l2FireRateMult;
     } else if (this.type === "hunter") {
       this.hp = (400 + GameContext.difficultyTier * 35) * scale * levelScale;
       this.radius = 22;
@@ -118,11 +118,11 @@ export class Enemy extends Entity {
       this.thrustPower = 1.2;
       this.shieldSegments = new Array(4).fill(10);
       this.shieldRadius = 45;
-      this.shootTimer = 7 * l2FireRateMult;
+      this.shootTimer = 14 * l2FireRateMult;
     } else if (this.type === "defender") {
       this.hp = (250 + (GameContext.difficultyTier - 1) * 25) * scale * levelScale;
       this.radius = 20;
-      this.shootTimer = 13 * l2FireRateMult;
+      this.shootTimer = 26 * l2FireRateMult;
     }
 
     // Named elite modifiers
@@ -158,7 +158,19 @@ export class Enemy extends Entity {
       if (this.shieldRadius) this.shieldRadius = Math.round(this.shieldRadius * sizeMult);
     }
 
-    this.turnSpeed = (Math.PI * 2) / (4 * SIM_FPS);
+    const baseTurnSpeed = (Math.PI * 2) / (4 * SIM_FPS);
+    if (
+      this.type === "roamer" ||
+      this.type === "elite_roamer" ||
+      this.type === "defender" ||
+      this.type === "hunter" ||
+      this.type === "cave_gunboat1" ||
+      this.type === "cave_gunboat2"
+    ) {
+      this.turnSpeed = baseTurnSpeed * 1.5;
+    } else {
+      this.turnSpeed = baseTurnSpeed;
+    }
     this.smoothDir = new Vector(Math.random(), Math.random());
 
     this.aiState = "SEEK";
@@ -197,7 +209,7 @@ export class Enemy extends Entity {
       this.hp = (baseHp + GameContext.difficultyTier * 10) * getEnemyHpScaling() * levelScale;
       this.maxSpeed = 8.0;
       this.thrustPower = 0.88; // quadrupled (0.22 * 4)
-      this.shootTimer = this.gunboatLevel === 1 ? 11 : 9; // ~half
+      this.shootTimer = this.gunboatLevel === 1 ? 22 : 18; // ~half
 
       // Shield scaling based on difficulty tier (same as Pinwheel)
       let outerCount = 10;
@@ -849,8 +861,8 @@ export class Enemy extends Entity {
           this.shootTimer = this.isCruiser
             ? this.cruiserFireDelay || 24
             : this.gunboatLevel === 1
-              ? 11
-              : 9;
+              ? 22
+              : 18;
         } else if (this.type === "elite_roamer" || this.type === "hunter") {
           const bx = this.pos.x + Math.cos(angle) * 25;
           const by = this.pos.y + Math.sin(angle) * 25;
@@ -864,8 +876,8 @@ export class Enemy extends Entity {
             );
           }
           if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, angle);
-          const l2FireRateMult = GameContext.currentLevel === 2 ? 0.6 : 1;
-          this.shootTimer = (this.type === "hunter" ? 7 : 10) * l2FireRateMult;
+          const l2FireRateMult = 1;
+          this.shootTimer = (this.type === "hunter" ? 14 : 20) * l2FireRateMult;
         } else if (GameContext.difficultyTier >= 5 && this.type === "roamer") {
           for (let i = -1; i <= 1; i++) {
             const a = angle + i * 0.2;
@@ -876,8 +888,8 @@ export class Enemy extends Entity {
             );
             if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, a);
           }
-          const l2FireRateMult = GameContext.currentLevel === 2 ? 0.6 : 1;
-          this.shootTimer = 13 * l2FireRateMult;
+          const l2FireRateMult = 1;
+          this.shootTimer = 26 * l2FireRateMult;
         } else {
           const bx = this.pos.x + Math.cos(angle) * 20;
           const by = this.pos.y + Math.sin(angle) * 20;
@@ -885,8 +897,8 @@ export class Enemy extends Entity {
             new Bullet(bx, by, angle, 16, { owner: "enemy", damage: 2, life: 180 })
           );
           if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, angle);
-          const l2FireRateMult = GameContext.currentLevel === 2 ? 0.6 : 1;
-          this.shootTimer = 13 * l2FireRateMult;
+          const l2FireRateMult = 1;
+          this.shootTimer = 26 * l2FireRateMult;
         }
         playSound("shoot");
       }
