@@ -1,5 +1,5 @@
 import { Enemy } from "../../enemies/Enemy.js";
-import { GameContext } from "../../../core/game-context.js";
+import { GameContext, getLevelHpScaling } from "../../../core/game-context.js";
 import { SIM_FPS, SIM_STEP_MS } from "../../../core/constants.js";
 import { playSound, setMusicMode, musicEnabled } from "../../../audio/audio-manager.js";
 import { Bullet } from "../../projectiles/Bullet.js";
@@ -43,8 +43,8 @@ export class NecroticHive extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 6875; // Increased by 25% from 5500
-    this.hp = Math.round(baseHp * hpScale);
+    const baseHp = 6875;
+    this.hp = Math.round(baseHp * hpScale * getLevelHpScaling());
     this.maxHp = this.hp;
 
     this.shieldRadius = Math.round(34 * this.cruiserHullScale);
@@ -427,8 +427,7 @@ export class NecroticHive extends Enemy {
     }
     if (this._pixiInvulGfx) {
       try {
-        if (this._pixiInvulGfx.parent)
-          this._pixiInvulGfx.parent.removeChild(this._pixiInvulGfx);
+        if (this._pixiInvulGfx.parent) this._pixiInvulGfx.parent.removeChild(this._pixiInvulGfx);
         this._pixiInvulGfx.destroy(true);
       } catch (e) {}
       this._pixiInvulGfx = null;
@@ -520,8 +519,7 @@ export class NecroticHive extends Enemy {
     if (this.dead) {
       if (this._pixiInvulGfx) {
         try {
-          if (this._pixiInvulGfx.parent)
-            this._pixiInvulGfx.parent.removeChild(this._pixiInvulGfx);
+          if (this._pixiInvulGfx.parent) this._pixiInvulGfx.parent.removeChild(this._pixiInvulGfx);
           this._pixiInvulGfx.destroy(true);
         } catch (e) {}
         this._pixiInvulGfx = null;
@@ -533,8 +531,12 @@ export class NecroticHive extends Enemy {
     const rPos = this._cachedRenderPos || this.pos;
 
     // Invulnerability shield (when segment shields are up) - same pattern as Cruiser: Pixi ring at _cachedRenderPos
-    const hasOuterShield = this.shieldSegments && this.shieldSegments.length > 0 && this.shieldSegments.some(s => s > 0);
-    const hasInnerShield = this.innerShieldSegments && this.innerShieldSegments.length > 0 && this.innerShieldSegments.some(s => s > 0);
+    const hasOuterShield =
+      this.shieldSegments && this.shieldSegments.length > 0 && this.shieldSegments.some(s => s > 0);
+    const hasInnerShield =
+      this.innerShieldSegments &&
+      this.innerShieldSegments.length > 0 &&
+      this.innerShieldSegments.some(s => s > 0);
     const showInvulRing = hasOuterShield || hasInnerShield;
     if (showInvulRing && pixiVectorLayer) {
       let invulGfx = this._pixiInvulGfx;

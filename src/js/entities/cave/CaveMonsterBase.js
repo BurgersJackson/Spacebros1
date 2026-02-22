@@ -2,7 +2,7 @@ import { Entity } from "../Entity.js";
 import { Enemy } from "../enemies/Enemy.js";
 import { CaveGunboat1, CaveGunboat2 } from "./index.js";
 import { Vector } from "../../core/math.js";
-import { GameContext, getEnemyHpScaling } from "../../core/game-context.js";
+import { GameContext, getEnemyHpScaling, getLevelHpScaling } from "../../core/game-context.js";
 import { SIM_STEP_MS, SIM_FPS, ZOOM_LEVEL } from "../../core/constants.js";
 import { playSound } from "../../audio/audio-manager.js";
 import { Coin } from "../pickups/Coin.js";
@@ -17,6 +17,12 @@ import {
   getRenderAlpha
 } from "../../rendering/pixi-context.js";
 import { caveDeps } from "./cave-dependencies.js";
+import { NecroticHive } from "../bosses/dungeon/NecroticHive.js";
+import { CerebralPsion } from "../bosses/dungeon/CerebralPsion.js";
+import { Fleshforge } from "../bosses/dungeon/Fleshforge.js";
+import { VortexMatriarch } from "../bosses/dungeon/VortexMatriarch.js";
+import { ChitinusPrime } from "../bosses/dungeon/ChitinusPrime.js";
+import { PsyLich } from "../bosses/dungeon/PsyLich.js";
 
 export class CaveMonsterBase extends Entity {
   constructor(x, y, monsterType) {
@@ -30,7 +36,7 @@ export class CaveMonsterBase extends Entity {
     // Monster sprites are 512x512, with visible content filling the frame (radius ~250px)
     const monsterConfigs = {
       1: {
-        hp: 250,
+        hp: 10000,
         name: "CAVE CRYPTID",
         texture: "cave_monster_1",
         ringSpeed: 0.003,
@@ -47,7 +53,7 @@ export class CaveMonsterBase extends Entity {
         ]
       },
       2: {
-        hp: 300,
+        hp: 11500,
         name: "HOLLOW HORROR",
         texture: "cave_monster_2",
         ringSpeed: 0.005,
@@ -64,7 +70,7 @@ export class CaveMonsterBase extends Entity {
         ]
       },
       3: {
-        hp: 350,
+        hp: 13000,
         name: "VOID TERROR",
         texture: "cave_monster_3",
         ringSpeed: 0.007,
@@ -96,7 +102,7 @@ export class CaveMonsterBase extends Entity {
     this.collisionRadius = this.visualRadius * 1.5; // For ship-ship collisions
     this.hullCollisionRadius = 550; // Simplified hull collision for bullets (550px circle)
     const scale = getEnemyHpScaling();
-    this.hp = (config.hp * 10 + 100) * scale;
+    this.hp = config.hp * scale * getLevelHpScaling();
     this.maxHp = this.hp;
     this.angle = 0;
 
@@ -131,6 +137,7 @@ export class CaveMonsterBase extends Entity {
     this.battleStartTime = Date.now();
     this.escalationPhase = 1;
     this.escalationMultiplier = 1.0;
+    this.dungeonBossSpawned = false;
 
     // Attack timers
     this.t = 0;
@@ -147,8 +154,8 @@ export class CaveMonsterBase extends Entity {
     // Movement
     this.strafeAngle = 0;
     this.strafeDir = 1;
-    this.chaseSpeed = 2.5;
-    this.artillerySpeed = 1.2;
+    this.chaseSpeed = 9.5;
+    this.artillerySpeed = 15;
   }
 
   getEscalationPhase() {
@@ -228,6 +235,11 @@ export class CaveMonsterBase extends Entity {
     const phase = this.getEscalationPhase();
     const mult = this.getEscalationMultiplier();
     const ringMult = this.getRingSpeedMultiplier();
+
+    if (!this.dungeonBossSpawned && Date.now() - this.battleStartTime >= 120000) {
+      this.dungeonBossSpawned = true;
+      this.spawnDungeonBossAlly();
+    }
 
     // Rotate shields in opposite directions
     this.shieldRotation += this.baseRingSpeed * ringMult * dtFactor;
@@ -369,6 +381,41 @@ export class CaveMonsterBase extends Entity {
     playSound("powerup");
   }
 
+  spawnDungeonBossAlly() {
+    const bossPool = [
+      { cls: NecroticHive, name: "NecroticHive" },
+      { cls: CerebralPsion, name: "CerebralPsion" },
+      { cls: Fleshforge, name: "Fleshforge" },
+      { cls: VortexMatriarch, name: "VortexMatriarch" },
+      { cls: ChitinusPrime, name: "ChitinusPrime" },
+      { cls: PsyLich, name: "PsyLich" }
+    ];
+
+    const bossChoice = bossPool[Math.floor(Math.random() * bossPool.length)];
+    const dungeonBoss = new bossChoice.cls(GameContext.cruiserEncounterCount);
+
+    dungeonBoss.pos.x = this.pos.x + (Math.random() - 0.5) * 600;
+    dungeonBoss.pos.y = this.pos.y + (Math.random() - 0.5) * 600;
+    dungeonBoss.assignedBase = this;
+
+    if (bossChoice.name === "NecroticHive") GameContext.necroticHive = dungeonBoss;
+    else if (bossChoice.name === "CerebralPsion") GameContext.cerebralPsion = dungeonBoss;
+    else if (bossChoice.name === "Fleshforge") GameContext.fleshforge = dungeonBoss;
+    else if (bossChoice.name === "VortexMatriarch") GameContext.vortexMatriarch = dungeonBoss;
+    else if (bossChoice.name === "ChitinusPrime") GameContext.chitinusPrime = dungeonBoss;
+    else if (bossChoice.name === "PsyLich") GameContext.psyLich = dungeonBoss;
+
+    GameContext.enemies.push(dungeonBoss);
+    if (caveDeps.showOverlayMessage) {
+      caveDeps.showOverlayMessage(
+        `${bossChoice.name.toUpperCase()} JOINED THE FIGHT`,
+        "#f00",
+        2500
+      );
+    }
+    playSound("station_spawn");
+  }
+
   takeHit(dmg = 1) {
     if (this.dead) return false;
     this.hp -= dmg;
@@ -425,6 +472,38 @@ export class CaveMonsterBase extends Entity {
     if (this.dead) return;
     this.dead = true;
     GameContext.bossKills++;
+
+    // Clear shield segments to prevent visuals from persisting
+    if (this.shieldSegments && this.shieldSegments.length > 0) {
+      this.shieldSegments = [];
+    }
+    if (this.innerShieldSegments && this.innerShieldSegments.length > 0) {
+      this.innerShieldSegments = [];
+    }
+
+    // Destroy shield graphics (pixiCleanupObject does not clean _pixiGfx / _pixiInnerGfx)
+    if (this._pixiInnerGfx) {
+      try {
+        if (this._pixiInnerGfx.parent) this._pixiInnerGfx.parent.removeChild(this._pixiInnerGfx);
+        this._pixiInnerGfx.destroy(true);
+      } catch (e) {}
+      this._pixiInnerGfx = null;
+    }
+    if (this._pixiGfx) {
+      try {
+        if (this._pixiGfx.parent) this._pixiGfx.parent.removeChild(this._pixiGfx);
+        this._pixiGfx.destroy(true);
+      } catch (e) {}
+      this._pixiGfx = null;
+    }
+    if (this._pixiNameText) {
+      try {
+        if (this._pixiNameText.parent) this._pixiNameText.parent.removeChild(this._pixiNameText);
+        this._pixiNameText.destroy(true);
+      } catch (e) {}
+      this._pixiNameText = null;
+    }
+
     pixiCleanupObject(this);
 
     // Award loot directly
@@ -464,14 +543,28 @@ export class CaveMonsterBase extends Entity {
     GameContext.boss = null;
     GameContext.bossesDestroyedCount++;
 
-    // Notify cave level that boss is defeated
+    // Level 2 specific: track cave boss defeats for progression
+    // Skip cave-level callbacks for Level 2 - the game-loop handles progression
+    if (this.isLevel2CaveBoss && GameContext.currentLevel === 2) {
+      GameContext.level2CaveBossesDefeated = (GameContext.level2CaveBossesDefeated || 0) + 1;
+      if (caveDeps.showOverlayMessage) {
+        caveDeps.showOverlayMessage(
+          `CAVE MONSTER ${GameContext.level2CaveBossesDefeated}/3 DEFEATED`,
+          "#0f0",
+          2000
+        );
+      }
+      return;
+    }
+
+    // Notify cave level that boss is defeated (Level 1 cave mode only)
     if (caveDeps.onBossDefeated) caveDeps.onBossDefeated();
     // setMusicMode is handled in main loop mostly or via callback?
     // Main.js says: if (musicEnabled) setMusicMode('normal');
     // I can't easily access musicEnabled global. Maybe emit event?
     // Or assume GameContext has music state later. For now, skip music reset or add to deps.
 
-    // Check if we should spawn space station
+    // Check if we should spawn space station (Level 1 cave mode only)
     if (GameContext.bossesDestroyedCount >= 3) {
       GameContext.pendingStations = 1;
       GameContext.nextSpaceStationTime = Date.now() + 30000;
@@ -483,6 +576,28 @@ export class CaveMonsterBase extends Entity {
 
   draw(ctx) {
     if (this.dead) {
+      // Destroy shield graphics (pixiCleanupObject does not clean _pixiGfx / _pixiInnerGfx)
+      if (this._pixiInnerGfx) {
+        try {
+          if (this._pixiInnerGfx.parent) this._pixiInnerGfx.parent.removeChild(this._pixiInnerGfx);
+          this._pixiInnerGfx.destroy(true);
+        } catch (e) {}
+        this._pixiInnerGfx = null;
+      }
+      if (this._pixiGfx) {
+        try {
+          if (this._pixiGfx.parent) this._pixiGfx.parent.removeChild(this._pixiGfx);
+          this._pixiGfx.destroy(true);
+        } catch (e) {}
+        this._pixiGfx = null;
+      }
+      if (this._pixiNameText) {
+        try {
+          if (this._pixiNameText.parent) this._pixiNameText.parent.removeChild(this._pixiNameText);
+          this._pixiNameText.destroy(true);
+        } catch (e) {}
+        this._pixiNameText = null;
+      }
       pixiCleanupObject(this);
       return;
     }

@@ -1,5 +1,5 @@
 import { Enemy } from "../../enemies/Enemy.js";
-import { GameContext } from "../../../core/game-context.js";
+import { GameContext, getLevelHpScaling } from "../../../core/game-context.js";
 import { SIM_FPS, SIM_STEP_MS } from "../../../core/constants.js";
 import { playSound, setMusicMode, musicEnabled } from "../../../audio/audio-manager.js";
 import { Bullet } from "../../projectiles/Bullet.js";
@@ -41,8 +41,8 @@ export class Fleshforge extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 7750; // Increased by 25% from 6200
-    this.hp = Math.round(baseHp * hpScale);
+    const baseHp = 7750;
+    this.hp = Math.round(baseHp * hpScale * getLevelHpScaling());
     this.maxHp = this.hp;
 
     this.shieldRadius = Math.round(34 * this.cruiserHullScale);

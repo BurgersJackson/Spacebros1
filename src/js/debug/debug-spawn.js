@@ -8,6 +8,7 @@ import { toggleSpriteEditor } from "./sprite-editor.js";
 import { clearArrayWithPixiCleanup } from "../utils/cleanup-utils.js";
 import { showOverlayMessage } from "../utils/ui-helpers.js";
 import { playSound, musicEnabled, setMusicMode } from "../audio/audio-manager.js";
+import { unlockLevel } from "../systems/level-manager.js";
 import {
   Cruiser,
   FinalBoss,
@@ -278,6 +279,7 @@ export function initDebugKeyboardShortcuts() {
   // Ctrl+Shift+7: Spawn Random Dungeon Boss
   // Ctrl+Shift+E: Toggle Sprite Editor
   // Ctrl+Shift+H: Toggle collision debug
+  // Ctrl+Shift+L: Unlock all levels
   document.addEventListener("keydown", function (e) {
     if (e.ctrlKey && e.shiftKey && (e.key === "e" || e.key === "E")) {
       e.preventDefault();
@@ -323,6 +325,11 @@ export function initDebugKeyboardShortcuts() {
         GameContext.DEBUG_SHIELD_BYPASS ? "#0f0" : "#f00",
         1500
       );
+    } else if (e.ctrlKey && e.shiftKey && (e.key === "l" || e.key === "L")) {
+      e.preventDefault();
+      unlockLevel(2);
+      unlockLevel(3);
+      showOverlayMessage("ALL LEVELS UNLOCKED", "#0f0", 2000);
     }
   });
 

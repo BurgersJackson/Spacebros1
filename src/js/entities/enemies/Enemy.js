@@ -5,7 +5,7 @@
 
 import { Entity } from "../Entity.js";
 import { Vector } from "../../core/math.js";
-import { GameContext, getEnemyHpScaling } from "../../core/game-context.js";
+import { GameContext, getEnemyHpScaling, getLevelHpScaling } from "../../core/game-context.js";
 import { SIM_STEP_MS, SIM_FPS } from "../../core/constants.js";
 import { playSound } from "../../audio/audio-manager.js";
 import { findSpawnPointRelative } from "../../utils/spawn-utils.js";
@@ -94,29 +94,35 @@ export class Enemy extends Entity {
     this.friction = 0.94; // 0.97^2 approx 0.941
 
     const scale = getEnemyHpScaling();
+    const levelScale = getLevelHpScaling();
+
+    const l2FireRateMult = GameContext.currentLevel === 2 ? 0.6 : 1;
 
     if (this.type === "roamer") {
       const elapsedMs = Date.now() - GameContext.gameStartTime - (GameContext.pausedAccumMs || 0);
       const elapsedMinutes = elapsedMs / 60000;
       const baseHp = elapsedMinutes < 5 ? 200 : 250;
-      this.hp = (baseHp + GameContext.difficultyTier * 15) * scale;
+      this.hp = (baseHp + GameContext.difficultyTier * 15) * scale * levelScale;
+      this.shootTimer = 13 * l2FireRateMult;
     } else if (this.type === "elite_roamer") {
-      this.hp = (350 + GameContext.difficultyTier * 25) * scale;
-      this.shieldRadius = 38; // Increased for better hit detection // reduced 25%
+      this.hp = (350 + GameContext.difficultyTier * 25) * scale * levelScale;
+      this.shieldRadius = 38;
       this.shieldSegments = new Array(6).fill(10);
-      this.radius = 19; // reduced 25% (was 25)
+      this.radius = 19;
       this.maxSpeed *= 1.05;
+      this.shootTimer = 10 * l2FireRateMult;
     } else if (this.type === "hunter") {
-      this.hp = (400 + GameContext.difficultyTier * 35) * scale;
-      this.radius = 22; // Base radius (will be multiplied by 3 to get 66)
-      this.maxSpeed = 13.0 + GameContext.difficultyTier * 0.5; // doubled
-      this.thrustPower = 1.2; // quadrupled (0.3 * 4)
+      this.hp = (400 + GameContext.difficultyTier * 35) * scale * levelScale;
+      this.radius = 22;
+      this.maxSpeed = 13.0 + GameContext.difficultyTier * 0.5;
+      this.thrustPower = 1.2;
       this.shieldSegments = new Array(4).fill(10);
-      this.shieldRadius = 45; // Increased for better hit detection // Base shield radius (will be multiplied by 3 to get 90)
-      this.shootTimer = 20; // 40 / 2
+      this.shieldRadius = 45;
+      this.shootTimer = 7 * l2FireRateMult;
     } else if (this.type === "defender") {
-      this.hp = (250 + (GameContext.difficultyTier - 1) * 25) * scale;
-      this.radius = 20; // Same base radius as roamer
+      this.hp = (250 + (GameContext.difficultyTier - 1) * 25) * scale * levelScale;
+      this.radius = 20;
+      this.shootTimer = 13 * l2FireRateMult;
     }
 
     // Named elite modifiers
@@ -186,10 +192,10 @@ export class Enemy extends Entity {
             ? 2
             : 1;
       }
-      this.radius = 30; // match player size
+      this.radius = 30;
       const baseHp = this.gunboatLevel === 1 ? 200 : 260;
-      this.hp = (baseHp + GameContext.difficultyTier * 10) * getEnemyHpScaling();
-      this.maxSpeed = 8.0; // doubled
+      this.hp = (baseHp + GameContext.difficultyTier * 10) * getEnemyHpScaling() * levelScale;
+      this.maxSpeed = 8.0;
       this.thrustPower = 0.88; // quadrupled (0.22 * 4)
       this.shootTimer = this.gunboatLevel === 1 ? 11 : 9; // ~half
 
@@ -376,7 +382,7 @@ export class Enemy extends Entity {
     total = Math.ceil(total * 1.1); // 10% bonus since fewer enemies now
 
     // Spawn physical coins instead of awarding instantly
-    if (total > 0) {
+    if (total > 0 && !this.noDrops && !this.noCoins) {
       // Determine coin values (prefer higher value coins when possible)
       let remaining = total;
       while (remaining > 0) {
@@ -392,7 +398,7 @@ export class Enemy extends Entity {
     }
 
     // Drop nuggets for player to pick up (elites with nameTag)
-    if (this.nameTag) {
+    if (this.nameTag && !this.noDrops) {
       let nuggetCount = 1;
       if (
         GameContext.player &&
@@ -411,7 +417,7 @@ export class Enemy extends Entity {
     }
 
     // Sector 2: random chance to drop nuggets (cave / gunboat)
-    if (caveActive) {
+    if (caveActive && !this.noDrops) {
       let p = 0.08;
       if (this.type === "defender") p = 0.14;
       else if (this.type === "elite_roamer") p = 0.12;
@@ -858,7 +864,8 @@ export class Enemy extends Entity {
             );
           }
           if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, angle);
-          this.shootTimer = this.type === "hunter" ? 7 : 10; // 50% faster
+          const l2FireRateMult = GameContext.currentLevel === 2 ? 0.6 : 1;
+          this.shootTimer = (this.type === "hunter" ? 7 : 10) * l2FireRateMult;
         } else if (GameContext.difficultyTier >= 5 && this.type === "roamer") {
           for (let i = -1; i <= 1; i++) {
             const a = angle + i * 0.2;
@@ -869,7 +876,8 @@ export class Enemy extends Entity {
             );
             if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, a);
           }
-          this.shootTimer = 13; // 50% faster
+          const l2FireRateMult = GameContext.currentLevel === 2 ? 0.6 : 1;
+          this.shootTimer = 13 * l2FireRateMult;
         } else {
           const bx = this.pos.x + Math.cos(angle) * 20;
           const by = this.pos.y + Math.sin(angle) * 20;
@@ -877,7 +885,8 @@ export class Enemy extends Entity {
             new Bullet(bx, by, angle, 16, { owner: "enemy", damage: 2, life: 180 })
           );
           if (_spawnBarrelSmoke) _spawnBarrelSmoke(bx, by, angle);
-          this.shootTimer = 13; // 50% faster
+          const l2FireRateMult = GameContext.currentLevel === 2 ? 0.6 : 1;
+          this.shootTimer = 13 * l2FireRateMult;
         }
         playSound("shoot");
       }
@@ -1061,21 +1070,33 @@ export class Enemy extends Entity {
           key = "enemy_gunboat_1";
         }
       } else if (this.type === "elite_roamer") {
-        tex = pixiTextures.enemy_elite_roamer;
-        anchor = pixiTextureAnchors.enemy_elite_roamer || 0.5;
-        key = "enemy_elite_roamer";
+        const useL2 = GameContext.currentLevel === 2 && pixiTextures.enemy_elite_roamer_l2;
+        tex = useL2 ? pixiTextures.enemy_elite_roamer_l2 : pixiTextures.enemy_elite_roamer;
+        anchor = useL2
+          ? pixiTextureAnchors.enemy_elite_roamer_l2 || 0.5
+          : pixiTextureAnchors.enemy_elite_roamer || 0.5;
+        key = useL2 ? "enemy_elite_roamer_l2" : "enemy_elite_roamer";
       } else if (this.type === "hunter") {
-        tex = pixiTextures.enemy_hunter;
-        anchor = pixiTextureAnchors.enemy_hunter || 0.5;
-        key = "enemy_hunter";
+        const useL2 = GameContext.currentLevel === 2 && pixiTextures.enemy_hunter_l2;
+        tex = useL2 ? pixiTextures.enemy_hunter_l2 : pixiTextures.enemy_hunter;
+        anchor = useL2
+          ? pixiTextureAnchors.enemy_hunter_l2 || 0.5
+          : pixiTextureAnchors.enemy_hunter || 0.5;
+        key = useL2 ? "enemy_hunter_l2" : "enemy_hunter";
       } else if (this.type === "defender") {
-        tex = pixiTextures.enemy_defender;
-        anchor = pixiTextureAnchors.enemy_defender || 0.5;
-        key = "enemy_defender";
+        const useL2 = GameContext.currentLevel === 2 && pixiTextures.enemy_defender_l2;
+        tex = useL2 ? pixiTextures.enemy_defender_l2 : pixiTextures.enemy_defender;
+        anchor = useL2
+          ? pixiTextureAnchors.enemy_defender_l2 || 0.5
+          : pixiTextureAnchors.enemy_defender || 0.5;
+        key = useL2 ? "enemy_defender_l2" : "enemy_defender";
       } else {
-        tex = pixiTextures.enemy_roamer;
-        anchor = pixiTextureAnchors.enemy_roamer || 0.5;
-        key = "enemy_roamer";
+        const useL2 = GameContext.currentLevel === 2 && pixiTextures.enemy_roamer_l2;
+        tex = useL2 ? pixiTextures.enemy_roamer_l2 : pixiTextures.enemy_roamer;
+        anchor = useL2
+          ? pixiTextureAnchors.enemy_roamer_l2 || 0.5
+          : pixiTextureAnchors.enemy_roamer || 0.5;
+        key = useL2 ? "enemy_roamer_l2" : "enemy_roamer";
       }
 
       const stealthAlpha =

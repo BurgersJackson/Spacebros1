@@ -391,6 +391,8 @@ export const GameContext = {
     this.bossKills = 0;
     this.bossesDestroyedCount = 0;
     this.totalDamageDealt = 0;
+    this.level2CaveBossesDefeated = 0;
+    this.level2DestroyerSpawned = false;
     this.asteroidGrid.clear();
     this.targetGrid.clear();
   }
@@ -413,4 +415,19 @@ export function getEnemyHpScaling() {
   // Scale: 1.0 (start) -> 4.0 (30 mins)
   // +10 HP base added elsewhere
   return 1 + (elapsed / (30 * 60 * 1000)) * 3;
+}
+
+export const LEVEL_HP_MULTIPLIERS = {
+  1: 0.8,
+  2: 1.0,
+  3: 1.2
+};
+
+export function getLevelHpScaling() {
+  const level = GameContext.currentLevel || 1;
+  return LEVEL_HP_MULTIPLIERS[level] ?? 1.0;
+}
+
+export function getScaledHp(baseHp) {
+  return Math.round(baseHp * getLevelHpScaling() * getEnemyHpScaling());
 }

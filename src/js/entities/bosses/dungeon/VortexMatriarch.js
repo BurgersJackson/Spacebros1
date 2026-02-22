@@ -1,5 +1,5 @@
 import { Enemy } from "../../enemies/Enemy.js";
-import { GameContext } from "../../../core/game-context.js";
+import { GameContext, getLevelHpScaling } from "../../../core/game-context.js";
 import { SIM_FPS, SIM_STEP_MS } from "../../../core/constants.js";
 import { playSound, setMusicMode, musicEnabled } from "../../../audio/audio-manager.js";
 import { Bullet } from "../../projectiles/Bullet.js";
@@ -40,8 +40,8 @@ export class VortexMatriarch extends Enemy {
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
 
-    const baseHp = 6500; // Increased by 25% from 5200
-    this.hp = Math.round(baseHp * hpScale);
+    const baseHp = 6500;
+    this.hp = Math.round(baseHp * hpScale * getLevelHpScaling());
     this.maxHp = this.hp;
 
     this.shieldRadius = Math.round(34 * this.cruiserHullScale);
@@ -267,7 +267,12 @@ export class VortexMatriarch extends Enemy {
               // Shield-bypassing damage using ignoreShields=true
               GameContext.player.takeHit(pulse.damage, true);
               if (_spawnParticles) {
-                _spawnParticles(GameContext.player.pos.x, GameContext.player.pos.y, 10, pulse.color);
+                _spawnParticles(
+                  GameContext.player.pos.x,
+                  GameContext.player.pos.y,
+                  10,
+                  pulse.color
+                );
               }
             }
           }

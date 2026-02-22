@@ -1,5 +1,5 @@
 import { Entity } from "../Entity.js";
-import { GameContext } from "../../core/game-context.js";
+import { GameContext, getLevelHpScaling } from "../../core/game-context.js";
 import { SIM_STEP_MS } from "../../core/constants.js";
 import { playSound } from "../../audio/audio-manager.js";
 import {
@@ -30,8 +30,8 @@ export class WarpShieldDrone extends Entity {
     this.orbitRadius = orbitRadius;
     this.orbitAngle = angle;
     this.orbitSpeed = 0;
-    this.hp = 3750;
-    this.maxHp = 3750;
+    this.hp = Math.round(3750 * getLevelHpScaling());
+    this.maxHp = this.hp;
     this.radius = 58;
     this.collisionRadius = 130;
     this.isWarpShieldDrone = true;

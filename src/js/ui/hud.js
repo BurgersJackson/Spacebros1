@@ -314,6 +314,7 @@ export function drawContractIndicator() {
     return;
   let tx = null;
   let ty = null;
+  let isGateRun = false;
   if (
     GameContext.activeContract.type === "gate_run" &&
     GameContext.contractEntities.gates.length > 0
@@ -323,6 +324,7 @@ export function drawContractIndicator() {
     if (g && !g.dead) {
       tx = g.pos.x;
       ty = g.pos.y;
+      isGateRun = true;
     }
   } else if (GameContext.activeContract.target) {
     tx = GameContext.activeContract.target.x;
@@ -367,8 +369,9 @@ export function drawContractIndicator() {
   const arrowShape = [15, 0, -15, 12, -15, -12];
   const transformed = transformPolygon(arrowShape, arrowX, arrowY, pulse, angle);
 
+  const arrowColor = isGateRun ? 0xff8800 : 0x00ff00;
   pixiArrowsGraphics.lineStyle(2, 0x000000);
-  pixiArrowsGraphics.beginFill(0x00ff00);
+  pixiArrowsGraphics.beginFill(arrowColor);
   pixiArrowsGraphics.drawPolygon(transformed);
   pixiArrowsGraphics.endFill();
 
@@ -378,7 +381,7 @@ export function drawContractIndicator() {
     fontFamily: "Courier New",
     fontWeight: "bold",
     fontSize: 14,
-    fill: 0x00ff00,
+    fill: arrowColor,
     align: "center",
     dropShadow: true,
     dropShadowColor: 0x000000,

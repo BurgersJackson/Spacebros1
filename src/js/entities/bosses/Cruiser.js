@@ -1,5 +1,5 @@
 import { Enemy } from "../enemies/Enemy.js";
-import { GameContext } from "../../core/game-context.js";
+import { GameContext, getLevelHpScaling } from "../../core/game-context.js";
 import { SIM_FPS, SIM_STEP_MS } from "../../core/constants.js";
 import { playSound, setMusicMode, musicEnabled } from "../../audio/audio-manager.js";
 import { Bullet, CruiserMineBomb, FlagshipGuidedMissile } from "../projectiles/index.js";
@@ -38,16 +38,16 @@ export class Cruiser extends Enemy {
     const hpScale = 1 + boost * 0.35;
     // Shield segment HP: same as strongest dungeon boss (ChitinusPrime) = 20 per shard
     const shieldStrength = 20;
-    const baseCruiserHp = 8750; // Increased by 25% from 7000
+    const baseCruiserHp = 8750;
     this.type = "cruiser";
     this.isCruiser = true;
     this.isGunboat = true;
     this.gunboatLevel = 2;
 
-    this.cruiserHullScale = 6.2 * 1.25; // 25% larger (7.75)
+    this.cruiserHullScale = 6.2 * 1.25;
     this.gunboatScale = this.cruiserHullScale;
     this.radius = Math.round(22 * this.cruiserHullScale);
-    let hp = Math.round(baseCruiserHp * hpScale);
+    let hp = Math.round(baseCruiserHp * hpScale * getLevelHpScaling());
     if (encounterIndex === 2) {
       hp = Math.round(hp * 1.25);
     }

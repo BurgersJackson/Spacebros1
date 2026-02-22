@@ -83,11 +83,9 @@ export function completeSectorWarp() {
   GameContext.caveLevel = null;
   GameContext.warpGateUnlocked = false;
 
-  if (GameContext.sectorIndex !== 2) {
-    deps.initStars(deps.getWidth(), deps.getHeight());
-  }
+  deps.initStars(deps.getWidth(), deps.getHeight());
 
-  if (GameContext.sectorIndex === 2) {
+  if (GameContext.sectorIndex === 2 && GameContext.currentLevel === 1) {
     startCaveSector2();
     GameContext.dreadManager.timerActive = false;
     GameContext.dreadManager.timerAt = null;

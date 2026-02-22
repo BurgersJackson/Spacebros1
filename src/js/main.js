@@ -10,7 +10,11 @@ import {
 import { GameContext } from "./core/game-context.js";
 import { globalProfiler } from "./core/profiler.js";
 import { globalJitterMonitor } from "./core/jitter-monitor.js";
-import { globalStaggeredCleanup, immediateCompactArray, conditionalCompactArray } from "./core/staggered-cleanup.js";
+import {
+  globalStaggeredCleanup,
+  immediateCompactArray,
+  conditionalCompactArray
+} from "./core/staggered-cleanup.js";
 import {
   updateViewBounds,
   viewBounds,
@@ -271,6 +275,14 @@ import {
   initProfileSystem,
   initSettingsMenu
 } from "./ui/settings-manager.js";
+import {
+  registerObjectivesScreenDependencies,
+  showObjectivesScreen,
+  hideObjectivesScreen,
+  isObjectivesScreenVisible,
+  handleGamepadInputForObjectives,
+  updateObjectivesPromptForInputMode
+} from "./ui/objectives-screen.js";
 import {
   registerSpawnManagerDependencies,
   spawnDrone,
@@ -797,7 +809,7 @@ registerGameFlowDependencies({
   },
   setupGameWorld,
   showDeathScreen,
-  showOverlayMessage,
+  showObjectivesScreen,
   spawnDrone,
   spawnParticles,
   startMusic,
@@ -861,9 +873,18 @@ registerInputDependencies({
   getGameNowMs,
   shiftPausedTimers,
   getReturningFromModal: getReturningFromModalSystem,
-  setReturningFromModal: setReturningFromModalSystem
+  setReturningFromModal: setReturningFromModalSystem,
+  handleGamepadInputForObjectives,
+  updateObjectivesPromptForInputMode
 });
 initInputListeners();
+
+registerObjectivesScreenDependencies({
+  getGameNowMs,
+  shiftPausedTimers,
+  getMusicEnabled: () => musicEnabled,
+  startMusic
+});
 
 registerHudDependencies({
   canvas,
@@ -1191,7 +1212,9 @@ registerDestroyerDependencies({
   spawnParticles,
   spawnBarrelSmoke,
   canvas,
-  awardNuggetsInstant
+  awardNuggetsInstant,
+  unlockLevel: levelManagerUnlockLevel,
+  stopMusic
 });
 
 registerDestroyer2Dependencies({

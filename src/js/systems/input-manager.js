@@ -16,6 +16,8 @@ let _getGameNowMs = null;
 let _shiftPausedTimers = null;
 let _getReturningFromModal = null;
 let _setReturningFromModal = null;
+let _handleGamepadInputForObjectives = null;
+let _updateObjectivesPromptForInputMode = null;
 
 let menuDebounce = 0;
 let mouseMovementDir = { x: 0, y: 0 };
@@ -41,6 +43,10 @@ export function registerInputDependencies(deps) {
   if (deps.shiftPausedTimers) _shiftPausedTimers = deps.shiftPausedTimers;
   if (deps.getReturningFromModal) _getReturningFromModal = deps.getReturningFromModal;
   if (deps.setReturningFromModal) _setReturningFromModal = deps.setReturningFromModal;
+  if (deps.handleGamepadInputForObjectives)
+    _handleGamepadInputForObjectives = deps.handleGamepadInputForObjectives;
+  if (deps.updateObjectivesPromptForInputMode)
+    _updateObjectivesPromptForInputMode = deps.updateObjectivesPromptForInputMode;
 }
 
 /**
@@ -80,6 +86,10 @@ export function updateInputMode(now = Date.now()) {
     document.body.classList.add("no-cursor");
   } else {
     document.body.classList.remove("no-cursor");
+  }
+
+  if (_updateObjectivesPromptForInputMode) {
+    _updateObjectivesPromptForInputMode();
   }
 }
 
@@ -563,6 +573,11 @@ export function updateGamepad() {
 
   const now = Date.now();
   updateInputMode(now);
+
+  if (_handleGamepadInputForObjectives && _handleGamepadInputForObjectives()) {
+    return;
+  }
+
   if (gp.buttons[9].pressed && !GameContext.gpState.pausePressed) {
     if (_togglePause) _togglePause();
     GameContext.gpState.pausePressed = true;

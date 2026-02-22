@@ -273,6 +273,11 @@ export function startGame() {
           (GameContext.dreadManager.maxDelayMs - GameContext.dreadManager.minDelayMs + 1)
       );
     GameContext.dreadManager.timerAt = Date.now() + Math.max(firstBossMinGraceMs, baseDelay);
+
+    // Level 2 specific initialization: cave monsters + destroyer progression
+    GameContext.level2CaveBossesDefeated = 0;
+    GameContext.level2DestroyerSpawned = false;
+
     GameContext.rerollTokens = GameContext.metaProfile.purchases.rerollTokens || 0;
     GameContext.metaExtraLifeCount = GameContext.metaProfile.purchases.extraLife || 0;
 
@@ -351,8 +356,18 @@ export function startGame() {
     if (deathScreen) deathScreen.style.display = "none";
     document.getElementById("pause-menu").style.display = "none";
     GameContext.gameActive = true;
-    GameContext.gamePaused = false;
     GameContext.canResumeGame = false;
+
+    if (
+      (GameContext.currentLevel === 1 ||
+        GameContext.currentLevel === 2 ||
+        GameContext.currentLevel === 3) &&
+      deps.showObjectivesScreen
+    ) {
+      deps.showObjectivesScreen();
+    } else {
+      GameContext.gamePaused = false;
+    }
 
     // Windowed mode: lock mouse to the game window (prevents cursor leaving the window mid-run).
     // Fullscreen already confines the cursor, so we only do this in windowed.
@@ -381,22 +396,10 @@ export function startGame() {
       window.updateResumeButtonState();
     }
 
-    deps.setupGameWorld();
     deps.updateContractUI();
-
-    // Level 1: show objectives for a few seconds before enemies spawn (spawn at 8s)
-    if (GameContext.sectorIndex === 1 && deps.showOverlayMessage) {
-      deps.showOverlayMessage(
-        "OBJECTIVES: Defeat 3 cruiser bosses • Destroy the space station • Defeat the warp boss. Complete contracts for free upgrades!",
-        "#fa0",
-        6000,
-        5
-      );
-    }
 
     if (deps.getMusicEnabled && deps.getMusicEnabled()) {
       deps.initAudio();
-      deps.startMusic();
     }
   } catch (e) {
     console.error("[STARTGAME ERROR]", e);

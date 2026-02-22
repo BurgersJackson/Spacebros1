@@ -5,7 +5,7 @@
  */
 
 import { Enemy } from "./Enemy.js";
-import { GameContext, getEnemyHpScaling } from "../../core/game-context.js";
+import { GameContext, getEnemyHpScaling, getLevelHpScaling } from "../../core/game-context.js";
 import { SIM_STEP_MS } from "../../core/constants.js";
 
 export class Gunboat extends Enemy {
@@ -23,7 +23,7 @@ export class Gunboat extends Enemy {
     // Gunboat HP - similar to pinwheel but slightly lower since they move faster
     const baseHp =
       (150 + (GameContext.difficultyTier - 1) * 40) * (this.gunboatLevel === 1 ? 1 : 1.2);
-    this.hp = baseHp * getEnemyHpScaling();
+    this.hp = baseHp * getEnemyHpScaling() * getLevelHpScaling();
     this.maxSpeed = 8.0;
     this.thrustPower = 0.88;
     this.shootTimer = this.gunboatLevel === 1 ? 11 : 9;

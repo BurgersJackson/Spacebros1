@@ -1,5 +1,5 @@
 import { Entity } from "../Entity.js";
-import { GameContext, getElapsedGameTime } from "../../core/game-context.js";
+import { GameContext, getElapsedGameTime, getLevelHpScaling } from "../../core/game-context.js";
 import { SIM_STEP_MS, ZOOM_LEVEL } from "../../core/constants.js";
 import { playSound, stopMusic } from "../../audio/audio-manager.js";
 import { Bullet } from "../projectiles/Bullet.js";
@@ -53,7 +53,7 @@ export class FinalBoss extends Entity {
     this.isFinalBoss = true;
     this.sizeScale = 3;
     this.radius = 110 * this.sizeScale;
-    this.hp = 12500; // Increased by 25%
+    this.hp = Math.round(12500 * getLevelHpScaling());
     this.maxHp = this.hp;
 
     // Crystalline shield system - indestructible shards (cave monster pattern)

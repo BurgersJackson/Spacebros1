@@ -389,10 +389,16 @@ export function applyRandomUpgrade() {
       const currentTier = GameContext.player.inventory[up.id] || 0;
       const nextTier = currentTier + 1;
 
-      if (nextTier >= 3 && tier2Count < 5) {
-        return;
-      }
-      if (nextTier >= 5 && tier4Count < 5) {
+      // DISABLED: Higher level upgrades (4-5) - uncomment to re-enable
+      // if (nextTier >= 3 && tier2Count < 5) {
+      //   return;
+      // }
+      // if (nextTier >= 5 && tier4Count < 5) {
+      //   return;
+      // }
+
+      // Cap upgrades at level 3
+      if (nextTier > 3) {
         return;
       }
 

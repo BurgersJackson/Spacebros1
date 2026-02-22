@@ -1,5 +1,5 @@
 import { Entity } from "../Entity.js";
-import { GameContext } from "../../core/game-context.js";
+import { GameContext, getLevelHpScaling } from "../../core/game-context.js";
 import { SIM_STEP_MS, ZOOM_LEVEL } from "../../core/constants.js";
 import { playSound } from "../../audio/audio-manager.js";
 import { Bullet } from "../projectiles/Bullet.js";
@@ -64,7 +64,7 @@ export class WarpSentinelBoss extends Entity {
     this.isWarpBoss = true;
     this.sizeScale = 3;
     this.radius = 110 * this.sizeScale;
-    this.hp = 6250;
+    this.hp = Math.round(6250 * getLevelHpScaling());
     this.maxHp = this.hp;
 
     this.maxShieldHp = 9990;

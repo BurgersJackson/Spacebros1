@@ -1,5 +1,5 @@
 import { Entity } from "../Entity.js";
-import { GameContext } from "../../core/game-context.js";
+import { GameContext, getLevelHpScaling } from "../../core/game-context.js";
 import { SIM_STEP_MS } from "../../core/constants.js";
 import { playSound } from "../../audio/audio-manager.js";
 import { Bullet } from "../projectiles/Bullet.js";
@@ -25,6 +25,8 @@ let _spawnParticles = null;
 let _spawnBarrelSmoke = null;
 let _canvas = null;
 let _awardNuggetsInstant = null;
+let _unlockLevel = null;
+let _stopMusic = null;
 
 export function registerDestroyerDependencies(deps) {
   if (deps.spawnBossExplosion) _spawnBossExplosion = deps.spawnBossExplosion;
@@ -33,6 +35,8 @@ export function registerDestroyerDependencies(deps) {
   if (deps.spawnBarrelSmoke) _spawnBarrelSmoke = deps.spawnBarrelSmoke;
   if (deps.canvas) _canvas = deps.canvas;
   if (deps.awardNuggetsInstant) _awardNuggetsInstant = deps.awardNuggetsInstant;
+  if (deps.unlockLevel) _unlockLevel = deps.unlockLevel;
+  if (deps.stopMusic) _stopMusic = deps.stopMusic;
 }
 
 export class Destroyer extends Entity {
@@ -57,8 +61,8 @@ export class Destroyer extends Entity {
     this.visualRadius = Math.floor(520 * 0.65) * 2 * 1.5;
     this.radius = Math.round(this.visualRadius * 0.5);
     this.collisionRadius = this.radius;
-    this.hp = 15000;
-    this.maxHp = 15000;
+    this.hp = Math.round(15000 * getLevelHpScaling());
+    this.maxHp = this.hp;
     this.maxShieldHp = 9990;
     this.roamSpeed = 1.5;
     this.roamAngle = Math.random() * Math.PI * 2;
@@ -590,6 +594,29 @@ export class Destroyer extends Entity {
     GameContext.shakeMagnitude = Math.max(GameContext.shakeMagnitude, 18);
     GameContext.shakeTimer = Math.max(GameContext.shakeTimer, 20);
     showOverlayMessage("DESTROYER DESTROYED - 20 NUGGETS DROPPED", "#ff0", 2000, 2);
+
+    // Level 2 completion: unlock level 3 and show victory
+    if (this.isLevel2FinalBoss && GameContext.currentLevel === 2) {
+      if (_unlockLevel) _unlockLevel(3);
+      showOverlayMessage("LEVEL 2 COMPLETE!", "#0f0", 3000, 2);
+      setTimeout(() => {
+        GameContext.gameActive = false;
+        if (_stopMusic) _stopMusic();
+        const startScreen = document.getElementById("start-screen");
+        if (startScreen) startScreen.style.display = "block";
+        const titleEl = document.querySelector("#start-screen h1");
+        if (titleEl) {
+          titleEl.innerText = "LEVEL 2 COMPLETE!";
+          titleEl.style.color = "#0f0";
+        }
+        const startBtn = document.getElementById("start-btn");
+        if (startBtn) startBtn.innerText = "PLAY AGAIN";
+        setTimeout(() => {
+          if (startBtn) startBtn.focus();
+        }, 100);
+      }, 3000);
+      return;
+    }
 
     GameContext.currentDestroyerType = GameContext.currentDestroyerType === 1 ? 2 : 1;
     GameContext.nextDestroyerSpawnTime = Date.now() + 60000;

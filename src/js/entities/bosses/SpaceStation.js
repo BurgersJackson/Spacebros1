@@ -1,5 +1,5 @@
 import { Entity } from "../Entity.js";
-import { GameContext } from "../../core/game-context.js";
+import { GameContext, getLevelHpScaling } from "../../core/game-context.js";
 import { SIM_STEP_MS, ZOOM_LEVEL } from "../../core/constants.js";
 import { playSound, setMusicMode, musicEnabled } from "../../audio/audio-manager.js";
 import { Bullet } from "../projectiles/Bullet.js";
@@ -58,8 +58,8 @@ export class SpaceStation extends Entity {
     this.displayName = names[Math.floor(Math.random() * names.length)] + "-" + suffix;
 
     this.radius = Math.floor(520 * 0.65);
-    this.hp = 12500;
-    this.maxHp = 12500;
+    this.hp = Math.round(12500 * getLevelHpScaling());
+    this.maxHp = this.hp;
 
     this.shieldRadius = Math.floor(600 * 0.65);
     this.innerShieldRadius = Math.floor(560 * 0.65);

@@ -1,5 +1,5 @@
 import { Cruiser } from "./Cruiser.js";
-import { GameContext } from "../../core/game-context.js";
+import { GameContext, getLevelHpScaling } from "../../core/game-context.js";
 import { SIM_STEP_MS } from "../../core/constants.js";
 import { playSound } from "../../audio/audio-manager.js";
 import { FlagshipGuidedMissile } from "../projectiles/FlagshipGuidedMissile.js";
@@ -44,7 +44,7 @@ export class Flagship extends Cruiser {
 
     const bonus = Math.max(0, GameContext.cruiserEncounterCount - 1);
     const baseHp = 260 + bonus * 35;
-    this.hp = Math.round(baseHp * 1.25);
+    this.hp = Math.round(baseHp * 1.25 * getLevelHpScaling());
     this.maxHp = this.hp;
 
     this.shieldStrength = Math.max(3, Math.ceil((this.shieldStrength + 1) * 1.5));

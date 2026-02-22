@@ -4,7 +4,7 @@
  */
 
 import { Entity } from "../Entity.js";
-import { GameContext, getEnemyHpScaling } from "../../core/game-context.js";
+import { GameContext, getEnemyHpScaling, getLevelHpScaling } from "../../core/game-context.js";
 import { SIM_STEP_MS } from "../../core/constants.js";
 import { playSound } from "../../audio/audio-manager.js";
 import { Bullet } from "../projectiles/Bullet.js";
@@ -47,10 +47,10 @@ export class Pinwheel extends Entity {
     this.pos.x = x;
     this.pos.y = y;
     this.type = type;
-    this.radius = 84; // 70 * 1.2 (20% increase for collision sphere)
+    this.radius = 84;
     const baseVal = 200 + (GameContext.difficultyTier - 1) * 50;
-    this.hp = baseVal * getEnemyHpScaling();
-    this.shootTimer = 75; // 150 / 2
+    this.hp = baseVal * getEnemyHpScaling() * getLevelHpScaling();
+    this.shootTimer = 75;
     this.angle = 0;
     this.turretAngle = 0;
     this.shieldRadius = 130; // outer shield (moved out from 110) - unchanged
@@ -580,8 +580,7 @@ export class Pinwheel extends Entity {
     // Death bookkeeping (difficulty, respawn, UI)
     GameContext.pinwheelsDestroyed++;
     GameContext.pinwheelsDestroyedTotal++;
-    const totalDestroyed =
-      GameContext.pinwheelsDestroyedTotal + GameContext.gunboatsDestroyedTotal;
+    const totalDestroyed = GameContext.pinwheelsDestroyedTotal + GameContext.gunboatsDestroyedTotal;
     GameContext.difficultyTier = 1 + Math.floor(totalDestroyed / 6);
     GameContext.score += 10000;
     const baseEl = document.getElementById("bases-display");

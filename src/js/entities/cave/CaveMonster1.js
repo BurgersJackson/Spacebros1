@@ -1,11 +1,10 @@
 import { CaveMonsterBase } from "./CaveMonsterBase.js";
 import { GameContext, getEnemyHpScaling } from "../../core/game-context.js";
-import { Bullet } from "../projectiles/Bullet.js";
-import { Enemy } from "../enemies/Enemy.js";
 import { playSound } from "../../audio/audio-manager.js";
 import { caveDeps } from "./cave-dependencies.js";
 import { pixiVectorLayer, getRenderAlpha } from "../../rendering/pixi-context.js";
 import { ZOOM_LEVEL } from "../../core/constants.js";
+import { FlagshipGuidedMissile } from "../projectiles/FlagshipGuidedMissile.js";
 
 export class CaveMonster1 extends CaveMonsterBase {
   constructor(x, y) {
@@ -13,15 +12,17 @@ export class CaveMonster1 extends CaveMonsterBase {
     this.displayName = "CAVE CRYPTID";
     this.pulseActive = false;
     this.pulseRadius = 0;
-    this.pulseMaxRadius = 600;
-    this.pulseExpansionSpeed = 6.25;
+    this.pulseMaxRadius = 1500;
+    this.pulseExpansionSpeed = 10;
     this.pulseHit = false;
     this.artillerySpeed = 3.0;
     this.attackType = 0;
+    this.attackCooldown = 80;
+    this.mortars = [];
   }
 
   fireAttack(phase) {
-    const attacks = ["bioMortars", "neuralPulse", "tendrilMines"];
+    const attacks = ["bioMortars", "neuralPulse", "guidedMissiles"];
     const attack = attacks[this.attackType % attacks.length];
     this.attackType++;
 
@@ -32,8 +33,8 @@ export class CaveMonster1 extends CaveMonsterBase {
       case "neuralPulse":
         this.neuralPulse(phase);
         break;
-      case "tendrilMines":
-        this.tendrilMines(phase);
+      case "guidedMissiles":
+        this.guidedMissiles(phase);
         break;
     }
   }
@@ -51,38 +52,21 @@ export class CaveMonster1 extends CaveMonsterBase {
         targetX + offsetX - this.pos.x
       );
 
-      const b = new Bullet(this.pos.x, this.pos.y, targetAngle, 10, { damage: 20, color: "#0a0" }); // Signature mismatch?
-      // "new Bullet(this.pos.x, this.pos.y, targetAngle, true, 10, 8, 20, '#0a0')" in main.js
-      // New signature is likely (x, y, angle, speed, opts).
-      // main.js old: constructor(x, y, angle, isEnemy, speed, radius, damage, color)
-      // New Bullet signature check needed.
-      // Let's assume new signature is (x, y, angle, speed, opts) based on Enemy.js usage.
-      // Enemy.js: new Bullet(bx, by, angle, bulletSpeed, { owner: 'enemy', damage: dmg, life: 240, color: '#0ff' })
-
-      // So:
-      // speed = 10
-      // damage = 20
-      // radius = 8 (from main.js)
-      // color = '#0a0'
-      const opts = {
-        owner: "enemy",
-        damage: 20,
-        life: 125,
-        speed: 10,
-        color: "#0a0",
+      const mortar = {
+        x: this.pos.x,
+        y: this.pos.y,
+        vx: Math.cos(targetAngle) * 10,
+        vy: Math.sin(targetAngle) * 10,
         radius: 8,
-        isEnemy: true,
-        isBomb: true,
+        maxRange: 1500,
+        distTraveled: 0,
+        proximityRadius: 100,
         explosionRadius: 150,
+        damage: 20,
         explosionDamage: 10,
-        useShockwave: true
+        dead: false
       };
-      // Bullet constructor: constructor(x, y, angle, speed, opts = {})
-      const bNew = new Bullet(this.pos.x, this.pos.y, targetAngle, 10, opts);
-
-      // Note: Bullet module might handle options differently.
-      // I'll stick to the pattern I saw in Enemy.js
-      GameContext.bullets.push(bNew);
+      this.mortars.push(mortar);
     }
     playSound("shotgun");
   }
@@ -90,124 +74,68 @@ export class CaveMonster1 extends CaveMonsterBase {
   neuralPulse(phase) {
     if (this.dead) return;
     this.pulseActive = true;
-    this.pulseRadius = 400;
+    this.pulseRadius = 0;
     this.pulseHit = false;
     playSound("heavy_shoot");
   }
 
-  tendrilMines(phase) {
-    // Tendril mines attack (5 damage, 1 HP each)
-    const count = phase === 3 ? 5 : phase === 2 ? 4 : 3;
+  guidedMissiles(phase) {
+    const count = phase === 3 ? 3 : phase === 2 ? 2 : 1;
 
     for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 600 + Math.random() * 1400;
-      const mx = this.pos.x + Math.cos(angle) * dist;
-      const my = this.pos.y + Math.sin(angle) * dist;
-
-      const mine = new Enemy("turret", { x: mx, y: my }, null);
-      const scale = getEnemyHpScaling();
-      mine.hp = (5 + 10) * scale;
-      mine.maxHp = mine.hp;
-      mine.radius = 30;
-      mine.despawnImmune = true;
-      mine.owner = this;
-      mine.noDrops = true;
-      mine.t = 0;
-      mine.pulsePhase = Math.random() * Math.PI * 2;
-
-      mine.update = function () {
-        this.t += 1;
-
-        if (GameContext.player && !GameContext.player.dead) {
-          const dist = Math.hypot(
-            GameContext.player.pos.x - this.pos.x,
-            GameContext.player.pos.y - this.pos.y
-          );
-          if (dist < 100) {
-            this.dead = true;
-            // Fiery explosion visual
-            if (caveDeps.spawnFieryExplosion)
-              caveDeps.spawnFieryExplosion(this.pos.x, this.pos.y, 2.0);
-            playSound("explosion");
-
-            // AOE damage - 200px radius, bypasses shields
-            const explosionRadius = 200;
-            if (
-              Math.hypot(
-                GameContext.player.pos.x - this.pos.x,
-                GameContext.player.pos.y - this.pos.y
-              ) < explosionRadius
-            ) {
-              if (GameContext.player && !GameContext.player.dead) {
-                GameContext.player.takeHit(5, true); // true = bypass shields
-              }
-            }
-          }
-        }
-      };
-
-      mine.draw = function (ctx) {
-        // ... logic to draw using canvas ctx ...
-        // Pixi logic should ideally be here too if we want unified rendering,
-        // but for now preserving original drawing logic mostly.
-        // Or I can skip drawing implementation here since it's attached to an Enemy instance
-        // and Enemy.js handles drawing.
-        // HOWEVER, Enemy.js draw() uses prototypes or pixi logic.
-        // This overrides draw(), so it works for canvas.
-        // For Pixi, Enemy.js uses allocPixiSprite.
-        // Since 'turret' isn't standard, it might fallback?
-        // I'll leave the canvas draw override on the instance for now.
-
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-
-        const pulseScale = 1.0 + Math.sin(this.t * 0.1 + this.pulsePhase) * 0.15;
-        const pulseAlpha = 0.5 + Math.sin(this.t * 0.1 + this.pulsePhase) * 0.3;
-
-        ctx.fillStyle = `rgba(0, 255, 0, ${pulseAlpha * 0.6})`;
-        ctx.beginPath();
-        ctx.arc(0, 0, 25 * pulseScale, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = "#0f0";
-        ctx.beginPath();
-        ctx.arc(0, 0, 15, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = "#fff";
-        ctx.beginPath();
-        ctx.arc(0, 0, 8, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.restore();
-      };
-
-      GameContext.enemies.push(mine);
+      const missile = new FlagshipGuidedMissile(this);
+      missile.hp = 15;
+      missile.maxHp = 15;
+      missile.speed = 12;
+      missile.turnRate = 0.07;
+      GameContext.guidedMissiles.push(missile);
     }
-    playSound("powerup");
+    playSound("heavy_shoot");
   }
 
   update(deltaTime) {
-    // SIM_STEP_MS default via base?
     if (this.dead) return;
     const dtFactor = (deltaTime || 16.67) / 16.67;
+
+    for (let i = this.mortars.length - 1; i >= 0; i--) {
+      const m = this.mortars[i];
+      if (m.dead) {
+        this.mortars.splice(i, 1);
+        continue;
+      }
+
+      const moveSpeed = 10 * dtFactor;
+      m.x += m.vx * dtFactor;
+      m.y += m.vy * dtFactor;
+      m.distTraveled += moveSpeed;
+
+      if (GameContext.player && !GameContext.player.dead) {
+        const dist = Math.hypot(GameContext.player.pos.x - m.x, GameContext.player.pos.y - m.y);
+        if (dist < m.proximityRadius) {
+          this.explodeMortar(m);
+          continue;
+        }
+      }
+
+      if (m.distTraveled >= m.maxRange) {
+        this.explodeMortar(m);
+      }
+    }
 
     if (this.pulseActive) {
       this.pulseRadius += this.pulseExpansionSpeed * dtFactor;
 
-      if (GameContext.player && !GameContext.player.dead) {
+      if (GameContext.player && !GameContext.player.dead && !this.pulseHit) {
         const dist = Math.hypot(
           GameContext.player.pos.x - this.pos.x,
           GameContext.player.pos.y - this.pos.y
         );
 
-        if (Math.abs(dist - this.pulseRadius) < 30 && !this.pulseHit) {
+        if (dist <= this.pulseRadius) {
           this.pulseHit = true;
-          // Damage bypasses shields (true = ignoreShields)
-          const damage = dist > 400 ? 2 : 5;
+          const damage = dist < 300 ? 5 : 3;
           if (GameContext.player && !GameContext.player.dead) {
-            GameContext.player.takeHit(damage, true); // true = bypass shields
+            GameContext.player.takeHit(damage, true);
           }
         }
       }
@@ -222,13 +150,46 @@ export class CaveMonster1 extends CaveMonsterBase {
     super.update(deltaTime);
   }
 
+  explodeMortar(m) {
+    m.dead = true;
+    if (caveDeps.spawnFieryExplosion) caveDeps.spawnFieryExplosion(m.x, m.y, 1.5);
+    playSound("explosion");
+
+    if (GameContext.player && !GameContext.player.dead) {
+      const dist = Math.hypot(GameContext.player.pos.x - m.x, GameContext.player.pos.y - m.y);
+      if (dist < m.explosionRadius) {
+        GameContext.player.takeHit(m.explosionDamage);
+      }
+    }
+  }
+
   draw(ctx) {
     super.draw(ctx);
 
     if (this.dead) return;
 
-    // Get interpolated position for smooth rendering
     const rPos = this.getRenderPos ? this.getRenderPos(getRenderAlpha()) : this.pos;
+
+    if (pixiVectorLayer) {
+      let mortarGfx = this._pixiMortarGfx;
+      if (!mortarGfx) {
+        mortarGfx = new PIXI.Graphics();
+        pixiVectorLayer.addChild(mortarGfx);
+        this._pixiMortarGfx = mortarGfx;
+      } else if (!mortarGfx.parent) {
+        pixiVectorLayer.addChild(mortarGfx);
+      }
+
+      mortarGfx.clear();
+      const z = GameContext.currentZoom || ZOOM_LEVEL;
+      for (const m of this.mortars) {
+        if (m.dead) continue;
+        mortarGfx.lineStyle(2 / z, 0x00aa00, 0.9);
+        mortarGfx.beginFill(0x00ff00, 0.7);
+        mortarGfx.drawCircle(m.x, m.y, m.radius);
+        mortarGfx.endFill();
+      }
+    }
 
     if (this.pulseActive && pixiVectorLayer) {
       let gfx = this._pixiPulseGfx;
@@ -241,10 +202,10 @@ export class CaveMonster1 extends CaveMonsterBase {
       }
 
       gfx.clear();
-      gfx.position.set(rPos.x, rPos.y);
       const z = GameContext.currentZoom || ZOOM_LEVEL;
       gfx.lineStyle(4 / z, 0xff0088, 0.8);
-      gfx.drawCircle(0, 0, this.pulseRadius / z);
+      gfx.drawCircle(rPos.x, rPos.y, this.pulseRadius);
+      gfx.endFill();
     } else if (this._pixiPulseGfx) {
       try {
         this._pixiPulseGfx.clear();
@@ -260,6 +221,13 @@ export class CaveMonster1 extends CaveMonsterBase {
       } catch (e) {}
       this._pixiPulseGfx = null;
     }
+    if (this._pixiMortarGfx) {
+      try {
+        this._pixiMortarGfx.destroy({ children: true });
+      } catch (e) {}
+      this._pixiMortarGfx = null;
+    }
+    this.mortars = [];
 
     for (let i = GameContext.enemies.length - 1; i >= 0; i--) {
       const e = GameContext.enemies[i];

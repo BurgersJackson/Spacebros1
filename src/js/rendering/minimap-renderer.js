@@ -348,6 +348,7 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
   if (!warpActive && GameContext.player && GameContext.activeContract) {
     let tx = null,
       ty = null;
+    let isGateRun = false;
     if (
       GameContext.activeContract.type === "gate_run" &&
       GameContext.contractEntities.gates.length > 0
@@ -357,6 +358,7 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
       if (g && !g.dead) {
         tx = g.pos.x;
         ty = g.pos.y;
+        isGateRun = true;
       }
     } else if (GameContext.activeContract.target) {
       tx = GameContext.activeContract.target.x;
@@ -376,7 +378,7 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
       const px = inRange ? dx * scale : Math.cos(angle) * 90;
       const py = inRange ? dy * scale : Math.sin(angle) * 90;
 
-      pixiMinimapGraphics.beginFill(0x00ff00);
+      pixiMinimapGraphics.beginFill(isGateRun ? 0xff8800 : 0x00ff00);
       drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
       pixiMinimapGraphics.endFill();
     }

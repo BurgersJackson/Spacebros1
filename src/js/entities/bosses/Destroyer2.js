@@ -1,5 +1,5 @@
 import { Entity } from "../Entity.js";
-import { GameContext } from "../../core/game-context.js";
+import { GameContext, getLevelHpScaling } from "../../core/game-context.js";
 import { SIM_STEP_MS, ZOOM_LEVEL } from "../../core/constants.js";
 import { playSound } from "../../audio/audio-manager.js";
 import { Bullet } from "../projectiles/Bullet.js";
@@ -52,11 +52,11 @@ export class Destroyer2 extends Entity {
     this.maxHp = 15000;
 
     // Movement properties for roaming
-    this.roamSpeed = 1.5; // Slow roaming speed
-    this.radius = Math.round(this.visualRadius * 0.5); // Collision trimmed to hull, not PNG bounds
+    this.roamSpeed = 1.5;
+    this.radius = Math.round(this.visualRadius * 0.5);
     this.collisionRadius = this.radius;
-    this.hp = 15000;
-    this.maxHp = 15000;
+    this.hp = Math.round(15000 * getLevelHpScaling());
+    this.maxHp = this.hp;
 
     // Movement properties for roaming
     this.roamSpeed = 1.5; // Slow roaming speed

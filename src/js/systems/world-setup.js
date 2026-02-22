@@ -88,7 +88,8 @@ export function setupGameWorld() {
   GameContext.pauseStartTime = null;
   GameContext.pausedAccumMs = 0;
 
-  GameContext.initialSpawnDelayAt = GameContext.gameStartTime + 8000;
+  GameContext.initialSpawnDelayAt = null;
+  GameContext.objectivesScreenShown = false;
 
   deps.generateMap();
   deps.initStars(deps.getWidth(), deps.getHeight());

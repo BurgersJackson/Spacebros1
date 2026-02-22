@@ -16,6 +16,10 @@ export const pixiTextures = {
   enemy_elite_roamer: null,
   enemy_hunter: null,
   enemy_defender: null,
+  enemy_roamer_l2: null,
+  enemy_elite_roamer_l2: null,
+  enemy_hunter_l2: null,
+  enemy_defender_l2: null,
   enemy_gunboat_1: null,
   enemy_gunboat_2: null,
   enemy_cruiser: null,
@@ -651,22 +655,42 @@ const ROAMER_URL = "assets/roamer1.png";
 const ELITE_ROAMER_URL = "assets/roamer_elite.png";
 const HUNTER_URL = "assets/hunter.png";
 const DEFENDER_URL = "assets/defender.png";
+const ROAMER_L2_URL = "assets/roamer1_l2.png";
+const ELITE_ROAMER_L2_URL = "assets/roamer_elite_l2.png";
+const HUNTER_L2_URL = "assets/hunter_l2.png";
+const DEFENDER_L2_URL = "assets/defender_l2.png";
 const roamerImage = new Image();
 const eliteRoamerImage = new Image();
 const hunterImage = new Image();
 const defenderImage = new Image();
+const roamerL2Image = new Image();
+const eliteRoamerL2Image = new Image();
+const hunterL2Image = new Image();
+const defenderL2Image = new Image();
 roamerImage.decoding = "async";
 eliteRoamerImage.decoding = "async";
 hunterImage.decoding = "async";
 defenderImage.decoding = "async";
+roamerL2Image.decoding = "async";
+eliteRoamerL2Image.decoding = "async";
+hunterL2Image.decoding = "async";
+defenderL2Image.decoding = "async";
 roamerImage.src = ROAMER_URL;
 eliteRoamerImage.src = ELITE_ROAMER_URL;
 hunterImage.src = HUNTER_URL;
 defenderImage.src = DEFENDER_URL;
+roamerL2Image.src = ROAMER_L2_URL;
+eliteRoamerL2Image.src = ELITE_ROAMER_L2_URL;
+hunterL2Image.src = HUNTER_L2_URL;
+defenderL2Image.src = DEFENDER_L2_URL;
 let roamerLoaded = false;
 let eliteRoamerLoaded = false;
 let hunterLoaded = false;
 let defenderLoaded = false;
+let roamerL2Loaded = false;
+let eliteRoamerL2Loaded = false;
+let hunterL2Loaded = false;
+let defenderL2Loaded = false;
 
 export function applyEnemyTexture(img, key) {
   if (!img || img.naturalWidth <= 0 || !window.PIXI) return;
@@ -685,7 +709,11 @@ export function applyEnemyTexture(img, key) {
       key === "enemy_roamer" ||
       key === "enemy_elite_roamer" ||
       key === "enemy_hunter" ||
-      key === "enemy_defender"
+      key === "enemy_defender" ||
+      key === "enemy_roamer_l2" ||
+      key === "enemy_elite_roamer_l2" ||
+      key === "enemy_hunter_l2" ||
+      key === "enemy_defender_l2"
     ) {
       pixiTextureRotOffsets[key] = Math.PI / 2;
     }
@@ -725,6 +753,22 @@ defenderImage.addEventListener("load", () => {
   defenderLoaded = true;
   applyEnemyTexture(defenderImage, "enemy_defender");
 });
+roamerL2Image.addEventListener("load", () => {
+  roamerL2Loaded = true;
+  applyEnemyTexture(roamerL2Image, "enemy_roamer_l2");
+});
+eliteRoamerL2Image.addEventListener("load", () => {
+  eliteRoamerL2Loaded = true;
+  applyEnemyTexture(eliteRoamerL2Image, "enemy_elite_roamer_l2");
+});
+hunterL2Image.addEventListener("load", () => {
+  hunterL2Loaded = true;
+  applyEnemyTexture(hunterL2Image, "enemy_hunter_l2");
+});
+defenderL2Image.addEventListener("load", () => {
+  defenderL2Loaded = true;
+  applyEnemyTexture(defenderL2Image, "enemy_defender_l2");
+});
 roamerImage.addEventListener("error", () => {
   roamerLoaded = false;
 });
@@ -736,6 +780,18 @@ hunterImage.addEventListener("error", () => {
 });
 defenderImage.addEventListener("error", () => {
   defenderLoaded = false;
+});
+roamerL2Image.addEventListener("error", () => {
+  roamerL2Loaded = false;
+});
+eliteRoamerL2Image.addEventListener("error", () => {
+  eliteRoamerL2Loaded = false;
+});
+hunterL2Image.addEventListener("error", () => {
+  hunterL2Loaded = false;
+});
+defenderL2Image.addEventListener("error", () => {
+  defenderL2Loaded = false;
 });
 
 const BASE1_URL = "assets/base1.png";

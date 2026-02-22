@@ -114,11 +114,19 @@ export function handleSpaceStationDestroyed() {
   GameContext.spaceStation = null;
   GameContext.stationHealthBarVisible = false;
 
-  // Level 1: don't end level; warp opens in 2 minutes, player goes to warp boss
+  // Level 1: unlock level 2 and show level complete screen
   if (GameContext.currentLevel === 1) {
-    GameContext.caveWarpCountdownAt = Date.now() + 120000; // 2 minutes
-    showOverlayMessage("WARP OPENING IN 2 MINUTES - BOSS AHEAD", "#f80", 5000);
     GameContext.score += 50000;
+    if (unlockLevelRef) unlockLevelRef(2);
+    setTimeout(() => {
+      if (endGameRef) {
+        endGameRef(getElapsedGameTime(), {
+          showDeathScreen: true,
+          title: "LEVEL 1 COMPLETE!",
+          titleColor: "#0f0"
+        });
+      }
+    }, 2000);
     return;
   }
 

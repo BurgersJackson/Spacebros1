@@ -7,7 +7,12 @@ import {
 } from "../core/constants.js";
 import { globalProfiler } from "../core/profiler.js";
 import { globalJitterMonitor } from "../core/jitter-monitor.js";
-import { updateViewBounds, isInView, isInViewRadius, rebuildBulletGrid } from "../core/performance.js";
+import {
+  updateViewBounds,
+  isInView,
+  isInViewRadius,
+  rebuildBulletGrid
+} from "../core/performance.js";
 import { updatePixiBackground, updatePixiCaveGrid } from "../rendering/background-renderer.js";
 import { drawMinimap } from "../rendering/minimap-renderer.js";
 import { setRenderAlpha } from "../rendering/pixi-context.js";
@@ -33,7 +38,13 @@ import {
   ChitinusPrime,
   PsyLich
 } from "../entities/bosses/dungeon/index.js";
-import { CaveGunboat1, CaveGunboat2 } from "../entities/cave/index.js";
+import {
+  CaveGunboat1,
+  CaveGunboat2,
+  CaveMonster1,
+  CaveMonster2,
+  CaveMonster3
+} from "../entities/cave/index.js";
 import {
   scheduleNextMiniEvent,
   scheduleNextRadiationStorm,
@@ -535,10 +546,10 @@ export function gameLoopLogic(opts = null) {
       GameContext.pendingTransitionClear = false;
       GameContext.gunboatRespawnAt = null;
     }
-    // Delay the first wave to give the player breathing room (not used in cave mode)
     if (
       !GameContext.caveMode &&
       !GameContext.initialSpawnDone &&
+      GameContext.objectivesScreenShown &&
       GameContext.initialSpawnDelayAt &&
       now >= GameContext.initialSpawnDelayAt
     ) {
@@ -709,6 +720,7 @@ export function gameLoopLogic(opts = null) {
       GameContext.cruiserTimerPausedAt = null;
     }
     // Unique boss spawn: if timer active and no boss present, spawn from unique pool
+    // Level 1 only - Level 2 has its own boss spawning logic below
     try {
       if (
         !nukeSuppressSpawns &&
@@ -722,7 +734,8 @@ export function gameLoopLogic(opts = null) {
         !waitingForResume &&
         GameContext.dreadManager.timerActive &&
         GameContext.dreadManager.timerAt &&
-        now >= GameContext.dreadManager.timerAt
+        now >= GameContext.dreadManager.timerAt &&
+        GameContext.currentLevel === 1
       ) {
         // Reset boss pool when entering sector 1
         if (GameContext.currentSectorForBossReset !== 1) {
@@ -821,6 +834,92 @@ export function gameLoopLogic(opts = null) {
       console.warn("boss spawn check failed", e);
     }
 
+    // Level 2 boss spawning: Cave Monsters in order, then Destroyer
+    try {
+      if (
+        !nukeSuppressSpawns &&
+        !GameContext.sectorTransitionActive &&
+        !warpActive &&
+        !GameContext.caveMode &&
+        !GameContext.verticalScrollingMode &&
+        !inAnomaly &&
+        !inStationFight &&
+        !inTractorBeam &&
+        !waitingForResume &&
+        GameContext.dreadManager.timerActive &&
+        GameContext.dreadManager.timerAt &&
+        now >= GameContext.dreadManager.timerAt &&
+        GameContext.currentLevel === 2
+      ) {
+        const caveBossesDefeated = GameContext.level2CaveBossesDefeated || 0;
+
+        if (caveBossesDefeated < 3 && !GameContext.level2DestroyerSpawned) {
+          let newBoss;
+          const bossIndex = caveBossesDefeated + 1;
+          const bossNames = ["", "CAVE CRYPTID", "HOLLOW HORROR", "VOID TERROR"];
+
+          // Spawn relative to player like Level 1 bosses
+          const spawnAngle = Math.random() * Math.PI * 2;
+          const spawnDist = 2800;
+          const spawnX = GameContext.player.pos.x + Math.cos(spawnAngle) * spawnDist;
+          const spawnY = GameContext.player.pos.y + Math.sin(spawnAngle) * spawnDist;
+
+          if (bossIndex === 1) {
+            newBoss = new CaveMonster1(spawnX, spawnY);
+          } else if (bossIndex === 2) {
+            newBoss = new CaveMonster2(spawnX, spawnY);
+          } else if (bossIndex === 3) {
+            newBoss = new CaveMonster3(spawnX, spawnY);
+          }
+
+          if (newBoss) {
+            newBoss.displayName = bossNames[bossIndex];
+            newBoss.isLevel2CaveBoss = true;
+            // Force chase mode for Level 2 to approach player
+            newBoss.moveMode = "chase";
+
+            if (!GameContext.bossActive || !GameContext.boss) {
+              GameContext.boss = newBoss;
+              GameContext.bossActive = true;
+            } else {
+              GameContext.enemies.push(newBoss);
+            }
+
+            // Ensure no arena barriers for Level 2
+            GameContext.bossArena.active = false;
+            GameContext.caveBossArena.active = false;
+
+            showOverlayMessage(bossNames[bossIndex], "#f00", 3000);
+            playSound("boss_spawn");
+            if (isMusicEnabled && isMusicEnabled()) setMusicMode("cruiser");
+          }
+        } else if (caveBossesDefeated >= 3 && !GameContext.level2DestroyerSpawned) {
+          GameContext.level2DestroyerSpawned = true;
+          const destroyer = new Destroyer();
+          destroyer.isLevel2FinalBoss = true;
+          GameContext.destroyer = destroyer;
+
+          // Ensure no arena barriers for Level 2 destroyer
+          GameContext.bossArena.active = false;
+          GameContext.caveBossArena.active = false;
+
+          showOverlayMessage("FINAL BOSS: DESTROYER", "#f80", 5000);
+          playSound("boss_spawn");
+          if (isMusicEnabled && isMusicEnabled()) setMusicMode("cruiser");
+        }
+
+        const nextDelay =
+          GameContext.dreadManager.minDelayMs +
+          Math.floor(
+            Math.random() *
+              (GameContext.dreadManager.maxDelayMs - GameContext.dreadManager.minDelayMs + 1)
+          );
+        GameContext.dreadManager.timerAt = Date.now() + nextDelay;
+      }
+    } catch (e) {
+      console.warn("level 2 boss spawn check failed", e);
+    }
+
     // Track arena fight completion (boss defeats)
     // Skip if in dungeon - Dungeon1Zone handles counting those kills
     // Note: arenaFightsCompleted is now incremented in each boss's kill() method
@@ -904,8 +1003,10 @@ export function gameLoopLogic(opts = null) {
       playSound("station_spawn");
     }
 
-    // Trigger warp after space station is defeated (level 1: warp to boss; other: warp to cave/level 2)
+    // Trigger warp after space station is defeated (level 2+: warp to cave/level 2)
+    // Level 1 now ends immediately when space station is destroyed
     if (
+      GameContext.currentLevel !== 1 &&
       !GameContext.caveMode &&
       GameContext.spaceStation &&
       GameContext.spaceStation.dead &&
@@ -915,15 +1016,7 @@ export function gameLoopLogic(opts = null) {
       !GameContext.caveWarpCountdownAt
     ) {
       GameContext.caveWarpCountdownAt = Date.now() + 120000; // 2 minutes
-      if (GameContext.currentLevel === 1) {
-        showOverlayMessage("WARP OPENING IN 2 MINUTES - BOSS AHEAD", "#0ff", 3000);
-      } else {
-        showOverlayMessage(
-          "SPACE STATION DESTROYED - WARPING TO LEVEL 2 IN 2 MINUTES",
-          "#0ff",
-          3000
-        );
-      }
+      showOverlayMessage("SPACE STATION DESTROYED - WARPING TO LEVEL 2 IN 2 MINUTES", "#0ff", 3000);
     }
 
     // Check cave warp countdown and trigger warp
@@ -1069,13 +1162,13 @@ export function gameLoopLogic(opts = null) {
 
       if (GameContext.gunboatRespawnAt && now >= GameContext.gunboatRespawnAt) {
         if (targetLevel1 > 0 && currentLevel1 < targetLevel1) {
-          if (GameContext.caveMode) {
+          if (GameContext.caveMode || GameContext.currentLevel === 2) {
             GameContext.enemies.push(new CaveGunboat1(null, null));
           } else {
             GameContext.enemies.push(new Gunboat(null, null, 1));
           }
         } else if (targetLevel2 > 0 && currentLevel2 < targetLevel2) {
-          if (GameContext.caveMode) {
+          if (GameContext.caveMode || GameContext.currentLevel === 2) {
             GameContext.enemies.push(new CaveGunboat2(null, null));
           } else {
             GameContext.enemies.push(new Gunboat2(null, null));
@@ -1253,10 +1346,13 @@ export function gameLoopLogic(opts = null) {
       const difficultyBonus =
         Math.max(0, GameContext.difficultyTier + GameContext.player.level * 0.1 - 1) * 0.2;
       const earlyEnemyFactor = elapsedMinutes < 4 ? 0.8 : 1.0; // Increased from 0.6 to ensure minimum roamers
-      const targetRoamers = Math.max(3, Math.floor(
-        (baseRoamers + (GameContext.maxRoamers - baseRoamers) * rampT + difficultyBonus) *
-          earlyEnemyFactor
-      )); // Minimum 3 roamers at all times
+      const targetRoamers = Math.max(
+        3,
+        Math.floor(
+          (baseRoamers + (GameContext.maxRoamers - baseRoamers) * rampT + difficultyBonus) *
+            earlyEnemyFactor
+        )
+      ); // Minimum 3 roamers at all times
 
       const currentRoamers = GameContext.enemies.filter(
         e => e.type === "roamer" || e.type === "elite_roamer" || e.type === "hunter"
@@ -1984,7 +2080,14 @@ export function gameLoopLogic(opts = null) {
     if (doUpdate) GameContext.spaceStation.update(deltaTime);
     // Draw culling: skip station draw when far off-screen (station radius ~340, shields ~390)
     const stationDrawRadius = 500;
-    if (doDraw && isInViewRadius(GameContext.spaceStation.pos.x, GameContext.spaceStation.pos.y, stationDrawRadius)) {
+    if (
+      doDraw &&
+      isInViewRadius(
+        GameContext.spaceStation.pos.x,
+        GameContext.spaceStation.pos.y,
+        stationDrawRadius
+      )
+    ) {
       GameContext.spaceStation.draw(ctx);
     }
     // Station HP bar is now shown in bottom boss-health-bars row (updateBossHealthBars)
@@ -2003,7 +2106,10 @@ export function gameLoopLogic(opts = null) {
     if (doUpdate) GameContext.destroyer.update(deltaTime);
     // Draw culling: skip destroyer draw when far off-screen
     const destroyerDrawRadius = 400;
-    if (doDraw && isInViewRadius(GameContext.destroyer.pos.x, GameContext.destroyer.pos.y, destroyerDrawRadius)) {
+    if (
+      doDraw &&
+      isInViewRadius(GameContext.destroyer.pos.x, GameContext.destroyer.pos.y, destroyerDrawRadius)
+    ) {
       GameContext.destroyer.draw(ctx);
     }
   }
@@ -2156,10 +2262,14 @@ export function gameLoopLogic(opts = null) {
 
     // Use conditional cleanup for heaviest arrays (only compact when needed)
     // Bullets: compact if >50 items and >10% dead
-    conditionalCompactArray(GameContext.bullets, b => {
-      if (b._poolType === "bullet" && b.sprite && pixiBulletSpritePool) destroyBulletSprite(b);
-      else pixiCleanupObject(b);
-    }, { minSize: 50, minDeadRatio: 0.1 });
+    conditionalCompactArray(
+      GameContext.bullets,
+      b => {
+        if (b._poolType === "bullet" && b.sprite && pixiBulletSpritePool) destroyBulletSprite(b);
+        else pixiCleanupObject(b);
+      },
+      { minSize: 50, minDeadRatio: 0.1 }
+    );
     immediateCompactArray(GameContext.bossBombs);
     immediateCompactArray(GameContext.warpBioPods, pixiCleanupObject);
     immediateCompactArray(GameContext.guidedMissiles, m => {
@@ -2169,10 +2279,16 @@ export function gameLoopLogic(opts = null) {
       pixiCleanupObject(m);
     });
     // Enemies: compact if >30 items and >15% dead (enemies are expensive to iterate)
-    conditionalCompactArray(GameContext.enemies, pixiCleanupObject, { minSize: 30, minDeadRatio: 0.15 });
+    conditionalCompactArray(GameContext.enemies, pixiCleanupObject, {
+      minSize: 30,
+      minDeadRatio: 0.15
+    });
     immediateCompactArray(GameContext.pinwheels, pixiCleanupObject);
     immediateCompactArray(GameContext.cavePinwheels, pixiCleanupObject);
-    conditionalCompactArray(GameContext.environmentAsteroids, pixiCleanupObject, { minSize: 30, minDeadRatio: 0.2 });
+    conditionalCompactArray(GameContext.environmentAsteroids, pixiCleanupObject, {
+      minSize: 30,
+      minDeadRatio: 0.2
+    });
 
     // Explosion cleanup with safety check for uncleaned sprites
     for (let i = GameContext.explosions.length - 1; i >= 0; i--) {
