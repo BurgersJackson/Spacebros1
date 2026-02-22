@@ -1637,8 +1637,15 @@ export function gameLoopLogic(opts = null) {
       ctx.setLineDash([]);
     } catch (_e) {}
 
-    ctx.fillStyle = "#000";
-    // Clear entire canvas (use canvas dimensions, not viewport)
+    // Draw background: gradient for level 2, solid black otherwise
+    if (GameContext.currentLevel === 2) {
+      const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      grad.addColorStop(0, "#0a1628");
+      grad.addColorStop(1, "#000000");
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = "#000";
+    }
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Calculate scale factor to render 1920x1080 viewport to canvas
