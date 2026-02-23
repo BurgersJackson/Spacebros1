@@ -1094,7 +1094,8 @@ export function gameLoopLogic(opts = null) {
     if (
       GameContext.stationSpawnAt &&
       Date.now() >= GameContext.stationSpawnAt &&
-      !GameContext.spaceStation
+      !GameContext.spaceStation &&
+      GameContext.currentLevel === 1
     ) {
       GameContext.stationSpawnAt = null;
       GameContext.spaceStation = new SpaceStation();
@@ -1167,7 +1168,8 @@ export function gameLoopLogic(opts = null) {
       !GameContext.spaceStation &&
       GameContext.pendingStations > 0 &&
       GameContext.nextSpaceStationTime &&
-      now >= GameContext.nextSpaceStationTime
+      now >= GameContext.nextSpaceStationTime &&
+      GameContext.currentLevel === 1
     ) {
       GameContext.spaceStation = new SpaceStation();
       GameContext.pendingStations--;

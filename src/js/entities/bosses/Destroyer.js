@@ -61,7 +61,7 @@ export class Destroyer extends Entity {
     this.visualRadius = Math.floor(520 * 0.65) * 2 * 1.5;
     this.radius = Math.round(this.visualRadius * 0.5);
     this.collisionRadius = this.radius;
-    this.hp = Math.round(15000 * getLevelHpScaling());
+    this.hp = Math.round(7500 * getLevelHpScaling());
     this.maxHp = this.hp;
     this.maxShieldHp = 9990;
     this.roamSpeed = 1.5;

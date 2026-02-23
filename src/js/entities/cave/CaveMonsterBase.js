@@ -36,7 +36,7 @@ export class CaveMonsterBase extends Entity {
     // Monster sprites are 512x512, with visible content filling the frame (radius ~250px)
     const monsterConfigs = {
       1: {
-        hp: 10000,
+        hp: 5000,
         name: "CAVE CRYPTID",
         texture: "cave_monster_1",
         ringSpeed: 0.003,
@@ -53,7 +53,7 @@ export class CaveMonsterBase extends Entity {
         ]
       },
       2: {
-        hp: 11500,
+        hp: 5750,
         name: "HOLLOW HORROR",
         texture: "cave_monster_2",
         ringSpeed: 0.005,
@@ -70,7 +70,7 @@ export class CaveMonsterBase extends Entity {
         ]
       },
       3: {
-        hp: 13000,
+        hp: 6500,
         name: "VOID TERROR",
         texture: "cave_monster_3",
         ringSpeed: 0.007,
@@ -236,7 +236,11 @@ export class CaveMonsterBase extends Entity {
     const mult = this.getEscalationMultiplier();
     const ringMult = this.getRingSpeedMultiplier();
 
-    if (!this.dungeonBossSpawned && Date.now() - this.battleStartTime >= 120000) {
+    if (
+      !this.dungeonBossSpawned &&
+      !this.isLevel2CaveBoss &&
+      Date.now() - this.battleStartTime >= 120000
+    ) {
       this.dungeonBossSpawned = true;
       this.spawnDungeonBossAlly();
     }
