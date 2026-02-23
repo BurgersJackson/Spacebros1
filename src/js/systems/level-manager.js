@@ -20,7 +20,7 @@ const LEVEL_MISSIONS = {
   },
   3: {
     title: "LEVEL 3",
-    description: "Complete this final challenge."
+    description: "Defeat 4 random bosses, then destroy the Warp Boss to complete the game."
   }
 };
 
@@ -203,8 +203,17 @@ function buildObjectivesSummary() {
 
   const lines = [];
 
-  // Level 2: cave monsters then destroyer
-  if (g.currentLevel === 2) {
+  if (g.currentLevel === 3) {
+    // Level 3: 3 random bosses then warp boss
+    const bossesDefeated = g.level3BossesDefeated || 0;
+    lines.push(`Bosses: ${bossesDefeated}/4`);
+    const warpBossDone =
+      g.level3FinalBossSpawned &&
+      g.bossActive === false &&
+      (g.boss === null || (g.boss && g.boss.dead));
+    lines.push(`Warp Boss: ${warpBossDone ? "1" : "0"}/1`);
+  } else if (g.currentLevel === 2) {
+    // Level 2: cave monsters then destroyer
     const caveBosses = g.level2CaveBossesDefeated || 0;
     lines.push(`Cave Monsters: ${caveBosses}/3`);
     const destroyerDone = g.level2DestroyerSpawned && g.destroyer && g.destroyer.dead;

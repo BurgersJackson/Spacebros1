@@ -557,6 +557,19 @@ export class CaveMonsterBase extends Entity {
       return;
     }
 
+    // Level 3 specific: track boss defeats for progression
+    if (this.isLevel3Boss && GameContext.currentLevel === 3) {
+      GameContext.level3BossesDefeated = (GameContext.level3BossesDefeated || 0) + 1;
+      if (caveDeps.showOverlayMessage) {
+        caveDeps.showOverlayMessage(
+          `BOSS ${GameContext.level3BossesDefeated}/4 DEFEATED`,
+          "#0f0",
+          2000
+        );
+      }
+      return;
+    }
+
     // Notify cave level that boss is defeated (Level 1 cave mode only)
     if (caveDeps.onBossDefeated) caveDeps.onBossDefeated();
     // setMusicMode is handled in main loop mostly or via callback?

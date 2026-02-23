@@ -1,4 +1,5 @@
 import { Entity } from "../Entity.js";
+import { FloatingText } from "../FloatingText.js";
 import { GameContext } from "../../core/game-context.js";
 import {
   SIM_STEP_MS,
@@ -350,6 +351,9 @@ export class Spaceship extends Entity {
 
     // Hull damage only happens when shields cannot absorb the full hit.
     if (remaining > 0) {
+      GameContext.floatingTexts.push(
+        new FloatingText(this.pos.x, this.pos.y - 20, `-${remaining}`, "#f44", 45, { fontSize: 50 })
+      );
       this.hp -= remaining;
       _spawnParticles(this.pos.x, this.pos.y, 14, "#f00");
       playSound("hit");

@@ -64,7 +64,7 @@ export class Enemy extends Entity {
     this.type = type;
     this.assignedBase = assignedBase;
     this.shieldSegments = [];
-    this._cachedRenderPos = null; // FIX: Cache render position for subclasses
+    this._cachedRenderPos = null;
     this.shieldRadius = 0;
     this.shieldRotation = 0;
     this.modifier = null;
@@ -76,6 +76,7 @@ export class Enemy extends Entity {
     this._pixiNameText = null;
     this.freezeTimer = 0;
     this.freezeCooldown = 0;
+    this.useL2Graphics = GameContext.currentLevel === 3 && Math.random() < 0.5;
 
     if (startPos) {
       this.pos.x = startPos.x;
@@ -1082,28 +1083,33 @@ export class Enemy extends Entity {
           key = "enemy_gunboat_1";
         }
       } else if (this.type === "elite_roamer") {
-        const useL2 = GameContext.currentLevel === 2 && pixiTextures.enemy_elite_roamer_l2;
+        const useL2 =
+          (GameContext.currentLevel === 2 || this.useL2Graphics) &&
+          pixiTextures.enemy_elite_roamer_l2;
         tex = useL2 ? pixiTextures.enemy_elite_roamer_l2 : pixiTextures.enemy_elite_roamer;
         anchor = useL2
           ? pixiTextureAnchors.enemy_elite_roamer_l2 || 0.5
           : pixiTextureAnchors.enemy_elite_roamer || 0.5;
         key = useL2 ? "enemy_elite_roamer_l2" : "enemy_elite_roamer";
       } else if (this.type === "hunter") {
-        const useL2 = GameContext.currentLevel === 2 && pixiTextures.enemy_hunter_l2;
+        const useL2 =
+          (GameContext.currentLevel === 2 || this.useL2Graphics) && pixiTextures.enemy_hunter_l2;
         tex = useL2 ? pixiTextures.enemy_hunter_l2 : pixiTextures.enemy_hunter;
         anchor = useL2
           ? pixiTextureAnchors.enemy_hunter_l2 || 0.5
           : pixiTextureAnchors.enemy_hunter || 0.5;
         key = useL2 ? "enemy_hunter_l2" : "enemy_hunter";
       } else if (this.type === "defender") {
-        const useL2 = GameContext.currentLevel === 2 && pixiTextures.enemy_defender_l2;
+        const useL2 =
+          (GameContext.currentLevel === 2 || this.useL2Graphics) && pixiTextures.enemy_defender_l2;
         tex = useL2 ? pixiTextures.enemy_defender_l2 : pixiTextures.enemy_defender;
         anchor = useL2
           ? pixiTextureAnchors.enemy_defender_l2 || 0.5
           : pixiTextureAnchors.enemy_defender || 0.5;
         key = useL2 ? "enemy_defender_l2" : "enemy_defender";
       } else {
-        const useL2 = GameContext.currentLevel === 2 && pixiTextures.enemy_roamer_l2;
+        const useL2 =
+          (GameContext.currentLevel === 2 || this.useL2Graphics) && pixiTextures.enemy_roamer_l2;
         tex = useL2 ? pixiTextures.enemy_roamer_l2 : pixiTextures.enemy_roamer;
         anchor = useL2
           ? pixiTextureAnchors.enemy_roamer_l2 || 0.5

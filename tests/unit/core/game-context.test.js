@@ -176,7 +176,7 @@ describe("GameContext", () => {
       expect(GameContext.dreadManager).toBeDefined();
       expect(GameContext.dreadManager.timerActive).toBe(false);
       expect(GameContext.dreadManager.firstSpawnDone).toBe(false);
-      expect(GameContext.dreadManager.minDelayMs).toBe(120000);
+      expect(GameContext.dreadManager.minDelayMs).toBe(210000);
       expect(GameContext.dreadManager.maxDelayMs).toBe(300000);
     });
 

@@ -920,6 +920,119 @@ export function gameLoopLogic(opts = null) {
       console.warn("level 2 boss spawn check failed", e);
     }
 
+    // Level 3 boss spawning: 4 random bosses from L1/L2 pools, then Final Boss
+    try {
+      if (
+        !nukeSuppressSpawns &&
+        !GameContext.sectorTransitionActive &&
+        !warpActive &&
+        !GameContext.caveMode &&
+        !GameContext.verticalScrollingMode &&
+        !inAnomaly &&
+        !inStationFight &&
+        !inTractorBeam &&
+        !waitingForResume &&
+        GameContext.dreadManager.timerActive &&
+        GameContext.dreadManager.timerAt &&
+        now >= GameContext.dreadManager.timerAt &&
+        GameContext.currentLevel === 3
+      ) {
+        const bossesDefeated = GameContext.level3BossesDefeated || 0;
+
+        if (bossesDefeated < 4 && !GameContext.level3FinalBossSpawned) {
+          const bossPool = GameContext.level3BossPool || [];
+          const bossType = bossPool[bossesDefeated];
+
+          if (bossType) {
+            let newBoss = null;
+            let bossDisplayName = "BOSS";
+
+            const spawnAngle = Math.random() * Math.PI * 2;
+            const spawnDist = 2800;
+            const spawnX = GameContext.player.pos.x + Math.cos(spawnAngle) * spawnDist;
+            const spawnY = GameContext.player.pos.y + Math.sin(spawnAngle) * spawnDist;
+
+            switch (bossType) {
+              case "NecroticHive":
+                newBoss = new NecroticHive(GameContext.cruiserEncounterCount);
+                GameContext.necroticHive = newBoss;
+                bossDisplayName = "NECROTIC HIVE";
+                break;
+              case "CerebralPsion":
+                newBoss = new CerebralPsion(GameContext.cruiserEncounterCount);
+                GameContext.cerebralPsion = newBoss;
+                bossDisplayName = "CEREBRAL PSION";
+                break;
+              case "Fleshforge":
+                newBoss = new Fleshforge(GameContext.cruiserEncounterCount);
+                GameContext.fleshforge = newBoss;
+                bossDisplayName = "FLESHFORGE";
+                break;
+              case "VortexMatriarch":
+                newBoss = new VortexMatriarch(GameContext.cruiserEncounterCount);
+                GameContext.vortexMatriarch = newBoss;
+                bossDisplayName = "VORTEX MATRIARCH";
+                break;
+              case "ChitinusPrime":
+                newBoss = new ChitinusPrime(GameContext.cruiserEncounterCount);
+                GameContext.chitinusPrime = newBoss;
+                bossDisplayName = "CHITINUS PRIME";
+                break;
+              case "PsyLich":
+                newBoss = new PsyLich(GameContext.cruiserEncounterCount);
+                GameContext.psyLich = newBoss;
+                bossDisplayName = "PSY LICH";
+                break;
+              case "CaveMonster1":
+                newBoss = new CaveMonster1(spawnX, spawnY);
+                bossDisplayName = "CAVE CRYPTID";
+                break;
+              case "CaveMonster2":
+                newBoss = new CaveMonster2(spawnX, spawnY);
+                bossDisplayName = "HOLLOW HORROR";
+                break;
+              case "CaveMonster3":
+                newBoss = new CaveMonster3(spawnX, spawnY);
+                bossDisplayName = "VOID TERROR";
+                break;
+            }
+
+            if (newBoss) {
+              newBoss.displayName = bossDisplayName;
+              newBoss.isLevel3Boss = true;
+
+              if (!GameContext.bossActive || !GameContext.boss) {
+                GameContext.boss = newBoss;
+                GameContext.bossActive = true;
+              } else {
+                GameContext.enemies.push(newBoss);
+              }
+
+              GameContext.bossArena.active = false;
+              GameContext.caveBossArena.active = false;
+
+              showOverlayMessage(bossDisplayName, "#f00", 3000);
+              playSound("boss_spawn");
+              if (isMusicEnabled && isMusicEnabled()) setMusicMode("cruiser");
+            }
+          }
+        } else if (bossesDefeated >= 4 && !GameContext.level3FinalBossSpawned) {
+          GameContext.level3FinalBossSpawned = true;
+          enterWarpMaze();
+        }
+
+        const nextDelay =
+          GameContext.dreadManager.minDelayMs +
+          Math.floor(
+            Math.random() *
+              (GameContext.dreadManager.maxDelayMs - GameContext.dreadManager.minDelayMs + 1)
+          );
+        GameContext.dreadManager.timerAt = Date.now() + nextDelay;
+      }
+    } catch (e) {
+      console.warn("level 3 boss spawn check failed", e);
+    }
+
     // Track arena fight completion (boss defeats)
     // Skip if in dungeon - Dungeon1Zone handles counting those kills
     // Note: arenaFightsCompleted is now incremented in each boss's kill() method
@@ -933,24 +1046,39 @@ export function gameLoopLogic(opts = null) {
     ) {
       // Get defeated boss name for display
       const defeatedBossName = GameContext.boss.displayName || GameContext.boss.bossType || "BOSS";
-      showOverlayMessage(`${defeatedBossName} DEFEATED`, "#0f0", 2000);
 
-      // Clear boss
-      if (GameContext.boss) {
-        pixiCleanupObject(GameContext.boss);
-        GameContext.boss = null;
-      }
-      GameContext.bossActive = false;
+      // Level 3 specific: track boss defeats for progression
+      if (GameContext.currentLevel === 3 && GameContext.boss.isLevel3Boss) {
+        GameContext.level3BossesDefeated = (GameContext.level3BossesDefeated || 0) + 1;
+        showOverlayMessage(`BOSS ${GameContext.level3BossesDefeated}/4 DEFEATED`, "#0f0", 2000);
 
-      // Check if all arena fights are completed, start 3-minute countdown to station spawn
-      if (
-        GameContext.arenaFightsCompleted >= GameContext.arenaFightTarget &&
-        !GameContext.spaceStation &&
-        !GameContext.stationSpawnAt
-      ) {
-        GameContext.stationSpawnAt = Date.now() + 180000; // 3 minutes
-        showOverlayMessage("ALL BOSSES DEFEATED - STATION INCOMING IN 3 MINUTES", "#f80", 5000);
-        playSound("contract");
+        // Clear boss
+        if (GameContext.boss) {
+          pixiCleanupObject(GameContext.boss);
+          GameContext.boss = null;
+        }
+        GameContext.bossActive = false;
+      } else {
+        // Level 1 handling
+        showOverlayMessage(`${defeatedBossName} DEFEATED`, "#0f0", 2000);
+
+        // Clear boss
+        if (GameContext.boss) {
+          pixiCleanupObject(GameContext.boss);
+          GameContext.boss = null;
+        }
+        GameContext.bossActive = false;
+
+        // Check if all arena fights are completed, start 3-minute countdown to station spawn
+        if (
+          GameContext.arenaFightsCompleted >= GameContext.arenaFightTarget &&
+          !GameContext.spaceStation &&
+          !GameContext.stationSpawnAt
+        ) {
+          GameContext.stationSpawnAt = Date.now() + 180000; // 3 minutes
+          showOverlayMessage("ALL BOSSES DEFEATED - STATION INCOMING IN 3 MINUTES", "#f80", 5000);
+          playSound("contract");
+        }
       }
     }
 
@@ -1162,13 +1290,21 @@ export function gameLoopLogic(opts = null) {
 
       if (GameContext.gunboatRespawnAt && now >= GameContext.gunboatRespawnAt) {
         if (targetLevel1 > 0 && currentLevel1 < targetLevel1) {
-          if (GameContext.caveMode || GameContext.currentLevel === 2) {
+          const useCaveVersion =
+            GameContext.caveMode ||
+            GameContext.currentLevel === 2 ||
+            (GameContext.currentLevel === 3 && Math.random() < 0.5);
+          if (useCaveVersion) {
             GameContext.enemies.push(new CaveGunboat1(null, null));
           } else {
             GameContext.enemies.push(new Gunboat(null, null, 1));
           }
         } else if (targetLevel2 > 0 && currentLevel2 < targetLevel2) {
-          if (GameContext.caveMode || GameContext.currentLevel === 2) {
+          const useCaveVersion =
+            GameContext.caveMode ||
+            GameContext.currentLevel === 2 ||
+            (GameContext.currentLevel === 3 && Math.random() < 0.5);
+          if (useCaveVersion) {
             GameContext.enemies.push(new CaveGunboat2(null, null));
           } else {
             GameContext.enemies.push(new Gunboat2(null, null));
@@ -1637,10 +1773,15 @@ export function gameLoopLogic(opts = null) {
       ctx.setLineDash([]);
     } catch (_e) {}
 
-    // Draw background: gradient for level 2, solid black otherwise
+    // Draw background: gradient for level 2/3, solid black otherwise
     if (GameContext.currentLevel === 2) {
       const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
       grad.addColorStop(0, "#0a1628");
+      grad.addColorStop(1, "#000000");
+      ctx.fillStyle = grad;
+    } else if (GameContext.currentLevel === 3) {
+      const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      grad.addColorStop(0, "#1a0a2e");
       grad.addColorStop(1, "#000000");
       ctx.fillStyle = grad;
     } else {

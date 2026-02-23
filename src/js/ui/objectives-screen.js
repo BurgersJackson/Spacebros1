@@ -32,9 +32,10 @@ const LEVEL_OBJECTIVES = {
   3: [
     "LEVEL 3: FINAL FRONTIER",
     "",
-    "• Defeat the final boss",
+    "• Defeat 4 randomly selected bosses",
+    "• Destroy the Warp Boss",
     "",
-    "This is it, pilot. Good luck!"
+    "The ultimate challenge awaits!"
   ].join("\n")
 };
 

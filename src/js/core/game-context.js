@@ -236,7 +236,7 @@ export const GameContext = {
     cruiserTimerPausedAt: 0,
     upgradesChosen: 0,
     timerAt: null,
-    minDelayMs: 120000,
+    minDelayMs: 210000,
     maxDelayMs: 300000
   },
   cruiserTimerPausedAt: null,
@@ -382,7 +382,7 @@ export const GameContext = {
       cruiserTimerPausedAt: 0,
       upgradesChosen: 0,
       timerAt: null,
-      minDelayMs: 120000,
+      minDelayMs: 210000,
       maxDelayMs: 300000
     };
     this.cruiserTimerPausedAt = null;
@@ -394,6 +394,9 @@ export const GameContext = {
     this.totalDamageDealt = 0;
     this.level2CaveBossesDefeated = 0;
     this.level2DestroyerSpawned = false;
+    this.level3BossesDefeated = 0;
+    this.level3FinalBossSpawned = false;
+    this.level3BossPool = [];
     this.asteroidGrid.clear();
     this.targetGrid.clear();
   }

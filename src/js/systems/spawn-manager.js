@@ -201,6 +201,26 @@ export function spawnNewPinwheelRelative(initial = false) {
     } else {
       GameContext.pinwheels.push(b);
     }
+  } else if (GameContext.currentLevel === 3) {
+    // Level 3: randomly mix cave and regular pinwheels
+    if (Math.random() < 0.5) {
+      // Cave pinwheel
+      const caveTypes = ["cave1"];
+      if (GameContext.difficultyTier >= 2) caveTypes.push("cave2");
+      if (GameContext.difficultyTier >= 3) caveTypes.push("cave3");
+      const type = caveTypes[Math.floor(Math.random() * caveTypes.length)];
+      if (type === "cave1") b = new CavePinwheel1(bx, by);
+      else if (type === "cave2") b = new CavePinwheel2(bx, by);
+      else b = new CavePinwheel3(bx, by);
+    } else {
+      // Regular pinwheel
+      const availableTypes = ["standard"];
+      if (GameContext.difficultyTier >= 2) availableTypes.push("rapid");
+      if (GameContext.difficultyTier >= 3) availableTypes.push("heavy");
+      const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+      b = new Pinwheel(bx, by, type);
+    }
+    GameContext.pinwheels.push(b);
   } else {
     // Original regular pinwheel spawning logic
     const availableTypes = ["standard"];

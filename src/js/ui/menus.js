@@ -385,6 +385,20 @@ export function initMenuUi() {
     });
   }
 
+  const creditsBtn = document.getElementById("credits-btn");
+  const creditsMenu = document.getElementById("credits-menu");
+  const closeCreditsBtn = document.getElementById("close-credits");
+  if (creditsBtn && creditsMenu) {
+    creditsBtn.addEventListener("click", () => {
+      creditsMenu.style.display = "block";
+    });
+  }
+  if (closeCreditsBtn && creditsMenu) {
+    closeCreditsBtn.addEventListener("click", () => {
+      creditsMenu.style.display = "none";
+    });
+  }
+
   const upgradesBtn = document.getElementById("upgrades-btn");
   const upgradesBackBtn = document.getElementById("upgrades-back-btn");
   if (upgradesBtn) {

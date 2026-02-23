@@ -274,6 +274,25 @@ export function startGame() {
     GameContext.level2CaveBossesDefeated = 0;
     GameContext.level2DestroyerSpawned = false;
 
+    // Level 3 specific initialization: random bosses from L1/L2 pools + final boss
+    GameContext.level3BossesDefeated = 0;
+    GameContext.level3FinalBossSpawned = false;
+    // Build pool: dungeon bosses from L1 + cave monsters from L2
+    const level3PoolCandidates = [
+      "NecroticHive",
+      "CerebralPsion",
+      "Fleshforge",
+      "VortexMatriarch",
+      "ChitinusPrime",
+      "PsyLich",
+      "CaveMonster1",
+      "CaveMonster2",
+      "CaveMonster3"
+    ];
+    // Shuffle and pick 4 random bosses
+    const shuffled = level3PoolCandidates.sort(() => Math.random() - 0.5);
+    GameContext.level3BossPool = shuffled.slice(0, 4);
+
     GameContext.rerollTokens = GameContext.metaProfile.purchases.rerollTokens || 0;
     GameContext.metaExtraLifeCount = GameContext.metaProfile.purchases.extraLife || 0;
 
