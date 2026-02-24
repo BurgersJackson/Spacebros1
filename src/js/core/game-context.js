@@ -102,6 +102,7 @@ export const GameContext = {
   nextContractAt: 0,
   nextSpaceStationTime: null,
   nextMagnetSpawnTime: null,
+  nextRandomMedpackTime: null,
   score: 0,
   difficultyTier: 1,
   sectorIndex: 1,
@@ -343,6 +344,7 @@ export const GameContext = {
     this.nextContractAt = 0;
     this.nextSpaceStationTime = null;
     this.nextMagnetSpawnTime = null;
+    this.nextRandomMedpackTime = null;
     this.pinwheelsDestroyed = 0;
     this.pinwheelsDestroyedTotal = 0;
     this.gunboatsDestroyed = 0;

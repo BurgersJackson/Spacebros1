@@ -79,6 +79,7 @@ export function setupGameWorld() {
   GameContext.nextSpaceStationTime = null;
   GameContext.nextMagnetSpawnTime = null;
   GameContext.nextNukeSpawnTime = null;
+  GameContext.nextRandomMedpackTime = null;
   // Unlock vertical scrolling warp gate at game start (first level only)
   GameContext.verticalScrollingWarpGateUnlocked = true;
   GameContext.gunboatRespawnAt = null;

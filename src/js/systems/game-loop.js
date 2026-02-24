@@ -30,6 +30,7 @@ import {
 } from "../entities/index.js";
 import { MagnetPickup } from "../entities/pickups/index.js";
 import { NukePickup } from "../entities/pickups/index.js";
+import { HealthPowerUp } from "../entities/pickups/index.js";
 import {
   NecroticHive,
   CerebralPsion,
@@ -1248,6 +1249,30 @@ export function gameLoopLogic(opts = null) {
           GameContext.nukePickups.push(nuke);
           GameContext.nextNukeSpawnTime = now + 360000; // Next in 6 minutes
           showOverlayMessage("NUKE DETECTED", "#ff4400", 2000);
+        }
+      }
+    }
+
+    // Random medpack spawning - every 6-8 minutes
+    if (
+      !GameContext.dungeon1Active &&
+      !GameContext.sectorTransitionActive &&
+      GameContext.gameActive &&
+      !GameContext.gamePaused &&
+      GameContext.initialSpawnDone
+    ) {
+      if (!GameContext.nextRandomMedpackTime) {
+        const initialDelay = 360000 + Math.random() * 120000; // 6-8 minutes
+        GameContext.nextRandomMedpackTime = GameContext.gameStartTime + initialDelay;
+      }
+      if (now >= GameContext.nextRandomMedpackTime) {
+        const spawnPoint = findSpawnPointRelative(true, 2000, 3000);
+        const medpack = new HealthPowerUp(spawnPoint.x, spawnPoint.y);
+        GameContext.powerups.push(medpack);
+        const nextDelay = 360000 + Math.random() * 120000; // 6-8 minutes
+        GameContext.nextRandomMedpackTime = now + nextDelay;
+        if (showOverlayMessage) {
+          showOverlayMessage("MEDPACK DETECTED", "#00ff00", 2000);
         }
       }
     }
