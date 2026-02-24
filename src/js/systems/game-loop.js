@@ -853,8 +853,15 @@ export function gameLoopLogic(opts = null) {
         GameContext.currentLevel === 2
       ) {
         const caveBossesDefeated = GameContext.level2CaveBossesDefeated || 0;
+        const level2CaveBossActive =
+          (GameContext.boss && GameContext.boss.isLevel2CaveBoss && !GameContext.boss.dead) ||
+          GameContext.enemies.some(e => e.isLevel2CaveBoss && !e.dead);
 
-        if (caveBossesDefeated < 3 && !GameContext.level2DestroyerSpawned) {
+        if (
+          caveBossesDefeated < 3 &&
+          !GameContext.level2DestroyerSpawned &&
+          !level2CaveBossActive
+        ) {
           let newBoss;
           const bossIndex = caveBossesDefeated + 1;
           const bossNames = ["", "CAVE CRYPTID", "HOLLOW HORROR", "VOID TERROR"];
