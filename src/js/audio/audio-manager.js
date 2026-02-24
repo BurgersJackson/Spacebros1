@@ -107,42 +107,12 @@ function stopLegacyMusicNodes() {
 
 let currentMusicUrl = null;
 
-/**
- * Set music mode and adjust volume.
- * @param {string} mode - 'normal', 'cruiser', or 'destroyer'
- */
 export function setMusicMode(mode = null) {
   if (mode) musicMode = mode;
   if (!musicMode) musicMode = "normal";
   if (!musicEnabled) return;
 
   if (musicNodes.length > 0) stopLegacyMusicNodes();
-
-  const musicUrl = musicMode === "destroyer" ? BOSS_MUSIC_URL : BACKGROUND_MUSIC_URL;
-
-  if (musicUrl !== currentMusicUrl) {
-    if (backgroundMusicAudio) {
-      try {
-        backgroundMusicAudio.pause();
-      } catch (_e) {}
-      try {
-        backgroundMusicAudio.currentTime = 0;
-      } catch (_e) {}
-    }
-    backgroundMusicAudio = new Audio(musicUrl);
-    backgroundMusicAudio.loop = true;
-    backgroundMusicAudio.preload = "auto";
-    currentMusicUrl = musicUrl;
-  }
-
-  backgroundMusicAudio.volume = (musicMode === "cruiser" ? 0.22 : 0.25) * musicVolume;
-  if (!backgroundMusicAudio.paused && backgroundMusicAudio.readyState > 2) {
-    return;
-  }
-  try {
-    const p = backgroundMusicAudio.play();
-    if (p && typeof p.catch === "function") p.catch(() => {});
-  } catch (_e) {}
 }
 
 /**

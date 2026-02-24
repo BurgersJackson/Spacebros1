@@ -937,6 +937,81 @@
           0 0 50px rgba(50, 255, 50, 0.2),
           inset 0 0 30px rgba(50, 255, 50, 0.05);
       }
+
+      /* Music Player Styles */
+      #music-player-menu {
+        width: 450px;
+        max-height: 80vh;
+        overflow-y: auto;
+      }
+
+      .music-player-header {
+        color: #0ff;
+        font-size: 24px;
+        margin-bottom: 15px;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+      }
+
+      .music-player-now-playing {
+        color: #ff0;
+        font-size: 14px;
+        margin-bottom: 15px;
+        padding: 8px;
+        background: rgba(255, 255, 0, 0.1);
+        border: 1px solid #ff0;
+        border-radius: 4px;
+      }
+
+      .music-player-controls {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 15px;
+      }
+
+      .music-player-controls button {
+        padding: 10px 20px;
+        font-size: 14px;
+        min-width: 80px;
+      }
+
+      .music-player-controls button.active {
+        background: #0f0;
+        color: #000;
+      }
+
+      .music-track-list {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #0f0;
+        background: rgba(0, 20, 0, 0.5);
+        margin-bottom: 15px;
+      }
+
+      .music-track-item {
+        padding: 12px 15px;
+        cursor: pointer;
+        border-bottom: 1px solid #030;
+        transition: all 0.2s;
+        color: #0f0;
+        text-align: left;
+      }
+
+      .music-track-item:hover {
+        background: rgba(0, 255, 0, 0.1);
+      }
+
+      .music-track-item.selected {
+        background: rgba(0, 255, 255, 0.2);
+        color: #0ff;
+        border-left: 3px solid #0ff;
+      }
+
+      .music-player-close-row {
+        margin-top: 10px;
+      }
     </style>
     <script type="importmap">
       {
@@ -1112,6 +1187,9 @@
         UPGRADES STORE
       </button>
       <button id="settings-btn" style="margin-top: 10px">SETTINGS</button>
+      <button id="music-player-start-btn" style="margin-top: 10px; border-color: #0ff; color: #0ff">
+        MUSIC PLAYER
+      </button>
       <button id="credits-btn" style="margin-top: 10px">CREDITS</button>
       <button id="desktop-quit-start-btn" style="margin-top: 10px">QUIT TO DESKTOP</button>
     </div>
@@ -1580,6 +1658,7 @@
       <button id="pause-settings-btn">SETTINGS</button>
       <button id="restart-btn-pause">RESTART</button>
       <button id="music-btn">MUSIC: ON</button>
+      <button id="music-player-btn" style="border-color: #0ff; color: #0ff">MUSIC PLAYER</button>
       <button id="crt-toggle-btn">CRT: OFF</button>
       <button id="vectrex-toggle-btn">VECTREX: OFF</button>
       <button id="quit-btn">ABORT RUN</button>
@@ -1696,6 +1775,34 @@
       <h2 style="color: #ff0; margin-top: 0">DEBUG UPGRADE MENU</h2>
       <button id="debug-back-btn">← BACK TO PAUSE</button>
       <div id="debug-upgrades-container" style="text-align: left; padding: 10px"></div>
+    </div>
+
+    <!-- Music Player Menu -->
+    <div
+      id="music-player-menu"
+      class="menu-screen"
+      style="display: none; width: 450px; max-height: 80vh; overflow-y: auto; border-color: #0ff"
+    >
+      <h2 class="music-player-header">MUSIC PLAYER</h2>
+      <div id="music-player-now-playing" class="music-player-now-playing">STOPPED</div>
+
+      <div class="music-player-controls">
+        <button id="music-player-prev">PREV</button>
+        <button id="music-player-play-pause">PLAY</button>
+        <button id="music-player-next">NEXT</button>
+        <button id="music-player-stop">STOP</button>
+      </div>
+
+      <div class="music-player-controls">
+        <button id="music-player-loop">LOOP</button>
+        <button id="music-player-shuffle">SHUFFLE</button>
+      </div>
+
+      <div id="music-player-track-list" class="music-track-list"></div>
+
+      <div class="music-player-close-row">
+        <button id="music-player-close" style="border-color: #0f0; color: #0f0">CLOSE</button>
+      </div>
     </div>
 
     <div

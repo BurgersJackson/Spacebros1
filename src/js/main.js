@@ -285,6 +285,12 @@ import {
   updateObjectivesPromptForInputMode
 } from "./ui/objectives-screen.js";
 import {
+  registerMusicPlayerDependencies,
+  initMusicPlayer,
+  showMusicPlayerMenu,
+  hideMusicPlayerMenu
+} from "./ui/music-player.js";
+import {
   registerSpawnManagerDependencies,
   spawnDrone,
   spawnExplorationCaches,
@@ -814,7 +820,6 @@ registerGameFlowDependencies({
   showObjectivesScreen,
   spawnDrone,
   spawnParticles,
-  startMusic,
   stopArenaCountdown,
   stopMusic,
   updateContractUI,
@@ -1399,9 +1404,22 @@ registerMenuDependencies({
   getDebugMenuVisible: () => debugMenuVisible,
   setDebugMenuVisible: value => {
     debugMenuVisible = value;
-  }
+  },
+  showMusicPlayerMenu,
+  hideMusicPlayerMenu
 });
 initMenuUi();
+
+registerMusicPlayerDependencies({
+  setMusicVolume,
+  getMusicVolume: () => musicVolume,
+  showOverlayMessage,
+  GameContext,
+  updateMenuVisuals,
+  getActiveMenuElements,
+  setMenuDebounce
+});
+initMusicPlayer();
 
 // Sync MUSIC button label with persisted setting (audio-manager loads it at import time).
 try {

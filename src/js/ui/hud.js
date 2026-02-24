@@ -468,7 +468,7 @@ export function drawHealthPackIndicator() {
   const transformed = transformPolygon(arrowShape, arrowX, arrowY, pulse, angle);
 
   pixiArrowsGraphics.lineStyle(2, 0x000000);
-  pixiArrowsGraphics.beginFill(0xff0000);
+  pixiArrowsGraphics.beginFill(0x00ff00);
   pixiArrowsGraphics.drawPolygon(transformed);
   pixiArrowsGraphics.endFill();
 

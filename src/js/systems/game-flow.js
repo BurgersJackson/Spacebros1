@@ -526,7 +526,6 @@ export function togglePause() {
       GameContext.menuSelectionIndex = 0;
     }, 100);
   } else if (deps.getMusicEnabled && deps.getMusicEnabled()) {
-    deps.startMusic();
   }
 
   // Windowed mode: re-lock mouse on unpause (in the same user gesture).
@@ -659,7 +658,4 @@ export function returnToMainMenuFromDeath() {
   if (pauseMenu) {
     pauseMenu.style.display = "none";
   }
-
-  // Start background music if not already playing
-  if (deps.startMusic) deps.startMusic();
 }

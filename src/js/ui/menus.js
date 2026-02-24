@@ -25,6 +25,8 @@ let setSelectedShipTypeRef = null;
 let shipSelectionKeyRef = null;
 let getDebugMenuVisibleRef = null;
 let setDebugMenuVisibleRef = null;
+let showMusicPlayerMenuRef = null;
+let hideMusicPlayerMenuRef = null;
 
 /**
  * @param {object} deps
@@ -55,6 +57,8 @@ export function registerMenuDependencies(deps) {
   if (deps.shipSelectionKey) shipSelectionKeyRef = deps.shipSelectionKey;
   if (deps.getDebugMenuVisible) getDebugMenuVisibleRef = deps.getDebugMenuVisible;
   if (deps.setDebugMenuVisible) setDebugMenuVisibleRef = deps.setDebugMenuVisible;
+  if (deps.showMusicPlayerMenu) showMusicPlayerMenuRef = deps.showMusicPlayerMenu;
+  if (deps.hideMusicPlayerMenu) hideMusicPlayerMenuRef = deps.hideMusicPlayerMenu;
 }
 
 export function showUpgradesMenu() {
@@ -399,6 +403,14 @@ export function initMenuUi() {
     });
   }
 
+  const musicPlayerStartBtn = document.getElementById("music-player-start-btn");
+  if (musicPlayerStartBtn) {
+    musicPlayerStartBtn.addEventListener("click", () => {
+      if (initAudioRef) initAudioRef();
+      if (showMusicPlayerMenuRef) showMusicPlayerMenuRef();
+    });
+  }
+
   const upgradesBtn = document.getElementById("upgrades-btn");
   const upgradesBackBtn = document.getElementById("upgrades-back-btn");
   if (upgradesBtn) {
@@ -503,12 +515,20 @@ export function initMenuUi() {
       if (toggleMusicRef) toggleMusicRef();
     });
 
+  const musicPlayerBtn = document.getElementById("music-player-btn");
+  if (musicPlayerBtn) {
+    musicPlayerBtn.addEventListener("click", () => {
+      if (showMusicPlayerMenuRef) showMusicPlayerMenuRef();
+    });
+  }
+
   const pauseMenuButtons = [
     "resume-btn",
     "pause-upgrades-btn",
     "pause-settings-btn",
     "restart-btn-pause",
     "music-btn",
+    "music-player-btn",
     "crt-toggle-btn",
     "quit-btn",
     "debug-btn",

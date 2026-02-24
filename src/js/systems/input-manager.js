@@ -143,6 +143,24 @@ export function getActiveMenuElements() {
     return backBtn ? [backBtn, ...tierButtons] : tierButtons;
   }
 
+  const musicPlayerMenu = document.getElementById("music-player-menu");
+  if (isVisible(musicPlayerMenu)) {
+    const elements = [];
+    const trackItems = Array.from(document.querySelectorAll(".music-track-item"));
+    const controls = [
+      document.getElementById("music-player-prev"),
+      document.getElementById("music-player-play-pause"),
+      document.getElementById("music-player-next"),
+      document.getElementById("music-player-stop"),
+      document.getElementById("music-player-loop"),
+      document.getElementById("music-player-shuffle"),
+      document.getElementById("music-player-close")
+    ];
+    elements.push(...controls.filter(Boolean));
+    elements.push(...trackItems);
+    return elements;
+  }
+
   const levelupScreen = document.getElementById("levelup-screen");
   if (isVisible(levelupScreen)) {
     const elements = [];
@@ -466,15 +484,27 @@ function handleMenuNavigation(now) {
                 handled = true;
               }
             }
+          }
 
-            if (!handled) {
-              const levelMissionModal = document.getElementById("level-mission-modal");
-              if (levelMissionModal && levelMissionModal.style.display === "block") {
-                const missionBackBtn = document.getElementById("mission-back-btn");
-                if (missionBackBtn) {
-                  missionBackBtn.click();
-                  handled = true;
-                }
+          if (!handled) {
+            const musicPlayerMenu = document.getElementById("music-player-menu");
+            if (musicPlayerMenu && musicPlayerMenu.style.display === "block") {
+              const musicPlayerCloseBtn = document.getElementById("music-player-close");
+              if (musicPlayerCloseBtn) {
+                musicPlayerCloseBtn.click();
+                GameContext.gpState.lastMenuElements = null;
+                handled = true;
+              }
+            }
+          }
+
+          if (!handled) {
+            const levelMissionModal = document.getElementById("level-mission-modal");
+            if (levelMissionModal && levelMissionModal.style.display === "block") {
+              const missionBackBtn = document.getElementById("mission-back-btn");
+              if (missionBackBtn) {
+                missionBackBtn.click();
+                handled = true;
               }
             }
           }
