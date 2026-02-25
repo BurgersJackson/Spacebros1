@@ -237,6 +237,36 @@ export function getActiveMenuElements() {
     return Array.from(document.querySelectorAll("#level-mission-modal button"));
   }
 
+  const leaderboardScreen = document.getElementById("leaderboard-screen");
+  if (isVisible(leaderboardScreen)) {
+    const elements = [];
+    const toggleBtn = document.getElementById("leaderboard-online-toggle");
+    const tab1 = document.getElementById("leaderboard-tab-1");
+    const tab2 = document.getElementById("leaderboard-tab-2");
+    const tab3 = document.getElementById("leaderboard-tab-3");
+    const refreshBtn = document.getElementById("leaderboard-refresh-btn");
+    const backBtn = document.getElementById("leaderboard-back-btn");
+    if (toggleBtn) elements.push(toggleBtn);
+    if (tab1) elements.push(tab1);
+    if (tab2) elements.push(tab2);
+    if (tab3) elements.push(tab3);
+    if (refreshBtn) elements.push(refreshBtn);
+    if (backBtn) elements.push(backBtn);
+    return elements;
+  }
+
+  const nameEntryModal = document.getElementById("name-entry-modal");
+  if (isVisible(nameEntryModal)) {
+    const elements = [];
+    const input = document.getElementById("name-entry-input");
+    const submitBtn = document.getElementById("name-entry-submit");
+    const skipBtn = document.getElementById("name-entry-skip");
+    if (input) elements.push(input);
+    if (submitBtn) elements.push(submitBtn);
+    if (skipBtn) elements.push(skipBtn);
+    return elements;
+  }
+
   const pauseMenu = document.getElementById("pause-menu");
   if (isVisible(pauseMenu)) {
     return Array.from(document.querySelectorAll("#pause-menu button"));

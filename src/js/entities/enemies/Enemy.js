@@ -7,6 +7,7 @@ import { Entity } from "../Entity.js";
 import { Vector } from "../../core/math.js";
 import { GameContext, getEnemyHpScaling, getLevelHpScaling } from "../../core/game-context.js";
 import { SIM_STEP_MS, SIM_FPS } from "../../core/constants.js";
+import { awardEnemyKillScore } from "../../systems/scoring-system.js";
 import { playSound } from "../../audio/audio-manager.js";
 import { findSpawnPointRelative } from "../../utils/spawn-utils.js";
 import { Bullet } from "../projectiles/Bullet.js";
@@ -310,6 +311,8 @@ export class Enemy extends Entity {
     } else {
       GameContext.bossKills++;
     }
+
+    awardEnemyKillScore(this);
 
     // FIX: Clean up shield graphics BEFORE calling pixiCleanupObject
     // This prevents pixiCleanupObject from missing these

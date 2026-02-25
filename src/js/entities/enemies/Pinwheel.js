@@ -10,6 +10,7 @@ import { playSound } from "../../audio/audio-manager.js";
 import { Bullet } from "../projectiles/Bullet.js";
 import { Coin } from "../pickups/Coin.js";
 import { SpaceNugget } from "../pickups/SpaceNugget.js";
+import { awardEnemyKillScore } from "../../systems/scoring-system.js";
 
 import {
   pixiBaseLayer,
@@ -552,6 +553,7 @@ export class Pinwheel extends Entity {
   kill() {
     if (this.dead) return;
     this.dead = true;
+    awardEnemyKillScore(this);
     pixiCleanupObject(this);
     playSound("base_explode");
 
@@ -582,7 +584,6 @@ export class Pinwheel extends Entity {
     GameContext.pinwheelsDestroyedTotal++;
     const totalDestroyed = GameContext.pinwheelsDestroyedTotal + GameContext.gunboatsDestroyedTotal;
     GameContext.difficultyTier = 1 + Math.floor(totalDestroyed / 6);
-    GameContext.score += 10000;
     const baseEl = document.getElementById("bases-display");
     if (baseEl) baseEl.innerText = `${GameContext.pinwheelsDestroyedTotal}`;
     GameContext.enemies.forEach(e => {

@@ -1012,6 +1012,122 @@
       .music-player-close-row {
         margin-top: 10px;
       }
+
+      .leaderboard-tab {
+        background: transparent;
+        color: #0ff;
+        border: 2px solid #0ff;
+        padding: 8px 16px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 12px;
+        transition: all 0.2s;
+      }
+
+      .leaderboard-tab:hover {
+        background: rgba(0, 255, 255, 0.1);
+      }
+
+      .leaderboard-tab.active {
+        background: #0ff;
+        color: #000;
+      }
+
+      .leaderboard-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 12px;
+        border-bottom: 1px solid #333;
+        font-size: 14px;
+      }
+
+      .leaderboard-row:last-child {
+        border-bottom: none;
+      }
+
+      .leaderboard-row.rank-1 {
+        background: rgba(255, 215, 0, 0.15);
+        color: #ffd700;
+      }
+
+      .leaderboard-row.rank-2 {
+        background: rgba(192, 192, 192, 0.1);
+        color: #c0c0c0;
+      }
+
+      .leaderboard-row.rank-3 {
+        background: rgba(205, 127, 50, 0.1);
+        color: #cd7f32;
+      }
+
+      .leaderboard-rank {
+        width: 30px;
+        text-align: left;
+        font-weight: bold;
+      }
+
+      .leaderboard-name {
+        flex: 1;
+        text-align: left;
+        padding-left: 10px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .leaderboard-score {
+        width: 80px;
+        text-align: right;
+        font-weight: bold;
+      }
+
+      .leaderboard-loading,
+      .leaderboard-empty,
+      .leaderboard-error {
+        text-align: center;
+        padding: 30px;
+        color: #888;
+      }
+
+      .leaderboard-empty {
+        color: #0ff;
+      }
+
+      .leaderboard-error {
+        color: #f44;
+      }
+
+      .death-stats-section {
+        margin-bottom: 20px;
+        padding: 10px;
+        background: rgba(0, 20, 40, 0.6);
+        border-radius: 4px;
+      }
+
+      .death-stats-section h2 {
+        color: #0ff;
+        font-size: 14px;
+        margin: 0 0 10px 0;
+        text-transform: uppercase;
+        border-bottom: 1px solid #0ff;
+        padding-bottom: 5px;
+      }
+
+      .death-stat-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+        font-size: 13px;
+      }
+
+      .stat-label {
+        color: #888;
+      }
+
+      .stat-value {
+        color: #fff;
+        font-weight: bold;
+      }
     </style>
     <script type="importmap">
       {
@@ -1189,6 +1305,9 @@
       <button id="settings-btn" style="margin-top: 10px">SETTINGS</button>
       <button id="music-player-start-btn" style="margin-top: 10px; border-color: #0ff; color: #0ff">
         MUSIC PLAYER
+      </button>
+      <button id="leaderboard-btn" style="margin-top: 10px; border-color: #0f0; color: #0f0">
+        LEADERBOARDS
       </button>
       <button id="credits-btn" style="margin-top: 10px">CREDITS</button>
       <button id="desktop-quit-start-btn" style="margin-top: 10px">QUIT TO DESKTOP</button>
@@ -1586,7 +1705,15 @@
       <div id="death-stats-container" style="text-align: left; margin: 20px 0; padding: 0 20px">
         <!-- Stats will be populated by JavaScript -->
       </div>
+      <div id="death-score-display" style="margin: 10px 0; display: none">
+        <span style="color: #888">SCORE:</span>
+        <span id="death-score-value" style="color: #ff0; font-size: 24px">0</span>
+      </div>
       <button id="death-restart-btn">REBOOT SYSTEM</button>
+      <button id="death-leaderboard-btn" style="margin-top: 10px; border-color: #0f0; color: #0f0">
+        VIEW LEADERBOARD
+      </button>
+      <button id="death-main-menu-btn" style="margin-top: 10px">MAIN MENU</button>
     </div>
 
     <div
@@ -1831,6 +1958,110 @@
       <div style="display: flex; gap: 20px; justify-content: center; margin-top: 25px">
         <button id="rename-confirm">OK</button>
         <button id="rename-cancel">CANCEL</button>
+      </div>
+    </div>
+
+    <div
+      id="leaderboard-screen"
+      class="menu-screen"
+      style="display: none; width: 500px; max-height: 80vh; border-color: #0f0"
+    >
+      <h2 style="color: #0f0; margin-top: 0">
+        HIGH SCORES
+        <span id="leaderboard-mode-indicator" style="color: #fa0; font-size: 14px">(LOCAL)</span>
+      </h2>
+
+      <div style="margin-bottom: 15px">
+        <button
+          id="leaderboard-online-toggle"
+          style="border-color: #666; color: #666; font-size: 12px; padding: 6px 12px"
+        >
+          ONLINE: OFF
+        </button>
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-bottom: 15px; justify-content: center">
+        <button
+          id="leaderboard-tab-1"
+          class="leaderboard-tab active"
+          style="background: #0ff; color: #000"
+        >
+          LEVEL 1
+        </button>
+        <button id="leaderboard-tab-2" class="leaderboard-tab">LEVEL 2</button>
+        <button id="leaderboard-tab-3" class="leaderboard-tab">LEVEL 3</button>
+      </div>
+
+      <div
+        id="leaderboard-offline-notice"
+        style="display: none; color: #fa0; font-size: 11px; margin-bottom: 10px"
+      >
+        ⚠ OFFLINE MODE - Showing local scores only
+      </div>
+
+      <div
+        id="leaderboard-entries"
+        style="
+          max-height: 45vh;
+          overflow-y: auto;
+          background: rgba(0, 20, 40, 0.6);
+          border: 1px solid #0ff;
+          padding: 10px;
+          margin-bottom: 15px;
+        "
+      >
+        <div class="leaderboard-loading">LOADING...</div>
+      </div>
+
+      <div style="display: flex; gap: 15px; justify-content: center">
+        <button id="leaderboard-refresh-btn">REFRESH</button>
+        <button id="leaderboard-back-btn" style="border-color: #0f0; color: #0f0">BACK</button>
+      </div>
+    </div>
+
+    <div
+      id="name-entry-modal"
+      class="menu-screen"
+      style="display: none; width: 400px; padding: 30px; border-color: #ff0"
+    >
+      <h2
+        id="name-entry-title"
+        style="color: #ff0; margin-top: 0; font-family: &quot;Courier New&quot;, monospace"
+      >
+        NEW HIGH SCORE!
+      </h2>
+      <div style="margin: 20px 0">
+        <div style="color: #0ff; font-size: 14px; margin-bottom: 5px">YOUR SCORE</div>
+        <div id="name-entry-score" style="color: #fff; font-size: 28px; font-weight: bold">0</div>
+        <div id="name-entry-rank" style="color: #fa0; font-size: 16px; margin-top: 5px">
+          1ST PLACE
+        </div>
+      </div>
+      <div style="margin: 20px 0">
+        <div style="color: #0ff; font-size: 14px; margin-bottom: 8px">ENTER YOUR NAME</div>
+        <input
+          type="text"
+          id="name-entry-input"
+          maxlength="15"
+          placeholder="PLAYER"
+          style="
+            width: 100%;
+            padding: 12px;
+            background: #000;
+            border: 2px solid #ff0;
+            color: #ff0;
+            font-family: &quot;Courier New&quot;, monospace;
+            font-size: 18px;
+            text-align: center;
+            outline: none;
+          "
+        />
+      </div>
+      <div style="display: flex; gap: 20px; justify-content: center; margin-top: 25px">
+        <button id="name-entry-submit" style="background: #640; border-color: #fa0; color: #fa0">
+          SUBMIT
+        </button>
+        <button id="name-entry-skip">SKIP</button>
       </div>
     </div>
 

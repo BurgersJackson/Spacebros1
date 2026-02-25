@@ -7,6 +7,7 @@ import { GameContext } from "../core/game-context.js";
 import { MAX_BULLETS } from "../core/constants.js";
 import { Explosion } from "../entities/index.js";
 import { getElapsedGameTime } from "../core/game-context.js";
+import { awardLevelCompleteScore, awardEnemyKillScore } from "../systems/scoring-system.js";
 
 // Dependencies that will be injected
 let deps = {};
@@ -110,13 +111,14 @@ export function handleSpaceStationDestroyed() {
   if (awardCoinsInstant) awardCoinsInstant(500, { noSound: false, sound: "coin" });
   // Award nuggets directly: 25 nuggets
   if (awardNuggetsInstant) awardNuggetsInstant(25, { noSound: false, sound: "coin" });
+  awardEnemyKillScore(GameContext.spaceStation);
   pixiCleanupObject(GameContext.spaceStation);
   GameContext.spaceStation = null;
   GameContext.stationHealthBarVisible = false;
 
   // Level 1: unlock level 2 and show level complete screen
   if (GameContext.currentLevel === 1) {
-    GameContext.score += 50000;
+    awardLevelCompleteScore();
     if (unlockLevelRef) unlockLevelRef(2);
     setTimeout(() => {
       if (endGameRef) {
@@ -130,13 +132,12 @@ export function handleSpaceStationDestroyed() {
     return;
   }
 
-  showOverlayMessage("SPACE STATION DESTROYED - WARP SIGNAL IN 30s", "#f80", 5000);
+  showOverlayMessage("SPACE STATION DESTROYED - WARP SIGNAL IN 30s", "#0f0", 5000);
   setTimeout(() => {
     GameContext.warpGateUnlocked = true;
     // Reset suppression when warp gate unlocks to ensure it's usable
     GameContext.suppressWarpGateUntil = 0;
   }, 30000);
-  GameContext.score += 50000;
   if (GameContext.pendingStations > 0 && !GameContext.sectorTransitionActive) {
     GameContext.nextSpaceStationTime = Date.now() + 7000;
   }

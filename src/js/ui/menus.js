@@ -27,6 +27,7 @@ let getDebugMenuVisibleRef = null;
 let setDebugMenuVisibleRef = null;
 let showMusicPlayerMenuRef = null;
 let hideMusicPlayerMenuRef = null;
+let showLeaderboardScreenRef = null;
 
 /**
  * @param {object} deps
@@ -59,6 +60,7 @@ export function registerMenuDependencies(deps) {
   if (deps.setDebugMenuVisible) setDebugMenuVisibleRef = deps.setDebugMenuVisible;
   if (deps.showMusicPlayerMenu) showMusicPlayerMenuRef = deps.showMusicPlayerMenu;
   if (deps.hideMusicPlayerMenu) hideMusicPlayerMenuRef = deps.hideMusicPlayerMenu;
+  if (deps.showLeaderboardScreen) showLeaderboardScreenRef = deps.showLeaderboardScreen;
 }
 
 export function showUpgradesMenu() {
@@ -400,6 +402,15 @@ export function initMenuUi() {
   if (closeCreditsBtn && creditsMenu) {
     closeCreditsBtn.addEventListener("click", () => {
       creditsMenu.style.display = "none";
+    });
+  }
+
+  const leaderboardBtn = document.getElementById("leaderboard-btn");
+  if (leaderboardBtn) {
+    leaderboardBtn.addEventListener("click", () => {
+      if (showLeaderboardScreenRef) {
+        showLeaderboardScreenRef(1);
+      }
     });
   }
 

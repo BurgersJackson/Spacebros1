@@ -8,6 +8,7 @@ import { getDiminishingValue } from "./meta-manager.js";
 import { updateHealthUI, updateTurboUI } from "../ui/hud.js";
 import { showOverlayMessage } from "../utils/ui-helpers.js";
 import { spawnDrone } from "./spawn-manager.js";
+import { awardUpgradeScore } from "./scoring-system.js";
 
 let _showOverlayMessage = showOverlayMessage;
 export function registerUpgradeManagerDependencies(deps) {
@@ -52,6 +53,8 @@ export function checkAndUnlockNextTier() {
 export function applyUpgrade(id, tier) {
   const prevTier = GameContext.player.inventory[id] || 0;
   GameContext.player.inventory[id] = tier;
+
+  awardUpgradeScore(tier, id);
 
   try {
     GameContext.dreadManager.upgradesChosen = (GameContext.dreadManager.upgradesChosen || 0) + 1;

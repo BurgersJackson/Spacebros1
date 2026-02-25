@@ -11,6 +11,7 @@ import { CavePinwheel1, CavePinwheel2, CavePinwheel3 } from "../entities/cave/in
 import { WarpShieldDrone } from "../entities/bosses/index.js";
 import { Shockwave } from "../entities/projectiles/Shockwave.js";
 import { ZOOM_LEVEL } from "../core/constants.js";
+import { awardPickupScore, awardScore } from "./scoring-system.js";
 
 let _spawnParticles = null;
 let _playSound = null;
@@ -1195,7 +1196,7 @@ export function resolveEntityCollision() {
       );
       if (dist < GameContext.player.radius + c.radius) {
         if (_playSound) _playSound("coin");
-        GameContext.score += c.value;
+        awardPickupScore("coin", c.value);
         GameContext.player.addXp(c.value);
         if (_addPickupFloatingText) _addPickupFloatingText("gold", c.value, "#ff0");
 
@@ -1268,6 +1269,7 @@ export function resolveEntityCollision() {
         const nuggetBonus = GameContext.player.stats.luckyNuggetDrop || 0;
         const finalNuggets = Math.ceil(n.value * (1 + nuggetBonus));
         GameContext.spaceNuggets += finalNuggets;
+        awardPickupScore("space_nugget");
         if (_updateNuggetUI) _updateNuggetUI();
         if (_addPickupFloatingText) _addPickupFloatingText("nugs", n.value, "#ff0");
         if (typeof n.kill === "function") n.kill();
@@ -1290,6 +1292,7 @@ export function resolveEntityCollision() {
         if (_awardNuggetsInstant) {
           _awardNuggetsInstant(nuggetCount, { noSound: false, sound: "coin" });
         }
+        awardPickupScore("gold_nugget");
         if (_addPickupFloatingText) {
           _addPickupFloatingText("gold", coinAmount, "#ffd700");
           _addPickupFloatingText("nugs", nuggetCount, "#ff0");
@@ -1313,6 +1316,7 @@ export function resolveEntityCollision() {
           GameContext.player.hp + finalHealth,
           GameContext.player.maxHp
         );
+        awardPickupScore("health_powerup");
         if (_updateHealthUI) _updateHealthUI();
         if (_showOverlayMessage) _showOverlayMessage("HEALTH RESTORED", "#0f0", 1000);
         if (typeof p.kill === "function") p.kill();
@@ -1328,6 +1332,7 @@ export function resolveEntityCollision() {
       );
       if (dist < GameContext.player.radius + m.radius) {
         if (_playSound) _playSound("powerup");
+        awardPickupScore("magnet");
         if (_showOverlayMessage) {
           _showOverlayMessage("MAGNET ACTIVATED - COINS & NUGGETS MAGNETIZED", "#0ff", 2000);
         }
@@ -1356,6 +1361,7 @@ export function resolveEntityCollision() {
         GameContext.player.pos.y - n.pos.y
       );
       if (dist < GameContext.player.radius + n.radius) {
+        awardPickupScore("nuke");
         executeNukeEffect();
         if (typeof n.kill === "function") n.kill();
         else n.dead = true;
@@ -1371,6 +1377,7 @@ export function resolveEntityCollision() {
       if (dist < GameContext.player.radius + c.radius) {
         if (_playSound) _playSound("coin");
         GameContext.spaceNuggets += c.value;
+        awardPickupScore("exploration_cache");
         if (_updateNuggetUI) _updateNuggetUI();
         if (_addPickupFloatingText) _addPickupFloatingText("nugs", c.value, "#ff0");
         if (_showOverlayMessage) _showOverlayMessage(`CACHE +${c.value} NUGS`, "#ff0", 800);
@@ -1526,7 +1533,6 @@ export function resolveEntityCollision() {
             if (_playSound) _playSound("explode");
             if (GameContext.boss.hp <= 0) {
               GameContext.boss.kill();
-              GameContext.score += 5000;
             }
           }
           hitEntity = true;
@@ -1780,7 +1786,7 @@ export function processBulletCollisions() {
                     }
 
                     if (nearestTarget) {
-                      const chainDamage = b.damage * [0.90, 0.80, 0.60, 0.50, 0.35][chain] || 0.35;
+                      const chainDamage = b.damage * [0.9, 0.8, 0.6, 0.5, 0.35][chain] || 0.35;
                       trackChainLightningDamage(chainDamage);
                       nearestTarget.hp -= chainDamage;
                       showDamageFloatingText(
@@ -1807,7 +1813,6 @@ export function processBulletCollisions() {
 
                       if (nearestTarget.hp <= 0) {
                         nearestTarget.kill();
-                        GameContext.score += 100;
                       }
 
                       chainSource = nearestTarget;
@@ -1839,7 +1844,6 @@ export function processBulletCollisions() {
                 if (e.hp <= 0) {
                   applyLifesteal(e.pos.x, e.pos.y);
                   e.kill();
-                  GameContext.score += 100;
                 }
                 break;
               }
@@ -2195,7 +2199,7 @@ export function processBulletCollisions() {
                     }
 
                     if (nearestTarget) {
-                      const chainDamage = b.damage * [0.90, 0.80, 0.60, 0.50, 0.35][chain] || 0.35;
+                      const chainDamage = b.damage * [0.9, 0.8, 0.6, 0.5, 0.35][chain] || 0.35;
                       trackChainLightningDamage(chainDamage);
                       if (nearestTarget === GameContext.destroyer) {
                         const _hpBefore = nearestTarget.hp;
@@ -2233,7 +2237,6 @@ export function processBulletCollisions() {
 
                       if (nearestTarget.hp <= 0) {
                         nearestTarget.kill();
-                        GameContext.score += 100;
                       }
 
                       chainSource = nearestTarget;
@@ -2265,7 +2268,6 @@ export function processBulletCollisions() {
                 if (e.hp <= 0) {
                   applyLifesteal(e.pos.x, e.pos.y);
                   e.kill();
-                  GameContext.score += 100;
                 }
                 break;
               }
@@ -2600,7 +2602,7 @@ export function processBulletCollisions() {
                     }
 
                     if (nearestTarget) {
-                      const chainDamage = b.damage * [0.90, 0.80, 0.60, 0.50, 0.35][chain] || 0.35;
+                      const chainDamage = b.damage * [0.9, 0.8, 0.6, 0.5, 0.35][chain] || 0.35;
                       trackChainLightningDamage(chainDamage);
                       if (nearestTarget === GameContext.destroyer) {
                         const _hpBefore = nearestTarget.hp;
@@ -2638,7 +2640,6 @@ export function processBulletCollisions() {
 
                       if (nearestTarget.hp <= 0) {
                         nearestTarget.kill();
-                        GameContext.score += 100;
                       }
 
                       chainSource = nearestTarget;
@@ -3008,7 +3009,7 @@ export function processBulletCollisions() {
                     }
 
                     if (nearestTarget) {
-                      const chainDamage = b.damage * [0.90, 0.80, 0.60, 0.50, 0.35][chain] || 0.35;
+                      const chainDamage = b.damage * [0.9, 0.8, 0.6, 0.5, 0.35][chain] || 0.35;
                       trackChainLightningDamage(chainDamage);
                       if (nearestTarget === GameContext.destroyer) {
                         const _hpBefore = nearestTarget.hp;
@@ -3046,7 +3047,6 @@ export function processBulletCollisions() {
 
                       if (nearestTarget.hp <= 0) {
                         nearestTarget.kill();
-                        GameContext.score += 100;
                       }
 
                       chainSource = nearestTarget;
@@ -3294,168 +3294,168 @@ export function processBulletCollisions() {
             const dist = Math.sqrt(distSq);
 
             const outerShieldsUp =
-            GameContext.spaceStation.shieldSegments &&
-            GameContext.spaceStation.shieldSegments.some(s => s > 0);
-          const innerShieldsUp =
-            GameContext.spaceStation.innerShieldSegments &&
-            GameContext.spaceStation.innerShieldSegments.some(s => s > 0);
-
-          if (
-            !hit &&
-            !b.ignoreShields &&
-            outerShieldsUp &&
-            dist < GameContext.spaceStation.shieldRadius + b.radius
-          ) {
-            let angle =
-              Math.atan2(
-                b.pos.y - GameContext.spaceStation.pos.y,
-                b.pos.x - GameContext.spaceStation.pos.x
-              ) - GameContext.spaceStation.shieldRotation;
-            while (angle < 0) angle += Math.PI * 2;
-            const count = GameContext.spaceStation.shieldSegments.length;
-            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-            if (GameContext.spaceStation.shieldSegments[idx] > 0) {
-              const segHp = GameContext.spaceStation.shieldSegments[idx];
-              GameContext.spaceStation.shieldSegments[idx] = Math.max(0, segHp - b.damage);
-              GameContext.spaceStation.shieldsDirty = true;
-              hit = true;
-              if (_playSound) _playSound("shield_hit");
-              if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#0ff");
-              b.dead = true;
-              b.vel.x = 0;
-              b.vel.y = 0;
-            }
-          }
-          if (
-            !hit &&
-            !b.ignoreShields &&
-            innerShieldsUp &&
-            dist < GameContext.spaceStation.innerShieldRadius + b.radius
-          ) {
-            let angle =
-              Math.atan2(
-                b.pos.y - GameContext.spaceStation.pos.y,
-                b.pos.x - GameContext.spaceStation.pos.x
-              ) - GameContext.spaceStation.innerShieldRotation;
-            while (angle < 0) angle += Math.PI * 2;
-            const count = GameContext.spaceStation.innerShieldSegments.length;
-            const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
-            if (GameContext.spaceStation.innerShieldSegments[idx] > 0) {
-              const segHp = GameContext.spaceStation.innerShieldSegments[idx];
-              GameContext.spaceStation.innerShieldSegments[idx] = Math.max(0, segHp - b.damage);
-              GameContext.spaceStation.shieldsDirty = true;
-              hit = true;
-              if (_playSound) _playSound("shield_hit");
-              if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#f0f");
-              b.dead = true;
-              b.vel.x = 0;
-              b.vel.y = 0;
-            }
-          }
-          if (!hit && dist < GameContext.spaceStation.radius + b.radius) {
-            // Final gate: block and damage segment if shield still up at this angle
-            const angle = Math.atan2(
-              b.pos.y - GameContext.spaceStation.pos.y,
-              b.pos.x - GameContext.spaceStation.pos.x
-            );
-            let hasShieldAtAngle = false;
-            let blockingInnerIdx = -1;
-            let blockingOuterIdx = -1;
-            if (
-              GameContext.spaceStation.innerShieldSegments &&
-              GameContext.spaceStation.innerShieldSegments.length > 0
-            ) {
-              const norm =
-                (((angle - (GameContext.spaceStation.innerShieldRotation ?? 0)) % (Math.PI * 2)) +
-                  Math.PI * 2) %
-                (Math.PI * 2);
-              const innerCount = GameContext.spaceStation.innerShieldSegments.length;
-              const innerAngle = (Math.PI * 2) / innerCount;
-              const innerIdx = Math.floor(norm / innerAngle) % innerCount;
-              if (GameContext.spaceStation.innerShieldSegments[innerIdx] > 0) {
-                hasShieldAtAngle = true;
-                blockingInnerIdx = innerIdx;
-              }
-            }
-            if (
-              !hasShieldAtAngle &&
               GameContext.spaceStation.shieldSegments &&
-              GameContext.spaceStation.shieldSegments.length > 0
+              GameContext.spaceStation.shieldSegments.some(s => s > 0);
+            const innerShieldsUp =
+              GameContext.spaceStation.innerShieldSegments &&
+              GameContext.spaceStation.innerShieldSegments.some(s => s > 0);
+
+            if (
+              !hit &&
+              !b.ignoreShields &&
+              outerShieldsUp &&
+              dist < GameContext.spaceStation.shieldRadius + b.radius
             ) {
-              const norm =
-                (((angle - (GameContext.spaceStation.shieldRotation ?? 0)) % (Math.PI * 2)) +
-                  Math.PI * 2) %
-                (Math.PI * 2);
-              const segCount = GameContext.spaceStation.shieldSegments.length;
-              const segAngle = (Math.PI * 2) / segCount;
-              const outerIdx = Math.floor(norm / segAngle) % segCount;
-              if (GameContext.spaceStation.shieldSegments[outerIdx] > 0) {
-                hasShieldAtAngle = true;
-                blockingOuterIdx = outerIdx;
+              let angle =
+                Math.atan2(
+                  b.pos.y - GameContext.spaceStation.pos.y,
+                  b.pos.x - GameContext.spaceStation.pos.x
+                ) - GameContext.spaceStation.shieldRotation;
+              while (angle < 0) angle += Math.PI * 2;
+              const count = GameContext.spaceStation.shieldSegments.length;
+              const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
+              if (GameContext.spaceStation.shieldSegments[idx] > 0) {
+                const segHp = GameContext.spaceStation.shieldSegments[idx];
+                GameContext.spaceStation.shieldSegments[idx] = Math.max(0, segHp - b.damage);
+                GameContext.spaceStation.shieldsDirty = true;
+                hit = true;
+                if (_playSound) _playSound("shield_hit");
+                if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#0ff");
+                b.dead = true;
+                b.vel.x = 0;
+                b.vel.y = 0;
               }
             }
-            if (hasShieldAtAngle) {
-              hit = true;
-              if (blockingInnerIdx >= 0) {
-                const segHp = GameContext.spaceStation.innerShieldSegments[blockingInnerIdx];
-                if (segHp > 0) {
-                  GameContext.spaceStation.innerShieldSegments[blockingInnerIdx] = Math.max(
-                    0,
-                    segHp - b.damage
-                  );
-                  GameContext.spaceStation.shieldsDirty = true;
-                }
-              } else if (blockingOuterIdx >= 0) {
-                const segHp = GameContext.spaceStation.shieldSegments[blockingOuterIdx];
-                if (segHp > 0) {
-                  GameContext.spaceStation.shieldSegments[blockingOuterIdx] = Math.max(
-                    0,
-                    segHp - b.damage
-                  );
-                  GameContext.spaceStation.shieldsDirty = true;
-                }
+            if (
+              !hit &&
+              !b.ignoreShields &&
+              innerShieldsUp &&
+              dist < GameContext.spaceStation.innerShieldRadius + b.radius
+            ) {
+              let angle =
+                Math.atan2(
+                  b.pos.y - GameContext.spaceStation.pos.y,
+                  b.pos.x - GameContext.spaceStation.pos.x
+                ) - GameContext.spaceStation.innerShieldRotation;
+              while (angle < 0) angle += Math.PI * 2;
+              const count = GameContext.spaceStation.innerShieldSegments.length;
+              const idx = Math.floor((angle / (Math.PI * 2)) * count) % count;
+              if (GameContext.spaceStation.innerShieldSegments[idx] > 0) {
+                const segHp = GameContext.spaceStation.innerShieldSegments[idx];
+                GameContext.spaceStation.innerShieldSegments[idx] = Math.max(0, segHp - b.damage);
+                GameContext.spaceStation.shieldsDirty = true;
+                hit = true;
+                if (_playSound) _playSound("shield_hit");
+                if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#f0f");
+                b.dead = true;
+                b.vel.x = 0;
+                b.vel.y = 0;
               }
-              if (_playSound) _playSound("shield_hit");
-              if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#0ff");
-              b.dead = true;
-              b.vel.x = 0;
-              b.vel.y = 0;
-            } else {
-              trackDamageByWeaponType(b, b.damage);
-              GameContext.spaceStation.hp -= b.damage;
-              showDamageFloatingText(
-                GameContext.spaceStation.pos.x,
-                GameContext.spaceStation.pos.y,
-                b.damage,
-                false
+            }
+            if (!hit && dist < GameContext.spaceStation.radius + b.radius) {
+              // Final gate: block and damage segment if shield still up at this angle
+              const angle = Math.atan2(
+                b.pos.y - GameContext.spaceStation.pos.y,
+                b.pos.x - GameContext.spaceStation.pos.x
               );
-              hit = true;
-              if (_playSound) _playSound("hit");
-              if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#fff");
-
-              // Explosive Rounds meta upgrade
+              let hasShieldAtAngle = false;
+              let blockingInnerIdx = -1;
+              let blockingOuterIdx = -1;
               if (
-                GameContext.player &&
-                GameContext.player.stats &&
-                GameContext.player.stats.explosiveChance > 0 &&
-                Math.random() < GameContext.player.stats.explosiveChance
+                GameContext.spaceStation.innerShieldSegments &&
+                GameContext.spaceStation.innerShieldSegments.length > 0
               ) {
-                const explosiveDamage = GameContext.player.stats.explosiveDamage || 1;
-                const explosiveRange = 200;
-                GameContext.shockwaves.push(
-                  new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
-                    damageAsteroids: true,
-                    damageEnemies: true,
-                    ignoreOwner: true
-                  })
-                );
+                const norm =
+                  (((angle - (GameContext.spaceStation.innerShieldRotation ?? 0)) % (Math.PI * 2)) +
+                    Math.PI * 2) %
+                  (Math.PI * 2);
+                const innerCount = GameContext.spaceStation.innerShieldSegments.length;
+                const innerAngle = (Math.PI * 2) / innerCount;
+                const innerIdx = Math.floor(norm / innerAngle) % innerCount;
+                if (GameContext.spaceStation.innerShieldSegments[innerIdx] > 0) {
+                  hasShieldAtAngle = true;
+                  blockingInnerIdx = innerIdx;
+                }
               }
+              if (
+                !hasShieldAtAngle &&
+                GameContext.spaceStation.shieldSegments &&
+                GameContext.spaceStation.shieldSegments.length > 0
+              ) {
+                const norm =
+                  (((angle - (GameContext.spaceStation.shieldRotation ?? 0)) % (Math.PI * 2)) +
+                    Math.PI * 2) %
+                  (Math.PI * 2);
+                const segCount = GameContext.spaceStation.shieldSegments.length;
+                const segAngle = (Math.PI * 2) / segCount;
+                const outerIdx = Math.floor(norm / segAngle) % segCount;
+                if (GameContext.spaceStation.shieldSegments[outerIdx] > 0) {
+                  hasShieldAtAngle = true;
+                  blockingOuterIdx = outerIdx;
+                }
+              }
+              if (hasShieldAtAngle) {
+                hit = true;
+                if (blockingInnerIdx >= 0) {
+                  const segHp = GameContext.spaceStation.innerShieldSegments[blockingInnerIdx];
+                  if (segHp > 0) {
+                    GameContext.spaceStation.innerShieldSegments[blockingInnerIdx] = Math.max(
+                      0,
+                      segHp - b.damage
+                    );
+                    GameContext.spaceStation.shieldsDirty = true;
+                  }
+                } else if (blockingOuterIdx >= 0) {
+                  const segHp = GameContext.spaceStation.shieldSegments[blockingOuterIdx];
+                  if (segHp > 0) {
+                    GameContext.spaceStation.shieldSegments[blockingOuterIdx] = Math.max(
+                      0,
+                      segHp - b.damage
+                    );
+                    GameContext.spaceStation.shieldsDirty = true;
+                  }
+                }
+                if (_playSound) _playSound("shield_hit");
+                if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#0ff");
+                b.dead = true;
+                b.vel.x = 0;
+                b.vel.y = 0;
+              } else {
+                trackDamageByWeaponType(b, b.damage);
+                GameContext.spaceStation.hp -= b.damage;
+                showDamageFloatingText(
+                  GameContext.spaceStation.pos.x,
+                  GameContext.spaceStation.pos.y,
+                  b.damage,
+                  false
+                );
+                hit = true;
+                if (_playSound) _playSound("hit");
+                if (_spawnParticles) _spawnParticles(b.pos.x, b.pos.y, 5, "#fff");
 
-              if (GameContext.spaceStation.hp <= 0) {
-                if (_handleSpaceStationDestroyed) _handleSpaceStationDestroyed();
+                // Explosive Rounds meta upgrade
+                if (
+                  GameContext.player &&
+                  GameContext.player.stats &&
+                  GameContext.player.stats.explosiveChance > 0 &&
+                  Math.random() < GameContext.player.stats.explosiveChance
+                ) {
+                  const explosiveDamage = GameContext.player.stats.explosiveDamage || 1;
+                  const explosiveRange = 200;
+                  GameContext.shockwaves.push(
+                    new Shockwave(b.pos.x, b.pos.y, explosiveDamage, explosiveRange, {
+                      damageAsteroids: true,
+                      damageEnemies: true,
+                      ignoreOwner: true
+                    })
+                  );
+                }
+
+                if (GameContext.spaceStation.hp <= 0) {
+                  if (_handleSpaceStationDestroyed) _handleSpaceStationDestroyed();
+                }
               }
             }
-          }
           } // end of else (bullet is within range of station)
         }
 
@@ -3883,7 +3883,6 @@ export function processBulletCollisions() {
 
                   if (GameContext.boss.hp <= 0) {
                     GameContext.boss.kill();
-                    GameContext.score += 10000;
                   }
                 }
               }

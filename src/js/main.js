@@ -227,6 +227,7 @@ import {
   updateContractUI as updateContractUISystem
 } from "./systems/contract-manager.js";
 import { applyUpgrade as applyUpgradeSystem } from "./systems/upgrade-manager.js";
+import { awardPickupScore } from "./systems/scoring-system.js";
 import {
   registerHudDependencies,
   registerMenuDependencies,
@@ -262,8 +263,18 @@ import {
   toggleVectrexFilter,
   disableVectrexFilter,
   showDeathScreen,
-  registerDeathScreenDependencies
+  registerDeathScreenDependencies,
+  showLeaderboardScreen,
+  registerLeaderboardScreenDependencies,
+  showNameEntryModal,
+  registerNameEntryDependencies
 } from "./ui/index.js";
+import {
+  registerLeaderboardDependencies,
+  handleLevelComplete,
+  isOnlineMode,
+  toggleOnlineMode
+} from "./services/leaderboard-service.js";
 import { initDebugKeyboardShortcuts, registerDebugSpawnDependencies } from "./debug/index.js";
 import {
   registerSettingsManagerDependencies,
@@ -757,7 +768,7 @@ function awardCoinsInstant(amount, opts = {}) {
   if (v <= 0) {
     return;
   }
-  GameContext.score += v;
+  awardPickupScore("coin", v);
   if (
     GameContext.player &&
     !GameContext.player.dead &&
@@ -1372,7 +1383,23 @@ let selectedShipType = localStorage.getItem(SHIP_SELECTION_KEY) || "slacker";
 
 registerDeathScreenDependencies({
   startGame,
-  formatTime
+  formatTime,
+  showLeaderboardScreen,
+  returnToMainMenu: returnToMainMenuFromDeath
+});
+
+registerLeaderboardDependencies({
+  showNameEntryModal,
+  showLeaderboardScreen
+});
+
+registerNameEntryDependencies({
+  showDeathScreen,
+  playSound
+});
+
+registerLeaderboardScreenDependencies({
+  returnToMenu: returnToMainMenuFromDeath
 });
 
 registerMenuDependencies({
@@ -1406,7 +1433,8 @@ registerMenuDependencies({
     debugMenuVisible = value;
   },
   showMusicPlayerMenu,
-  hideMusicPlayerMenu
+  hideMusicPlayerMenu,
+  showLeaderboardScreen
 });
 initMenuUi();
 
@@ -1521,6 +1549,20 @@ window.spawnHealthPowerUp = function () {
   GameContext.powerups.push(pickup);
   console.log("✓ HealthPowerUp spawned 150 units from player!");
   console.log("✓ Texture: medkit.png should appear");
+};
+
+window.toggleLeaderboardOnlineMode = async function () {
+  const newMode = await toggleOnlineMode();
+  console.log("✓ Leaderboard mode:", newMode ? "ONLINE" : "OFFLINE");
+  return newMode;
+};
+
+window.getLeaderboardMode = function () {
+  const mode = isOnlineMode() ? "ONLINE" : "OFFLINE";
+  console.log("=== Leaderboard Mode ===");
+  console.log("Current mode:", mode);
+  console.log("Keys are hardcoded - use toggleLeaderboardOnlineMode() to switch");
+  return mode;
 };
 
 startMainLoop();

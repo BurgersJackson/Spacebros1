@@ -9,3 +9,5 @@ export * from "./meta-shop.js";
 export * from "./crt-filter.js";
 export * from "./vectrex-filter.js";
 export * from "./death-screen.js";
+export * from "./leaderboard-screen.js";
+export * from "./name-entry-modal.js";

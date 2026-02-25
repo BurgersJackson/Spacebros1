@@ -1,5 +1,6 @@
 import { GameContext } from "../core/game-context.js";
 import { updateContractUI as updateContractUIHud } from "../ui/hud.js";
+import { awardContractScore } from "./scoring-system.js";
 
 let findSpawnPointRelativeFn = null;
 let ContractBeaconCtor = null;
@@ -38,12 +39,9 @@ export function completeContract(success = true) {
   if (!GameContext.activeContract) return;
   const contractId = GameContext.activeContract.id;
   if (success) {
-    const rewardScore =
-      GameContext.activeContract.rewardScore !== undefined
-        ? GameContext.activeContract.rewardScore
-        : 5000;
-    GameContext.score += rewardScore;
-    if (showOverlayMessageFn) showOverlayMessageFn("CONTRACT COMPLETE - CHOOSE AN UPGRADE!", "#0f0", 2000);
+    awardContractScore();
+    if (showOverlayMessageFn)
+      showOverlayMessageFn("CONTRACT COMPLETE - CHOOSE AN UPGRADE!", "#0f0", 2000);
     if (playSoundFn) playSoundFn("levelup");
     if (showLevelUpMenuFn) showLevelUpMenuFn();
   } else {

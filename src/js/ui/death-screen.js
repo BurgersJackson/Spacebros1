@@ -5,9 +5,12 @@
 import { GameContext } from "../core/game-context.js";
 import { UPGRADE_DATA } from "../core/constants.js";
 import { getElapsedGameTime } from "../core/game-context.js";
+import { handleLevelComplete } from "../services/leaderboard-service.js";
 
 let _startGame = null;
 let _formatTime = null;
+let _showLeaderboardScreen = null;
+let _returnToMainMenu = null;
 
 /**
  * Register dependencies for death screen
@@ -16,6 +19,8 @@ let _formatTime = null;
 export function registerDeathScreenDependencies(deps) {
   if (deps.startGame) _startGame = deps.startGame;
   if (deps.formatTime) _formatTime = deps.formatTime;
+  if (deps.showLeaderboardScreen) _showLeaderboardScreen = deps.showLeaderboardScreen;
+  if (deps.returnToMainMenu) _returnToMainMenu = deps.returnToMainMenu;
 }
 
 /**
@@ -75,6 +80,15 @@ export function showDeathScreen(survivalTimeMs = null, options = {}) {
 
   if (!deathScreen || !container) {
     console.warn("[DEATH SCREEN] Missing HTML elements");
+    return;
+  }
+
+  if (options.returnToSummary) {
+    deathScreen.style.display = "block";
+    setTimeout(() => {
+      const btn = document.getElementById("death-restart-btn");
+      if (btn) btn.focus();
+    }, 100);
     return;
   }
 
@@ -163,7 +177,39 @@ export function showDeathScreen(survivalTimeMs = null, options = {}) {
 
   container.innerHTML = html;
 
-  // Show the screen
+  const scoreDisplay = document.getElementById("death-score-display");
+  const scoreValue = document.getElementById("death-score-value");
+  if (scoreDisplay && scoreValue) {
+    scoreValue.textContent = formatNumber(GameContext.score);
+    scoreDisplay.style.display = "block";
+  }
+
+  const leaderboardBtn = document.getElementById("death-leaderboard-btn");
+  if (leaderboardBtn) {
+    leaderboardBtn.onclick = () => {
+      if (_showLeaderboardScreen) {
+        _showLeaderboardScreen(GameContext.currentLevel);
+      }
+    };
+  }
+
+  const mainMenuBtn = document.getElementById("death-main-menu-btn");
+  if (mainMenuBtn) {
+    mainMenuBtn.onclick = () => {
+      hideDeathScreen();
+      if (_returnToMainMenu) {
+        _returnToMainMenu();
+      } else {
+        const startScreen = document.getElementById("start-screen");
+        if (startScreen) startScreen.style.display = "block";
+      }
+    };
+  }
+
+  const isLevelComplete = options.title && options.title.includes("COMPLETE");
+
+  handleLevelComplete(GameContext.currentLevel, GameContext.score);
+
   deathScreen.style.display = "block";
   document.getElementById("start-screen").style.display = "none";
   document.getElementById("pause-menu").style.display = "none";
