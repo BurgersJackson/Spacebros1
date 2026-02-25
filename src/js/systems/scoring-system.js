@@ -1,6 +1,15 @@
 import { GameContext } from "../core/game-context.js";
 import { updateXpUI } from "../ui/hud.js";
 
+let _pendingScoreUpdate = false;
+
+export function flushScoreUI() {
+  if (_pendingScoreUpdate) {
+    _pendingScoreUpdate = false;
+    updateXpUI();
+  }
+}
+
 export const SCORE_VALUES = {
   PICKUP_COIN_MULTIPLIER: 1,
   PICKUP_SPACE_NUGGET: 50,
@@ -33,12 +42,12 @@ function getDifficultyMultiplier() {
   return 1 + (GameContext.difficultyTier - 1) * 0.1;
 }
 
-export function awardScore(amount, source = "unknown") {
+export function awardScore(amount, _source = "unknown") {
   if (amount <= 0) return;
   const multiplier = getDifficultyMultiplier();
   const finalScore = Math.floor(amount * multiplier);
   GameContext.score += finalScore;
-  updateXpUI();
+  _pendingScoreUpdate = true;
 }
 
 export function awardEnemyKillScore(enemy) {

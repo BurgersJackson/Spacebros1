@@ -53,6 +53,7 @@ import {
 } from "./event-scheduler.js";
 import { updateContract as updateContractSystem } from "./contract-manager.js";
 import { updateBossHealthBars, drawNukePickupIndicator } from "../ui/hud.js";
+import { flushScoreUI } from "./scoring-system.js";
 import {
   spawnMiniEventRelative,
   spawnNewPinwheelRelative,
@@ -2603,6 +2604,7 @@ export function gameLoopLogic(opts = null) {
     drawNukePickupIndicator();
     drawMiniEventIndicator();
     updateMiniEventUI();
+    flushScoreUI();
     // Boss HP bars (including main boss, dungeon bosses, destroyer, station) at bottom of screen
     if (doDraw) updateBossHealthBars();
 
