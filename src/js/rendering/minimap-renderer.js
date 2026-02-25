@@ -5,7 +5,6 @@
 import { GameContext } from "../core/game-context.js";
 
 const MINIMAP_SIZE = 200;
-const MINIMAP_RADIUS = 100;
 const MINIMAP_OFFSET = 20;
 
 function drawMinimapArrow(gfx, x, y, angle, length, width) {
@@ -37,28 +36,34 @@ function colorToHex(colorStr) {
   return colors[colorStr.toLowerCase()] || 0xffffff;
 }
 
-export function drawMinimap(pixiMinimapGraphics, canvas) {
+export function drawMinimap(pixiMinimapGraphics, _canvas) {
   if (!pixiMinimapGraphics) return;
   GameContext.minimapFrame++;
   if (GameContext.minimapFrame % 2 === 1) return;
 
   pixiMinimapGraphics.clear();
 
-  const screenW = canvas.width;
-  const screenH = canvas.height;
-  const minimapX = screenW - MINIMAP_SIZE - MINIMAP_OFFSET;
-  const minimapY = screenH - MINIMAP_SIZE - MINIMAP_OFFSET;
-  const centerX = minimapX + MINIMAP_RADIUS;
-  const centerY = minimapY + MINIMAP_RADIUS;
+  const pixiRenderer = pixiMinimapGraphics._renderer;
+  const screenW = pixiRenderer ? pixiRenderer.width : window.innerWidth;
+  const screenH = pixiRenderer ? pixiRenderer.height : window.innerHeight;
+  const effectiveMinimapSize = Math.max(
+    50,
+    Math.min(MINIMAP_SIZE, screenW - MINIMAP_OFFSET * 2, screenH - MINIMAP_OFFSET * 2)
+  );
+  const effectiveMinimapRadius = effectiveMinimapSize / 2;
+  const minimapX = screenW - effectiveMinimapSize - MINIMAP_OFFSET;
+  const minimapY = screenH - effectiveMinimapSize - MINIMAP_OFFSET;
+  const centerX = minimapX + effectiveMinimapRadius;
+  const centerY = minimapY + effectiveMinimapRadius;
 
   pixiMinimapGraphics.lineStyle(2, 0x00ffff);
   pixiMinimapGraphics.beginFill(0x000011);
-  pixiMinimapGraphics.drawCircle(centerX, centerY, MINIMAP_RADIUS);
+  pixiMinimapGraphics.drawCircle(centerX, centerY, effectiveMinimapRadius);
   pixiMinimapGraphics.endFill();
 
   const warpActive = !!(GameContext.warpZone && GameContext.warpZone.active);
   const radarRange = warpActive ? (GameContext.warpZone.boundaryRadius || 6200) + 300 : 4000;
-  const scale = MINIMAP_RADIUS / radarRange;
+  const scale = effectiveMinimapRadius / radarRange;
   const refX = warpActive
     ? GameContext.warpZone.pos.x
     : GameContext.player
@@ -70,7 +75,10 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
       ? GameContext.player.pos.y
       : 0;
 
-  const inBounds = (x, y) => x * x + y * y <= MINIMAP_RADIUS * MINIMAP_RADIUS;
+  const inBounds = (x, y) => x * x + y * y <= effectiveMinimapRadius * effectiveMinimapRadius;
+  const edgeThreshold = effectiveMinimapRadius * 0.95;
+  const edgePosition = effectiveMinimapRadius * 0.9;
+  const warpSegmentThreshold = effectiveMinimapRadius * 1.2;
 
   if (GameContext.player && !GameContext.player.dead) {
     const px = warpActive ? (GameContext.player.pos.x - refX) * scale : 0;
@@ -94,7 +102,12 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
       const y0 = (s.y0 - refY) * scale;
       const x1 = (s.x1 - refX) * scale;
       const y1 = (s.y1 - refY) * scale;
-      if (Math.abs(x0) > 120 && Math.abs(x1) > 120 && Math.abs(y0) > 120 && Math.abs(y1) > 120)
+      if (
+        Math.abs(x0) > warpSegmentThreshold &&
+        Math.abs(x1) > warpSegmentThreshold &&
+        Math.abs(y0) > warpSegmentThreshold &&
+        Math.abs(y1) > warpSegmentThreshold
+      )
         continue;
       pixiMinimapGraphics.moveTo(centerX + x0, centerY + y0);
       pixiMinimapGraphics.lineTo(centerX + x1, centerY + y1);
@@ -192,9 +205,9 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
     const dist = Math.hypot(dx, dy);
     const angle = Math.atan2(dy, dx);
     pixiMinimapGraphics.lineStyle(2, 0xffdc00, 0.7);
-    if (dist * scale > 95) {
-      const px = Math.cos(angle) * 90;
-      const py = Math.sin(angle) * 90;
+    if (dist * scale > edgeThreshold) {
+      const px = Math.cos(angle) * edgePosition;
+      const py = Math.sin(angle) * edgePosition;
       pixiMinimapGraphics.beginFill(0xffff00);
       drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
       pixiMinimapGraphics.endFill();
@@ -253,9 +266,9 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
       const dy = m.pos.y - GameContext.player.pos.y;
       const dist = Math.hypot(dx, dy);
       const angle = Math.atan2(dy, dx);
-      const inRange = dist * scale <= 95;
-      const px = inRange ? dx * scale : Math.cos(angle) * 90;
-      const py = inRange ? dy * scale : Math.sin(angle) * 90;
+      const inRange = dist * scale <= edgeThreshold;
+      const px = inRange ? dx * scale : Math.cos(angle) * edgePosition;
+      const py = inRange ? dy * scale : Math.sin(angle) * edgePosition;
 
       pixiMinimapGraphics.beginFill(0x00ffff);
       if (inRange) {
@@ -275,9 +288,9 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
       const dy = n.pos.y - GameContext.player.pos.y;
       const dist = Math.hypot(dx, dy);
       const angle = Math.atan2(dy, dx);
-      const inRange = dist * scale <= 95;
-      const px = inRange ? dx * scale : Math.cos(angle) * 90;
-      const py = inRange ? dy * scale : Math.sin(angle) * 90;
+      const inRange = dist * scale <= edgeThreshold;
+      const px = inRange ? dx * scale : Math.cos(angle) * edgePosition;
+      const py = inRange ? dy * scale : Math.sin(angle) * edgePosition;
 
       pixiMinimapGraphics.beginFill(0xff4400);
       if (inRange) {
@@ -296,9 +309,9 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
       const dy = p.pos.y - GameContext.player.pos.y;
       const dist = Math.hypot(dx, dy);
       const angle = Math.atan2(dy, dx);
-      const inRange = dist * scale <= 95;
-      const px = inRange ? dx * scale : Math.cos(angle) * 90;
-      const py = inRange ? dy * scale : Math.sin(angle) * 90;
+      const inRange = dist * scale <= edgeThreshold;
+      const px = inRange ? dx * scale : Math.cos(angle) * edgePosition;
+      const py = inRange ? dy * scale : Math.sin(angle) * edgePosition;
       const color = colorToHex(p.color || "#0ff");
       pixiMinimapGraphics.beginFill(color);
       if (inRange) {
@@ -317,9 +330,9 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
     const angle = Math.atan2(dy, dx);
 
     pixiMinimapGraphics.beginFill(0xffffff);
-    if (dist * scale > 95) {
-      const px = Math.cos(angle) * 90;
-      const py = Math.sin(angle) * 90;
+    if (dist * scale > edgeThreshold) {
+      const px = Math.cos(angle) * edgePosition;
+      const py = Math.sin(angle) * edgePosition;
       drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
     } else {
       const mx = dx * scale;
@@ -336,9 +349,9 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
     const angle = Math.atan2(dy, dx);
     const color = GameContext.destroyer.displayName === "DESTROYER II" ? 0xffff00 : 0xff8800;
 
-    const inRange = dist * scale <= 95;
-    const px = inRange ? dx * scale : Math.cos(angle) * 90;
-    const py = inRange ? dy * scale : Math.sin(angle) * 90;
+    const inRange = dist * scale <= edgeThreshold;
+    const px = inRange ? dx * scale : Math.cos(angle) * edgePosition;
+    const py = inRange ? dy * scale : Math.sin(angle) * edgePosition;
 
     pixiMinimapGraphics.beginFill(color);
     drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
@@ -374,9 +387,9 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
       const dist = Math.hypot(dx, dy);
       const angle = Math.atan2(dy, dx);
 
-      const inRange = dist * scale <= 95;
-      const px = inRange ? dx * scale : Math.cos(angle) * 90;
-      const py = inRange ? dy * scale : Math.sin(angle) * 90;
+      const inRange = dist * scale <= edgeThreshold;
+      const px = inRange ? dx * scale : Math.cos(angle) * edgePosition;
+      const py = inRange ? dy * scale : Math.sin(angle) * edgePosition;
 
       pixiMinimapGraphics.beginFill(isGateRun ? 0xff8800 : 0x00ff00);
       drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);
@@ -391,9 +404,9 @@ export function drawMinimap(pixiMinimapGraphics, canvas) {
     const dy = ty - GameContext.player.pos.y;
     const dist = Math.hypot(dx, dy);
     const angle = Math.atan2(dy, dx);
-    const inRange = dist * scale <= 95;
-    const px = inRange ? dx * scale : Math.cos(angle) * 90;
-    const py = inRange ? dy * scale : Math.sin(angle) * 90;
+    const inRange = dist * scale <= edgeThreshold;
+    const px = inRange ? dx * scale : Math.cos(angle) * edgePosition;
+    const py = inRange ? dy * scale : Math.sin(angle) * edgePosition;
 
     pixiMinimapGraphics.beginFill(0xffff00);
     drawMinimapArrow(pixiMinimapGraphics, centerX + px, centerY + py, angle, 10, 8);

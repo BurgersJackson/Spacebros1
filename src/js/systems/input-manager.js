@@ -255,6 +255,12 @@ export function getActiveMenuElements() {
     return elements;
   }
 
+  const creditsMenu = document.getElementById("credits-menu");
+  if (isVisible(creditsMenu)) {
+    const closeBtn = document.getElementById("close-credits");
+    return closeBtn ? [closeBtn] : [];
+  }
+
   const nameEntryModal = document.getElementById("name-entry-modal");
   if (isVisible(nameEntryModal)) {
     const elements = [];
@@ -540,10 +546,46 @@ function handleMenuNavigation(now) {
           }
 
           if (!handled) {
+            const leaderboardScreen = document.getElementById("leaderboard-screen");
+            if (leaderboardScreen && leaderboardScreen.style.display !== "none") {
+              const leaderboardBackBtn = document.getElementById("leaderboard-back-btn");
+              if (leaderboardBackBtn) {
+                leaderboardBackBtn.click();
+                GameContext.gpState.lastMenuElements = null;
+                handled = true;
+              }
+            }
+          }
+
+          if (!handled) {
+            const creditsMenu = document.getElementById("credits-menu");
+            if (creditsMenu && creditsMenu.style.display !== "none") {
+              const closeCreditsBtn = document.getElementById("close-credits");
+              if (closeCreditsBtn) {
+                closeCreditsBtn.click();
+                GameContext.gpState.lastMenuElements = null;
+                handled = true;
+              }
+            }
+          }
+
+          if (!handled) {
             const pauseMenu = document.getElementById("pause-menu");
             if (pauseMenu && pauseMenu.style.display === "block") {
               if (_togglePause) _togglePause();
               handled = true;
+            }
+          }
+
+          if (!handled) {
+            const deathScreen = document.getElementById("death-screen");
+            if (deathScreen && deathScreen.style.display !== "none") {
+              const deathMainMenuBtn = document.getElementById("death-main-menu-btn");
+              if (deathMainMenuBtn) {
+                deathMainMenuBtn.click();
+                GameContext.gpState.lastMenuElements = null;
+                handled = true;
+              }
             }
           }
 

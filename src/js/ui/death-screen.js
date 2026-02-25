@@ -145,8 +145,14 @@ export function showDeathScreen(survivalTimeMs = null, options = {}) {
       });
   }
 
-  // Build HTML
-  let html = '<div class="death-stats-section">';
+  // Build HTML - 2 column layout
+  let html = '<div class="death-stats-columns">';
+
+  // Left column: Statistics and Damage by Weapon
+  html += '<div class="death-stats-column death-stats-left">';
+
+  // Statistics section
+  html += '<div class="death-stats-section">';
   html += "<h2>STATISTICS</h2>";
   html += `<div class="death-stat-item"><span class="stat-label">Survival Time:</span> <span class="stat-value">${_formatTime ? _formatTime(survivalTimeMs) : formatTime(survivalTimeMs)}</span></div>`;
   html += `<div class="death-stat-item"><span class="stat-label">Total Damage:</span> <span class="stat-value">${formatNumber(totalDamage)}</span></div>`;
@@ -165,15 +171,28 @@ export function showDeathScreen(survivalTimeMs = null, options = {}) {
     html += "</div>";
   }
 
-  // Upgrades
+  html += "</div>"; // end left column
+
+  // Right column: Upgrades
+  html += '<div class="death-stats-column death-stats-right">';
+
   if (upgrades.length > 0) {
-    html += '<div class="death-stats-section">';
+    html += '<div class="death-stats-section death-upgrades-section">';
     html += "<h2>UPGRADES</h2>";
     upgrades.forEach(upgrade => {
       html += `<div class="death-stat-item"><span class="stat-label">${upgrade.name}:</span> <span class="stat-value">Tier ${upgrade.tier}</span></div>`;
     });
     html += "</div>";
+  } else {
+    html += '<div class="death-stats-section death-upgrades-section">';
+    html += "<h2>UPGRADES</h2>";
+    html +=
+      '<div class="death-stat-item"><span class="stat-label" style="color: #666;">No upgrades collected</span></div>';
+    html += "</div>";
   }
+
+  html += "</div>"; // end right column
+  html += "</div>"; // end columns container
 
   container.innerHTML = html;
 
