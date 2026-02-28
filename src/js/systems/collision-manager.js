@@ -278,10 +278,10 @@ function executeNukeEffect() {
     }
   }
 
-  // Damage bosses by 25% current HP
+  // Damage bosses by 10% current HP
   const damageBoss = boss => {
     if (!boss || boss.dead || !isOnScreen(boss)) return;
-    const damage = Math.ceil(boss.hp * 0.25);
+    const damage = Math.ceil(boss.hp * 0.1);
     if (typeof boss.takeHit === "function") {
       boss.takeHit(damage);
     } else {
