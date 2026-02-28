@@ -5,6 +5,7 @@ import { playSound, setMusicMode, musicEnabled } from "../../audio/audio-manager
 import { Bullet } from "../projectiles/Bullet.js";
 import { ClusterBomb } from "../projectiles/ClusterBomb.js";
 import { CruiserMineBomb } from "../projectiles/CruiserMineBomb.js";
+import { Destroyer2GuidedMissile } from "../projectiles/Destroyer2GuidedMissile.js";
 import { Enemy } from "../enemies/Enemy.js";
 import { showOverlayMessage } from "../../utils/ui-helpers.js";
 import {
@@ -71,12 +72,14 @@ export class SpaceStation extends Entity {
     this.innerShieldRotation = 0;
     this.shieldRotationSpeed = 0.0105; // 50% faster than hull (0.007 * 1.5)
     this.shieldRegenTimer = 0;
-    this.shieldRegenInterval = 1500;
+    this.shieldRegenInterval = 1200;
 
     this.turretReload = 250;
     this.minefieldTimer = 2500;
     this.clusterBombTimer = 3200;
     this.clusterBombInterval = 3200;
+    this.guidedMissileTimer = 3000;
+    this.guidedMissileInterval = 3000;
     this.shieldsDirty = true;
     this._pixiInnerGfx = null;
     this._lastShieldRedrawAt = 0; // Throttle shield redraws
@@ -86,7 +89,7 @@ export class SpaceStation extends Entity {
     this.laserCharge = 0;
     this.laserChargeTotal = 70;
     this.laserDelay = 0;
-    this.laserDelayTotal = 15;
+    this.laserDelayTotal = 5;
     this.laserFire = 0;
     this.laserFireTotal = 5;
     this.laserAngle = 0;
@@ -96,6 +99,29 @@ export class SpaceStation extends Entity {
     this.t = 0;
     this.angle = Math.random() * Math.PI * 2;
     this.rotationSpeed = 0.007;
+
+    this._laserWarmed = false;
+  }
+
+  _warmLaser() {
+    if (this._laserWarmed) return;
+    this._laserWarmed = true;
+    try {
+      const offscreen = document.createElement("canvas");
+      offscreen.width = 2;
+      offscreen.height = 2;
+      const ctx = offscreen.getContext("2d");
+      if (ctx) {
+        ctx.shadowBlur = 28;
+        ctx.shadowColor = "#ff0";
+        ctx.strokeStyle = "rgba(255, 240, 0, 0.95)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(1, 1);
+        ctx.stroke();
+      }
+    } catch (e) {}
   }
 
   update(deltaTime = SIM_STEP_MS) {
@@ -162,6 +188,12 @@ export class SpaceStation extends Entity {
         if (this.clusterBombTimer <= 0) {
           this.fireClusterBomb();
           this.clusterBombTimer = this.clusterBombInterval;
+        }
+
+        this.guidedMissileTimer -= deltaTime;
+        if (this.guidedMissileTimer <= 0) {
+          GameContext.guidedMissiles.push(new Destroyer2GuidedMissile(this));
+          this.guidedMissileTimer = this.guidedMissileInterval;
         }
 
         const applyBeamDamageToPlayer = amount => {
@@ -255,6 +287,7 @@ export class SpaceStation extends Entity {
           const cd = 560;
           const wantCharge = 70;
           if (this.laserCooldown <= 0 && dist < 3200 && dist > 450) {
+            this._warmLaser();
             this.laserAngle = Math.atan2(
               GameContext.player.pos.y - this.pos.y,
               GameContext.player.pos.x - this.pos.x

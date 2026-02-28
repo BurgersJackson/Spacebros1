@@ -97,7 +97,8 @@ export function handleSpaceStationDestroyed() {
     pixiCleanupObject,
     awardCoinsInstant,
     awardNuggetsInstant,
-    stopMusic
+    stopMusic,
+    clearArrayWithPixiCleanup
   } = deps;
 
   if (!GameContext.spaceStation) return;
@@ -118,6 +119,84 @@ export function handleSpaceStationDestroyed() {
 
   // Level 1: unlock level 2 and show level complete screen
   if (GameContext.currentLevel === 1) {
+    GameContext.gameActive = false;
+    GameContext.gameEnded = true;
+
+    // Stop player movement immediately
+    if (GameContext.player) {
+      GameContext.player.vel.x = 0;
+      GameContext.player.vel.y = 0;
+    }
+
+    // Explode and clear all enemies
+    for (const enemy of GameContext.enemies) {
+      if (enemy && !enemy.dead && enemy.pos) {
+        spawnLargeExplosion(enemy.pos.x, enemy.pos.y, 1.5);
+        spawnParticles(enemy.pos.x, enemy.pos.y, 15, "#f80");
+      }
+    }
+
+    // Explode and clear all pinwheels
+    for (const pw of GameContext.pinwheels) {
+      if (pw && !pw.dead && pw.pos) {
+        spawnLargeExplosion(pw.pos.x, pw.pos.y, 1.0);
+        spawnParticles(pw.pos.x, pw.pos.y, 10, "#ff0");
+      }
+    }
+
+    // Clear dungeon boss references
+    const dungeonBosses = [
+      GameContext.necroticHive,
+      GameContext.cerebralPsion,
+      GameContext.fleshforge,
+      GameContext.vortexMatriarch,
+      GameContext.chitinusPrime,
+      GameContext.psyLich
+    ];
+    for (const boss of dungeonBosses) {
+      if (boss && !boss.dead && boss.pos) {
+        spawnLargeExplosion(boss.pos.x, boss.pos.y, 2.0);
+        spawnParticles(boss.pos.x, boss.pos.y, 30, "#f0f");
+      }
+    }
+
+    // Clear all game entities
+    if (clearArrayWithPixiCleanup) {
+      clearArrayWithPixiCleanup(GameContext.enemies);
+      clearArrayWithPixiCleanup(GameContext.pinwheels);
+      clearArrayWithPixiCleanup(GameContext.cavePinwheels);
+      clearArrayWithPixiCleanup(GameContext.bullets);
+      clearArrayWithPixiCleanup(GameContext.bossBombs);
+      clearArrayWithPixiCleanup(GameContext.guidedMissiles);
+      clearArrayWithPixiCleanup(GameContext.coins);
+      clearArrayWithPixiCleanup(GameContext.nuggets);
+      clearArrayWithPixiCleanup(GameContext.goldNuggets);
+      clearArrayWithPixiCleanup(GameContext.powerups);
+      clearArrayWithPixiCleanup(GameContext.magnetPickups);
+      clearArrayWithPixiCleanup(GameContext.nukePickups);
+      clearArrayWithPixiCleanup(GameContext.drones);
+      clearArrayWithPixiCleanup(GameContext.caches);
+      clearArrayWithPixiCleanup(GameContext.environmentAsteroids);
+      clearArrayWithPixiCleanup(GameContext.explosions);
+      clearArrayWithPixiCleanup(GameContext.particles);
+      clearArrayWithPixiCleanup(GameContext.floatingTexts);
+    }
+
+    // Clear boss references
+    GameContext.necroticHive = null;
+    GameContext.cerebralPsion = null;
+    GameContext.fleshforge = null;
+    GameContext.vortexMatriarch = null;
+    GameContext.chitinusPrime = null;
+    GameContext.psyLich = null;
+    GameContext.bossActive = false;
+    if (GameContext.boss) {
+      pixiCleanupObject(GameContext.boss);
+      GameContext.boss = null;
+    }
+    GameContext.bossArena.active = false;
+    GameContext.stationArena.active = false;
+
     awardLevelCompleteScore();
     if (unlockLevelRef) unlockLevelRef(2);
     setTimeout(() => {

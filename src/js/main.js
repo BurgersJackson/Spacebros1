@@ -1492,7 +1492,8 @@ registerGameHelperDependencies({
   awardNuggetsInstant,
   stopMusic,
   endGame,
-  unlockLevel: levelManagerUnlockLevel
+  unlockLevel: levelManagerUnlockLevel,
+  clearArrayWithPixiCleanup
 });
 
 // Level manager system

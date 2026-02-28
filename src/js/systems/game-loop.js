@@ -1249,13 +1249,15 @@ export function gameLoopLogic(opts = null) {
       const existingNukes = GameContext.nukePickups.filter(n => !n.dead);
       if (existingNukes.length === 0) {
         if (!GameContext.nextNukeSpawnTime) {
-          GameContext.nextNukeSpawnTime = GameContext.gameStartTime + 360000; // 6 minutes
+          const initialDelay = 360000 + Math.random() * 120000; // 6-8 minutes
+          GameContext.nextNukeSpawnTime = GameContext.gameStartTime + initialDelay;
         }
         if (now >= GameContext.nextNukeSpawnTime) {
           const spawnPoint = findSpawnPointRelative(true, 2000, 3000);
           const nuke = new NukePickup(spawnPoint.x, spawnPoint.y);
           GameContext.nukePickups.push(nuke);
-          GameContext.nextNukeSpawnTime = now + 360000; // Next in 6 minutes
+          const nextDelay = 360000 + Math.random() * 120000; // 6-8 minutes
+          GameContext.nextNukeSpawnTime = now + nextDelay;
           showOverlayMessage("NUKE DETECTED", "#ff4400", 2000);
         }
       }
