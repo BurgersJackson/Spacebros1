@@ -190,14 +190,11 @@ export class CerebralPsion extends Enemy {
 
     if (this.phaseName === "PSYCHIC_BARRAGE") {
       if (this.phaseTick % 60 === 0) {
-        // Homing missiles
         GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
         playSound("heavy_shoot");
       }
-      if (this.phaseTick % 30 === 0) {
-        // Psychic shockwave
-        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 15, "#f0f");
-        // Push player away
+      if (this.phaseTick % 45 === 0) {
+        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 10, "#f0f");
         if (GameContext.player && !GameContext.player.dead) {
           const dx = GameContext.player.pos.x - this.pos.x;
           const dy = GameContext.player.pos.y - this.pos.y;
@@ -210,33 +207,26 @@ export class CerebralPsion extends Enemy {
         }
         playSound("shockwave");
       }
-      if (this.phaseTick % 20 === 0) {
-        // Particle burst
-        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 5, "#a0f");
-      }
     } else if (this.phaseName === "MIND_SHACKLES") {
       this.mindShacklesActive = true;
-      // Tractor beam pulls player in every 5 ticks
       if (this.phaseTick % 5 === 0 && GameContext.player && !GameContext.player.dead) {
         const dx = this.pos.x - GameContext.player.pos.x;
         const dy = this.pos.y - GameContext.player.pos.y;
         const dist = Math.hypot(dx, dy);
         if (dist < 1200 && dist > 0) {
-          // Gentle but persistent pull
           GameContext.player.vel.x += (dx / dist) * 0.8;
           GameContext.player.vel.y += (dy / dist) * 0.8;
         }
       }
-      // Fire homing missile to discourage running away
       if (this.phaseTick % 40 === 0) {
         GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
         playSound("heavy_shoot");
       }
-      if (_spawnParticles) {
+      if (this.phaseTick % 20 === 0 && _spawnParticles) {
         _spawnParticles(
           this.pos.x + (Math.random() - 0.5) * 200,
           this.pos.y + (Math.random() - 0.5) * 200,
-          2,
+          1,
           "#a0f"
         );
       }
@@ -302,13 +292,11 @@ export class CerebralPsion extends Enemy {
       }
     } else if (this.phaseName === "REALITY_TEAR") {
       this.mindShacklesActive = false;
-      // Triggered once at 30% HP - final desperate assault
       if (!this.realityTearTriggered) {
         this.realityTearTriggered = true;
         showOverlayMessage("REALITY TEAR! FINAL PHASE!", "#f00", 2000);
       }
-      // Rapid fire
-      if (this.phaseTick % 8 === 0) {
+      if (this.phaseTick % 10 === 0) {
         const b = new Bullet(this.pos.x, this.pos.y, aim, 27, {
           owner: "enemy",
           damage: 1,
@@ -320,15 +308,12 @@ export class CerebralPsion extends Enemy {
         GameContext.bullets.push(b);
         playSound("rapid_shoot");
       }
-      // Spawn echoes randomly
-      if (this.phaseTick % 20 === 0) {
+      if (this.phaseTick % 30 === 0) {
         this.spawnEchoes(1);
       }
-      // Homing missiles + shockwaves
-      if (this.phaseTick % 40 === 0) {
+      if (this.phaseTick % 50 === 0) {
         GameContext.guidedMissiles.push(new FlagshipGuidedMissile(this));
-        // Psychic shockwave
-        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 15, "#f0f");
+        if (_spawnParticles) _spawnParticles(this.pos.x, this.pos.y, 10, "#f0f");
         if (GameContext.player && !GameContext.player.dead) {
           const dx = GameContext.player.pos.x - this.pos.x;
           const dy = GameContext.player.pos.y - this.pos.y;
@@ -345,8 +330,12 @@ export class CerebralPsion extends Enemy {
   }
 
   spawnEchoes(count) {
-    for (let i = 0; i < count; i++) {
-      const angle = ((Math.PI * 2) / count) * i;
+    const maxEchoes = 5;
+    const activeCount = this.echoes.filter(e => e && !e.dead).length;
+    const canSpawn = Math.max(0, maxEchoes - activeCount);
+    const toSpawn = Math.min(count, canSpawn);
+    for (let i = 0; i < toSpawn; i++) {
+      const angle = ((Math.PI * 2) / toSpawn) * i + Math.random() * 0.5;
       const echo = new PsychicEcho(this, angle);
       this.echoes.push(echo);
     }

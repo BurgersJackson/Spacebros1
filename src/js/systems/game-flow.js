@@ -492,6 +492,7 @@ export function togglePause() {
     document.getElementById("start-screen").style.display = "none";
     document.getElementById("pause-menu").style.display = "block";
     if (deps.updatePauseMenuObjectives) deps.updatePauseMenuObjectives();
+    if (deps.updateShipSelectionUI) deps.updateShipSelectionUI();
     if (deps.setFromPauseMenu) deps.setFromPauseMenu(false);
     return;
   }
@@ -500,6 +501,7 @@ export function togglePause() {
   document.getElementById("pause-menu").style.display = GameContext.gamePaused ? "block" : "none";
   if (GameContext.gamePaused) {
     if (deps.updatePauseMenuObjectives) deps.updatePauseMenuObjectives();
+    if (deps.updateShipSelectionUI) deps.updateShipSelectionUI();
     GameContext.pauseStartTime = deps.getGameNowMs();
     if (deps.isArenaCountdownActive && deps.isArenaCountdownActive()) deps.stopArenaCountdown();
 

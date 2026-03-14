@@ -853,8 +853,8 @@ export function updateHealthUI(state = GameContext) {
   if (!healthFill) return;
   const pct = (player.hp / player.maxHp) * 100;
   healthFill.style.width = `${Math.max(0, pct)}%`;
-  if (pct < 30) healthFill.style.backgroundColor = "#f00";
-  else if (pct < 60) healthFill.style.backgroundColor = "#ff0";
+  if (player.hp <= 10) healthFill.style.backgroundColor = "#f00";
+  else if (player.hp <= 20) healthFill.style.backgroundColor = "#ff0";
   else healthFill.style.backgroundColor = "#0f0";
   const ht = document.getElementById("health-text");
   if (ht) ht.innerText = `${Math.max(0, Math.floor(player.hp))} / ${player.maxHp}`;

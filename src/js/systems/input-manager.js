@@ -295,9 +295,16 @@ export function getActiveMenuElements() {
  * @param {HTMLElement[]} elements
  */
 export function updateMenuVisuals(elements) {
+  let focusedShipBtn = null;
   elements.forEach((el, idx) => {
+    const isShipBtn = el.classList.contains("ship-select-btn");
     if (idx === GameContext.menuSelectionIndex) {
-      el.classList.add("selected");
+      if (isShipBtn) {
+        el.classList.add("focused");
+        focusedShipBtn = el.id;
+      } else {
+        el.classList.add("selected");
+      }
       if (typeof el.focus === "function") {
         el.focus();
       }
@@ -319,8 +326,19 @@ export function updateMenuVisuals(elements) {
           inline: "nearest"
         });
       }
+      if (el.classList.contains("music-track-item")) {
+        el.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+          inline: "nearest"
+        });
+      }
     } else {
-      el.classList.remove("selected");
+      if (isShipBtn) {
+        el.classList.remove("focused");
+      } else {
+        el.classList.remove("selected");
+      }
       if (typeof el.blur === "function") {
         el.blur();
       }
@@ -332,6 +350,9 @@ export function updateMenuVisuals(elements) {
       }
     }
   });
+  if (focusedShipBtn && typeof window !== "undefined" && window.setGamepadShipFocus) {
+    window.setGamepadShipFocus(focusedShipBtn);
+  }
 }
 
 /**
@@ -449,6 +470,10 @@ function handleMenuNavigation(now) {
           if (isCheckbox) {
             selectedEl.checked = !selectedEl.checked;
             selectedEl.dispatchEvent(new Event("change", { bubbles: true }));
+          } else if (selectedEl.classList.contains("ship-select-btn")) {
+            if (typeof window !== "undefined" && window.confirmGamepadShipSelection) {
+              window.confirmGamepadShipSelection();
+            }
           } else {
             selectedEl.click();
             GameContext.gpState.lastMenuElements = null;

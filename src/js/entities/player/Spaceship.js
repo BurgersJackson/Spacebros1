@@ -231,7 +231,7 @@ export class Spaceship extends Entity {
     // CIWS (Close-In Weapon System)
     this.ciwsUnlocked = false;
     this.ciwsDamage = 10; // Damage per bullet (tier 1=10, tier 2=20, tier 3=30, tier 4=40, tier 5=50)
-    this.ciwsRange = 400; // Target acquisition range
+    this.ciwsRange = 500; // Target acquisition range
     this.ciwsCooldown = 0; // Frames until next shot (6 = 2x player fire rate)
     this.ciwsMaxCooldown = 6; // Fire rate: every 6 frames at 60fps
 

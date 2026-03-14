@@ -242,6 +242,7 @@ export function showMusicPlayerMenu() {
     MUSIC_TRACKS.forEach((track, idx) => {
       const trackItem = document.createElement("div");
       trackItem.className = "music-track-item";
+      trackItem.tabIndex = 0;
       if (idx === currentTrackIndex && isPlaying) {
         trackItem.classList.add("selected");
       }

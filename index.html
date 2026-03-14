@@ -337,6 +337,17 @@
         color: #000;
         box-shadow: 0 0 10px #0f0;
       }
+      .ship-select-btn.focused {
+        border-color: #ff0;
+        color: #ff0;
+        box-shadow: 0 0 10px #ff0;
+      }
+      .ship-select-btn.selected.focused {
+        background: #0f0;
+        color: #000;
+        border-color: #ff0;
+        box-shadow: 0 0 15px #ff0;
+      }
       .ship-select-btn:hover {
         background: rgba(0, 255, 0, 0.2);
       }
@@ -706,9 +717,9 @@
         background: radial-gradient(
           ellipse at center,
           transparent 0%,
-          transparent 40%,
-          rgba(139, 0, 0, 0.3) 70%,
-          rgba(139, 0, 0, 0.5) 85%,
+          transparent 60%,
+          rgba(139, 0, 0, 0.3) 85%,
+          rgba(139, 0, 0, 0.5) 92%,
           rgba(139, 0, 0, 0.7) 100%
         );
       }
@@ -732,9 +743,9 @@
         background: radial-gradient(
           ellipse at center,
           transparent 0%,
-          transparent 40%,
-          rgba(180, 150, 0, 0.2) 70%,
-          rgba(180, 150, 0, 0.35) 85%,
+          transparent 60%,
+          rgba(180, 150, 0, 0.2) 85%,
+          rgba(180, 150, 0, 0.35) 92%,
           rgba(180, 150, 0, 0.5) 100%
         );
       }
@@ -1007,6 +1018,13 @@
         background: rgba(0, 255, 255, 0.2);
         color: #0ff;
         border-left: 3px solid #0ff;
+      }
+
+      .music-track-item:focus {
+        background: rgba(0, 255, 0, 0.3);
+        color: #fff;
+        outline: none;
+        border-left: 3px solid #0f0;
       }
 
       .music-player-close-row {
@@ -1284,8 +1302,8 @@
       <!-- NEW: Ship Selection -->
       <div style="margin-bottom: 15px; border: 1px solid #0ff; padding: 10px">
         <div style="color: #0ff; font-size: 14px; margin-bottom: 8px">SHIP TYPE</div>
-        <button id="ship-slacker-btn" class="ship-select-btn">SLACKER SPECIAL</button>
-        <button id="ship-standard-btn" class="ship-select-btn">STANDARD</button>
+        <button id="ship-slacker-btn" class="ship-select-btn">1-STICK</button>
+        <button id="ship-standard-btn" class="ship-select-btn">TWIN-STICK</button>
         <div
           id="ship-description"
           style="color: #888; font-size: 11px; margin-top: 8px; min-height: 40px"
@@ -1303,12 +1321,8 @@
         UPGRADES STORE
       </button>
       <button id="settings-btn" style="margin-top: 10px">SETTINGS</button>
-      <button id="music-player-start-btn" style="margin-top: 10px; border-color: #0ff; color: #0ff">
-        MUSIC PLAYER
-      </button>
-      <button id="leaderboard-btn" style="margin-top: 10px; border-color: #0f0; color: #0f0">
-        LEADERBOARDS
-      </button>
+      <button id="music-player-start-btn" style="margin-top: 10px">MUSIC PLAYER</button>
+      <button id="leaderboard-btn" style="margin-top: 10px">LEADERBOARDS</button>
       <button id="credits-btn" style="margin-top: 10px">CREDITS</button>
       <button id="desktop-quit-start-btn" style="margin-top: 10px">QUIT TO DESKTOP</button>
     </div>
@@ -1498,9 +1512,7 @@
 
       <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center">
         <button id="settings-close-btn" style="padding: 5px 15px">BACK</button>
-        <button id="settings-apply-btn" style="padding: 5px 15px; border-color: #0f0; color: #0f0">
-          APPLY
-        </button>
+        <button id="settings-apply-btn" style="padding: 5px 15px">APPLY</button>
       </div>
     </div>
 
@@ -1710,9 +1722,7 @@
         <span id="death-score-value" style="color: #ff0; font-size: 24px">0</span>
       </div>
       <button id="death-restart-btn">REBOOT SYSTEM</button>
-      <button id="death-leaderboard-btn" style="margin-top: 10px; border-color: #0f0; color: #0f0">
-        VIEW LEADERBOARD
-      </button>
+      <button id="death-leaderboard-btn" style="margin-top: 10px">VIEW LEADERBOARD</button>
       <button id="death-main-menu-btn" style="margin-top: 10px">MAIN MENU</button>
     </div>
 
@@ -1785,7 +1795,7 @@
       <button id="pause-settings-btn">SETTINGS</button>
       <button id="restart-btn-pause">RESTART</button>
       <button id="music-btn">MUSIC: ON</button>
-      <button id="music-player-btn" style="border-color: #0ff; color: #0ff">MUSIC PLAYER</button>
+      <button id="music-player-btn">MUSIC PLAYER</button>
       <button id="crt-toggle-btn">CRT: OFF</button>
       <button id="vectrex-toggle-btn">VECTREX: OFF</button>
       <button id="quit-btn">ABORT RUN</button>
@@ -1928,7 +1938,7 @@
       <div id="music-player-track-list" class="music-track-list"></div>
 
       <div class="music-player-close-row">
-        <button id="music-player-close" style="border-color: #0f0; color: #0f0">CLOSE</button>
+        <button id="music-player-close">CLOSE</button>
       </div>
     </div>
 
@@ -2015,7 +2025,7 @@
 
       <div style="display: flex; gap: 15px; justify-content: center">
         <button id="leaderboard-refresh-btn">REFRESH</button>
-        <button id="leaderboard-back-btn" style="border-color: #0f0; color: #0f0">BACK</button>
+        <button id="leaderboard-back-btn">BACK</button>
       </div>
     </div>
 

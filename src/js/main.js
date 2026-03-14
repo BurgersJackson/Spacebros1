@@ -247,6 +247,7 @@ import {
   updateXpUI,
   updateWarpUI,
   updateTurboUI,
+  updateShipSelectionUI,
   updateContractUI,
   updateNuggetUI,
   updateInputSpeedUI,
@@ -836,6 +837,7 @@ registerGameFlowDependencies({
   updateContractUI,
   updateHealthUI,
   updatePauseMenuObjectives,
+  updateShipSelectionUI,
   Spaceship
 });
 initGameFlow();
@@ -1528,6 +1530,8 @@ allMenuElements.forEach(el => {
     el.blur();
   }
 });
+
+updateShipSelectionUI();
 
 requestAnimationFrame(() => {
   GameContext.menuSelectionIndex = 0;

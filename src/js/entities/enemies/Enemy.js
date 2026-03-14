@@ -13,6 +13,7 @@ import { findSpawnPointRelative } from "../../utils/spawn-utils.js";
 import { Bullet } from "../projectiles/Bullet.js";
 import { Coin } from "../pickups/Coin.js";
 import { SpaceNugget } from "../pickups/SpaceNugget.js";
+import { HealthPowerUp } from "../pickups/HealthPowerUp.js";
 
 import {
   pixiEnemyLayer,
@@ -449,6 +450,20 @@ export class Enemy extends Entity {
           GameContext.nuggets.push(n);
         }
         playSound("coin");
+      }
+    }
+
+    if (!this.noDrops) {
+      let healthDropChance = 0.02;
+      if (this.type === "elite_roamer") healthDropChance = 0.04;
+      else if (this.type === "hunter") healthDropChance = 0.05;
+      else if (this.isGunboat) healthDropChance = 0.08;
+
+      if (Math.random() < healthDropChance) {
+        const health = new HealthPowerUp(this.pos.x, this.pos.y);
+        health.vel.x = (Math.random() - 0.5) * 2;
+        health.vel.y = (Math.random() - 0.5) * 2;
+        GameContext.powerups.push(health);
       }
     }
 
