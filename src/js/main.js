@@ -441,6 +441,9 @@ let height = GAME_VIEWPORT_HEIGHT;
 let internalWidth = 1920; // Canvas rendering resolution (can be higher for quality)
 let internalHeight = 1080;
 
+let pixiApp = null;
+let pixiCaveGridSprite = null;
+
 const {
   canvas,
   ctx,
@@ -471,7 +474,6 @@ const {
 // Note: Pixi is rendered manually inside our main loop to avoid running a second render/ticker.
 // USE_PIXI_OVERLAY imported from ./core/constants.js
 // ENABLE_NEBULA and NEBULA_ALPHA imported from ./core/constants.js
-let pixiApp = null;
 let pixiWorldRoot = null; // camera-transformed world space
 let pixiScreenRoot = null; // screen space (no camera transform)
 
@@ -498,7 +500,6 @@ let pixiBulletLayer = null;
 let pixiParticleLayer = null;
 let pixiTextureWhite = null;
 let pixiCaveGridLayer = null; // screen-space
-let pixiCaveGridSprite = null; // TilingSprite
 let pixiParticleGlowTexture = null;
 
 let pixiBulletTextures = { glow: null, laser: null, square: null, missile: null };
