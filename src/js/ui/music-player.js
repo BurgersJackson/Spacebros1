@@ -94,6 +94,7 @@ function playTrack(index) {
 
   audioElement.src = track.url;
   audioElement.loop = isLooping;
+  audioElement.load();
 
   const volume = getMusicVolumeRef ? getMusicVolumeRef() : 0.5;
   audioElement.volume = volume * 0.5;
@@ -104,8 +105,10 @@ function playTrack(index) {
       isPlaying = true;
       updateMusicMenuUI();
     })
-    .catch(() => {
+    .catch(e => {
+      console.warn("[MusicPlayer] Play failed:", e);
       isPlaying = false;
+      webMusicStarted = false;
       updateMusicMenuUI();
     });
 
@@ -285,6 +288,12 @@ export function initMusicPlayer() {
   loadSettings();
   createAudioElement();
 
+  const firstTrack = MUSIC_TRACKS[currentTrackIndex || 0];
+  if (firstTrack) {
+    audioElement.src = firstTrack.url;
+    audioElement.load();
+  }
+
   const closeBtn = document.getElementById("music-player-close");
   if (closeBtn) {
     closeBtn.addEventListener("click", hideMusicPlayerMenu);
@@ -336,7 +345,7 @@ export function startMusicOnFirstInteraction() {
       playRandomTrack();
     }, 500);
   } else {
-    webMusicStarted = true;
     playRandomTrack();
+    webMusicStarted = true;
   }
 }
