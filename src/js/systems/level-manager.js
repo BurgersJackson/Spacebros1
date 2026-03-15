@@ -5,6 +5,7 @@ let updateMenuVisualsRef = null;
 let initAudioRef = null;
 let saveGameRef = null;
 let saveMetaProfileRef = null;
+let startMusicOnFirstInteractionRef = null;
 
 let selectedLevel = 1;
 
@@ -32,6 +33,8 @@ export function registerLevelManagerDependencies(deps) {
   if (deps.initAudio) initAudioRef = deps.initAudio;
   if (deps.saveGame) saveGameRef = deps.saveGame;
   if (deps.saveMetaProfile) saveMetaProfileRef = deps.saveMetaProfile;
+  if (deps.startMusicOnFirstInteraction)
+    startMusicOnFirstInteractionRef = deps.startMusicOnFirstInteraction;
 }
 
 export function initLevelSelection() {
@@ -62,6 +65,9 @@ function handleLevelButtonClick(btn) {
   if (btn.classList.contains("level-locked")) {
     return;
   }
+
+  if (initAudioRef) initAudioRef();
+  if (startMusicOnFirstInteractionRef) startMusicOnFirstInteractionRef();
 
   const level = parseInt(btn.dataset.level);
   selectedLevel = level;
@@ -122,6 +128,7 @@ export function startSelectedLevel(hardcore = false) {
     GameContextRef.hardcoreMode = hardcore;
   }
   if (initAudioRef) initAudioRef();
+  if (startMusicOnFirstInteractionRef) startMusicOnFirstInteractionRef();
   if (startGameRef) startGameRef();
   hideMissionModal(false);
 }

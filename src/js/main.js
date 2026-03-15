@@ -1510,7 +1510,8 @@ registerLevelManagerDependencies({
   updateMenuVisuals,
   initAudio,
   saveGame: saveGameSystem,
-  saveMetaProfile: saveMetaProfileSystem
+  saveMetaProfile: saveMetaProfileSystem,
+  startMusicOnFirstInteraction
 });
 initLevelSelection();
 
