@@ -733,11 +733,121 @@ export function initInputListeners() {
     "keydown",
     e => {
       if (e.key === "Escape" && !e.repeat) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        if (_togglePause) {
-          _togglePause();
+        let handled = false;
+
+        const modal = document.getElementById("meta-shop-modal");
+        if (modal && modal.style.display === "block") {
+          const backBtn = document.getElementById("meta-modal-back");
+          if (backBtn) backBtn.click();
+          handled = true;
+        }
+
+        if (!handled) {
+          const settingsMenu = document.getElementById("settings-menu");
+          if (settingsMenu && settingsMenu.style.display === "block") {
+            const settingsCloseBtn = document.getElementById("settings-close-btn");
+            if (settingsCloseBtn) {
+              settingsCloseBtn.click();
+              handled = true;
+            }
+          }
+        }
+
+        if (!handled) {
+          const upgradesMenu = document.getElementById("upgrades-menu");
+          if (upgradesMenu && upgradesMenu.style.display !== "none") {
+            const upgradesBackBtn = document.getElementById("upgrades-back-btn");
+            if (upgradesBackBtn) {
+              upgradesBackBtn.click();
+              handled = true;
+            }
+          }
+        }
+
+        if (!handled) {
+          const profileSelect = document.getElementById("profile-select");
+          if (profileSelect && profileSelect.style.display === "block") {
+            const profileBackBtn = document.getElementById("profile-back-btn");
+            if (profileBackBtn) {
+              profileBackBtn.click();
+              handled = true;
+            }
+          }
+        }
+
+        if (!handled) {
+          const runUpgradesScreen = document.getElementById("run-upgrades-screen");
+          if (runUpgradesScreen && runUpgradesScreen.style.display === "block") {
+            const runUpgradesBackBtn = document.getElementById("run-upgrades-back-btn");
+            if (runUpgradesBackBtn) {
+              runUpgradesBackBtn.click();
+              handled = true;
+            }
+          }
+        }
+
+        if (!handled) {
+          const debugMenu = document.getElementById("debug-menu");
+          if (debugMenu && debugMenu.style.display === "block") {
+            const debugBackBtn = document.getElementById("debug-back-btn");
+            if (debugBackBtn) {
+              debugBackBtn.click();
+              handled = true;
+            }
+          }
+        }
+
+        if (!handled) {
+          const musicPlayerMenu = document.getElementById("music-player-menu");
+          if (musicPlayerMenu && musicPlayerMenu.style.display === "block") {
+            const musicPlayerCloseBtn = document.getElementById("music-player-close");
+            if (musicPlayerCloseBtn) {
+              musicPlayerCloseBtn.click();
+              handled = true;
+            }
+          }
+        }
+
+        if (!handled) {
+          const levelMissionModal = document.getElementById("level-mission-modal");
+          if (levelMissionModal && levelMissionModal.style.display === "block") {
+            const missionBackBtn = document.getElementById("mission-back-btn");
+            if (missionBackBtn) {
+              missionBackBtn.click();
+              handled = true;
+            }
+          }
+        }
+
+        if (!handled) {
+          const leaderboardScreen = document.getElementById("leaderboard-screen");
+          if (leaderboardScreen && leaderboardScreen.style.display !== "none") {
+            const leaderboardBackBtn = document.getElementById("leaderboard-back-btn");
+            if (leaderboardBackBtn) {
+              leaderboardBackBtn.click();
+              handled = true;
+            }
+          }
+        }
+
+        if (!handled) {
+          const creditsMenu = document.getElementById("credits-menu");
+          if (creditsMenu && creditsMenu.style.display !== "none") {
+            const closeCreditsBtn = document.getElementById("close-credits");
+            if (closeCreditsBtn) {
+              closeCreditsBtn.click();
+              handled = true;
+            }
+          }
+        }
+
+        if (!handled) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (_togglePause) {
+            _togglePause();
+          }
         }
       }
     },
