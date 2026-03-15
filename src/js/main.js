@@ -1450,7 +1450,8 @@ registerMusicPlayerDependencies({
   GameContext,
   updateMenuVisuals,
   getActiveMenuElements,
-  setMenuDebounce
+  setMenuDebounce,
+  initAudio
 });
 initMusicPlayer();
 

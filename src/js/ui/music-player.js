@@ -28,6 +28,7 @@ let GameContextRef = null;
 let updateMenuVisualsRef = null;
 let getActiveMenuElementsRef = null;
 let setMenuDebounceRef = null;
+let initAudioRef = null;
 
 function loadSettings() {
   try {
@@ -64,6 +65,7 @@ export function registerMusicPlayerDependencies(deps) {
   if (deps.updateMenuVisuals) updateMenuVisualsRef = deps.updateMenuVisuals;
   if (deps.getActiveMenuElements) getActiveMenuElementsRef = deps.getActiveMenuElements;
   if (deps.setMenuDebounce) setMenuDebounceRef = deps.setMenuDebounce;
+  if (deps.initAudio) initAudioRef = deps.initAudio;
 }
 
 function createAudioElement() {
@@ -88,6 +90,8 @@ function onTrackEnded() {
 function playTrack(index) {
   if (index < 0 || index >= MUSIC_TRACKS.length) return;
   currentTrackIndex = index;
+
+  if (initAudioRef) initAudioRef();
 
   const track = MUSIC_TRACKS[currentTrackIndex];
   if (!audioElement) createAudioElement();
