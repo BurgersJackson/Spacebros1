@@ -9,12 +9,6 @@ import {
   ENABLE_PROJECTILE_IMPACT_SOUNDS
 } from "../core/constants.js";
 
-import {
-  playCurrentTrack,
-  pauseTrack,
-  getIsPlaying as getMusicPlayerIsPlaying
-} from "../ui/music-player.js";
-
 // --- Audio Context ---
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let audioCtx = null;
@@ -26,6 +20,15 @@ let musicMode = "normal";
 let backgroundMusicAudio = null;
 export let musicVolume = 0.5; // 0.0 to 1.0
 export let sfxVolume = 0.5; // 0.0 to 1.0
+
+// --- Music Player Integration (injected via registerAudioManagerDependencies) ---
+let musicPlayerPlayRef = null;
+let musicPlayerPauseRef = null;
+
+export function registerAudioManagerMusicPlayer(deps) {
+  if (deps.playCurrentTrack) musicPlayerPlayRef = deps.playCurrentTrack;
+  if (deps.pauseTrack) musicPlayerPauseRef = deps.pauseTrack;
+}
 
 // --- Persisted Audio Settings ---
 const AUDIO_SETTINGS_KEY = "neon_space_audio_settings_v1";
@@ -181,10 +184,10 @@ export function toggleMusic(gameActive, gamePaused) {
   if (musicEnabled && gameActive && !gamePaused) {
     initAudio();
     startMusic();
-    playCurrentTrack();
+    if (musicPlayerPlayRef) musicPlayerPlayRef();
   } else {
     stopMusic();
-    pauseTrack();
+    if (musicPlayerPauseRef) musicPlayerPauseRef();
   }
 
   saveAudioSettingsToStorage();

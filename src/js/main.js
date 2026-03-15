@@ -98,7 +98,8 @@ import {
   setMusicVolume,
   setSfxVolume,
   musicVolume,
-  sfxVolume
+  sfxVolume,
+  registerAudioManagerMusicPlayer
 } from "./audio/audio-manager.js";
 import {
   pixiBulletSpritePool,
@@ -301,7 +302,9 @@ import {
   initMusicPlayer,
   showMusicPlayerMenu,
   hideMusicPlayerMenu,
-  startMusicOnFirstInteraction
+  startMusicOnFirstInteraction,
+  playCurrentTrack,
+  pauseTrack
 } from "./ui/music-player.js";
 import {
   registerSpawnManagerDependencies,
@@ -1454,6 +1457,10 @@ registerMusicPlayerDependencies({
   initAudio
 });
 initMusicPlayer();
+registerAudioManagerMusicPlayer({
+  playCurrentTrack,
+  pauseTrack
+});
 
 // Sync MUSIC button label with persisted setting (audio-manager loads it at import time).
 try {

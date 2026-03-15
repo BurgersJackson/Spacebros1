@@ -96,6 +96,7 @@ function playTrack(index) {
   const track = MUSIC_TRACKS[currentTrackIndex];
   if (!audioElement) createAudioElement();
 
+  audioElement.pause();
   audioElement.src = track.url;
   audioElement.loop = isLooping;
   audioElement.load();
