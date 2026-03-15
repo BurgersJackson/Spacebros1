@@ -28,6 +28,7 @@ let setDebugMenuVisibleRef = null;
 let showMusicPlayerMenuRef = null;
 let hideMusicPlayerMenuRef = null;
 let showLeaderboardScreenRef = null;
+let startMusicOnFirstInteractionRef = null;
 
 /**
  * @param {object} deps
@@ -61,6 +62,8 @@ export function registerMenuDependencies(deps) {
   if (deps.showMusicPlayerMenu) showMusicPlayerMenuRef = deps.showMusicPlayerMenu;
   if (deps.hideMusicPlayerMenu) hideMusicPlayerMenuRef = deps.hideMusicPlayerMenu;
   if (deps.showLeaderboardScreen) showLeaderboardScreenRef = deps.showLeaderboardScreen;
+  if (deps.startMusicOnFirstInteraction)
+    startMusicOnFirstInteractionRef = deps.startMusicOnFirstInteraction;
 }
 
 export function showUpgradesMenu() {
@@ -360,6 +363,7 @@ export function initMenuUi() {
   if (startBtn) {
     startBtn.addEventListener("click", () => {
       if (initAudioRef) initAudioRef();
+      if (startMusicOnFirstInteractionRef) startMusicOnFirstInteractionRef();
       if (startGameRef) startGameRef();
     });
   }
@@ -368,6 +372,7 @@ export function initMenuUi() {
   if (resumeStartBtn) {
     resumeStartBtn.addEventListener("click", () => {
       if (initAudioRef) initAudioRef();
+      if (startMusicOnFirstInteractionRef) startMusicOnFirstInteractionRef();
       document.getElementById("start-screen").style.display = "none";
 
       if (
@@ -407,6 +412,7 @@ export function initMenuUi() {
   if (profileBtn) {
     profileBtn.addEventListener("click", () => {
       if (initAudioRef) initAudioRef();
+      if (startMusicOnFirstInteractionRef) startMusicOnFirstInteractionRef();
       if (showSaveMenuRef) showSaveMenuRef();
     });
   }
@@ -438,6 +444,7 @@ export function initMenuUi() {
   if (musicPlayerStartBtn) {
     musicPlayerStartBtn.addEventListener("click", () => {
       if (initAudioRef) initAudioRef();
+      if (startMusicOnFirstInteractionRef) startMusicOnFirstInteractionRef();
       if (showMusicPlayerMenuRef) showMusicPlayerMenuRef();
     });
   }
@@ -447,6 +454,7 @@ export function initMenuUi() {
   if (upgradesBtn) {
     upgradesBtn.addEventListener("click", () => {
       if (initAudioRef) initAudioRef();
+      if (startMusicOnFirstInteractionRef) startMusicOnFirstInteractionRef();
       showUpgradesMenu();
     });
   }
@@ -495,6 +503,7 @@ export function initMenuUi() {
   if (restartBtn) {
     restartBtn.addEventListener("click", () => {
       if (initAudioRef) initAudioRef();
+      if (startMusicOnFirstInteractionRef) startMusicOnFirstInteractionRef();
       if (startGameRef) startGameRef();
     });
   }
@@ -517,6 +526,7 @@ export function initMenuUi() {
   if (deathRestartBtn) {
     deathRestartBtn.addEventListener("click", () => {
       if (initAudioRef) initAudioRef();
+      if (startMusicOnFirstInteractionRef) startMusicOnFirstInteractionRef();
       if (returnToMainMenuFromDeathRef) returnToMainMenuFromDeathRef();
     });
   }

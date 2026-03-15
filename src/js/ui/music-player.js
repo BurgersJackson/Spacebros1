@@ -325,8 +325,18 @@ export function initMusicPlayer() {
   if (stopBtn) {
     stopBtn.addEventListener("click", stopMusicPlayer);
   }
+}
 
-  setTimeout(() => {
+let webMusicStarted = false;
+
+export function startMusicOnFirstInteraction() {
+  if (webMusicStarted || isPlaying) return;
+  if (window.SpacebrosApp) {
+    setTimeout(() => {
+      playRandomTrack();
+    }, 500);
+  } else {
+    webMusicStarted = true;
     playRandomTrack();
-  }, 500);
+  }
 }

@@ -300,7 +300,8 @@ import {
   registerMusicPlayerDependencies,
   initMusicPlayer,
   showMusicPlayerMenu,
-  hideMusicPlayerMenu
+  hideMusicPlayerMenu,
+  startMusicOnFirstInteraction
 } from "./ui/music-player.js";
 import {
   registerSpawnManagerDependencies,
@@ -1436,7 +1437,8 @@ registerMenuDependencies({
   },
   showMusicPlayerMenu,
   hideMusicPlayerMenu,
-  showLeaderboardScreen
+  showLeaderboardScreen,
+  startMusicOnFirstInteraction
 });
 initMenuUi();
 
