@@ -864,26 +864,32 @@ export function initSettingsMenu() {
   const qStart = document.getElementById("desktop-quit-start-btn");
   const qPause = document.getElementById("desktop-quit-pause-btn");
 
-  if (qStart) {
-    qStart.addEventListener("click", () => {
-      if (GameContextRef.currentProfileName) {
-        try {
-          autoSaveToCurrentProfile();
-          saveMetaProfileRef();
-        } catch (e) {}
-      }
-      window.SpacebrosApp.settings.quit();
-    });
-  }
-  if (qPause) {
-    qPause.addEventListener("click", () => {
-      if (GameContextRef.currentProfileName) {
-        try {
-          autoSaveToCurrentProfile();
-          saveMetaProfileRef();
-        } catch (e) {}
-      }
-      window.SpacebrosApp.settings.quit();
-    });
+  const isWeb = !window.SpacebrosApp;
+  if (isWeb) {
+    if (qStart) qStart.style.display = "none";
+    if (qPause) qPause.style.display = "none";
+  } else {
+    if (qStart) {
+      qStart.addEventListener("click", () => {
+        if (GameContextRef.currentProfileName) {
+          try {
+            autoSaveToCurrentProfile();
+            saveMetaProfileRef();
+          } catch (e) {}
+        }
+        window.SpacebrosApp.settings.quit();
+      });
+    }
+    if (qPause) {
+      qPause.addEventListener("click", () => {
+        if (GameContextRef.currentProfileName) {
+          try {
+            autoSaveToCurrentProfile();
+            saveMetaProfileRef();
+          } catch (e) {}
+        }
+        window.SpacebrosApp.settings.quit();
+      });
+    }
   }
 }
