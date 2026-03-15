@@ -205,12 +205,38 @@ function setupCanvasResolution(internalW, internalH) {
 function handleWindowResize() {
   if (typeof initStarsFn !== "function") return;
   const size = typeof getSize === "function" ? getSize() : null;
+
+  let internalW, internalH;
+
+  const isWeb = !window.SpacebrosApp;
+  if (isWeb) {
+    internalW = window.innerWidth;
+    internalH = window.innerHeight;
+    if (canvas) {
+      canvas.width = internalW;
+      canvas.height = internalH;
+    }
+    if (uiCanvas) {
+      uiCanvas.width = internalW;
+      uiCanvas.height = internalH;
+    }
+    canvas.style.setProperty("width", "100vw", "important");
+    canvas.style.setProperty("height", "100vh", "important");
+    uiCanvas.style.setProperty("width", "100vw", "important");
+    uiCanvas.style.setProperty("height", "100vh", "important");
+    if (typeof setSize === "function") {
+      setSize(internalW, internalH);
+    }
+    requestAnimationFrame(() => {
+      initStarsFn(window.innerWidth, window.innerHeight);
+    });
+    return;
+  }
+
   if (!size) return;
 
-  // Re-setup canvas with new dimensions when window resizes (e.g., entering fullscreen)
-  // Get current internal resolution from settings
-  let internalW = size.width;
-  let internalH = size.height;
+  internalW = size.width;
+  internalH = size.height;
 
   // Re-apply canvas resolution setup to update to new window dimensions
   // Use requestAnimationFrame to ensure window has finished resizing

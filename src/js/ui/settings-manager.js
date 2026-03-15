@@ -669,14 +669,24 @@ export function initSettingsMenu() {
 
   populateResolutionSelector();
 
+  const electronOnlyElements = [
+    document.querySelector("label:has(#res-select)")?.parentElement ||
+      document.getElementById("res-select")?.parentElement?.parentElement,
+    document.querySelector("label:has(#fullscreen-check)")?.parentElement,
+    document.querySelector("label:has(#vsync-check)")?.parentElement,
+    document.querySelector("label:has(#frameless-check)")?.parentElement
+  ].filter(Boolean);
+
+  if (!isElectron) {
+    electronOnlyElements.forEach(el => {
+      if (el) el.style.display = "none";
+    });
+  }
+
   if (settingsBtn) {
-    if (!isElectron) {
-      settingsBtn.style.display = "none";
-    } else {
-      settingsBtn.addEventListener("click", async () => {
-        openSettingsMenu();
-      });
-    }
+    settingsBtn.addEventListener("click", async () => {
+      openSettingsMenu();
+    });
   }
 
   const pauseSettingsBtn = document.getElementById("pause-settings-btn");
@@ -685,30 +695,32 @@ export function initSettingsMenu() {
   }
 
   async function openSettingsMenu() {
-    const current = await window.SpacebrosApp.settings.get();
-    if (current) {
-      fullscreenCheck.checked = !!current.fullscreen;
-      resSelect.disabled = false;
+    if (isElectron) {
+      const current = await window.SpacebrosApp.settings.get();
+      if (current) {
+        fullscreenCheck.checked = !!current.fullscreen;
+        resSelect.disabled = false;
 
-      const internalRes = current.internalResolution || {
-        width: current.width || 1920,
-        height: current.height || 1080
-      };
-      const resString = `${internalRes.width}x${internalRes.height}`;
+        const internalRes = current.internalResolution || {
+          width: current.width || 1920,
+          height: current.height || 1080
+        };
+        const resString = `${internalRes.width}x${internalRes.height}`;
 
-      const optionExists = [...resSelect.options].some(o => o.value === resString);
-      if (optionExists) {
-        resSelect.value = resString;
-      } else {
-        const customOption = document.createElement("option");
-        customOption.value = resString;
-        customOption.textContent = `${internalRes.width} x ${internalRes.height} (Custom)`;
-        resSelect.appendChild(customOption);
-        resSelect.value = resString;
+        const optionExists = [...resSelect.options].some(o => o.value === resString);
+        if (optionExists) {
+          resSelect.value = resString;
+        } else {
+          const customOption = document.createElement("option");
+          customOption.value = resString;
+          customOption.textContent = `${internalRes.width} x ${internalRes.height} (Custom)`;
+          resSelect.appendChild(customOption);
+          resSelect.value = resString;
+        }
+
+        framelessCheck.checked = !!current.frameless;
+        vsyncCheck.checked = current.vsync !== false;
       }
-
-      framelessCheck.checked = !!current.frameless;
-      vsyncCheck.checked = current.vsync !== false;
     }
 
     const musicVolumeSlider = document.getElementById("music-volume");
@@ -857,6 +869,18 @@ export function initSettingsMenu() {
           pauseMenu.style.display = "block";
           pauseMenu.style.pointerEvents = "auto";
         }
+      }
+    });
+  }
+
+  if (settingsApplyBtn && !isElectron) {
+    settingsApplyBtn.addEventListener("click", () => {
+      showOverlayMessageRef("SETTINGS SAVED", "#0f0", 1500);
+      settingsMenu.style.display = "none";
+      if (GameContextRef.gamePaused) {
+        const pauseMenu = document.getElementById("pause-menu");
+        pauseMenu.style.display = "block";
+        pauseMenu.style.pointerEvents = "auto";
       }
     });
   }
