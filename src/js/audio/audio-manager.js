@@ -9,6 +9,12 @@ import {
   ENABLE_PROJECTILE_IMPACT_SOUNDS
 } from "../core/constants.js";
 
+import {
+  playCurrentTrack,
+  pauseTrack,
+  getIsPlaying as getMusicPlayerIsPlaying
+} from "../ui/music-player.js";
+
 // --- Audio Context ---
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let audioCtx = null;
@@ -175,8 +181,10 @@ export function toggleMusic(gameActive, gamePaused) {
   if (musicEnabled && gameActive && !gamePaused) {
     initAudio();
     startMusic();
+    playCurrentTrack();
   } else {
     stopMusic();
+    pauseTrack();
   }
 
   saveAudioSettingsToStorage();
