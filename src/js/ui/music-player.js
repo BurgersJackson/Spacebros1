@@ -104,18 +104,33 @@ function playTrack(index) {
   const volume = getMusicVolumeRef ? getMusicVolumeRef() : 0.5;
   audioElement.volume = volume * 0.5;
 
-  audioElement
-    .play()
-    .then(() => {
+  // Some browsers/extensions return a Promise from play(), others return void.
+  // Guard against non-promise return to avoid 'reading then of undefined' errors.
+  try {
+    const playResult = audioElement.play();
+    if (playResult && typeof playResult.then === "function") {
+      playResult
+        .then(() => {
+          isPlaying = true;
+          updateMusicMenuUI();
+        })
+        .catch(e => {
+          console.warn("[MusicPlayer] Play failed:", e);
+          isPlaying = false;
+          webMusicStarted = false;
+          updateMusicMenuUI();
+        });
+    } else {
+      // Non-promise play(): assume success
       isPlaying = true;
       updateMusicMenuUI();
-    })
-    .catch(e => {
-      console.warn("[MusicPlayer] Play failed:", e);
-      isPlaying = false;
-      webMusicStarted = false;
-      updateMusicMenuUI();
-    });
+    }
+  } catch (e) {
+    console.warn("[MusicPlayer] Play threw:", e);
+    isPlaying = false;
+    webMusicStarted = false;
+    updateMusicMenuUI();
+  }
 
   saveSettings();
 }
@@ -129,15 +144,25 @@ export function playCurrentTrack() {
   audioElement.volume = volume * 0.5;
 
   if (audioElement.src && audioElement.readyState >= 1) {
-    audioElement
-      .play()
-      .then(() => {
+    try {
+      const playResult = audioElement.play();
+      if (playResult && typeof playResult.then === "function") {
+        playResult
+          .then(() => {
+            isPlaying = true;
+            updateMusicMenuUI();
+          })
+          .catch(() => {
+            playTrack(currentTrackIndex);
+          });
+      } else {
+        // Non-promise play(): assume success
         isPlaying = true;
         updateMusicMenuUI();
-      })
-      .catch(() => {
-        playTrack(currentTrackIndex);
-      });
+      }
+    } catch (_e) {
+      playTrack(currentTrackIndex);
+    }
   } else {
     playTrack(currentTrackIndex);
   }
