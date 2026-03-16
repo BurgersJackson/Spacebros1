@@ -106,6 +106,14 @@ export function getActiveMenuElements() {
     return style.display !== "none" && style.visibility !== "hidden";
   };
 
+  // Welcome popup - highest priority
+  const welcomePopup = document.getElementById("welcome-popup");
+  if (isVisible(welcomePopup)) {
+    const ackBtn = document.getElementById("welcome-acknowledge-btn");
+    if (ackBtn) return [ackBtn];
+    return [];
+  }
+
   const metaShopModal = document.getElementById("meta-shop-modal");
   if (isVisible(metaShopModal)) {
     const buyBtn = document.getElementById("meta-modal-buy");
@@ -484,12 +492,23 @@ function handleMenuNavigation(now) {
         if (GameContext.gpState.lastPadButtons?.back) {
           let handled = false;
 
-          const modal = document.getElementById("meta-shop-modal");
-          if (modal && modal.style.display === "block") {
-            const backBtn = document.getElementById("meta-modal-back");
-            if (backBtn) backBtn.click();
+          // Welcome popup - highest priority
+          const welcomePopup = document.getElementById("welcome-popup");
+          if (welcomePopup && welcomePopup.style.display === "block") {
+            const ackBtn = document.getElementById("welcome-acknowledge-btn");
+            if (ackBtn) ackBtn.click();
             GameContext.gpState.lastMenuElements = null;
             handled = true;
+          }
+
+          if (!handled) {
+            const modal = document.getElementById("meta-shop-modal");
+            if (modal && modal.style.display === "block") {
+              const backBtn = document.getElementById("meta-modal-back");
+              if (backBtn) backBtn.click();
+              GameContext.gpState.lastMenuElements = null;
+              handled = true;
+            }
           }
 
           if (!handled) {
@@ -735,11 +754,21 @@ export function initInputListeners() {
       if (e.key === "Escape" && !e.repeat) {
         let handled = false;
 
-        const modal = document.getElementById("meta-shop-modal");
-        if (modal && modal.style.display === "block") {
-          const backBtn = document.getElementById("meta-modal-back");
-          if (backBtn) backBtn.click();
+        // Welcome popup - highest priority
+        const welcomePopup = document.getElementById("welcome-popup");
+        if (welcomePopup && welcomePopup.style.display === "block") {
+          const ackBtn = document.getElementById("welcome-acknowledge-btn");
+          if (ackBtn) ackBtn.click();
           handled = true;
+        }
+
+        if (!handled) {
+          const modal = document.getElementById("meta-shop-modal");
+          if (modal && modal.style.display === "block") {
+            const backBtn = document.getElementById("meta-modal-back");
+            if (backBtn) backBtn.click();
+            handled = true;
+          }
         }
 
         if (!handled) {

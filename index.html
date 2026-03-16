@@ -1280,6 +1280,130 @@
       </div>
     </div>
 
+    <!-- Welcome Popup - shown once per session -->
+    <div
+      id="welcome-popup"
+      style="
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 500px;
+        max-height: 85vh;
+        overflow-y: auto;
+        background: rgba(0, 10, 20, 0.98);
+        border: 2px solid #0ff;
+        padding: 25px;
+        z-index: 300;
+        text-align: center;
+        box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+      "
+    >
+      <h2 style="color: #0ff; margin-top: 0; margin-bottom: 15px; font-size: 24px">
+        WELCOME TO SPACEBROS!
+      </h2>
+
+      <div
+        style="
+          color: #ff0;
+          font-size: 14px;
+          margin-bottom: 20px;
+          padding: 10px;
+          border: 1px solid #ff0;
+          background: rgba(255, 255, 0, 0.1);
+        "
+      >
+        <strong>For the best experience:</strong><br />
+        Press
+        <span style="color: #fff; background: #333; padding: 2px 8px; border-radius: 3px">F11</span>
+        for fullscreen<br />
+        Use a <strong>gamepad</strong> controller
+      </div>
+
+      <div style="text-align: left; margin-bottom: 20px">
+        <h3
+          style="
+            color: #0f0;
+            margin-bottom: 10px;
+            font-size: 16px;
+            border-bottom: 1px solid #0f0;
+            padding-bottom: 5px;
+          "
+        >
+          KEYBOARD CONTROLS
+        </h3>
+        <div
+          style="
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            font-size: 13px;
+            color: #fff;
+          "
+        >
+          <span style="color: #888">Movement:</span><span>W A S D</span>
+          <span style="color: #888">Shoot:</span><span>SPACE</span>
+          <span style="color: #888">Turbo:</span><span>E</span>
+          <span style="color: #888">Battery:</span><span>F</span>
+          <span style="color: #888">Warp:</span><span>SHIFT</span>
+          <span style="color: #888">Pause:</span><span>ESC</span>
+        </div>
+
+        <h3
+          style="
+            color: #0f0;
+            margin-top: 15px;
+            margin-bottom: 10px;
+            font-size: 16px;
+            border-bottom: 1px solid #0f0;
+            padding-bottom: 5px;
+          "
+        >
+          GAMEPAD CONTROLS
+        </h3>
+        <div
+          style="
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            font-size: 13px;
+            color: #fff;
+          "
+        >
+          <span style="color: #888">Movement:</span><span>Left Stick</span>
+          <span style="color: #888">Aim:</span><span>Right Stick</span>
+          <span style="color: #888">Shoot:</span><span>A / Cross</span>
+          <span style="color: #888">Back:</span><span>B / Circle</span>
+          <span style="color: #888">Turbo:</span><span>X / Square</span>
+          <span style="color: #888">Battery:</span><span>Y / Triangle</span>
+          <span style="color: #888">Warp:</span><span>LB / L1</span>
+          <span style="color: #888">Pause:</span><span>Start</span>
+        </div>
+      </div>
+
+      <div style="color: #888; font-size: 12px; margin-bottom: 20px; font-style: italic">
+        The game works fine in a window with keyboard too!
+      </div>
+
+      <button
+        id="welcome-acknowledge-btn"
+        style="
+          padding: 12px 40px;
+          font-size: 16px;
+          background: #0ff;
+          color: #000;
+          border: 2px solid #0ff;
+          cursor: pointer;
+          font-family: inherit;
+          font-weight: bold;
+          text-transform: uppercase;
+        "
+      >
+        ACKNOWLEDGE
+      </button>
+    </div>
+
     <div id="start-screen" class="menu-screen">
       <h1>SPACEBROS!</h1>
       <div id="current-profile-display" style="color: #ff0; margin-bottom: 10px; font-size: 14px">
@@ -2131,6 +2255,95 @@
           document.head.appendChild(fallback);
         };
         document.head.appendChild(script);
+      })();
+    </script>
+
+    <!-- Welcome popup handler - runs before main.js -->
+    <script>
+      (function initWelcomePopup() {
+        const WELCOME_SHOWN_KEY = "spacebros_welcome_shown";
+        const welcomePopup = document.getElementById("welcome-popup");
+        const ackBtn = document.getElementById("welcome-acknowledge-btn");
+
+        // Check if we're on web (not Electron)
+        const isWeb = !window.SpacebrosApp;
+
+        // Only show on web, and only once per session
+        if (isWeb && welcomePopup && !sessionStorage.getItem(WELCOME_SHOWN_KEY)) {
+          welcomePopup.style.display = "block";
+          sessionStorage.setItem(WELCOME_SHOWN_KEY, "true");
+
+          // Focus the acknowledge button
+          setTimeout(() => {
+            if (ackBtn) ackBtn.focus();
+          }, 100);
+        }
+
+        function closeWelcomePopup() {
+          if (welcomePopup) {
+            welcomePopup.style.display = "none";
+          }
+        }
+
+        // Button click handler
+        if (ackBtn) {
+          ackBtn.addEventListener("click", closeWelcomePopup);
+        }
+
+        // Escape key handler
+        window.addEventListener(
+          "keydown",
+          function welcomeEscapeHandler(e) {
+            if (e.key === "Escape" && welcomePopup && welcomePopup.style.display === "block") {
+              e.preventDefault();
+              e.stopPropagation();
+              closeWelcomePopup();
+            }
+          },
+          { capture: true }
+        );
+
+        // Gamepad B button handler
+        let welcomeGamepadCheckInterval = null;
+        function checkGamepadForWelcome() {
+          if (!welcomePopup || welcomePopup.style.display !== "block") {
+            if (welcomeGamepadCheckInterval) {
+              clearInterval(welcomeGamepadCheckInterval);
+              welcomeGamepadCheckInterval = null;
+            }
+            return;
+          }
+
+          const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+          for (const gp of gamepads) {
+            if (gp && gp.buttons && gp.buttons[1] && gp.buttons[1].pressed) {
+              closeWelcomePopup();
+              break;
+            }
+          }
+        }
+
+        // Start gamepad polling when popup is visible
+        if (welcomePopup) {
+          const observer = new MutationObserver(function (mutations) {
+            mutations.forEach(function (mutation) {
+              if (mutation.type === "attributes" && mutation.attributeName === "style") {
+                if (welcomePopup.style.display === "block" && !welcomeGamepadCheckInterval) {
+                  welcomeGamepadCheckInterval = setInterval(checkGamepadForWelcome, 50);
+                }
+              }
+            });
+          });
+          observer.observe(welcomePopup, { attributes: true });
+
+          // Also start if already visible
+          if (welcomePopup.style.display === "block") {
+            welcomeGamepadCheckInterval = setInterval(checkGamepadForWelcome, 50);
+          }
+        }
+
+        // Expose for potential external use
+        window.closeWelcomePopup = closeWelcomePopup;
       })();
     </script>
 
