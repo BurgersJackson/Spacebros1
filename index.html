@@ -1300,7 +1300,10 @@
         box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
       "
     >
-      <h2 style="color: #0ff; margin-top: 0; margin-bottom: 15px; font-size: 24px">
+      <h2
+        id="welcome-popup-title"
+        style="color: #0ff; margin-top: 0; margin-bottom: 15px; font-size: 24px"
+      >
         WELCOME TO SPACEBROS!
       </h2>
 
@@ -1472,6 +1475,7 @@
         UPGRADES STORE
       </button>
       <button id="settings-btn" style="margin-top: 10px">SETTINGS</button>
+      <button id="controls-start-btn" style="margin-top: 10px">CONTROLS</button>
       <button id="music-player-start-btn" style="margin-top: 10px">MUSIC PLAYER</button>
       <button id="leaderboard-btn" style="margin-top: 10px">LEADERBOARDS</button>
       <button id="credits-btn" style="margin-top: 10px">CREDITS</button>
@@ -1944,6 +1948,7 @@
       <button id="resume-btn">RESUME</button>
       <button id="pause-upgrades-btn">UPGRADES</button>
       <button id="pause-settings-btn">SETTINGS</button>
+      <button id="controls-pause-btn">CONTROLS</button>
       <button id="restart-btn-pause">RESTART</button>
       <button id="music-btn">MUSIC: ON</button>
       <button id="music-player-btn">MUSIC PLAYER</button>
@@ -2309,11 +2314,34 @@
           if (welcomePopup) {
             welcomePopup.style.display = "none";
           }
+          const titleEl = document.getElementById("welcome-popup-title");
+          if (titleEl) titleEl.textContent = "WELCOME TO SPACEBROS!";
+        }
+
+        function showControlsPopup() {
+          if (welcomePopup) {
+            const titleEl = document.getElementById("welcome-popup-title");
+            if (titleEl) titleEl.textContent = "CONTROLS";
+            welcomePopup.style.display = "block";
+            setTimeout(() => {
+              if (ackBtn) ackBtn.focus();
+            }, 100);
+          }
         }
 
         // Button click handler
         if (ackBtn) {
           ackBtn.addEventListener("click", closeWelcomePopup);
+        }
+
+        // Wire up controls buttons
+        const controlsStartBtn = document.getElementById("controls-start-btn");
+        if (controlsStartBtn) {
+          controlsStartBtn.addEventListener("click", showControlsPopup);
+        }
+        const controlsPauseBtn = document.getElementById("controls-pause-btn");
+        if (controlsPauseBtn) {
+          controlsPauseBtn.addEventListener("click", showControlsPopup);
         }
 
         // Escape key handler
@@ -2370,6 +2398,7 @@
 
         // Expose for potential external use
         window.closeWelcomePopup = closeWelcomePopup;
+        window.showControlsPopup = showControlsPopup;
       })();
     </script>
 
