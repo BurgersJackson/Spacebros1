@@ -121,7 +121,26 @@ function playTrack(index) {
 }
 
 export function playCurrentTrack() {
-  playTrack(currentTrackIndex);
+  if (!audioElement) createAudioElement();
+
+  if (initAudioRef) initAudioRef();
+
+  const volume = getMusicVolumeRef ? getMusicVolumeRef() : 0.5;
+  audioElement.volume = volume * 0.5;
+
+  if (audioElement.src && audioElement.readyState >= 1) {
+    audioElement
+      .play()
+      .then(() => {
+        isPlaying = true;
+        updateMusicMenuUI();
+      })
+      .catch(() => {
+        playTrack(currentTrackIndex);
+      });
+  } else {
+    playTrack(currentTrackIndex);
+  }
 }
 
 export function pauseTrack() {
