@@ -25,6 +25,7 @@ import { isVectrexFilterEnabled } from "../../ui/vectrex-filter.js";
 let keys = null;
 let gpState = null;
 let mouseState = null;
+let touchState = null;
 let mouseScreen = null;
 let mouseWorld = null;
 let _spawnParticles = null;
@@ -53,6 +54,7 @@ export function registerSpaceshipDependencies(deps) {
   if (deps.keys) keys = deps.keys;
   if (deps.gpState) gpState = deps.gpState;
   if (deps.mouseState) mouseState = deps.mouseState;
+  if (deps.touchState) touchState = deps.touchState;
   if (deps.mouseScreen) mouseScreen = deps.mouseScreen;
   if (deps.mouseWorld) mouseWorld = deps.mouseWorld;
   if (deps.spawnParticles) _spawnParticles = deps.spawnParticles;
@@ -415,7 +417,7 @@ export class Spaceship extends Entity {
       if (this.turboBoost.cooldownFrames > 0) this.turboBoost.cooldownFrames -= dtScale;
 
       // Check if turbo button is pressed
-      const turboPressed = keys.e || gpState.turbo || mouseState.rightDown;
+      const turboPressed = keys.e || gpState.turbo || mouseState.rightDown || (touchState && touchState.turbo);
 
       // Helper to instantly set velocity to turbo max speed in facing direction
       const activateTurboBoost = () => {
@@ -456,7 +458,11 @@ export class Spaceship extends Entity {
     let moveX = gpState.move.x;
     let moveY = gpState.move.y;
 
-    if (!GameContext.usingGamepad) {
+    // Touch controls take priority for movement
+    if (touchState && touchState.active && (touchState.move.x !== 0 || touchState.move.y !== 0)) {
+      moveX = touchState.move.x;
+      moveY = touchState.move.y;
+    } else if (!GameContext.usingGamepad) {
       if (keys.w) moveY -= 1;
       if (keys.s) moveY += 1;
       if (keys.a) moveX -= 1;
@@ -894,7 +900,7 @@ export class Spaceship extends Entity {
       if (this.warpCooldown > 0) {
         this.warpCooldown -= dtScale;
         _updateWarpUI();
-      } else if (keys.shift || gpState.warp) {
+      } else if (keys.shift || gpState.warp || (touchState && touchState.warp)) {
         const suppressWarpUntil = _getSuppressWarpInputUntil ? _getSuppressWarpInputUntil() : 0;
         if (!suppressWarpUntil || _getGameNowMs() >= suppressWarpUntil) {
           this.warp();
@@ -955,7 +961,7 @@ export class Spaceship extends Entity {
     }
 
     // F key / Battery button handling (Battery discharge)
-    const fPressed = keys.f || gpState.battery || mouseState.middleDown;
+    const fPressed = keys.f || gpState.battery || mouseState.middleDown || (touchState && touchState.battery);
     const batteryReady = this.batteryUnlocked && this.batteryCharge >= this.batteryMaxCharge;
 
     // Track F key state transitions

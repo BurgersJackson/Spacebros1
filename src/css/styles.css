@@ -900,3 +900,204 @@ body.crt-active * {
     font-size: 14px;
   }
 }
+
+/* Mobile responsive styles for objectives screen */
+@media (max-width: 700px), (max-height: 500px) {
+  .objectives-screen {
+    min-width: 85vw;
+    max-width: 90vw;
+    padding: 15px;
+  }
+
+  .objectives-screen h1 {
+    font-size: 18px !important;
+    margin-bottom: 10px !important;
+  }
+
+  #objectives-text {
+    font-size: 12px !important;
+    padding: 10px !important;
+    min-height: 80px !important;
+  }
+
+  #objectives-prompt {
+    font-size: 10px !important;
+  }
+
+  #objectives-continue-btn {
+    padding: 10px 30px !important;
+    font-size: 14px !important;
+  }
+}
+
+/* Touch Controls for Mobile */
+.touch-controls {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.touch-controls.visible {
+  display: block;
+}
+
+/* Virtual Joystick */
+.touch-joystick {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  width: 140px;
+  height: 140px;
+  pointer-events: auto;
+}
+
+.joystick-base {
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle, rgba(100, 150, 200, 0.3) 0%, rgba(50, 100, 150, 0.2) 100%);
+  border: 3px solid rgba(100, 180, 255, 0.5);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 20px rgba(100, 180, 255, 0.3);
+}
+
+.joystick-stick {
+  width: 60px;
+  height: 60px;
+  background: radial-gradient(circle, rgba(150, 200, 255, 0.8) 0%, rgba(100, 150, 220, 0.6) 100%);
+  border: 2px solid rgba(180, 220, 255, 0.8);
+  border-radius: 50%;
+  box-shadow: 0 0 15px rgba(150, 200, 255, 0.5);
+  transition: transform 0.05s ease-out;
+}
+
+/* Touch Buttons Container */
+.touch-buttons {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+/* Individual Touch Buttons */
+.touch-btn {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  border: 3px solid;
+  font-family: "Orbitron", sans-serif;
+  font-size: 12px;
+  font-weight: bold;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-shadow: 0 0 10px currentColor;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.touch-btn:active,
+.touch-btn.pressed {
+  transform: scale(0.9);
+}
+
+.touch-btn-fire {
+  background: radial-gradient(circle, rgba(255, 80, 80, 0.6) 0%, rgba(200, 50, 50, 0.4) 100%);
+  border-color: rgba(255, 100, 100, 0.8);
+  box-shadow: 0 0 20px rgba(255, 100, 100, 0.5);
+}
+
+.touch-btn-fire:active,
+.touch-btn-fire.pressed {
+  background: radial-gradient(circle, rgba(255, 120, 120, 0.8) 0%, rgba(255, 80, 80, 0.6) 100%);
+  box-shadow: 0 0 30px rgba(255, 100, 100, 0.8);
+}
+
+.touch-btn-turbo {
+  background: radial-gradient(circle, rgba(80, 200, 255, 0.6) 0%, rgba(50, 150, 200, 0.4) 100%);
+  border-color: rgba(100, 200, 255, 0.8);
+  box-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+}
+
+.touch-btn-turbo:active,
+.touch-btn-turbo.pressed {
+  background: radial-gradient(circle, rgba(120, 220, 255, 0.8) 0%, rgba(80, 180, 220, 0.6) 100%);
+  box-shadow: 0 0 30px rgba(100, 200, 255, 0.8);
+}
+
+.touch-btn-battery {
+  background: radial-gradient(circle, rgba(255, 200, 80, 0.6) 0%, rgba(200, 150, 50, 0.4) 100%);
+  border-color: rgba(255, 200, 100, 0.8);
+  box-shadow: 0 0 20px rgba(255, 200, 100, 0.5);
+}
+
+.touch-btn-battery:active,
+.touch-btn-battery.pressed {
+  background: radial-gradient(circle, rgba(255, 220, 120, 0.8) 0%, rgba(255, 180, 80, 0.6) 100%);
+  box-shadow: 0 0 30px rgba(255, 200, 100, 0.8);
+}
+
+.touch-btn-warp {
+  background: radial-gradient(circle, rgba(180, 80, 255, 0.6) 0%, rgba(130, 50, 200, 0.4) 100%);
+  border-color: rgba(180, 100, 255, 0.8);
+  box-shadow: 0 0 20px rgba(180, 100, 255, 0.5);
+}
+
+.touch-btn-warp:active,
+.touch-btn-warp.pressed {
+  background: radial-gradient(circle, rgba(200, 120, 255, 0.8) 0%, rgba(160, 80, 220, 0.6) 100%);
+  box-shadow: 0 0 30px rgba(180, 100, 255, 0.8);
+}
+
+/* Show touch controls only on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .touch-controls.visible {
+    display: block;
+  }
+}
+
+/* Adjust sizes for smaller screens */
+@media (max-width: 500px) {
+  .touch-joystick {
+    width: 120px;
+    height: 120px;
+    left: 10px;
+    bottom: 10px;
+  }
+
+  .joystick-base {
+    width: 120px;
+    height: 120px;
+  }
+
+  .joystick-stick {
+    width: 50px;
+    height: 50px;
+  }
+
+  .touch-btn {
+    width: 60px;
+    height: 60px;
+    font-size: 10px;
+  }
+
+  .touch-buttons {
+    right: 10px;
+    bottom: 10px;
+    gap: 8px;
+  }
+}

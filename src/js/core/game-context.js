@@ -214,6 +214,14 @@ export const GameContext = {
     pausePressed: false,
     lastMenuElements: null
   },
+  touchState: {
+    move: { x: 0, y: 0 },
+    fire: false,
+    warp: false,
+    turbo: false,
+    battery: false,
+    active: false
+  },
   gamepadIndex: -1,
   usingGamepad: false,
   lastMouseInputAt: 0,

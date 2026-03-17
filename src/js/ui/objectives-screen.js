@@ -52,6 +52,7 @@ export function showObjectivesScreen() {
   const screen = document.getElementById("objectives-screen");
   const textEl = document.getElementById("objectives-text");
   const promptEl = document.getElementById("objectives-prompt");
+  const continueBtn = document.getElementById("objectives-continue-btn");
 
   if (!screen || !textEl) return;
 
@@ -63,16 +64,29 @@ export function showObjectivesScreen() {
   screen.style.display = "block";
   seenGamepadRelease = false;
 
+  // Show continue button on touch devices
+  const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  if (continueBtn) {
+    continueBtn.style.display = isTouchDevice ? "inline-block" : "none";
+  }
+
   GameContext.gamePaused = true;
   GameContext.pauseStartTime = deps.getGameNowMs();
 
   startTypewriter(textEl, promptEl);
 
   document.addEventListener("keydown", handleSkipKey);
+
+  // Add click/touch handlers for mobile
+  if (continueBtn) {
+    continueBtn.addEventListener("click", handleContinueClick);
+  }
+  screen.addEventListener("click", handleScreenClick);
 }
 
 export function hideObjectivesScreen() {
   const screen = document.getElementById("objectives-screen");
+  const continueBtn = document.getElementById("objectives-continue-btn");
 
   if (typewriterInterval) {
     clearInterval(typewriterInterval);
@@ -81,7 +95,12 @@ export function hideObjectivesScreen() {
 
   document.removeEventListener("keydown", handleSkipKey);
 
+  // Remove click/touch handlers
+  if (continueBtn) {
+    continueBtn.removeEventListener("click", handleContinueClick);
+  }
   if (screen) {
+    screen.removeEventListener("click", handleScreenClick);
     screen.style.display = "none";
   }
 
@@ -157,6 +176,18 @@ function handleSkipKey(e) {
     e.preventDefault();
     skipOrClose();
   }
+}
+
+function handleContinueClick(e) {
+  e.stopPropagation();
+  skipOrClose();
+}
+
+function handleScreenClick(e) {
+  // Allow clicking anywhere on the screen to dismiss (for touch devices)
+  // but ignore clicks on the continue button (handled separately)
+  if (e.target.id === "objectives-continue-btn") return;
+  skipOrClose();
 }
 
 export function handleGamepadInputForObjectives() {

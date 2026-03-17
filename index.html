@@ -1983,6 +1983,18 @@
       <div id="objectives-prompt" style="color: #888; font-size: 12px; margin-top: 15px">
         Press SPACE to continue
       </div>
+      <button
+        id="objectives-continue-btn"
+        class="menu-btn"
+        style="
+          margin-top: 15px;
+          padding: 12px 40px;
+          font-size: 16px;
+          display: none;
+        "
+      >
+        CONTINUE
+      </button>
     </div>
 
     <div
@@ -2401,6 +2413,32 @@
         window.showControlsPopup = showControlsPopup;
       })();
     </script>
+
+    <!-- Touch Controls for Mobile -->
+    <div id="touch-controls" class="touch-controls">
+      <!-- Virtual Joystick (Left Side) -->
+      <div id="touch-joystick" class="touch-joystick">
+        <div id="joystick-base" class="joystick-base">
+          <div id="joystick-stick" class="joystick-stick"></div>
+        </div>
+      </div>
+
+      <!-- Action Buttons (Right Side) -->
+      <div id="touch-buttons" class="touch-buttons">
+        <button id="touch-fire" class="touch-btn touch-btn-fire">
+          <span>FIRE</span>
+        </button>
+        <button id="touch-turbo" class="touch-btn touch-btn-turbo">
+          <span>TURBO</span>
+        </button>
+        <button id="touch-battery" class="touch-btn touch-btn-battery">
+          <span>BAT</span>
+        </button>
+        <button id="touch-warp" class="touch-btn touch-btn-warp">
+          <span>WARP</span>
+        </button>
+      </div>
+    </div>
 
     <!-- Main Game Script (ES6 Module) -->
     <script type="module" src="src/js/main.js"></script>

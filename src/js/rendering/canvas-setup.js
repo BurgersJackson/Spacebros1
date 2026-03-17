@@ -24,8 +24,14 @@ function setupCanvasResolution(internalW, internalH) {
     document.msFullscreenElement
   );
 
+  // Detect mobile devices for proper scaling
+  const isMobileDevice =
+    ("ontouchstart" in window || navigator.maxTouchPoints > 0) &&
+    window.innerWidth <= 1024;
+
   // Use cached Electron fullscreen state (updated via IPC events)
-  const isFullscreen = isBrowserFullscreen || isElectronFullscreen;
+  // Also treat mobile devices as "fullscreen" for proper aspect ratio scaling
+  const isFullscreen = isBrowserFullscreen || isElectronFullscreen || isMobileDevice;
 
   // Set canvas pixel dimensions to internal resolution (game renders at this)
   canvas.width = internalW;

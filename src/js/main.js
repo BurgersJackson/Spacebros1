@@ -138,6 +138,7 @@ import {
   updateLevelButtons
 } from "./systems/level-manager.js";
 import { clearOverlayMessageTimeout, formatTime, showOverlayMessage } from "./utils/ui-helpers.js";
+import { initTouchControls, isTouchControlsActive } from "./ui/touch-controls.js";
 import {
   emitParticle,
   emitSmokeParticle,
@@ -1382,7 +1383,8 @@ registerSpaceshipDependencies({
   getPlayerHullExternalReady,
   getPlayerHullVectrexExternalReady,
   getSlackerHullExternalReady,
-  getSlackerHullVectrexExternalReady
+  getSlackerHullVectrexExternalReady,
+  touchState: GameContext.touchState
 });
 
 const SHIP_SELECTION_KEY = "neon_space_ship_selection";
@@ -1529,6 +1531,9 @@ registerDebugSpawnDependencies({
   enterDungeon1Internal: _enterDungeon1Internal
 });
 initDebugKeyboardShortcuts();
+
+// Initialize touch controls for mobile devices
+initTouchControls();
 
 // Robust menu initialization for start screen
 document.getElementById("levelup-screen").style.display = "none";
